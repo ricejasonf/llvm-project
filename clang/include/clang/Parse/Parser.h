@@ -49,6 +49,10 @@ namespace clang {
   struct OMPTraitSet;
   class OMPTraitInfo;
 
+  namespace heavy {
+    class Context;
+  } // namespace heavy
+
 /// Parser - This implements a parser for the C family of languages.  After
 /// parsing units of the grammar, productions are invoked to handle whatever has
 /// been read.
@@ -218,6 +222,8 @@ class Parser : public CodeCompletionHandler {
   std::unique_ptr<PragmaHandler> RISCVPragmaHandler;
 
   std::unique_ptr<CommentHandler> CommentSemaHandler;
+
+  std::unique_ptr<heavy::Context> HeavySchemeContext;
 
   /// Whether the '>' token acts as an operator or not. This will be
   /// true except when we are parsing an expression within a C++
@@ -3864,6 +3870,8 @@ private:
   bool isGNUAsmQualifier(const Token &TokAfterAsm) const;
   GNUAsmQualifiers::AQ getGNUAsmQualifier(const Token &Tok) const;
   bool parseGNUAsmQualifierListOpt(GNUAsmQualifiers &AQ);
+
+  bool ParseHeavyScheme();
 };
 
 }  // end namespace clang

@@ -24,6 +24,7 @@ add_clang_library(clangParse
   ParseTentative.cpp
   Parser.cpp
   ParseOpenACC.cpp
+  ParserHeavyScheme.cpp
 
   LINK_LIBS
   clangAST

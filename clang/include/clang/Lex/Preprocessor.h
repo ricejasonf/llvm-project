@@ -71,6 +71,7 @@ class ExternalPreprocessorSource;
 class FileEntry;
 class FileManager;
 class HeaderSearch;
+class HeavySchemeLexer;
 class MacroArgs;
 class PragmaHandler;
 class PragmaNamespace;
@@ -2937,6 +2938,14 @@ private:
   static bool CLK_LexAfterModuleImport(Preprocessor &P, Token &Result) {
     return P.LexAfterModuleImport(Result);
   }
+
+public:
+  void InitHeavySchemeLexer();
+  void FinishHeavySchemeLexer();
+  void LexHeavyScheme(Token& Tok);
+
+private:
+  std::unique_ptr<HeavySchemeLexer> TheHeavySchemeLexer;
 };
 
 /// Abstract base class that describes a handler that will receive

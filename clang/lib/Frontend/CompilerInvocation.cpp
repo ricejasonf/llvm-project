@@ -4373,6 +4373,8 @@ bool CompilerInvocation::ParseLangArgs(LangOptions &Opts, ArgList &Args,
       Diags.Report(diag::err_drv_hlsl_unsupported_target) << T.str();
   }
 
+  Opts.Heavy = Args.hasArg(OPT_fheavy);
+
   return Diags.getNumErrors() == NumErrorsBefore;
 }
 
