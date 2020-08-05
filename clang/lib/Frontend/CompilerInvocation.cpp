@@ -3462,6 +3462,8 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
       Args.hasFlag(OPT_fexperimental_relative_cxx_abi_vtables,
                    OPT_fno_experimental_relative_cxx_abi_vtables,
                    /*default=*/false);
+
+  Opts.Heavy = Args.hasArg(OPT_fheavy);
 }
 
 static bool isStrictlyPreprocessorAction(frontend::ActionKind Action) {

@@ -341,4 +341,10 @@ def note_suggest_disabling_all_checkers : Note<
 def warn_poison_system_directories : Warning <
   "include location '%0' is unsafe for cross-compilation">,
   InGroup<DiagGroup<"poison-system-directories">>, DefaultIgnore;
+
+// HeavyScheme
+def err_heavy_scheme : Error<
+    "(HeavyScheme) %0">;
+def warn_heavy_scheme : Warning<
+    "(HeavyScheme) %0">;
 }
