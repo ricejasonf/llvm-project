@@ -37,6 +37,7 @@
 #include "clang/Lex/CodeCompletionHandler.h"
 #include "clang/Lex/ExternalPreprocessorSource.h"
 #include "clang/Lex/HeaderSearch.h"
+#include "clang/Lex/HeavySchemeLexer.h"
 #include "clang/Lex/LexDiagnostic.h"
 #include "clang/Lex/Lexer.h"
 #include "clang/Lex/LiteralSupport.h"
@@ -1687,6 +1688,7 @@ const char *Preprocessor::getCheckPoint(FileID FID, const char *Start) const {
   return nullptr;
 }
 
+<<<<<<< HEAD
 bool Preprocessor::hasSeenNoTrivialPPDirective() const {
   return DirTracer && DirTracer->hasSeenNoTrivialPPDirective();
 }
@@ -1713,4 +1715,26 @@ void NoTrivialPPDirectiveTracer::MacroExpands(const Token &MacroNameTok,
   // FIXME: Does only enable builtin macro expansion make sense?
   if (!MD.getMacroInfo()->isBuiltinMacro())
     setSeenNoTrivialPPDirective();
+}
+
+void Preprocessor::InitHeavySchemeLexer() {
+  if (!TheHeavySchemeLexer) {
+    TheHeavySchemeLexer = std::unique_ptr<HeavySchemeLexer>(
+        new HeavySchemeLexer(*this));
+  }
+  TheHeavySchemeLexer->Init(CurLexer->getFileLoc(),
+                            CurLexer->BufferStart,
+                            CurLexer->BufferEnd,
+                            CurLexer->BufferPtr);
+}
+
+void Preprocessor::FinishHeavySchemeLexer() {
+  // Have the CurLexer resume on the char
+  // immediately AFTER `heavy_end`
+  unsigned Offset = TheHeavySchemeLexer->GetByteOffset();
+  CurLexer->SetByteOffset(Offset, /*IsStartOfLine=*/false);
+}
+
+void Preprocessor::LexHeavyScheme(Token& tok) {
+  TheHeavySchemeLexer->Lex(tok);
 }

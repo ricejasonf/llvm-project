@@ -3502,6 +3502,10 @@ def ignore_pch : Flag<["-"], "ignore-pch">, Group<f_Group>,
   Visibility<[ClangOption]>,
   HelpText<"Disable precompiled headers, overrides -emit-pch and -include-pch">;
 
+def fheavy : Flag <["-"], "fheavy">, Group<f_clang_Group>,
+  Flags<[DriverOption, CC1Option]>,
+  HelpText<"Enable support for HeavyScheme compile-time scripting">;
+
 def fimplicit_module_maps : Flag <["-"], "fimplicit-module-maps">, Group<f_Group>,
   Visibility<[ClangOption, CC1Option, CLOption]>,
   HelpText<"Implicitly search the file system for module map files.">,

@@ -163,6 +163,10 @@ enum class CXX11AttributeKind {
   InvalidAttributeSpecifier
 };
 
+namespace heavy {
+  class Context;
+} // namespace heavy
+
 /// Parser - This implements a parser for the C family of languages.  After
 /// parsing units of the grammar, productions are invoked to handle whatever has
 /// been read.
@@ -7047,6 +7051,7 @@ private:
   std::unique_ptr<PragmaHandler> MaxTokensHerePragmaHandler;
   std::unique_ptr<PragmaHandler> MaxTokensTotalPragmaHandler;
   std::unique_ptr<PragmaHandler> RISCVPragmaHandler;
+  std::unique_ptr<heavy::Context> HeavySchemeContext;
 
   /// Initialize all pragma handlers.
   void initializePragmaHandlers();
@@ -8950,6 +8955,8 @@ private:
                             bool OuterMightBeMessageSend = false);
 
   ///@}
+
+  bool ParseHeavyScheme();
 };
 
 } // end namespace clang

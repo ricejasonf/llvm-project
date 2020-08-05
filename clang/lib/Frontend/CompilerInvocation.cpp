@@ -4616,6 +4616,8 @@ bool CompilerInvocation::ParseLangArgs(LangOptions &Opts, ArgList &Args,
     }
   }
 
+  Opts.Heavy = Args.hasArg(OPT_fheavy);
+
   return Diags.getNumErrors() == NumErrorsBefore;
 }
 
