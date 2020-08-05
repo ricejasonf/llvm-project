@@ -2175,6 +2175,10 @@ defm pch_codegen: OptInCC1FFlag<"pch-codegen", "Generate ", "Do not generate ",
 defm pch_debuginfo: OptInCC1FFlag<"pch-debuginfo", "Generate ", "Do not generate ",
   "debug info for types in an object file built from this PCH and do not generate them elsewhere">;
 
+def fheavy : Flag <["-"], "fheavy">, Group<f_clang_Group>,
+  Flags<[DriverOption, CC1Option]>,
+  HelpText<"Enable support for HeavyScheme compile-time scripting">;
+
 def fimplicit_module_maps : Flag <["-"], "fimplicit-module-maps">, Group<f_Group>,
   Flags<[NoXarchOption, CC1Option, CoreOption]>,
   HelpText<"Implicitly search the file system for module map files.">,

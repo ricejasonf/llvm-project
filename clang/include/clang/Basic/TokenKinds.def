@@ -895,6 +895,18 @@ ANNOTATION(module_end)
 // into the name of a header unit.
 ANNOTATION(header_unit)
 
+// Keywwords for Heavy
+KEYWORD(heavy_scheme, KEYHEAVY)
+
+// HeavyScheme specific punctuators
+PUNCTUATOR(heavy_vector_lparen, "#(")
+PUNCTUATOR(heavy_quote, "'")
+PUNCTUATOR(heavy_quasiquote, "`")
+PUNCTUATOR(heavy_unquote, ",")
+PUNCTUATOR(heavy_unquote_splicing, ",@")
+PUNCTUATOR(heavy_true, "#t")
+PUNCTUATOR(heavy_false, "#f")
+
 #undef PRAGMA_ANNOTATION
 #undef ANNOTATION
 #undef TESTING_KEYWORD

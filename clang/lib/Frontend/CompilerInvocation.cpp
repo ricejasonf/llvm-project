@@ -4089,6 +4089,8 @@ bool CompilerInvocation::ParseLangArgs(LangOptions &Opts, ArgList &Args,
         {std::string(Split.first), std::string(Split.second)});
   }
 
+  Opts.Heavy = Args.hasArg(OPT_fheavy);
+
   return Diags.getNumErrors() == NumErrorsBefore;
 }
 

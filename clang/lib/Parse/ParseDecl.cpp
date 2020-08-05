@@ -1748,6 +1748,9 @@ Parser::ParseDeclaration(DeclaratorContext Context, SourceLocation &DeclEnd,
     ProhibitAttributes(attrs);
     SingleDecl = ParseStaticAssertDeclaration(DeclEnd);
     break;
+  case tok::kw_heavy_scheme:
+    ParseHeavyScheme();
+    return nullptr;
   default:
     return ParseSimpleDeclaration(Context, DeclEnd, attrs, true, nullptr,
                                   DeclSpecStart);

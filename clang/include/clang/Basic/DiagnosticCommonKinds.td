@@ -371,4 +371,10 @@ def err_opencl_extension_and_feature_differs : Error<
   "options %0 and %1 are set to different values">;
 def err_opencl_feature_requires : Error<
   "feature %0 requires support of %1 feature">;
+
+// HeavyScheme
+def err_heavy_scheme : Error<
+    "(HeavyScheme) %0">;
+def warn_heavy_scheme : Warning<
+    "(HeavyScheme) %0">;
 }
