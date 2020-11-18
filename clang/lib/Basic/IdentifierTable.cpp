@@ -164,6 +164,8 @@ static KeywordStatus getKeywordStatusHelper(const LangOptions &LangOpts,
     return KS_Unknown;
   case KEYFIXEDPOINT:
     return LangOpts.FixedPoint ? KS_Enabled : KS_Disabled;
+  case KEYHEAVY:
+    return LangOpts.Heavy ? KS_Enabled: KS_Unknown;
   default:
     llvm_unreachable("Unknown KeywordStatus flag");
   }
