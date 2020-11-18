@@ -107,6 +107,7 @@ namespace {
     KEYCXX20      = 0x200000,
     KEYOPENCLCXX  = 0x400000,
     KEYMSCOMPAT   = 0x800000,
+    KEYHEAVY      = 0x1000000,
     KEYALLCXX = KEYCXX | KEYCXX11 | KEYCXX20,
     KEYALL = (0xffffff & ~KEYNOMS18 &
               ~KEYNOOPENCL) // KEYNOMS18 and KEYNOOPENCL are used to exclude.
@@ -155,6 +156,7 @@ static KeywordStatus getKeywordStatus(const LangOptions &LangOpts,
   if (LangOpts.CPlusPlus && (Flags & KEYALLCXX)) return KS_Future;
   if (LangOpts.CPlusPlus && !LangOpts.CPlusPlus20 && (Flags & CHAR8SUPPORT))
     return KS_Future;
+  if (LangOpts.Heavy && (Flags & KEYHEAVY)) return KS_Enabled;
   return KS_Disabled;
 }
 

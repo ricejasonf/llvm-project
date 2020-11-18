@@ -14,6 +14,7 @@
 #include "clang/Parse/Parser.h"
 #include "clang/AST/HeavyScheme.h"
 #include "clang/Basic/LLVM.h"
+#include "clang/Basic/TargetInfo.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/SmallVector.h"
