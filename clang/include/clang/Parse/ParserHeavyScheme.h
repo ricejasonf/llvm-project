@@ -15,6 +15,7 @@
 
 #include "clang/AST/HeavyScheme.h"
 #include "clang/Basic/SourceLocation.h"
+#include "clang/Lex/HeavySchemeLexer.h"
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Parse/Parser.h"
 #include <string>
@@ -24,15 +25,11 @@ namespace clang {
 class Parser;
 class DeclContext;
 
-// TODO Breakout the actual parsing stuff
-//      that only depends on Token and SourceLocation
-//      and maybe Preprocessor
 class ParserHeavyScheme {
   using ValueResult = heavy::ValueResult;
   using Value = heavy::Value;
-  Preprocessor& PP;
+  HeavySchemeLexer& Lexer;
   heavy::Context& Context;
-  Parser& CxxParser;
   Token Tok = {};
   SourceLocation PrevTokLocation;
   std::string LiteralResult = {};
@@ -60,14 +57,10 @@ class ParserHeavyScheme {
   }
 
 public:
-  ParserHeavyScheme(Preprocessor& PP, heavy::Context& C, Parser& P)
-    : PP(PP)
+  ParserHeavyScheme(HeavySchemeLexer& Lexer, heavy::Context& C, Parser& P)
+    : Lexer(Lexer)
     , Context(C)
-    , CxxParser(P)
-  {
-    // Give the scheme context access to the
-    // C++ parser
-  }
+  { }
 
   // Gets or creates an environment for a clang::DeclContext
   Value* LoadEmbeddedEnv(DeclContext*);
@@ -76,7 +69,7 @@ public:
 
   SourceLocation ConsumeToken() {
     PrevTokLocation = Tok.getLocation();
-    PP.LexHeavyScheme(Tok);
+    Lexer.Lex(Tok);
     return PrevTokLocation;
   }
 
@@ -86,14 +79,6 @@ public:
     ConsumeToken();
     return true;
   }
-
-#if 0 // TODO if we hoist to ParseDeclHeavy.cpp
-  // Parses until the ending r_brace
-  // and evaluates top level expressions.
-  // Expects that the first token is heavy_scheme
-  // Returns true if there was an error
-  bool Parse();
-#endif
 };
 
 }  // end namespace clang

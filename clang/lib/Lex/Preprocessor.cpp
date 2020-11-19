@@ -1595,13 +1595,17 @@ void Preprocessor::InitHeavySchemeLexer() {
                             CurLexer->BufferPtr);
 }
 
-void Preprocessor::FinishHeavySchemeLexer() {
-  // Have the CurLexer resume on the char
-  // immediately AFTER `heavy_end`
-  unsigned Offset = TheHeavySchemeLexer->GetByteOffset();
-  CurLexer->SetByteOffset(Offset, /*IsStartOfLine=*/false);
+void Preprocessor::InitEmbeddedLexer(EmbeddedLexer& EL) {
+  EL.Init(CurLexer->getFileLoc(),
+          CurLexer->BufferStart,
+          CurLexer->BufferEnd,
+          CurLexer->BufferPtr);
 }
 
-void Preprocessor::LexHeavyScheme(Token& tok) {
-  TheHeavySchemeLexer->Lex(tok);
+void Preprocessor::FinishEmbeddedLexer(EmbeddedLexer& EL) {
+  // Have the CurLexer resume on the char
+  // immediately after the last char lexed
+  // byt the embedded lexer
+  unsigned Offset = EL.GetByteOffset();
+  CurLexer->SetByteOffset(Offset, /*IsStartOfLine=*/false);
 }

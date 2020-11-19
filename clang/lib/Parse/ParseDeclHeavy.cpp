@@ -31,10 +31,10 @@ bool Parser::ParseHeavyScheme() {
     HeavySchemeContext = heavy::Context::CreateEmbedded(*this);
   }
   heavy::Context& Context = *HeavySchemeContext;
+  auto SchemeLexer = HeavySchemeLexer();
+  PP.InitEmbeddedLexer(SchemeLexer);
 
-  ParserHeavyScheme P(PP, Context, *this);
-
-  PP.InitHeavySchemeLexer();
+  ParserHeavyScheme P(SchemeLexer, Context, *this);
 
   P.ConsumeToken();
   if (!P.TryConsumeToken(tok::l_brace)) {
@@ -67,7 +67,7 @@ bool Parser::ParseHeavyScheme() {
   };
 
   // Return control to C++ Lexer
-  PP.FinishHeavySchemeLexer();
+  PP.FinishEmbeddedLexer(SchemeLexer);
 
   // Allow subsequent heavy_scheme
   // instances to render useful errors
