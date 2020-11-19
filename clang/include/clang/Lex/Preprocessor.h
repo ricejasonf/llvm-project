@@ -74,7 +74,7 @@ class ExternalPreprocessorSource;
 class FileEntry;
 class FileManager;
 class HeaderSearch;
-class HeavySchemeLexer;
+class EmbeddedLexer;
 class MacroArgs;
 class PragmaHandler;
 class PragmaNamespace;
@@ -3126,12 +3126,8 @@ private:
   }
 
 public:
-  void InitHeavySchemeLexer();
-  void FinishHeavySchemeLexer();
-  void LexHeavyScheme(Token& Tok);
-
-private:
-  std::unique_ptr<HeavySchemeLexer> TheHeavySchemeLexer;
+  void InitEmbeddedLexer(EmbeddedLexer& EL);
+  void FinishEmbeddedLexer(EmbeddedLexer& EL);
 };
 
 /// Abstract base class that describes a handler that will receive
