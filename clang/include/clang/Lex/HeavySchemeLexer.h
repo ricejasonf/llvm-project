@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//  This file defines the Lexer interface for the HeavyScheme DSL.
+//  This file defines the Lexer interface for HeavyScheme.
 //
 //===----------------------------------------------------------------------===//
 
@@ -14,26 +14,17 @@
 #define LLVM_CLANG_LEX_HEAVY_SCHEME_LEXER_H
 
 #include "clang/Lex/Token.h"
-#include "clang/Lex/Lexer.h"
 #include <cassert>
 #include <cstdint>
 
 namespace clang {
 
-class DiagnosticBuilder;
-class Preprocessor;
-class SourceManager;
-
-class HeavySchemeLexer {
-  friend class Preprocessor;
-  Preprocessor& PP;
-  IdentifierInfo* Ident_heavy_scheme = nullptr;
+class EmbeddedLexer {
+protected:
   SourceLocation FileLoc;
   const char* BufferStart = nullptr;
   const char* BufferEnd = nullptr;
   const char* BufferPtr = nullptr;
-
-  HeavySchemeLexer(Preprocessor& PP);
 
 public:
   void Init(SourceLocation Loc,
@@ -52,9 +43,9 @@ public:
     else
       return BufferPtr - BufferStart;
   }
-  
-  void Lex(Token& Tok);
-private:
+};
+
+class HeavySchemeLexer : public EmbeddedLexer {
   void LexIdentifier(Token& Tok, const char *CurPtr);
   void LexNumberOrIdentifier(Token& Tok, const char *CurPtr);
   void LexNumberOrEllipsis(Token& Tok, const char *CurPtr);
@@ -93,6 +84,9 @@ private:
     BufferPtr = TokEnd;
   }
   SourceLocation getSourceLocation(const char *Loc, unsigned TokLen) const;
+
+public:
+  void Lex(Token& Tok);
 };
 
 } // namespace clang

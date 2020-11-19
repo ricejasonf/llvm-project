@@ -10,43 +10,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "clang/Lex/Lexer.h"
-#include "clang/Lex/HeavySchemeLexer.h"
-#include "UnicodeCharSets.h"
 #include "clang/Basic/CharInfo.h"
-#include "clang/Basic/IdentifierTable.h"
-#include "clang/Basic/LangOptions.h"
 #include "clang/Basic/SourceLocation.h"
-#include "clang/Basic/SourceManager.h"
 #include "clang/Basic/TokenKinds.h"
-#include "clang/Lex/LexDiagnostic.h"
-#include "clang/Lex/LiteralSupport.h"
-#include "clang/Lex/MultipleIncludeOpt.h"
-#include "clang/Lex/Preprocessor.h"
-#include "clang/Lex/PreprocessorOptions.h"
+#include "clang/Lex/HeavySchemeLexer.h"
 #include "clang/Lex/Token.h"
-#include "clang/Basic/Diagnostic.h"
-#include "clang/Basic/LLVM.h"
-#include "clang/Basic/TokenKinds.h"
-#include "llvm/ADT/None.h"
-#include "llvm/ADT/Optional.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Compiler.h"
-#include "llvm/Support/ConvertUTF.h"
-#include "llvm/Support/MathExtras.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/NativeFormatting.h"
-#include "llvm/Support/UnicodeCharRanges.h"
-#include <algorithm>
 #include <cassert>
-#include <cstddef>
-#include <cstdint>
-#include <cstring>
-#include <string>
-#include <tuple>
-#include <utility>
 
 using namespace clang;
 
@@ -90,11 +60,6 @@ namespace {
     return false;
   }
 }
-
-HeavySchemeLexer::HeavySchemeLexer(Preprocessor& PP)
-  : PP(PP)
-  , Ident_heavy_scheme(PP.getIdentifierInfo("heavy_scheme"))
-{ }
 
 void HeavySchemeLexer::Lex(Token& Tok) {
   const char* CurPtr = BufferPtr;
@@ -185,14 +150,7 @@ void HeavySchemeLexer::LexIdentifier(Token& Tok, const char *CurPtr) {
     return LexUnknown(Tok, CurPtr);
   }
 
-  // Check for heavy_scheme
-  StringRef IdStr(BufferPtr, CurPtr - BufferPtr);
-  IdentifierInfo* II = PP.getIdentifierInfo(IdStr);
-  if (II == Ident_heavy_scheme) {
-    return FormTokenWithChars(Tok, CurPtr, tok::kw_heavy_scheme);
-  } else {
-    return FormRawIdentifier(Tok, CurPtr);
-  }
+  return FormRawIdentifier(Tok, CurPtr);
 }
 
 void HeavySchemeLexer::LexNumberOrIdentifier(Token& Tok, const char *CurPtr) {
