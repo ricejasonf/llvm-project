@@ -86,6 +86,15 @@ class HeavySchemeLexer : public EmbeddedLexer {
   SourceLocation getSourceLocation(const char *Loc, unsigned TokLen) const;
 
 public:
+  void HeavySchemeLexer() = default;
+
+  void HeavySchemeLexer(SourceLocation Loc, StringRef FileBuffer) {
+    : FileLoc(Loc),
+      BufferStart(FileBuffer.begin()),
+      BufferEnd(FileBuffer.end()),
+      BufferPtr(BufferStart)
+  { }
+
   void Lex(Token& Tok);
 };
 
