@@ -5,4 +5,10 @@ if(POLICY CMP0075)
   cmake_policy(SET CMP0075 NEW)
 endif()
 
-add_subdirectory(heavy)
+set(HEAVY_LIB ${CMAKE_CURRENT_SOURCE_DIR}/lib)
+set(CLANG_LIB ${LLVM_EXTERNAL_CLANG_SOURCE_DIR}/lib)
+include_directories(BEFORE
+                    ${CMAKE_CURRENT_SOURCE_DIR}/include
+                    ${LLVM_EXTERNAL_CLANG_SOURCE_DIR}/include
+                    ${CMAKE_BINARY_DIR}/tools/clang/include)
+add_subdirectory(tools/heavy)

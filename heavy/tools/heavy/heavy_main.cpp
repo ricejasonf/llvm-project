@@ -10,16 +10,25 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <heavy/Lexer.h>
+#include <heavy/Parser.h>
 #include <heavy/HeavyScheme.h>
+#include <clang/Basic/Diagnostic.h>
 #include <clang/Basic/SourceLocation.h>
 #include <clang/Basic/SourceManager.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/InitLLVM.h>
+#include <string>
+#include <system_error>
 
 namespace cl = llvm::cl;
 
-SourceLocation getMainFileLoc(SourceManager& SM) {
-  FileId MainFileId = SM.getMainFileID();
+static cl::opt<std::string> InputFilename(cl::Positional,
+                                          cl::desc("<input file>"),
+                                          cl::Required);
+
+clang::SourceLocation getMainFileLoc(clang::SourceManager& SM) {
+  clang::FileID MainFileId = SM.getMainFileID();
   if (!MainFileId.isValid()) return {};
 
   return SM.getLocForStartOfFile(MainFileId);
@@ -28,33 +37,30 @@ SourceLocation getMainFileLoc(SourceManager& SM) {
 int main(int argc, char const** argv) {
   llvm::InitLLVM LLVM_(argc, argv);
   cl::ParseCommandLineOptions(argc, argv);
-  cl::opt<string> InputFilename(cl::Positional,
-                                cl::desc("<input file>"),
-                                cl::init("-"));
-  StringRef Filename = InputFileName;
+  llvm::StringRef Filename = InputFilename;
   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> file =
       llvm::MemoryBuffer::getFileOrSTDIN(Filename);
-  if (file.getError()) {
+  if (std::error_code ec = file.getError()) {
     llvm::errs() << "Could not open input file: " << ec.message() << "\n";
     return 1;
   }
-  StringRef FileBuffer = fileOrErr.get()->getBuffer();
+  llvm::StringRef FileBuffer = file.get()->getBuffer();
   clang::SourceManagerForFile SMFF(Filename, FileBuffer);
 
-  clang::DiagnosticEngine& Diag = SMFF.Diag;
+  clang::SourceManager& SM = SMFF.get();
+  clang::DiagnosticsEngine& Diags = SM.getDiagnostics();
+
+  unsigned ErrorId = Diags.getCustomDiagID(
+                      clang::DiagnosticsEngine::Level::Error,
+                      /*FormatString=*/"%0");
 
   // Top level Scheme parse/eval stuff
 
-  auto SchemeLexer = HeavySchemeLexer(getMainFileLoc(), FileBuffer);
+  heavy::Context Context{};
+  heavy::Lexer   SchemeLexer(getMainFileLoc(SM), FileBuffer);
+  heavy::Parser  Parser(SchemeLexer, Context);
 
-  heavy::Context Context = {};
-
-  auto SchemeLexer = HeavySchemeLexer();
-  // init HeavyScheme Lexer to the buffer of the main file
-
-  ParserHeavyScheme P(SchemeLexer, Context, *this);
-
-  P.ConsumeToken();
+  Parser.ConsumeToken();
 
   // Do we need to create an environment here ?
   //Context.EnvStack = ???;
@@ -64,12 +70,12 @@ int main(int argc, char const** argv) {
   while (true) {
     if (!HasError && Context.CheckError()) {
       HasError = true;
-      Diag(Context.getErrorLocation(), diag::err_heavy_scheme)
+      Diags.Report(Context.getErrorLocation(), ErrorId)
         << Context.getErrorMessage();
     }
     // Keep parsing until we find the end
     // brace (represented by isUnset() here)
-    Result = P.ParseTopLevelExpr();
+    Result = Parser.ParseTopLevelExpr();
     if (Result.isUnset()) break;
     if (HasError) continue;
     if (Result.isUsable()) {

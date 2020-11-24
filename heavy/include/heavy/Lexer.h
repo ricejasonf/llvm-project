@@ -1,4 +1,4 @@
-//===- HeavySchemeLexer.h - Heavy Scheme Lexer ------------------*- C++ -*-===//
+//===------------ Lexer.h - Heavy Scheme Lexer ------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -10,14 +10,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_CLANG_LEX_HEAVY_SCHEME_LEXER_H
-#define LLVM_CLANG_LEX_HEAVY_SCHEME_LEXER_H
+#ifndef LLVM_HEAVY_LEXER_H
+#define LLVM_HEAVY_LEXER_H
 
+#include "clang/Basic/SourceLocation.h"
 #include "clang/Lex/Token.h"
 #include <cassert>
 #include <cstdint>
 
-namespace clang {
+namespace heavy {
+
+using clang::SourceLocation;
+using clang::Token;
+namespace tok = clang::tok;
 
 class EmbeddedLexer {
 protected:
@@ -26,7 +31,14 @@ protected:
   const char* BufferEnd = nullptr;
   const char* BufferPtr = nullptr;
 
+  EmbeddedLexer(SourceLocation Loc, llvm::StringRef FileBuffer)
+    : FileLoc(Loc),
+      BufferStart(FileBuffer.begin()),
+      BufferEnd(FileBuffer.end()),
+      BufferPtr(BufferStart)
+  { }
 public:
+
   void Init(SourceLocation Loc,
             const char* BS,
             const char* BE,
@@ -45,7 +57,7 @@ public:
   }
 };
 
-class HeavySchemeLexer : public EmbeddedLexer {
+class Lexer : public EmbeddedLexer {
   void LexIdentifier(Token& Tok, const char *CurPtr);
   void LexNumberOrIdentifier(Token& Tok, const char *CurPtr);
   void LexNumberOrEllipsis(Token& Tok, const char *CurPtr);
@@ -86,18 +98,15 @@ class HeavySchemeLexer : public EmbeddedLexer {
   SourceLocation getSourceLocation(const char *Loc, unsigned TokLen) const;
 
 public:
-  void HeavySchemeLexer() = default;
+  Lexer() = default;
 
-  void HeavySchemeLexer(SourceLocation Loc, StringRef FileBuffer) {
-    : FileLoc(Loc),
-      BufferStart(FileBuffer.begin()),
-      BufferEnd(FileBuffer.end()),
-      BufferPtr(BufferStart)
+  Lexer(SourceLocation Loc, llvm::StringRef FileBuffer)
+    : EmbeddedLexer(Loc, FileBuffer)
   { }
 
   void Lex(Token& Tok);
 };
 
-} // namespace clang
+} // namespace heavy
 
 #endif
