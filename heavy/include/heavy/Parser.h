@@ -1,4 +1,4 @@
-//===--- ParserHeavyScheme.h - HeavyScheme Language Parser ------*- C++ -*-===//
+//===--------- Parser.h - HeavyScheme Language Parser -----------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -10,29 +10,58 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_CLANG_PARSE_PARSER_HEAVY_SCHEME_H
-#define LLVM_CLANG_PARSE_PARSER_HEAVY_SCHEME_H
+#ifndef LLVM_HEAVY_PARSER_H
+#define LLVM_HEAVY_PARSER_H
 
-#include "clang/AST/HeavyScheme.h"
+#include "heavy/HeavyScheme.h"
+#include "heavy/Lexer.h"
 #include "clang/Basic/SourceLocation.h"
-#include "clang/Lex/HeavySchemeLexer.h"
 #include "clang/Lex/Preprocessor.h"
-#include "clang/Parse/Parser.h"
+#include "llvm/ADT/SmallVector.h"
 #include <string>
 
-namespace clang {
+namespace heavy {
 
-class Parser;
-class DeclContext;
+// TODO Rename to ParseResult
+class ValueResult {
+  Value* V = nullptr;
 
-class ParserHeavyScheme {
+public:
+  ValueResult() = default;
+  ValueResult(Value* V)
+    : V(V)
+  { }
+
+  Value* get() { return V; }
+
+  // Unset means that parsing of the buffer is complete
+  // This happens at EOF or the end of an embedded snippet
+  // (ie heavy_scheme { ... })
+  //                        ^
+  bool isUnset() const {
+    return V == nullptr;
+  }
+
+  bool isUsable() const {
+    return V && V->getKind() != Value::Kind::Undefined;
+  }
+
+  bool isInvalid() const {
+    return V && !isUsable();
+  }
+};
+
+class Parser {
   using ValueResult = heavy::ValueResult;
   using Value = heavy::Value;
-  HeavySchemeLexer& Lexer;
+  heavy::Lexer& Lexer;
   heavy::Context& Context;
   Token Tok = {};
   SourceLocation PrevTokLocation;
   std::string LiteralResult = {};
+
+  auto ValueEmpty() { return ValueResult(); }
+  auto ValueError() { return ValueResult(Context.CreateUndefined()); }
 
   ValueResult ParseExpr();
   ValueResult ParseExprAbbrev(char const* Name);
@@ -46,7 +75,7 @@ class ParserHeavyScheme {
   ValueResult ParseSymbol();
   ValueResult ParseTypename();
   ValueResult ParseVectorStart();
-  ValueResult ParseVector(SmallVectorImpl<Value*>& Xs);
+  ValueResult ParseVector(llvm::SmallVectorImpl<Value*>& Xs);
 
   ValueResult ParseDottedCdr(Token const& StartTok);
   ValueResult ParseSpecialEscapeSequence();
@@ -57,13 +86,10 @@ class ParserHeavyScheme {
   }
 
 public:
-  ParserHeavyScheme(HeavySchemeLexer& Lexer, heavy::Context& C, Parser& P)
+  Parser(heavy::Lexer& Lexer, heavy::Context& C)
     : Lexer(Lexer)
     , Context(C)
   { }
-
-  // Gets or creates an environment for a clang::DeclContext
-  Value* LoadEmbeddedEnv(DeclContext*);
 
   ValueResult ParseTopLevelExpr();
 

@@ -1,4 +1,4 @@
-//===--- ParserHeavyScheme.cpp - HeavyScheme Language Parser --------------===//
+//===--- Parser.cpp - HeavyScheme Language Parser --------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -10,14 +10,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "clang/AST/DeclBase.h" // for DeclContext
-#include "clang/AST/HeavyScheme.h"
+#include "heavy/HeavyScheme.h"
+#include "heavy/Parser.h"
 #include "clang/Basic/SourceLocation.h"
-#include "clang/Parse/ParseDiagnostic.h"
-#include "clang/Parse/Parser.h"
-#include "clang/Parse/ParserHeavyScheme.h"
-#include "clang/Sema/ParsedTemplate.h"
-#include "clang/Sema/Scope.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/Optional.h"
@@ -26,18 +21,17 @@
 #include "llvm/Support/Error.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
-using namespace clang;
 
-using heavy::ValueResult;
-using heavy::ValueError;
-using heavy::ValueEmpty;
 using heavy::Context;
+using heavy::Parser;
+using heavy::ValueResult;
+using llvm::StringRef;
 
 namespace {
   // Returns true on an invalid number prefix notation
   bool parseNumberPrefix(const char*& CurPtr,
-                         Optional<bool>& IsExact,
-                         Optional<unsigned>& Radix) {
+                         llvm::Optional<bool>& IsExact,
+                         llvm::Optional<unsigned>& Radix) {
     if (*CurPtr != '#')
       return false;
 
@@ -112,23 +106,7 @@ namespace {
   }
 }
 
-// FIXME Breakout out along with the "Parse" function
-heavy::Value*
-ParserHeavyScheme::LoadEmbeddedEnv(DeclContext* DC) {
-  auto itr = Context.EmbeddedEnvs.find(DC);
-  if (itr != Context.EmbeddedEnvs.end()) return itr->second;
-  Value* Env;
-  if (DC->isTranslationUnit()) {
-    Env = Context.SystemEnvironment;
-  } else {
-    Env = LoadEmbeddedEnv(DC->getParent());
-  }
-  Env = Context.CreatePair(Context.CreateModule(), Env);
-  Context.EmbeddedEnvs[DC] = Env;
-  return Env;
-}
-
-ValueResult ParserHeavyScheme::ParseTopLevelExpr() {
+ValueResult Parser::ParseTopLevelExpr() {
   if (Tok.is(tok::r_brace)) {
     // The end of
     //    heavy_scheme { ... }
@@ -137,7 +115,7 @@ ValueResult ParserHeavyScheme::ParseTopLevelExpr() {
   return ParseExpr();
 }
 
-ValueResult ParserHeavyScheme::ParseExpr() {
+ValueResult Parser::ParseExpr() {
   switch (Tok.getKind()) {
   case tok::l_paren:
     return ParseListStart();
@@ -191,7 +169,7 @@ ValueResult ParserHeavyScheme::ParseExpr() {
 
 // ParseExprAbbrev - Normalizes abbreviated prefix notation to
 //                   their equivalent syntax e.g. (quote expr)
-ValueResult ParserHeavyScheme::ParseExprAbbrev(char const* Name) {
+ValueResult Parser::ParseExprAbbrev(char const* Name) {
   Token Abbrev = Tok;
   ConsumeToken();
   ValueResult Result = ParseExpr();
@@ -202,7 +180,7 @@ ValueResult ParserHeavyScheme::ParseExprAbbrev(char const* Name) {
   return P;
 }
 
-ValueResult ParserHeavyScheme::ParseListStart() {
+ValueResult Parser::ParseListStart() {
   // Consume the l_paren
   assert(Tok.is(tok::l_paren));
   Token StartTok = Tok;
@@ -210,7 +188,7 @@ ValueResult ParserHeavyScheme::ParseListStart() {
   return ParseList(StartTok);
 }
 
-ValueResult ParserHeavyScheme::ParseList(Token const& StartTok) {
+ValueResult Parser::ParseList(Token const& StartTok) {
   Token CurTok = Tok;
   // TODO Use StartTok to identify the proper
   //      closing token to match with
@@ -239,7 +217,7 @@ ValueResult ParserHeavyScheme::ParseList(Token const& StartTok) {
 // We have a dot while parsing a list,
 // so we expect a single expression
 // then the closing r_paren
-ValueResult ParserHeavyScheme::ParseDottedCdr(Token const& StartTok) {
+ValueResult Parser::ParseDottedCdr(Token const& StartTok) {
   assert(Tok.is(tok::period));
   ConsumeToken();
   ValueResult Cdr = ParseExpr();
@@ -251,14 +229,14 @@ ValueResult ParserHeavyScheme::ParseDottedCdr(Token const& StartTok) {
   return Cdr;
 }
 
-ValueResult ParserHeavyScheme::ParseVectorStart() {
+ValueResult Parser::ParseVectorStart() {
   // consume the heavy_vector_lparen
   ConsumeToken();
-  SmallVector<Value*, 16> Xs;
+  llvm::SmallVector<Value*, 16> Xs;
   return ParseVector(Xs);
 }
 
-ValueResult ParserHeavyScheme::ParseVector(SmallVectorImpl<Value*>& Xs) {
+ValueResult Parser::ParseVector(llvm::SmallVectorImpl<Value*>& Xs) {
   if (Tok.is(tok::r_paren)) {
     ConsumeToken();
     return Context.CreateVector(Xs);
@@ -270,11 +248,11 @@ ValueResult ParserHeavyScheme::ParseVector(SmallVectorImpl<Value*>& Xs) {
   return ParseVector(Xs);
 }
 
-ValueResult ParserHeavyScheme::ParseCharConstant() {
+ValueResult Parser::ParseCharConstant() {
   llvm_unreachable("TODO");
 }
 
-ValueResult ParserHeavyScheme::ParseNumber() {
+ValueResult Parser::ParseNumber() {
   char const* Current = Tok.getLiteralData();
   char const* End = Current + Tok.getLength();
   int BitWidth = Context.GetIntWidth();
@@ -315,7 +293,7 @@ ValueResult ParserHeavyScheme::ParseNumber() {
   return Context.CreateFloat(FloatVal);
 }
 
-ValueResult ParserHeavyScheme::ParseString() {
+ValueResult Parser::ParseString() {
   // the literal must include the ""
   assert(Tok.getLength() > 2);
   char const* Current = Tok.getLiteralData() + 1;
@@ -352,19 +330,19 @@ ValueResult ParserHeavyScheme::ParseString() {
   return Context.CreateString(StringRef(LiteralResult));
 }
 
-ValueResult ParserHeavyScheme::ParseSymbol() {
+ValueResult Parser::ParseSymbol() {
   StringRef Str = Tok.getRawIdentifier();
   SourceLocation Loc = Tok.getLocation();
   ConsumeToken();
   return Context.CreateSymbol(Str, Loc);
 }
 
-ValueResult ParserHeavyScheme::ParseTypename() {
+ValueResult Parser::ParseTypename() {
   llvm_unreachable("TODO");
   return ValueError();
 }
 
-ValueResult ParserHeavyScheme::ParseCppDecl() {
+ValueResult Parser::ParseCppDecl() {
   llvm_unreachable("TODO");
   return ValueError();
 }

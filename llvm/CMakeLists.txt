@@ -116,7 +116,7 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "AIX")
 endif()
 
 # The flang project is not yet part of "all" projects (see C++ requirements)
-set(LLVM_EXTRA_PROJECTS "flang")
+set(LLVM_EXTRA_PROJECTS "flang;heavy")
 # List of all known projects in the mono repo
 set(LLVM_KNOWN_PROJECTS "${LLVM_ALL_PROJECTS};${LLVM_EXTRA_PROJECTS}")
 set(LLVM_ENABLE_PROJECTS "" CACHE STRING
