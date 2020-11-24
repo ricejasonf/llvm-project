@@ -26,6 +26,24 @@
 
 using namespace clang;
 
+namespace {
+heavy::Value* LoadEmbeddedEnv(heavy::Context& Context,
+                              DeclContext* DC) {
+  auto itr = Context.EmbeddedEnvs.find(DC);
+  if (itr != Context.EmbeddedEnvs.end()) return itr->second;
+  Value* Env;
+  if (DC->isTranslationUnit()) {
+    Env = Context.SystemEnvironment;
+  } else {
+    Env = LoadEmbeddedEnv(DC->getParent());
+  }
+  Env = Context.CreatePair(Context.CreateModule(), Env);
+  Context.EmbeddedEnvs[DC] = Env;
+  return Env;
+}
+
+} // end anon namespace
+
 bool Parser::ParseHeavyScheme() {
   if (!HeavySchemeContext) {
     HeavySchemeContext = heavy::Context::CreateEmbedded(*this);

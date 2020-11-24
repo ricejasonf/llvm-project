@@ -1,4 +1,4 @@
-//===- HeavySchemeLexer.cpp - HeavyScheme Language Lexer ------------------===//
+//===------------ Lexer.cpp - HeavyScheme Language Lexer ------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,19 +6,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//  This file implements the HeavySchemeLexer
+//  This file implements the Lexer
 //
 //===----------------------------------------------------------------------===//
 
+#include "heavy/Lexer.h"
 #include "clang/Basic/CharInfo.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/TokenKinds.h"
-#include "clang/Lex/HeavySchemeLexer.h"
 #include "clang/Lex/Token.h"
 #include "llvm/ADT/StringRef.h"
 #include <cassert>
 
-using namespace clang;
+using namespace heavy;
+namespace tok = clang::tok;
 
 namespace {
   bool isExtendedAlphabet(char c) {
@@ -53,7 +54,7 @@ namespace {
       return true;
     }
 
-    if (isWhitespace(c)) {
+    if (clang::isWhitespace(c)) {
       return true;
     }
 
@@ -61,7 +62,7 @@ namespace {
   }
 }
 
-void HeavySchemeLexer::Lex(Token& Tok) {
+void Lexer::Lex(Token& Tok) {
   const char* CurPtr = BufferPtr;
   tok::TokenKind Kind;
   ProcessWhitespace(Tok, CurPtr);
@@ -138,7 +139,7 @@ void HeavySchemeLexer::Lex(Token& Tok) {
   FormTokenWithChars(Tok, CurPtr, Kind);
 }
 
-void HeavySchemeLexer::LexIdentifier(Token& Tok, const char *CurPtr) {
+void Lexer::LexIdentifier(Token& Tok, const char *CurPtr) {
   bool IsInvalid = false;
   char c = *CurPtr;
   while (!isDelimiter(c)) {
@@ -153,7 +154,7 @@ void HeavySchemeLexer::LexIdentifier(Token& Tok, const char *CurPtr) {
   return FormRawIdentifier(Tok, CurPtr);
 }
 
-void HeavySchemeLexer::LexNumberOrIdentifier(Token& Tok, const char *CurPtr) {
+void Lexer::LexNumberOrIdentifier(Token& Tok, const char *CurPtr) {
   // + and - are valid characters by themselves
   assert(*(CurPtr - 1) == '+' ||
          *(CurPtr - 1) == '-');
@@ -165,7 +166,7 @@ void HeavySchemeLexer::LexNumberOrIdentifier(Token& Tok, const char *CurPtr) {
   LexNumber(Tok, CurPtr);
 }
 
-void HeavySchemeLexer::LexNumberOrEllipsis(Token& Tok, const char *CurPtr) {
+void Lexer::LexNumberOrEllipsis(Token& Tok, const char *CurPtr) {
   const char *OrigPtr = CurPtr;
   // We already consumed a dot .
   char c1 = *CurPtr;
@@ -179,7 +180,7 @@ void HeavySchemeLexer::LexNumberOrEllipsis(Token& Tok, const char *CurPtr) {
   LexNumber(Tok, OrigPtr);
 }
 
-void HeavySchemeLexer::LexNumber(Token& Tok, const char *CurPtr) {
+void Lexer::LexNumber(Token& Tok, const char *CurPtr) {
   // let the parser figure it out
   SkipUntilDelimiter(CurPtr);
   FormLiteral(Tok, CurPtr, tok::numeric_constant);
@@ -187,7 +188,7 @@ void HeavySchemeLexer::LexNumber(Token& Tok, const char *CurPtr) {
 
 // These could be numbers, character constants, or other literals
 // such as #t #f for true and false
-void HeavySchemeLexer::LexSharpLiteral(Token& Tok, const char *CurPtr) {
+void Lexer::LexSharpLiteral(Token& Tok, const char *CurPtr) {
   // We already consumed the #
   char c = *CurPtr++;
   // If we expect the token to end after
@@ -229,7 +230,7 @@ void HeavySchemeLexer::LexSharpLiteral(Token& Tok, const char *CurPtr) {
   }
 }
 
-void HeavySchemeLexer::LexStringLiteral(Token& Tok, const char *CurPtr) {
+void Lexer::LexStringLiteral(Token& Tok, const char *CurPtr) {
   // Already consumed the "
   char c = *CurPtr;
   while (c != '"') {
@@ -246,50 +247,50 @@ void HeavySchemeLexer::LexStringLiteral(Token& Tok, const char *CurPtr) {
   FormLiteral(Tok, CurPtr, tok::string_literal);
 }
 
-void HeavySchemeLexer::LexUnknown(Token& Tok, const char *CurPtr) {
+void Lexer::LexUnknown(Token& Tok, const char *CurPtr) {
   SkipUntilDelimiter(CurPtr);
   FormTokenWithChars(Tok, CurPtr, tok::unknown);
 }
 
-void HeavySchemeLexer::SkipUntilDelimiter(const char *&CurPtr) {
+void Lexer::SkipUntilDelimiter(const char *&CurPtr) {
   char c = *CurPtr;
   while (!isDelimiter(c)) {
     c = ConsumeChar(CurPtr);
   }
 }
 
-void HeavySchemeLexer::ProcessWhitespace(Token& Tok, const char *&CurPtr) {
+void Lexer::ProcessWhitespace(Token& Tok, const char *&CurPtr) {
   // adds whitespace flags to Tok if needed
   char c = *CurPtr;
   char PrevChar;
 
-  if (!isWhitespace(c)) {
+  if (!clang::isWhitespace(c)) {
     return;
   }
 
   while (true) {
     PrevChar = c;
-    while (isHorizontalWhitespace(c)) {
+    while (clang::isHorizontalWhitespace(c)) {
       c = ConsumeChar(CurPtr);
     }
 
-    if (!isVerticalWhitespace(c)) {
+    if (!clang::isVerticalWhitespace(c)) {
       break;
     }
 
     c = ConsumeChar(CurPtr);
   }
 
-  if (isHorizontalWhitespace(PrevChar)) {
+  if (clang::isHorizontalWhitespace(PrevChar)) {
     Tok.setFlag(Token::LeadingSpace);
-  } else if (isVerticalWhitespace(PrevChar)) {
+  } else if (clang::isVerticalWhitespace(PrevChar)) {
     Tok.setFlag(Token::StartOfLine);
   }
   BufferPtr = CurPtr;
 }
 
 // Copy/Pasted from Lexer (mostly)
-SourceLocation HeavySchemeLexer::getSourceLocation(const char *Loc,
+clang::SourceLocation Lexer::getSourceLocation(const char *Loc,
                                                    unsigned TokLen) const {
   assert(Loc >= BufferStart && Loc <= BufferEnd &&
          "Location out of range for this buffer!");
