@@ -121,7 +121,7 @@ endif()
 # LLVM_ENABLE_RUNTIMES instead of LLVM_ENABLE_PROJECTS.
 #
 # The flang project is not yet part of "all" projects (see C++ requirements).
-set(LLVM_EXTRA_PROJECTS "flang" "libc")
+set(LLVM_EXTRA_PROJECTS "flang" "libc" "heavy")
 # List of all known projects in the mono repo
 set(LLVM_KNOWN_PROJECTS "${LLVM_ALL_PROJECTS};${LLVM_EXTRA_PROJECTS}")
 set(LLVM_ENABLE_PROJECTS "" CACHE STRING

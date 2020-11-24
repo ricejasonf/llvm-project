@@ -10,9 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "clang/AST/ASTContext.h"
-#include "clang/Parse/Parser.h"
-#include "clang/AST/HeavyScheme.h"
+#include "heavy/HeavyScheme.h"
 #include "clang/Basic/LLVM.h"
 #include "clang/Basic/TargetInfo.h"
 #include "llvm/ADT/APFloat.h"
@@ -25,20 +23,17 @@
 #include <algorithm>
 #include <cstring>
 
-using namespace clang::heavy;
-using clang::dyn_cast;
-using clang::cast;
-using clang::isa;
-using llvm::ArrayRef;
+using namespace heavy;
 
 void Value::dump() {
   write(llvm::errs(), this);
   llvm::errs() << '\n';
 }
 
-std::unique_ptr<Context> Context::CreateEmbedded(clang::Parser& P) {
+// FIXME not sure if CreateEmbedded is even useful anymore
+//       originally we were setting the IntWidth
+std::unique_ptr<Context> Context::CreateEmbedded() {
   auto Cptr = std::make_unique<Context>();
-  Cptr->CxxParser = &P;
   return Cptr;
 }
 
@@ -50,15 +45,6 @@ Context::Context()
   , EnvStack(SystemEnvironment)
 {
   LoadSystemModule();
-}
-
-// called inside GetIntWidth
-unsigned Context::GetHostIntWidth() const {
-  assert(CxxParser);
-  return CxxParser->getActions()
-                   .getASTContext()
-                   .getTargetInfo()
-                   .getIntWidth();
 }
 
 String* Context::CreateString(StringRef S) {
@@ -209,7 +195,7 @@ Builtin* Context::GetBuiltin(StringRef Name) {
   return cast<Builtin>(B->getValue());
 }
 
-namespace clang { namespace heavy {
+namespace heavy {
 struct NumberOp {
   // These operations always mutate the first operand
   struct Add {
@@ -242,19 +228,19 @@ Value* GetSingleSyntaxArg(Pair* P) {
   }
   return nullptr;
 }
-}} // end namespace clang::heavy
+} // end namespace heavy
 
 namespace {
 class SyntaxExpander : public ValueVisitor<SyntaxExpander, Value*> {
   friend class ValueVisitor<SyntaxExpander, Value*>;
-  clang::heavy::Context& Context;
+  heavy::Context& Context;
   // We use RAII to make the current call to `eval`
   // set the environment in Context
   Value* OldEnvStack;
   bool OldIsTopLevel;
 
 public:
-  SyntaxExpander(clang::heavy::Context& C, Value* EnvStack = nullptr)
+  SyntaxExpander(heavy::Context& C, Value* EnvStack = nullptr)
     : Context(C)
   {
     OldIsTopLevel = Context.IsTopLevel;
@@ -318,14 +304,14 @@ private:
 
 class Quasiquoter : private ValueVisitor<Quasiquoter, Value*> {
   friend class ValueVisitor<Quasiquoter, Value*>;
-  clang::heavy::Context& Context;
+  heavy::Context& Context;
   // Values captured for hygiene purposes
   Value* Append;
   Value* ConsSource;
 
 public:
 
-  Quasiquoter(clang::heavy::Context& C)
+  Quasiquoter(heavy::Context& C)
     : Context(C)
     , Append(C.GetBuiltin("append"))
     , ConsSource(C.GetBuiltin("cons-source"))
@@ -444,10 +430,10 @@ private:
 //  - uses RAII to replace the Context.EnvStack
 class Evaluator : public ValueVisitor<Evaluator> {
   friend class ValueVisitor<Evaluator>;
-  clang::heavy::Context& Context;
+  heavy::Context& Context;
 
 public:
-  Evaluator(clang::heavy::Context& C)
+  Evaluator(heavy::Context& C)
     : Context(C)
   { }
 
@@ -690,7 +676,7 @@ private:
 };
 
 } // end anon namespace
-namespace clang { namespace heavy { namespace builtin {
+namespace heavy { namespace builtin {
 void eval(Context& C, int Len) {
   assert((Len == 1 || Len == 2) && "Invalid arity to builtin `eval`");
   Value* ExprOrDef = C.EvalStack.pop();
@@ -801,9 +787,9 @@ void append(Context& C, int Len) {
   llvm_unreachable("TODO appendable");
 }
 
-}}} // end of namespace clang::heavy::builtin
+}} // end of namespace heavy::builtin
 
-namespace clang { namespace heavy { namespace builtin_syntax {
+namespace heavy { namespace builtin_syntax {
 
 Value* define(Context& C, Pair* P) {
   Pair*   P2  = dyn_cast<Pair>(P->Cdr);
@@ -851,9 +837,9 @@ Value* quasiquote(Context& C, Pair* P) {
   return QQ.Run(P);
 }
 
-}}} // end of namespace clang::heavy::builtin_syntax
+}} // end of namespace heavy::builtin_syntax
 
-namespace clang { namespace heavy { namespace builtin_core {
+namespace heavy { namespace builtin_core {
   // top level define that just evaluates the
   // RHS of the Binding object
   void define(Context& C, int len) {
@@ -868,10 +854,10 @@ namespace clang { namespace heavy { namespace builtin_core {
     B->Val = V;
     C.EvalStack.push(C.CreateUndefined());
   }
-}}} // end of namespace clang::heavy::builtin_core
+}} // end of namespace heavy::builtin_core
 
 
-namespace clang { namespace heavy {
+namespace heavy {
 Value* syntax_expand(Context& C, Value* V, Value* EnvStack) {
   SyntaxExpander S(C, EnvStack);
   return S.Visit(V);
@@ -890,7 +876,7 @@ void write(llvm::raw_ostream& OS, Value* V) {
   return W.Visit(V);
 }
 
-}} // end namespace clang::heavy
+} // end namespace heavy
 
 void Context::LoadSystemModule() {
   // Builtin Syntaxes

@@ -5,4 +5,15 @@ if(POLICY CMP0075)
 endif()
 
 add_llvm_executable(heavy heavy_main.cpp
-                          HeavyScheme.cpp)
+             ${HEAVY_LIB}/HeavyScheme.cpp
+             ${HEAVY_LIB}/Lexer.cpp
+             ${HEAVY_LIB}/Parser.cpp)
+
+target_link_libraries(heavy
+  PRIVATE
+  clangBasic
+  ${LLVM_COMMON_LIBS})
+
+# ClangDiagnosticCommon for some *.inc file
+add_dependencies(heavy ClangDiagnosticCommon)
+            
