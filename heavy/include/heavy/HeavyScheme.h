@@ -10,17 +10,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_CLANG_AST_HEAVY_SCHEME_H
-#define LLVM_CLANG_AST_HEAVY_SCHEME_H
+#ifndef LLVM_HEAVY_HEAVY_SCHEME_H
+#define LLVM_HEAVY_HEAVY_SCHEME_H
 
+#include "clang/Basic/FileManager.h"
 #include "clang/Basic/SourceLocation.h"
-#include "clang/Sema/Ownership.h"
+#include "clang/Basic/SourceManager.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/iterator.h"
+#include "llvm/Support/Allocator.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/TrailingObjects.h"
@@ -32,21 +34,22 @@
 #include <unordered_map>
 #include <utility>
 
-namespace clang {
-class Parser;
-class DeclContext;
-}
-
-namespace clang { namespace heavy {
+namespace heavy {
 using AllocatorTy = llvm::BumpPtrAllocator;
+using clang::SourceLocation;
+using llvm::ArrayRef;
+using llvm::StringRef;
+using llvm::cast;
+using llvm::cast_or_null;
+using llvm::dyn_cast;
+using llvm::dyn_cast_or_null;
+using llvm::isa;
+
 class Context;
 class Value;
 class Pair;
-using ValueResult = ActionResult<Value*>;
 using ValueFn = void (*)(Context&, int NumArgs);
 using SyntaxFn = Value* (*)(Context&, Pair*);
-inline auto ValueError() { return ValueResult(true); }
-inline auto ValueEmpty() { return ValueResult(false); }
 
 // The resulting Value* of these functions
 // may be invalidated on a call to garbage
@@ -54,7 +57,7 @@ inline auto ValueEmpty() { return ValueResult(false); }
 // at top level scope
 Value* eval(Context&, Value* V, Value* EnvStack = nullptr);
 Value* syntax_expand(Context&, Value* V, Value* EnvStack = nullptr);
-void write(raw_ostream&, Value*);
+void write(llvm::raw_ostream&, Value*);
 
 // Value - A result of an evaluation
 class Value {
@@ -67,7 +70,6 @@ public:
     Builtin,
     BuiltinSyntax,
     Char,
-    CppDecl, // C++ decl name
     Empty,
     Error,
     Environment,
@@ -83,7 +85,6 @@ public:
     String,
     Symbol,
     Syntax,
-    Typename, // C++ type
     Vector,
   };
 
@@ -552,27 +553,6 @@ public:
   static bool classof(Value const* V) { return V->getKind() == Kind::ForwardRef; }
 };
 
-class CppDecl : public Value {
-  Decl* Val;
-public:
-  CppDecl(Decl* V)
-    : Value(Kind::CppDecl)
-    , Val(V)
-  { }
-  static bool classof(Value const* V) { return V->getKind() == Kind::CppDecl; }
-};
-
-class Typename : public Value {
-  QualType Val;
-public:
-  Typename(QualType V)
-    : Value(Kind::Typename)
-    , Val(V)
-  { }
-
-  static bool classof(Value const* V) { return V->getKind() == Kind::Typename; }
-};
-
 // isSymbol - For matching symbols in syntax builtins
 inline bool Value::isSymbol(StringRef Str) {
   if (Symbol* S = dyn_cast<Symbol>(this)) {
@@ -662,32 +642,19 @@ private:
 
 public:
 
-  static std::unique_ptr<Context> CreateEmbedded(Parser& P);
-
-  Parser* CxxParser = nullptr;
+  static std::unique_ptr<Context> CreateEmbedded();
 
   Context();
 
   void LoadSystemModule();
-
-  // Gets an environment for a clang::DeclContext
-  // or it return SystemEnvironment if none exists
-  void LoadEmbeddedEnv(DeclContext*);
-  // Saves the current EnvStack in a new Environment
-  // and associates it with a DeclContext
-  void SaveEmbeddedEnv(DeclContext*);
 
   // Returns a Builtin from the SystemModule
   // for use within builtin syntaxes that wish
   // to defer to evaluation
   Builtin* GetBuiltin(StringRef Name);
 
-  unsigned GetHostIntWidth() const;
   unsigned GetIntWidth() const {
-    if (CxxParser) {
-      return GetHostIntWidth();
-    }
-    return sizeof(int) * 8; // ???
+    return sizeof(int) * 8;
   }
 
   // Lookup
@@ -781,7 +748,6 @@ public:
   Undefined*  CreateUndefined() { return &Undefined_; }
   Boolean*    CreateBoolean(bool V) { return new (TrashHeap) Boolean(V); }
   Char*       CreateChar(char V) { return new (TrashHeap) Char(V); }
-  CppDecl*    CreateCppDecl(Decl* V) { return new (TrashHeap) CppDecl(V); }
   Empty*      CreateEmpty() { return &Empty_; }
   Integer*    CreateInteger(llvm::APInt V);
   Integer*    CreateInteger(int64_t X) {
@@ -809,9 +775,6 @@ public:
   Vector*     CreateVector(ArrayRef<Value*> Xs);
   Environment* CreateEnvironment(Value* Stack) {
     return new (TrashHeap) Environment(Stack);
-  }
-  Typename* CreateTypename(QualType QT) {
-    return new (TrashHeap) Typename(QT);
   }
 
   String* CreateMutableString(StringRef V) {
@@ -891,7 +854,6 @@ protected:
   VISIT_FN(Builtin)
   VISIT_FN(BuiltinSyntax)
   VISIT_FN(Char)
-  VISIT_FN(CppDecl)
   VISIT_FN(Empty)
   VISIT_FN(Error)
   VISIT_FN(Environment)
@@ -907,7 +869,6 @@ protected:
   VISIT_FN(String)
   VISIT_FN(Symbol)
   VISIT_FN(Syntax)
-  VISIT_FN(Typename)
   VISIT_FN(Vector)
 
   template <typename ...Args>
@@ -925,7 +886,6 @@ public:
     case Value::Kind::Builtin:        DISPATCH(Builtin);
     case Value::Kind::BuiltinSyntax:  DISPATCH(BuiltinSyntax);
     case Value::Kind::Char:           DISPATCH(Char);
-    case Value::Kind::CppDecl:        DISPATCH(CppDecl);
     case Value::Kind::Empty:          DISPATCH(Empty);
     case Value::Kind::Error:          DISPATCH(Error);
     case Value::Kind::Environment:    DISPATCH(Environment);
@@ -941,7 +901,6 @@ public:
     case Value::Kind::String:         DISPATCH(String);
     case Value::Kind::Symbol:         DISPATCH(Symbol);
     case Value::Kind::Syntax:         DISPATCH(Syntax);
-    case Value::Kind::Typename:       DISPATCH(Typename);
     case Value::Kind::Vector:         DISPATCH(Vector);
     default:
       llvm_unreachable("Invalid Value Kind");
@@ -962,7 +921,6 @@ inline StringRef Value::getKindName() {
   GET_KIND_NAME_CASE(Builtin)
   GET_KIND_NAME_CASE(BuiltinSyntax)
   GET_KIND_NAME_CASE(Char)
-  GET_KIND_NAME_CASE(CppDecl)
   GET_KIND_NAME_CASE(Empty)
   GET_KIND_NAME_CASE(Error)
   GET_KIND_NAME_CASE(Environment)
@@ -978,7 +936,6 @@ inline StringRef Value::getKindName() {
   GET_KIND_NAME_CASE(String)
   GET_KIND_NAME_CASE(Symbol)
   GET_KIND_NAME_CASE(Syntax)
-  GET_KIND_NAME_CASE(Typename)
   GET_KIND_NAME_CASE(Vector)
   default:
     return StringRef("?????");
@@ -986,6 +943,6 @@ inline StringRef Value::getKindName() {
 }
 #undef GET_KIND_NAME_CASE
 
-}} // namespace clang::heavy
+} // namespace heavy
 
 #endif // LLVM_CLANG_AST_HEAVY_SCHEME_H
