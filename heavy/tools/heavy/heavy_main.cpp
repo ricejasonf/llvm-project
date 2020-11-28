@@ -13,9 +13,6 @@
 #include <heavy/Lexer.h>
 #include <heavy/Parser.h>
 #include <heavy/HeavyScheme.h>
-#include <clang/Basic/Diagnostic.h>
-#include <clang/Basic/SourceLocation.h>
-#include <clang/Basic/SourceManager.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/InitLLVM.h>
 #include <string>
@@ -27,37 +24,23 @@ static cl::opt<std::string> InputFilename(cl::Positional,
                                           cl::desc("<input file>"),
                                           cl::Required);
 
-clang::SourceLocation getMainFileLoc(clang::SourceManager& SM) {
-  clang::FileID MainFileId = SM.getMainFileID();
-  if (!MainFileId.isValid()) return {};
-
-  return SM.getLocForStartOfFile(MainFileId);
-}
-
 int main(int argc, char const** argv) {
   llvm::InitLLVM LLVM_(argc, argv);
   cl::ParseCommandLineOptions(argc, argv);
   llvm::StringRef Filename = InputFilename;
-  llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> file =
-      llvm::MemoryBuffer::getFileOrSTDIN(Filename);
-  if (std::error_code ec = file.getError()) {
+  llvm::ErrorOr<SourceFileRef> FileResult = SourceMgr.Open(Filename);
+  if (std::error_code ec = FileResult.getError()) {
     llvm::errs() << "Could not open input file: " << ec.message() << "\n";
     return 1;
   }
+  SourceManager SourceMgr{};
+  SourceFileRef File = FileResult.get();
   llvm::StringRef FileBuffer = file.get()->getBuffer();
-  clang::SourceManagerForFile SMFF(Filename, FileBuffer);
-
-  clang::SourceManager& SM = SMFF.get();
-  clang::DiagnosticsEngine& Diags = SM.getDiagnostics();
-
-  unsigned ErrorId = Diags.getCustomDiagID(
-                      clang::DiagnosticsEngine::Level::Error,
-                      /*FormatString=*/"%0");
 
   // Top level Scheme parse/eval stuff
 
   heavy::Context Context{};
-  heavy::Lexer   SchemeLexer(getMainFileLoc(SM), FileBuffer);
+  heavy::Lexer   SchemeLexer(File.StartLoc, File.Buffer);
   heavy::Parser  Parser(SchemeLexer, Context);
 
   Parser.ConsumeToken();
@@ -70,8 +53,11 @@ int main(int argc, char const** argv) {
   while (true) {
     if (!HasError && Context.CheckError()) {
       HasError = true;
-      Diags.Report(Context.getErrorLocation(), ErrorId)
-        << Context.getErrorMessage();
+      // TODO print error source location
+      // with Context.getErrorLocation()
+      llvm::errs() << "\nerror: "
+                   << Context.getErrorMessage()
+                   << "\n\n"
     }
     // Keep parsing until we find the end
     // brace (represented by isUnset() here)
