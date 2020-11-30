@@ -13,16 +13,49 @@
 #ifndef LLVM_HEAVY_LEXER_H
 #define LLVM_HEAVY_LEXER_H
 
-#include "clang/Basic/SourceLocation.h"
-#include "clang/Lex/Token.h"
 #include <cassert>
 #include <cstdint>
 
 namespace heavy {
 
-using clang::SourceLocation;
-using clang::Token;
-namespace tok = clang::tok;
+enum class TokenKind {
+  unknown = 0,
+  char_constant,
+  false_,
+  identifier,
+  l_brace,
+  l_paren,
+  l_square, 
+  numeric_constant,
+  period,
+  quasiquote, // `
+  quote, // '
+  r_brace,
+  r_paren,
+  r_square,
+  string_literal,
+  true_,
+  unquote, // ,
+  unquote_splicing, // ,(
+  vector_lparen, // #(
+};
+
+using tok = TokenKind;
+
+struct Token {
+  SourceLocation Loc;
+  TokenKind Kind;
+  StringRef LiteralData;
+
+  SourceLocation getLocation() { return Loc; }
+  TokenKind getKind() { return Kind; }
+
+  is(TokenKind K)    { return Kind == K; }
+  isNot(TokenKind K) { return Kind != K; }
+
+  unsigned getLength() { return LiteralData.size(); }
+  llvm::StringRef getLiteralData();
+};
 
 class EmbeddedLexer {
 protected:
@@ -39,6 +72,7 @@ protected:
   { }
 public:
 
+  // FIXME we aren't using clang SourceLocation
   void Init(SourceLocation Loc,
             const char* BS,
             const char* BE,
@@ -73,26 +107,23 @@ class Lexer : public EmbeddedLexer {
     return *(++Ptr);
   }
 
-  void FormRawIdentifier(Token &Result, const char *TokEnd) {
-    const char* StartPtr = BufferPtr;
-    FormTokenWithChars(Result, TokEnd, tok::raw_identifier);
-    Result.setRawIdentifierData(StartPtr);
+  void FormIdentifier(Token &Result, const char *TokEnd) {
+    FormTokenWithChars(Result, TokEnd, tok::identifier);
   }
 
+  // TODO deprecate this
   void FormLiteral(Token &Result, const char *TokEnd,
                    tok::TokenKind Kind) {
-    const char* StartPtr = BufferPtr;
     FormTokenWithChars(Result, TokEnd, Kind);
-    Result.setLiteralData(StartPtr);
   }
 
   // Copy/Pasted from Lexer
   void FormTokenWithChars(Token &Result, const char *TokEnd,
-                          tok::TokenKind Kind) {
-    unsigned TokLen = TokEnd-BufferPtr;
-    Result.setLength(TokLen);
-    Result.setLocation(getSourceLocation(BufferPtr, TokLen));
-    Result.setKind(Kind);
+                          TokenKind Kind) {
+    unsigned TokLen = TokEnd - BufferPtr;
+    Result.Kind = Kind;
+    Result.LiteralData = llvm::StringRef(BufferPtr, TokLen);
+    Result.Loc = getSourceLocation(BufferPtr);
     BufferPtr = TokEnd;
   }
   SourceLocation getSourceLocation(const char *Loc, unsigned TokLen) const;

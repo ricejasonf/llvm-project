@@ -770,6 +770,8 @@ public:
   String*     CreateString(StringRef S1, StringRef S2);
   Symbol*     CreateSymbol(StringRef V,
                          SourceLocation Loc = SourceLocation()) {
+    // FIXME uhh this should store a copy V's contents somewhere
+    // TODO make a lookup table for symbols
     return new (TrashHeap) Symbol(V, Loc);
   }
   Vector*     CreateVector(ArrayRef<Value*> Xs);

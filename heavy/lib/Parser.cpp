@@ -11,8 +11,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "heavy/HeavyScheme.h"
+#include "heavy/Lexer.h"
 #include "heavy/Parser.h"
-#include "clang/Basic/SourceLocation.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/Optional.h"
@@ -119,29 +119,29 @@ ValueResult Parser::ParseExpr() {
   switch (Tok.getKind()) {
   case tok::l_paren:
     return ParseListStart();
-  case tok::heavy_vector_lparen:
+  case tok::vector_lparen:
     return ParseVectorStart();
   case tok::numeric_constant:
     return ParseNumber();
   case tok::kw_typename:
   case tok::kw_constexpr:
-  case tok::raw_identifier:
+  case tok::identifier:
     return ParseSymbol();
   case tok::char_constant:
     return ParseCharConstant();
-  case tok::heavy_true:
+  case tok::true_:
     return Context.CreateBoolean(true);
-  case tok::heavy_false:
+  case tok::false_:
     return Context.CreateBoolean(false);
   case tok::string_literal:
     return ParseString();
-  case tok::heavy_quote:
+  case tok::quote:
     return ParseExprAbbrev("quote");
-  case tok::heavy_quasiquote:
+  case tok::quasiquote:
     return ParseExprAbbrev("quasiquote");
-  case tok::heavy_unquote:
+  case tok::unquote:
     return ParseExprAbbrev("unquote");
-  case tok::heavy_unquote_splicing:
+  case tok::unquote_splicing:
     return ParseExprAbbrev("unquote-splicing");
   case tok::r_paren: {
     SetError(Tok, "extraneous closing paren (')')");
@@ -253,8 +253,8 @@ ValueResult Parser::ParseCharConstant() {
 }
 
 ValueResult Parser::ParseNumber() {
-  char const* Current = Tok.getLiteralData();
-  char const* End = Current + Tok.getLength();
+  char const* Current = Tok.getLiteralData().begin();
+  char const* End     = Tok.getLiteralData().end();
   int BitWidth = Context.GetIntWidth();
   llvm::Optional<bool> IsExactOpt;
   llvm::Optional<unsigned> RadixOpt;
@@ -269,6 +269,8 @@ ValueResult Parser::ParseNumber() {
   bool IsExact = IsExactOpt.getValueOr(true);
   unsigned Radix = RadixOpt.getValueOr(10);
 
+  // TODO use llvm::StringRef's integer parsing stuffs
+  //      and just use a fixed BitWidth
   IntOpt = tryParseInteger(TokenSpan, BitWidth, Radix);
 
   ConsumeToken();
@@ -296,42 +298,41 @@ ValueResult Parser::ParseNumber() {
 ValueResult Parser::ParseString() {
   // the literal must include the ""
   assert(Tok.getLength() > 2);
-  char const* Current = Tok.getLiteralData() + 1;
-  char const* End = Current + (Tok.getLength() - 2);
+  llvm::StringRef TokenSpan = Tok.getLiteralData()
+    .substr(1, Tok.getLenth() - 2);
   LiteralResult.clear();
-  while (Current < End) {
-    StringRef TokenSpan(Current, End - Current);
+  while (TokenSpan.size() > 0) {
     char c = TokenSpan[0];
-    // R5RS specifically forbids a backslash in a string constant
-    // without being escaped by another backslash, but it then
-    // explicitly leaves what backslashes do in other cases
-    // unspecified.
-    // We allow standalone backslashes so they can be proxied
+    // Try to allow standalone backslashes so they can be proxied
     // through to the host language. Otherwise users would get
-    // stuck escaping everything twice making things confusing.
+    // stuck escaping everything twice making things tedious and
+    // confusing.
     if (c == '\\') {
-      if (TokenSpan.startswith("\\\"")) {
+      // TODO support R7RS escape sequences
+      if (TokenSpan.consume_front("\\\"")) {
         // escaped double quote
         c = '"';
       }
-      else if (TokenSpan.startswith("\\\\")) {
+      else if (TokenSpan.consume_front("\\\\")) {
         // escaped backslash
         c = '\\';
       }
     }
-    else if (TokenSpan.startswith("\r\n")) {
+    else if (TokenSpan.consume_front("\r\n")) {
       // normalize source-file newlines
       c = '\n';
+    } else {
+      // consume one char
+      TokenSpan = TokenSpan.substr(1);
     }
     LiteralResult.push_back(c);
-    ++Current;
   }
   ConsumeToken();
   return Context.CreateString(StringRef(LiteralResult));
 }
 
 ValueResult Parser::ParseSymbol() {
-  StringRef Str = Tok.getRawIdentifier();
+  StringRef Str = Tok.getLiteralData();
   SourceLocation Loc = Tok.getLocation();
   ConsumeToken();
   return Context.CreateSymbol(Str, Loc);
