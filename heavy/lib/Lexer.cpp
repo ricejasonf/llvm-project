@@ -11,10 +11,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "heavy/Lexer.h"
+#include "heavy/Source.h"
+#include "heavy/Token.h"
 #include "clang/Basic/CharInfo.h"
-#include "clang/Basic/SourceLocation.h"
-#include "clang/Basic/TokenKinds.h"
-#include "clang/Lex/Token.h"
 #include "llvm/ADT/StringRef.h"
 #include <cassert>
 
@@ -64,7 +63,7 @@ namespace {
 
 void Lexer::Lex(Token& Tok) {
   const char* CurPtr = BufferPtr;
-  tok::TokenKind Kind;
+  TokenKind Kind;
   ProcessWhitespace(Tok, CurPtr);
 
   // Act on the current character
@@ -116,17 +115,17 @@ void Lexer::Lex(Token& Tok) {
     Kind = tok::r_square;
     break;
   case '\'':
-    Kind = tok::heavy_quote;
+    Kind = tok::quote;
     break;
   case '`':
-    Kind = tok::heavy_quasiquote;
+    Kind = tok::quasiquote;
     break;
   case ',': {
     if (*(CurPtr + 1) == '@') {
-      Kind = tok::heavy_unquote_splicing;
+      Kind = tok::unquote_splicing;
       ++CurPtr;
     } else {
-      Kind = tok::heavy_unquote;
+      Kind = tok::unquote;
     }
     break;
   }
@@ -194,21 +193,21 @@ void Lexer::LexSharpLiteral(Token& Tok, const char *CurPtr) {
   // If we expect the token to end after
   // `c` then we set RequiresDelimiter
   bool RequiresDelimiter = false;
-  tok::TokenKind Kind;
+  TokenKind Kind;
   switch (c) {
   case '\\':
     SkipUntilDelimiter(CurPtr);
     return FormLiteral(Tok, CurPtr, tok::char_constant);
   case 't':
-    Kind = tok::heavy_true;
+    Kind = tok::true_;
     RequiresDelimiter = true;
     break;
   case 'f':
-    Kind = tok::heavy_false;
+    Kind = tok::false_;
     RequiresDelimiter = true;
     break;
   case '(':
-    Kind = tok::heavy_vector_lparen;
+    Kind = tok::vector_lparen;
     break;
   // unsupported radix R specifiers
   case 'd':
@@ -281,22 +280,16 @@ void Lexer::ProcessWhitespace(Token& Tok, const char *&CurPtr) {
     c = ConsumeChar(CurPtr);
   }
 
-  if (clang::isHorizontalWhitespace(PrevChar)) {
-    Tok.setFlag(Token::LeadingSpace);
-  } else if (clang::isVerticalWhitespace(PrevChar)) {
-    Tok.setFlag(Token::StartOfLine);
-  }
   BufferPtr = CurPtr;
 }
 
 // Copy/Pasted from Lexer (mostly)
-clang::SourceLocation Lexer::getSourceLocation(const char *Loc,
-                                                   unsigned TokLen) const {
+SourceLocation Lexer::getSourceLocation(const char *Loc) const {
   assert(Loc >= BufferStart && Loc <= BufferEnd &&
          "Location out of range for this buffer!");
 
   // In the normal case, we're just lexing from a simple file buffer, return
   // the file id from FileLoc with the offset specified.
-  unsigned CharNo = Loc-BufferStart;
+  unsigned CharNo = Loc - BufferStart;
   return FileLoc.getLocWithOffset(CharNo);
 }
