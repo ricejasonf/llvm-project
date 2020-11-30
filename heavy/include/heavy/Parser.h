@@ -99,7 +99,7 @@ public:
     return PrevTokLocation;
   }
 
-  bool TryConsumeToken(tok::TokenKind Expected) {
+  bool TryConsumeToken(heavy::TokenKind Expected) {
     if (Tok.isNot(Expected))
       return false;
     ConsumeToken();
