@@ -12,13 +12,11 @@
 
 #include "heavy/Lexer.h"
 #include "heavy/Source.h"
-#include "heavy/Token.h"
 #include "clang/Basic/CharInfo.h"
 #include "llvm/ADT/StringRef.h"
 #include <cassert>
 
 using namespace heavy;
-namespace tok = clang::tok;
 
 namespace {
   bool isExtendedAlphabet(char c) {
@@ -129,6 +127,9 @@ void Lexer::Lex(Token& Tok) {
     }
     break;
   }
+  case 0: 
+    Kind = tok::eof;
+    break;
   default:
     Kind = tok::unknown;
     break;
@@ -150,7 +151,7 @@ void Lexer::LexIdentifier(Token& Tok, const char *CurPtr) {
     return LexUnknown(Tok, CurPtr);
   }
 
-  return FormRawIdentifier(Tok, CurPtr);
+  return FormIdentifier(Tok, CurPtr);
 }
 
 void Lexer::LexNumberOrIdentifier(Token& Tok, const char *CurPtr) {
@@ -159,7 +160,7 @@ void Lexer::LexNumberOrIdentifier(Token& Tok, const char *CurPtr) {
          *(CurPtr - 1) == '-');
   if (isDelimiter(*CurPtr)) {
     // '+' | '-' are valid identifiers
-    return FormRawIdentifier(Tok, CurPtr);
+    return FormIdentifier(Tok, CurPtr);
   }
   // Lex as a number
   LexNumber(Tok, CurPtr);
@@ -173,7 +174,7 @@ void Lexer::LexNumberOrEllipsis(Token& Tok, const char *CurPtr) {
   char c3 = ConsumeChar(CurPtr);
   if (c1 == '.' && c2 ==  '.' && isDelimiter(c3)) {
     // '...' is a valid identifier
-    return FormRawIdentifier(Tok, CurPtr);
+    return FormIdentifier(Tok, CurPtr);
   }
   // Lex as a number
   LexNumber(Tok, OrigPtr);
@@ -261,14 +262,12 @@ void Lexer::SkipUntilDelimiter(const char *&CurPtr) {
 void Lexer::ProcessWhitespace(Token& Tok, const char *&CurPtr) {
   // adds whitespace flags to Tok if needed
   char c = *CurPtr;
-  char PrevChar;
 
   if (!clang::isWhitespace(c)) {
     return;
   }
 
   while (true) {
-    PrevChar = c;
     while (clang::isHorizontalWhitespace(c)) {
       c = ConsumeChar(CurPtr);
     }
