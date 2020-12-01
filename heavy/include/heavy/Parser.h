@@ -15,8 +15,6 @@
 
 #include "heavy/HeavyScheme.h"
 #include "heavy/Lexer.h"
-#include "clang/Basic/SourceLocation.h"
-#include "clang/Lex/Preprocessor.h"
 #include "llvm/ADT/SmallVector.h"
 #include <string>
 
@@ -57,6 +55,8 @@ class Parser {
   heavy::Lexer& Lexer;
   heavy::Context& Context;
   Token Tok = {};
+  TokenKind Terminator = tok::eof;
+  bool IsFinished = false;
   SourceLocation PrevTokLocation;
   std::string LiteralResult = {};
 
@@ -85,11 +85,26 @@ class Parser {
     Context.SetError(Context.CreateError(Loc, Msg, Context.CreateEmpty()));
   }
 
+  bool CheckTerminator() {
+    if (Tok.getKind() == Terminator) {
+      IsFinished = true;
+    }
+    return IsFinished;
+  }
+
 public:
   Parser(heavy::Lexer& Lexer, heavy::Context& C)
     : Lexer(Lexer)
     , Context(C)
   { }
+
+  void setTerminator(TokenKind Kind) {
+    Terminator = Kind;
+  }
+
+  bool isFinished() const {
+    return IsFinished;
+  }
 
   ValueResult ParseTopLevelExpr();
 
@@ -107,6 +122,6 @@ public:
   }
 };
 
-}  // end namespace clang
+}  // end namespace heavy
 
 #endif

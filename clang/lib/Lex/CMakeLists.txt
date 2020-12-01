@@ -10,7 +10,6 @@ add_clang_library(clangLex
   HeaderMap.cpp
   HeaderSearch.cpp
   InitHeaderSearch.cpp
-  HeavySchemeLexer.cpp
   Lexer.cpp
   LiteralSupport.cpp
   MacroArgs.cpp
