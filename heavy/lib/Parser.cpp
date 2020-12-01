@@ -107,9 +107,7 @@ namespace {
 }
 
 ValueResult Parser::ParseTopLevelExpr() {
-  if (Tok.is(tok::r_brace)) {
-    // The end of
-    //    heavy_scheme { ... }
+  if (CheckTerminator()) {
     return ValueEmpty();
   }
   return ParseExpr();
@@ -123,8 +121,6 @@ ValueResult Parser::ParseExpr() {
     return ParseVectorStart();
   case tok::numeric_constant:
     return ParseNumber();
-  case tok::kw_typename:
-  case tok::kw_constexpr:
   case tok::identifier:
     return ParseSymbol();
   case tok::char_constant:
@@ -145,19 +141,27 @@ ValueResult Parser::ParseExpr() {
     return ParseExprAbbrev("unquote-splicing");
   case tok::r_paren: {
     SetError(Tok, "extraneous closing paren (')')");
+    CheckTerminator();
     ConsumeToken();
     return ValueError();
   }
   case tok::r_square: {
     SetError(Tok, "extraneous closing bracket (']')");
+    CheckTerminator();
     ConsumeToken();
     return ValueError();
   }
   case tok::r_brace: {
     // extraneous brace should end parsing
     SetError(Tok, "extraneous closing brace ('}')");
+    CheckTerminator();
     ConsumeToken();
     return ValueEmpty();
+  }
+  case tok::eof: {
+    SetError(Tok, "unexpected end of file");
+    IsFinished = true;
+    return ValueError();
   }
   default: {
     SetError(Tok, "expected expression");
@@ -299,7 +303,7 @@ ValueResult Parser::ParseString() {
   // the literal must include the ""
   assert(Tok.getLength() > 2);
   llvm::StringRef TokenSpan = Tok.getLiteralData()
-    .substr(1, Tok.getLenth() - 2);
+    .substr(1, Tok.getLength() - 2);
   LiteralResult.clear();
   while (TokenSpan.size() > 0) {
     char c = TokenSpan[0];
