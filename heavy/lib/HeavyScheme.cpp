@@ -11,8 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "heavy/HeavyScheme.h"
-#include "clang/Basic/LLVM.h"
-#include "clang/Basic/TargetInfo.h"
+#include "heavy/Source.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/SmallVector.h"
@@ -162,7 +161,7 @@ Value* Context::CreateGlobal(Symbol* S, Value *V, Value* OrigCall) {
     EnvRest = cast<Pair>(EnvStack)->Cdr;
     M = dyn_cast<Module>(EnvTop);
   }
-  if (!M) return SetError("Define used in immutable environment", OrigCall);
+  if (!M) return SetError("define used in immutable environment", OrigCall);
 
   // If the name already exists in the current module
   // then it behaves like `set!`
@@ -175,7 +174,7 @@ Value* Context::CreateGlobal(Symbol* S, Value *V, Value* OrigCall) {
   // Top Level definitions may not shadow names in
   // the parent environment
   B = Lookup(S, EnvRest);
-  if (B) return SetError("Define overwrites immutable location", S);
+  if (B) return SetError("define overwrites immutable location", S);
 
   B = CreateBinding(S, V);
   M->Insert(B);
@@ -270,7 +269,7 @@ private:
   Value* HandleCallArgs(Value *V) {
     if (isa<Empty>(V)) return V;
     if (!isa<Pair>(V)) {
-      return Context.SetError("Improper list as call expression", V);
+      return Context.SetError("improper list as call expression", V);
     }
     Pair* P = cast<Pair>(V);
     Value* CarResult = Visit(P->Car);
@@ -345,7 +344,7 @@ private:
   Value* HandleQuasiquote(Pair* P, bool& Rebuilt, int Depth) {
     Value* Input = GetSingleSyntaxArg(P);
     if (!Input) {
-      Context.SetError("Invalid quasiquote syntax", P);
+      Context.SetError("invalid quasiquote syntax", P);
       return Context.CreateEmpty();
     }
     Value* Result = Visit(Input, Rebuilt, Depth);
@@ -357,7 +356,7 @@ private:
   Value* HandleUnquote(Pair* P, bool& Rebuilt, int Depth) {
     Value* Input = GetSingleSyntaxArg(P);
     if (!Input) {
-      Context.SetError("Invalid unquote syntax", P);
+      Context.SetError("invalid unquote syntax", P);
       return Context.CreateEmpty();
     }
 
@@ -370,7 +369,7 @@ private:
                                int Depth) {
     Value* Input = GetSingleSyntaxArg(P);
     if (!Input) {
-      Context.SetError("Invalid unquote-splicing syntax", P);
+      Context.SetError("invalid unquote-splicing syntax", P);
       return Context.CreateEmpty();
     }
     Value* Result = HandleQQTemplate(Input, Rebuilt, Depth - 1);
@@ -479,7 +478,7 @@ private:
       }
       default: {
         String* Msg = Context.CreateString(
-          "Invalid operator for call expression: ",
+          "invalid operator for call expression: ",
           Operator->getKindName()
         );
         Context.SetError(P->getSourceLocation(), Msg, Operator);
@@ -497,7 +496,7 @@ private:
     if (Context.CheckError()) return;
     Binding* Result = Context.Lookup(S);
     if (!Result) {
-      String* Msg = Context.CreateString("Unbound symbol: ", S->getVal());
+      String* Msg = Context.CreateString("unbound symbol: ", S->getVal());
       Context.SetError(Msg, S);
       return;
     }
@@ -508,7 +507,7 @@ private:
     if (isa<Empty>(Args)) return;
     Pair* P = dyn_cast<Pair>(Args);
     if (!P) {
-      Context.SetError("Call expression must be a proper list", Args);
+      Context.SetError("call expression must be a proper list", Args);
       return ;
     }
     // Arguments are evaluated right to left
@@ -731,7 +730,7 @@ void forbid_div_zeros(Context& C, int Len) {
   if (Len == 0) return;
   Number* Num = C.popArg<Number>();
   if (Num->isExactZero()) {
-    C.SetError("Divide by exact zero", Num);
+    C.SetError("divide by exact zero", Num);
     return;
   }
 
@@ -795,7 +794,7 @@ Value* define(Context& C, Pair* P) {
   Pair*   P2  = dyn_cast<Pair>(P->Cdr);
   Symbol* S   = nullptr;
   Value*  V   = nullptr;
-  if (!P2) return C.SetError("Invalid define syntax", P);
+  if (!P2) return C.SetError("invalid define syntax", P);
   if (Pair* LambdaSpec = dyn_cast<Pair>(P2->Car)) {
     llvm_unreachable("TODO");
     S = dyn_cast<Symbol>(LambdaSpec->Car);
@@ -808,7 +807,7 @@ Value* define(Context& C, Pair* P) {
     S = dyn_cast<Symbol>(P2->Car);
     V = GetSingleSyntaxArg(P2);
   }
-  if (!S || !V) return C.SetError("Invalid define syntax", P);
+  if (!S || !V) return C.SetError("invalid define syntax", P);
   if (C.IsTopLevel) {
     // create call expr with the core define op
     // TODO refactor to use bytecode or something
@@ -818,14 +817,14 @@ Value* define(Context& C, Pair* P) {
   } else {
     // Handle internal definitions inside
     // lambda syntax
-    return C.SetError("Unexpected define", P);
+    return C.SetError("unexpected define", P);
   }
 }
 
 Value* quote(Context& C, Pair* P) {
   Value* Result = GetSingleSyntaxArg(P);
   if (!Result) {
-    C.SetError("Invalid quote syntax", P);
+    C.SetError("invalid quote syntax", P);
     return C.CreateEmpty();
   }
 

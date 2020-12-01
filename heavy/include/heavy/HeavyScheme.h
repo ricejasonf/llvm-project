@@ -13,9 +13,7 @@
 #ifndef LLVM_HEAVY_HEAVY_SCHEME_H
 #define LLVM_HEAVY_HEAVY_SCHEME_H
 
-#include "clang/Basic/FileManager.h"
-#include "clang/Basic/SourceLocation.h"
-#include "clang/Basic/SourceManager.h"
+#include "heavy/Source.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/APFloat.h"
@@ -36,7 +34,6 @@
 
 namespace heavy {
 using AllocatorTy = llvm::BumpPtrAllocator;
-using clang::SourceLocation;
 using llvm::ArrayRef;
 using llvm::StringRef;
 using llvm::cast;

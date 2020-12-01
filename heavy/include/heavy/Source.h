@@ -26,51 +26,28 @@ class SourceLocation {
   friend class SourceManager;
   unsigned Loc = 0;
 
-  SourceLocation() = default;
   SourceLocation(unsigned Loc) : Loc(Loc) { }
 
 public:
+  SourceLocation() = default;
   SourceLocation(SourceLocation const&) = default;
 
-  // getWithOffset - The caller is responsible for ensuring
-  //                 that the offset does not go out of bounds
-  //                 for the containing buffer which is null
-  //                 terminated.
-  SourceLocation getWithOffset(unsigned Offset) {
+  // getLocWithOffset - The caller is responsible for ensuring
+  //                    that the offset does not go out of bounds
+  //                    for the containing buffer which is null
+  //                    terminated.
+  SourceLocation getLocWithOffset(unsigned Offset) const {
     return SourceLocation(Loc + Offset);
   }
 
-  bool isValid() {
+  bool isValid() const {
     return Loc != 0;
   }
+
+  unsigned getEncoding() const { return Loc; }
 };
 
-class FullSourceLocation {
-  friend SourceManager
-  SourceFile* File = nullptr;
-  SourceLocation Loc;
-
-  FullSourceLocation(SourceFile* File, SourceLocation Loc)
-    : File(File),
-      Loc(Loc)
-  { }
-
-public:
-  SourceFile& getFile() {
-    assert(isValid() && "SourceLocation must be valid");
-    return *File;
-  }
-
-  SourceLocation getLocation() {
-    return Loc;
-  }
-
-  bool isValid() {
-    return File != nullptr;
-  }
-};
-
-class SourceFile {
+class SourceFileStorage {
   friend class SourceManager;
   using StorageTy = std::unique_ptr<llvm::MemoryBuffer>;
 
@@ -78,64 +55,91 @@ class SourceFile {
   std::string Name;
   StorageTy Storage;
 
-  SourceFile() = default;
-
-  std::error_code Open(StringRef Filename) {
-    llvm::ErrorOr<StorageTy> File =
-      llvm::MemoryBuffer::getFileOrSTDIN(Filename);
-    if (File) return File.getError();
-    Name = Filename;
-    Storage = File->get();
-    return std::error_code();
-  }
-
-public:
   llvm::StringRef getBuffer() const {
     return Storage->getBuffer();
   }
 
-  SourceLocation getStartLocation() const {
-    return StartLoc;
+  std::error_code Open(llvm::StringRef Filename) {
+    llvm::ErrorOr<StorageTy> File =
+      llvm::MemoryBuffer::getFileOrSTDIN(Filename);
+    if (!File) return File.getError();
+    Name = Filename.str();
+    Storage = std::move(File.get());
+    return std::error_code();
   }
 
-  bool hasLoc(SourceLocation Loc) {
-    unsigned EndLoc = StartLoc + getBuffer->size();
-    return Loc.Loc >= StartLoc && Loc.Loc < getBuffer()->size();
-  }
+public:
+  SourceFileStorage() = default;
 };
 
-struct SourceFileRef {
+struct SourceFile {
   llvm::StringRef Buffer;
   llvm::StringRef Name;
   SourceLocation StartLoc;
 
   bool isValid() const { return StartLoc.isValid(); }
+
+  bool hasLoc(SourceLocation Loc) {
+    unsigned L = Loc.getEncoding();
+    unsigned Start = StartLoc.getEncoding();
+    unsigned End = Start + Buffer.size();
+    return L >= Start && L < End;
+  }
+
+  SourceLocation getStartLocation() const {
+    return StartLoc;
+  }
+};
+
+class FullSourceLocation {
+  friend SourceManager;
+  SourceFile File;
+  SourceLocation Loc;
+
+  FullSourceLocation(SourceFile File, SourceLocation Loc)
+    : File(File),
+      Loc(Loc)
+  { }
+
+public:
+  SourceFile getFile() const {
+    assert(isValid() && "SourceLocation must be valid");
+    return File;
+  }
+
+  SourceLocation getLocation() const {
+    return Loc;
+  }
+
+  bool isValid() const {
+    return Loc.isValid();
+  }
 };
 
 class SourceManager {
-  std::vector<std::unique_ptr<SourceFile>> StoredEntries;
-  std::vector<SourceFileRef> Entries;
+  std::vector<std::unique_ptr<SourceFileStorage>> StoredEntries;
+  std::vector<SourceFile> Entries;
 
   SourceLocation getNextStartLoc() {
     // Start Loc at 1 as 0 represents
     // an invalid location
-    if (Entries.length() == 0) return 1;
-    SourceFileRef LastFile = Entries.back();
+    if (Entries.size() == 0) return 1;
+    SourceFile LastFile = Entries.back();
     SourceLocation Start = LastFile.StartLoc;
     unsigned Len = LastFile.Buffer.size();
     return SourceLocation(Start.Loc + Len);
   }
 
 public:
-  llvm::ErrorOr<SourceFileRef> Open(StringRef Filename) {
-    auto File = std::make_unique<SourceFile>();
+  llvm::ErrorOr<SourceFile> Open(llvm::StringRef Filename) {
+    auto File = std::make_unique<SourceFileStorage>();
     if (std::error_code ec = File->Open(Filename)) {
       return ec;
     }
     File->StartLoc = getNextStartLoc();
-    SourceFileRef Ref{File->getBuffer(),
-                      File->getName(),
-                      File->getStartLocation()};
+    SourceFile Ref{File->getBuffer(),
+                      File->Name,
+                      File->StartLoc};
     Entries.push_back(Ref);
     StoredEntries.push_back(std::move(File));
     return Entries.back();
@@ -145,11 +149,11 @@ public:
     return FullSourceLocation{getFile(Loc), Loc};
   }
 
-  SourceFileRef getFile(SourceLocation Loc) {
-    for (SourceFile& X : Entries) {
-      if X.hasLoc(Loc) return &X;
+  SourceFile getFile(SourceLocation Loc) {
+    for (SourceFile X : Entries) {
+      if (X.hasLoc(Loc)) return X;
     }
-    return SourceFileRef{};
+    return SourceFile{};
   }
 };
 

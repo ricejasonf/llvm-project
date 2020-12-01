@@ -13,6 +13,7 @@
 #ifndef LLVM_HEAVY_LEXER_H
 #define LLVM_HEAVY_LEXER_H
 
+#include "heavy/Source.h"
 #include <cassert>
 #include <cstdint>
 
@@ -21,6 +22,7 @@ namespace heavy {
 enum class TokenKind {
   unknown = 0,
   char_constant,
+  eof,
   false_,
   identifier,
   l_brace,
@@ -45,16 +47,16 @@ using tok = TokenKind;
 struct Token {
   SourceLocation Loc;
   TokenKind Kind;
-  StringRef LiteralData;
+  llvm::StringRef LiteralData;
 
-  SourceLocation getLocation() { return Loc; }
-  TokenKind getKind() { return Kind; }
+  SourceLocation getLocation() const { return Loc; }
+  TokenKind getKind() const { return Kind; }
 
-  is(TokenKind K)    { return Kind == K; }
-  isNot(TokenKind K) { return Kind != K; }
+  bool is(TokenKind K)    const { return Kind == K; }
+  bool isNot(TokenKind K) const { return Kind != K; }
 
-  unsigned getLength() { return LiteralData.size(); }
-  llvm::StringRef getLiteralData();
+  unsigned getLength() const { return LiteralData.size(); }
+  llvm::StringRef getLiteralData() const { return LiteralData; }
 };
 
 class EmbeddedLexer {
@@ -112,8 +114,7 @@ class Lexer : public EmbeddedLexer {
   }
 
   // TODO deprecate this
-  void FormLiteral(Token &Result, const char *TokEnd,
-                   tok::TokenKind Kind) {
+  void FormLiteral(Token &Result, const char *TokEnd, TokenKind Kind) {
     FormTokenWithChars(Result, TokEnd, Kind);
   }
 
@@ -126,7 +127,7 @@ class Lexer : public EmbeddedLexer {
     Result.Loc = getSourceLocation(BufferPtr);
     BufferPtr = TokEnd;
   }
-  SourceLocation getSourceLocation(const char *Loc, unsigned TokLen) const;
+  SourceLocation getSourceLocation(const char *Loc) const;
 
 public:
   Lexer() = default;
