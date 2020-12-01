@@ -67,7 +67,6 @@ add_clang_library(clangAST
   ExternalASTSource.cpp
   FormatString.cpp
   InferAlloc.cpp
-  HeavyScheme.cpp
   InheritViz.cpp
   ByteCode/BitcastBuffer.cpp
   ByteCode/ByteCodeEmitter.cpp

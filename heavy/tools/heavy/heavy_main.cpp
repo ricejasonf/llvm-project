@@ -26,16 +26,15 @@ static cl::opt<std::string> InputFilename(cl::Positional,
 
 int main(int argc, char const** argv) {
   llvm::InitLLVM LLVM_(argc, argv);
+  heavy::SourceManager SourceMgr{};
   cl::ParseCommandLineOptions(argc, argv);
   llvm::StringRef Filename = InputFilename;
-  llvm::ErrorOr<SourceFileRef> FileResult = SourceMgr.Open(Filename);
+  llvm::ErrorOr<heavy::SourceFile> FileResult = SourceMgr.Open(Filename);
   if (std::error_code ec = FileResult.getError()) {
     llvm::errs() << "Could not open input file: " << ec.message() << "\n";
     return 1;
   }
-  SourceManager SourceMgr{};
-  SourceFileRef File = FileResult.get();
-  llvm::StringRef FileBuffer = file.get()->getBuffer();
+  heavy::SourceFile File = FileResult.get();
 
   // Top level Scheme parse/eval stuff
 
@@ -57,12 +56,11 @@ int main(int argc, char const** argv) {
       // with Context.getErrorLocation()
       llvm::errs() << "\nerror: "
                    << Context.getErrorMessage()
-                   << "\n\n"
+                   << "\n\n";
     }
     // Keep parsing until we find the end
-    // brace (represented by isUnset() here)
     Result = Parser.ParseTopLevelExpr();
-    if (Result.isUnset()) break;
+    if (Parser.isFinished()) break;
     if (HasError) continue;
     if (Result.isUsable()) {
       heavy::Value* Val = eval(Context, Result.get());
