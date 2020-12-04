@@ -274,6 +274,10 @@ private:
     Pair* P = cast<Pair>(V);
     Value* CarResult = Visit(P->Car);
     Value* CdrResult = HandleCallArgs(P->Cdr);
+    // TODO
+    // Create a CallExpr AST node with a
+    // known number of arguments instead of
+    // recreating lists
     return Context.CreatePair(CarResult, CdrResult);
   }
 
