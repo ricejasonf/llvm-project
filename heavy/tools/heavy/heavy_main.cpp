@@ -44,8 +44,9 @@ int main(int argc, char const** argv) {
 
   Parser.ConsumeToken();
 
-  // Do we need to create an environment here ?
-  //Context.EnvStack = ???;
+  // Make the Top Level Environment mutable
+  Context.EnvStack = Context.CreatePair(Context.CreateModule(),
+                                        Context.EnvStack);
 
   heavy::ValueResult Result;
   bool HasError = Context.CheckError();
