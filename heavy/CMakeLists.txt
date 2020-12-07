@@ -10,4 +10,4 @@ set(CLANG_LIB ../clang/lib)
 include_directories(BEFORE
                     ${CMAKE_CURRENT_SOURCE_DIR}/include
                     ../clang/include)
-add_subdirectory(tools/heavy)
+add_subdirectory(tools/heavy-scheme)
