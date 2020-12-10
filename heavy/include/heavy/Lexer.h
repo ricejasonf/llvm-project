@@ -21,7 +21,9 @@ namespace heavy {
 
 enum class TokenKind {
   unknown = 0,
+  block_comment_eof,        // #| ... EOF (only used for unexpected EOF)
   char_constant,
+  comment_datum,            // #;
   eof,
   false_,
   identifier,
@@ -30,16 +32,17 @@ enum class TokenKind {
   l_square, 
   numeric_constant,
   period,
-  quasiquote, // `
-  quote, // '
+  quasiquote,               // `
+  quote,                    // '
   r_brace,
   r_paren,
   r_square,
   string_literal,
+  string_literal_eof,
   true_,
-  unquote, // ,
-  unquote_splicing, // ,(
-  vector_lparen, // #(
+  unquote,                  // ,
+  unquote_splicing,         // ,(
+  vector_lparen,            // #(
 };
 
 using tok = TokenKind;
@@ -94,6 +97,24 @@ public:
 };
 
 class Lexer : public EmbeddedLexer {
+  // IsBlockComment - block comments can be
+  // nested so if we hit an eof the Lexer
+  // needs to know if we are inside one
+  bool IsBlockComment = false;
+  struct BlockCommentRaii {
+    Lexer& L;
+    bool Prev;
+    BlockCommentRaii(Lexer& L)
+      : L(L), Prev(L.IsBlockComment)
+    { L.IsBlockComment = true; }
+    ~BlockCommentRaii() { L.IsBlockComment = Prev; }
+
+    // This should cancel reverting the IsBlockComment
+    void setInvalidEof() {
+      Prev = true;
+    }
+  };
+
   void LexIdentifier(Token& Tok, const char *CurPtr);
   void LexNumberOrIdentifier(Token& Tok, const char *CurPtr);
   void LexNumberOrEllipsis(Token& Tok, const char *CurPtr);
@@ -102,7 +123,9 @@ class Lexer : public EmbeddedLexer {
   void LexStringLiteral(Token& Tok, const char *CurPtr);
   void LexUnknown(Token& Tok, const char *CurPtr);
   void SkipUntilDelimiter(const char *&CurPtr);
-  void ProcessWhitespace(Token& Tok, const char *&CurPtr);
+  void ProcessWhitespace(const char *&CurPtr);
+  void ProcessBlockComment(const char *&CurPtr);
+  bool TryProcessComment(const char *&CurPtr);
 
   // Advances the Ptr and returns the char
   char ConsumeChar(const char *&Ptr) {

@@ -51,6 +51,7 @@ int main(int argc, char const** argv) {
   heavy::ValueResult Result;
   bool HasError = Context.CheckError();
   while (true) {
+    Result = Parser.ParseTopLevelExpr();
     if (!HasError && Context.CheckError()) {
       HasError = true;
       // TODO print error source location
@@ -60,7 +61,6 @@ int main(int argc, char const** argv) {
                    << "\n\n";
     }
     // Keep parsing until we find the end
-    Result = Parser.ParseTopLevelExpr();
     if (Parser.isFinished()) break;
     if (HasError) continue;
     if (Result.isUsable()) {
