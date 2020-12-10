@@ -62,7 +62,9 @@ namespace {
 void Lexer::Lex(Token& Tok) {
   const char* CurPtr = BufferPtr;
   TokenKind Kind;
-  ProcessWhitespace(Tok, CurPtr);
+  do {
+    ProcessWhitespace(CurPtr);
+  } while (TryProcessComment(CurPtr));
 
   // Act on the current character
   char c = *CurPtr++;
@@ -127,9 +129,16 @@ void Lexer::Lex(Token& Tok) {
     }
     break;
   }
-  case 0: 
-    Kind = tok::eof;
+  case 0: {
+    // don't go past the EOF
+    --CurPtr;
+    if (IsBlockComment) {
+      Kind = tok::block_comment_eof;
+    } else {
+      Kind = tok::eof;
+    }
     break;
+  }
   default:
     Kind = tok::unknown;
     break;
@@ -210,6 +219,12 @@ void Lexer::LexSharpLiteral(Token& Tok, const char *CurPtr) {
   case '(':
     Kind = tok::vector_lparen;
     break;
+  case ';':
+    // The datum that follows this token
+    // is treated as a comment but we still
+    // need to parse the datum to know where it ends
+    Kind = tok::comment_datum;
+    break;
   // unsupported radix R specifiers
   case 'd':
   case 'b': case 'o': case 'x':
@@ -235,10 +250,12 @@ void Lexer::LexStringLiteral(Token& Tok, const char *CurPtr) {
   char c = *CurPtr;
   while (c != '"') {
     if (c == '\\') {
-      // As an extension to R5RS we just consume any
-      // character following a backslash so we can pass
-      // through a reasonable subset of valid C++ string literals.
+      // TODO Support R7RS escape sequences
+      // currently we only escape arbitrary characters
       ConsumeChar(CurPtr);
+    } else if (c == '\0') {
+      FormTokenWithChars(Tok, --CurPtr, tok::string_literal_eof);
+      return;
     }
     c = ConsumeChar(CurPtr);
   }
@@ -259,7 +276,7 @@ void Lexer::SkipUntilDelimiter(const char *&CurPtr) {
   }
 }
 
-void Lexer::ProcessWhitespace(Token& Tok, const char *&CurPtr) {
+void Lexer::ProcessWhitespace(const char *&CurPtr) {
   // adds whitespace flags to Tok if needed
   char c = *CurPtr;
 
@@ -280,6 +297,44 @@ void Lexer::ProcessWhitespace(Token& Tok, const char *&CurPtr) {
   }
 
   BufferPtr = CurPtr;
+}
+
+void Lexer::ProcessBlockComment(const char *&CurPtr) {
+  assert((*CurPtr == '#' && *(CurPtr + 1) == '|') &&
+      "Expected block comment opening");
+  auto BlockRaii = BlockCommentRaii(*this);
+  CurPtr += 2;
+  while (true) {
+    if (*CurPtr == '#' && *(CurPtr + 1) == '|') {
+      // these things can be nested
+      ProcessBlockComment(CurPtr);
+    }
+    if (*CurPtr == '|' && *(CurPtr + 1) == '#') {
+      // we found the matching end
+      CurPtr += 2;
+      break;
+    } else if (*CurPtr == '\0') {
+      BlockRaii.setInvalidEof();
+      return;
+    }
+    ++CurPtr;
+  }
+}
+
+bool Lexer::TryProcessComment(const char *&CurPtr) {
+  char c = *CurPtr;
+  if (c == ';') {
+    // Skip until new line
+    while (!clang::isVerticalWhitespace(c)) {
+      c = ConsumeChar(CurPtr);
+    }
+    return true;
+  } else if (c == '#' && *(CurPtr + 1) == '|') {
+    ProcessBlockComment(CurPtr);
+    return true;
+  }
+
+  return false;
 }
 
 // Copy/Pasted from Lexer (mostly)

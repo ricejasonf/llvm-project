@@ -158,8 +158,28 @@ ValueResult Parser::ParseExpr() {
     ConsumeToken();
     return ValueEmpty();
   }
+  case tok::comment_datum: {
+    // the expr that immediately follows the
+    // #; token is discarded (commented)
+    ConsumeToken();
+    ParseExpr();
+    return ParseExpr();
+  }
   case tok::eof: {
+    // TODO Track the start token of the current
+    //      list being parsed if any and note it
+    //      in the diagnostic output
     SetError(Tok, "unexpected end of file");
+    IsFinished = true;
+    return ValueError();
+  }
+  case tok::string_literal_eof: {
+    SetError(Tok, "unterminated string literal");
+    IsFinished = true;
+    return ValueError();
+  }
+  case tok::block_comment_eof: {
+    SetError(Tok, "unterminated block comment");
     IsFinished = true;
     return ValueError();
   }
@@ -196,6 +216,13 @@ ValueResult Parser::ParseList(Token const& StartTok) {
   Token CurTok = Tok;
   // TODO Use StartTok to identify the proper
   //      closing token to match with
+
+  // discard commented exprs
+  while (Tok.is(tok::comment_datum)) {
+    ConsumeToken();
+    ParseExpr();
+  }
+
   if (Tok.is(tok::r_paren)) {
     ConsumeToken();
     return Context.CreateEmpty();
@@ -241,6 +268,11 @@ ValueResult Parser::ParseVectorStart() {
 }
 
 ValueResult Parser::ParseVector(llvm::SmallVectorImpl<Value*>& Xs) {
+  // discard commented exprs
+  while (Tok.is(tok::comment_datum)) {
+    ConsumeToken();
+    ParseExpr();
+  }
   if (Tok.is(tok::r_paren)) {
     ConsumeToken();
     return Context.CreateVector(Xs);
@@ -301,7 +333,7 @@ ValueResult Parser::ParseNumber() {
 
 ValueResult Parser::ParseString() {
   // the literal must include the ""
-  assert(Tok.getLength() > 2);
+  assert(Tok.getLength() >= 2);
   llvm::StringRef TokenSpan = Tok.getLiteralData()
     .substr(1, Tok.getLength() - 2);
   LiteralResult.clear();
