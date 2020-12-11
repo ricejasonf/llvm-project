@@ -24,6 +24,9 @@ static cl::opt<std::string> InputFilename(cl::Positional,
                                           cl::desc("<input file>"),
                                           cl::Required);
 
+static cl::opt<bool> FeatureReadOnly("fread-only",
+            cl::desc("only read input without evaluation or syntax expansion"));
+
 int main(int argc, char const** argv) {
   llvm::InitLLVM LLVM_(argc, argv);
   heavy::SourceManager SourceMgr{};
@@ -38,6 +41,7 @@ int main(int argc, char const** argv) {
 
   // Top level Scheme parse/eval stuff
 
+  bool ShouldEval = !FeatureReadOnly;
   heavy::Context Context{};
   heavy::Lexer   SchemeLexer(File.StartLoc, File.Buffer);
   heavy::Parser  Parser(SchemeLexer, Context);
@@ -63,10 +67,13 @@ int main(int argc, char const** argv) {
     // Keep parsing until we find the end
     if (Parser.isFinished()) break;
     if (HasError) continue;
-    if (Result.isUsable()) {
+    if (Result.isUsable() && ShouldEval) {
       heavy::Value* Val = eval(Context, Result.get());
       // TODO just discard the value without dumping it
+      //      or add a REPL feature or something
       if (!Context.CheckError()) Val->dump();
     }
   };
+
+  if (HasError) return 1;
 }
