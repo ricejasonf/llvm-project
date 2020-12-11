@@ -1,0 +1,9 @@
+@LIT_SITE_CFG_IN_HEADER@
+
+from lit import llvm
+
+config.llvm_tools_dir = "@LLVM_TOOLS_DIR@"
+config.test_exec_root = "@CMAKE_CURRENT_BINARY_DIR@"
+
+llvm.initialize(lit_config, config)
+lit_config.load_config(config, "@CMAKE_CURRENT_SOURCE_DIR@/lit.cfg.py")
