@@ -20,12 +20,45 @@
 
 namespace cl = llvm::cl;
 
+enum ExecutionMode {
+  repl,
+  read,
+  mlir,
+};
+
 static cl::opt<std::string> InputFilename(cl::Positional,
                                           cl::desc("<input file>"),
-                                          cl::Required);
+                                          cl::init("-"));
 
-static cl::opt<bool> FeatureReadOnly("fread-only",
-            cl::desc("only read input without evaluation or syntax expansion"));
+static cl::opt<ExecutionMode> InputMode(
+  "mode", cl::desc("<mode>"),
+  cl::values(
+    cl::OptionEnumValue{"repl",
+                        (int)ExecutionMode::repl,
+                        "read eval and print loop (REPL)"},
+    cl::OptionEnumValue{"read",
+                        (int)ExecutionMode::read,
+                        "just read and print"},
+    cl::OptionEnumValue{"mlir",
+                        (int)ExecutionMode::mlir,
+                        "output mlir code"}),
+  cl::init(ExecutionMode::repl));
+
+void ProcessTopLevelExpr(heavy::Context& Context, heavy::Value* Val) {
+  switch (InputMode.getValue()) {
+  case ExecutionMode::repl:
+    Val = eval(Context, Val);
+    LLVM_FALLTHROUGH;
+  case ExecutionMode::read:
+    if (!Context.CheckError()) Val->dump();
+    break;
+  case ExecutionMode::mlir:
+    llvm_unreachable("TODO generate and output mlir");
+    break;
+  default:
+    llvm_unreachable("Invalid execution mode for loop");
+  }
+}
 
 int main(int argc, char const** argv) {
   llvm::InitLLVM LLVM_(argc, argv);
@@ -41,7 +74,6 @@ int main(int argc, char const** argv) {
 
   // Top level Scheme parse/eval stuff
 
-  bool ShouldEval = !FeatureReadOnly;
   heavy::Context Context{};
   heavy::Lexer   SchemeLexer(File.StartLoc, File.Buffer);
   heavy::Parser  Parser(SchemeLexer, Context);
@@ -67,11 +99,8 @@ int main(int argc, char const** argv) {
     // Keep parsing until we find the end
     if (Parser.isFinished()) break;
     if (HasError) continue;
-    if (Result.isUsable() && ShouldEval) {
-      heavy::Value* Val = eval(Context, Result.get());
-      // TODO just discard the value without dumping it
-      //      or add a REPL feature or something
-      if (!Context.CheckError()) Val->dump();
+    if (Result.isUsable()) {
+      ProcessTopLevelExpr(Context, Result.get());
     }
   };
 
