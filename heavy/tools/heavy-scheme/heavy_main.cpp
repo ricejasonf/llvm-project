@@ -15,6 +15,7 @@
 #include <heavy/HeavyScheme.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/InitLLVM.h>
+#include <llvm/Support/Process.h>
 #include <string>
 #include <system_error>
 
@@ -31,11 +32,11 @@ static cl::opt<std::string> InputFilename(cl::Positional,
                                           cl::init("-"));
 
 static cl::opt<ExecutionMode> InputMode(
-  "mode", cl::desc("<mode>"),
+  "mode", cl::desc("mode of execution"),
   cl::values(
     cl::OptionEnumValue{"repl",
                         (int)ExecutionMode::repl,
-                        "read eval and print loop (REPL)"},
+                        "read eval and print loop (not interactive yet)"},
     cl::OptionEnumValue{"read",
                         (int)ExecutionMode::read,
                         "just read and print"},
@@ -61,6 +62,11 @@ void ProcessTopLevelExpr(heavy::Context& Context, heavy::Value* Val) {
 }
 
 int main(int argc, char const** argv) {
+#if 0
+  // TODO Provide interactive looping which requires support
+  //      in Parser/Lexer possibly. Also look at llvm::LineEditor.
+  bool IsInteractive = llvm::sys::Process::StandardInIsUserInput();
+#endif
   llvm::InitLLVM LLVM_(argc, argv);
   heavy::SourceManager SourceMgr{};
   cl::ParseCommandLineOptions(argc, argv);
