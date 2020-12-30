@@ -73,9 +73,9 @@ Float* Context::CreateFloat(llvm::APFloat Val) {
 
 Vector* Context::CreateVector(ArrayRef<Value*> Xs) {
   // Copy the list of Value* to our heap
-  Value** Values = TrashHeap.Allocate<Value*>(Xs.size());
-  std::copy(Xs.begin(), Xs.end(), Values);
-  return new (TrashHeap) Vector(ArrayRef<Value*>(Values, Xs.size()));
+  size_t size = Vector::sizeToAlloc(Xs.size());
+  void* Mem = TrashHeap.Allocate(size, alignof(Vector));
+  return new (Mem) Vector(Xs);
 }
 
 #if 0 // TODO implement creating a Procedure
