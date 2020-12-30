@@ -310,14 +310,39 @@ public:
   bool equals(StringRef Str) { return Val == Str; }
 };
 
-class String : public Value {
-public:
-  StringRef Val;
+class String final
+  : public Value,
+    private llvm::TrailingObjects<String, char> {
+  friend class Context;
+  friend class llvm::TrailingObjects<String, char>;
 
-  String(StringRef V)
-    : Value(Kind::String)
-    , Val(V)
-  { }
+  unsigned Len = 0;
+  size_t numTrailingObjects(OverloadToken<char> const) { return Len; }
+
+  String(StringRef S)
+    : Value(Kind::String),
+      Len(S.size())
+  { 
+    std::memcpy(getTrailingObjects<char>(), S.data(), S.size());
+  }
+
+  String(StringRef S1, StringRef S2)
+    : Value(Kind::String),
+      Len(S1.size() + S2.size())
+  { 
+    char* StrData = getTrailingObjects<char>();
+    std::memcpy(StrData,             S1.data(), S1.size());
+    std::memcpy(StrData + S1.size(), S2.data(), S2.size());
+  }
+  
+  static size_t sizeToAlloc(unsigned Length) {
+    return totalSizeToAlloc<char>(Length);
+  }
+
+public:
+  llvm::StringRef getView() const {
+    return llvm::StringRef(getTrailingObjects<char>(), Len);
+  }
 
   static bool classof(Value const* V) { return V->getKind() == Kind::String; }
 };
@@ -818,7 +843,7 @@ public:
 
 inline StringRef Error::getErrorMessage() {
   if (String* S = dyn_cast<String>(Message)) {
-    return  S->Val;
+    return  S->getView();
   }
   return "Unknown error (invalid error message)";
 }
