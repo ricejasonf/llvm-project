@@ -317,7 +317,9 @@ class String final
   friend class llvm::TrailingObjects<String, char>;
 
   unsigned Len = 0;
-  size_t numTrailingObjects(OverloadToken<char> const) { return Len; }
+  size_t numTrailingObjects(OverloadToken<char> const) const {
+    return Len;
+  }
 
   String(StringRef S)
     : Value(Kind::String),
@@ -458,17 +460,38 @@ public:
   static bool classof(Value const* V) { return V->getKind() == Kind::Syntax; }
 };
 
-class Vector : public Value {
-  ArrayRef<Value*> Vals;
+class Vector final
+  : public Value,
+    private llvm::TrailingObjects<Vector, Value*> {
+
+  friend class Context;
+  friend class llvm::TrailingObjects<Vector, Value*>;
+
+  unsigned Len = 0;
+  size_t numTrailingObjects(OverloadToken<Value*> const) const {
+    return Len;
+  }
+
+  Vector(ArrayRef<Value*> Vs)
+    : Value(Kind::Vector),
+      Len(Vs.size())
+  {
+    std::memcpy(getTrailingObjects<Value*>(), Vs.data(),
+                Len * sizeof(Value*));
+  }
 
 public:
-  Vector(ArrayRef<Value*> Vs)
-    : Value(Kind::Vector)
-    , Vals(Vs)
-  { }
+  llvm::ArrayRef<Value*> getElements() const {
+    return llvm::ArrayRef<Value*>(
+        getTrailingObjects<Value*>(), Len);
+  }
 
-  ArrayRef<Value*> getElements() const { return Vals; }
   static bool classof(Value const* V) { return V->getKind() == Kind::Vector; }
+
+  static size_t sizeToAlloc(unsigned Length) {
+    return totalSizeToAlloc<Value*>(Length);
+  }
+
 };
 
 class Binding : public Value {
