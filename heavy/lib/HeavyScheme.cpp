@@ -48,10 +48,9 @@ Context::Context()
 
 String* Context::CreateString(StringRef S) {
   // Allocate and copy the string data
-  char* NewStrData = (char*) TrashHeap.Allocate<char>(S.size());
-  std::memcpy(NewStrData, S.data(), S.size());
-
-  return new (TrashHeap) String(StringRef(NewStrData, S.size()));
+  size_t size = String::sizeToAlloc(S.size());
+  void* Mem = TrashHeap.Allocate(size, alignof(String));
+  return new (Mem) String(S);
 }
 
 // This is handy for creating error messages that usually involve
@@ -60,11 +59,8 @@ String* Context::CreateString(StringRef S) {
 String* Context::CreateString(StringRef S1, StringRef S2) {
   // Allocate and copy the string data
   unsigned size = S1.size() + S2.size();
-  char* NewStrData = (char*) TrashHeap.Allocate<char>(size);
-  std::memcpy(NewStrData            , S1.data(), S1.size());
-  std::memcpy(NewStrData + S1.size(), S2.data(), S2.size());
-
-  return new (TrashHeap) String(StringRef(NewStrData, size));
+  void* Mem = TrashHeap.Allocate(size, alignof(String));
+  return new (Mem) String(S1, S2);
 }
 
 Integer* Context::CreateInteger(llvm::APInt Val) {
@@ -658,7 +654,7 @@ private:
   void VisitString(String* S) {
     // TODO we might want to escape special
     // characters other than newline
-    OS << '"' << S->Val << '"';
+    OS << '"' << S->getView() << '"';
   }
 
   void VisitModule(Module* M) {
