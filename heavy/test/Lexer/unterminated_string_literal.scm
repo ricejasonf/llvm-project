@@ -1,4 +1,4 @@
-; RUN: heavy-scheme -fread-only %s
+; RUN: heavy-scheme --mode=read %s
 ; XFAIL: *
 ""
 "this is fine"

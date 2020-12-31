@@ -1,4 +1,4 @@
-; RUN: heavy-scheme -fread-only %s
+; RUN: heavy-scheme --mode=read %s
 ; this is a comment
 5 ; this is also a comment
 #|this is a block comment |#
