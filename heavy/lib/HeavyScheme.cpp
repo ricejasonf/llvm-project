@@ -78,6 +78,12 @@ Vector* Context::CreateVector(ArrayRef<Value*> Xs) {
   return new (Mem) Vector(Xs);
 }
 
+Vector* Context::CreateVector(unsigned N) {
+  size_t size = Vector::sizeToAlloc(N);
+  void* Mem = TrashHeap.Allocate(size, alignof(Vector));
+  return new (Mem) Vector(CreateUndefined(), N);
+}
+
 #if 0 // TODO implement creating a Procedure
 bool Context::CheckFormals(Value* V, int& Arity) {
   if (isa<Empty>(V)) return;
@@ -306,6 +312,17 @@ private:
         return HandleCallArgs(P);
     }
   }
+
+  Value* VisitVector(Vector* V) {
+    llvm::ArrayRef<Value*> Xs = V->getElements();
+    Vector* New = Context.CreateVector(Xs.size());
+    llvm::MutableArrayRef<Value*> Ys = New->getElements();
+    for (unsigned i = 0; i < Xs.size(); ++i) {
+      Visit(Xs[i]);
+      Ys[i] = Visit(Xs[i]);
+    } 
+    return New;
+  }
 };
 
 class Quasiquoter : private ValueVisitor<Quasiquoter, Value*> {
@@ -501,6 +518,17 @@ private:
 
   void VisitBinding(Binding* B) {
     push(B->Val);
+  }
+
+  void VisitVector(Vector* V) {
+    llvm::ArrayRef<Value*> Xs = V->getElements();
+    Vector* New = Context.CreateVector(Xs.size());
+    llvm::MutableArrayRef<Value*> Ys = New->getElements();
+    for (unsigned i = 0; i < Xs.size(); ++i) {
+      Visit(Xs[i]);
+      Ys[i] = pop();
+    } 
+    push(New);
   }
 
   void VisitSymbol(Symbol* S) {
