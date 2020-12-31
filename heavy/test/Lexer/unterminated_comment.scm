@@ -1,3 +1,3 @@
-; RUN: heavy-scheme -fread-only %s
+; RUN: heavy-scheme --mode=read %s
 ; XFAIL: *
 #| this does not have an ending
