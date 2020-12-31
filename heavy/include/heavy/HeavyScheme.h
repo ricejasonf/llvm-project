@@ -480,12 +480,26 @@ class Vector final
                 Len * sizeof(Value*));
   }
 
+  Vector(Value* V, unsigned N)
+    : Value(Kind::Vector),
+      Len(N)
+  {
+    Value** Xs = getTrailingObjects<Value*>();
+    for (unsigned i = 0; i < Len; ++i) {
+      Xs[i] = V;
+    }
+  }
+
 public:
   llvm::ArrayRef<Value*> getElements() const {
     return llvm::ArrayRef<Value*>(
         getTrailingObjects<Value*>(), Len);
   }
 
+  llvm::MutableArrayRef<Value*> getElements() {
+    return llvm::MutableArrayRef<Value*>(
+        getTrailingObjects<Value*>(), Len);
+  }
   static bool classof(Value const* V) { return V->getKind() == Kind::Vector; }
 
   static size_t sizeToAlloc(unsigned Length) {
@@ -820,6 +834,7 @@ public:
     return new (TrashHeap) Symbol(V, Loc);
   }
   Vector*     CreateVector(ArrayRef<Value*> Xs);
+  Vector*     CreateVector(unsigned N);
   Environment* CreateEnvironment(Value* Stack) {
     return new (TrashHeap) Environment(Stack);
   }
