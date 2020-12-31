@@ -58,7 +58,7 @@ String* Context::CreateString(StringRef S) {
 // value kind.
 String* Context::CreateString(StringRef S1, StringRef S2) {
   // Allocate and copy the string data
-  unsigned size = S1.size() + S2.size();
+  unsigned size = String::sizeToAlloc(S1.size() + S2.size());
   void* Mem = TrashHeap.Allocate(size, alignof(String));
   return new (Mem) String(S1, S2);
 }
@@ -262,6 +262,14 @@ private:
     return V;
   }
 
+  Value* VisitSymbol(Symbol* S) {
+    if (Binding* B = Context.Lookup(S)) return B;
+
+    String* Msg = Context.CreateString("unbound symbol: ", S->getVal());
+    Context.SetError(Msg, S);
+    return Context.CreateUndefined();
+  }
+
   Value* HandleCallArgs(Value *V) {
     if (isa<Empty>(V)) return V;
     if (!isa<Pair>(V)) {
@@ -295,8 +303,7 @@ private:
         return Context.CreateEmpty();
       default:
         Context.IsTopLevel = false;
-        HandleCallArgs(P);
-        return P;
+        return HandleCallArgs(P);
     }
   }
 };
@@ -492,15 +499,12 @@ private:
     push(Q->Val);
   }
 
+  void VisitBinding(Binding* B) {
+    push(B->Val);
+  }
+
   void VisitSymbol(Symbol* S) {
-    if (Context.CheckError()) return;
-    Binding* Result = Context.Lookup(S);
-    if (!Result) {
-      String* Msg = Context.CreateString("unbound symbol: ", S->getVal());
-      Context.SetError(Msg, S);
-      return;
-    }
-    push(Result->getValue());
+    llvm_unreachable("Evaluation requires resolved syntax");
   }
 
   void EvalArguments(Value* Args, int& Len) {
@@ -813,7 +817,8 @@ Value* define(Context& C, Pair* P) {
     // TODO refactor to use bytecode or something
     //      this is lame
     return C.CreatePair(C.GetBuiltin("__define"),
-            C.CreatePair(C.CreateGlobal(S, V, P)));
+            C.CreatePair(C.CreateQuote(
+              C.CreateGlobal(S, V, P))));
   } else {
     // Handle internal definitions inside
     // lambda syntax
@@ -843,7 +848,7 @@ namespace heavy { namespace builtin_core {
   // RHS of the Binding object
   void define(Context& C, int len) {
     Value* V = C.EvalStack.pop();
-    assert(isa<Binding>(V) && "Internal define requires binding object");
+    assert(isa<Binding>(V) && "builtin form define requires binding object");
     Binding* B = cast<Binding>(V);
     // This is really lame
     Evaluator Eval(C);
