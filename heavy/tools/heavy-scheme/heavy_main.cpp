@@ -21,7 +21,7 @@
 
 namespace cl = llvm::cl;
 
-enum ExecutionMode {
+enum class ExecutionMode {
   repl,
   read,
   mlir,
