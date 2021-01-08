@@ -14,6 +14,8 @@
 #define LLVM_HEAVY_HEAVY_SCHEME_H
 
 #include "heavy/Source.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Value.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/APFloat.h"
@@ -46,7 +48,7 @@ class Context;
 class Value;
 class Pair;
 using ValueFn = void (*)(Context&, int NumArgs);
-using SyntaxFn = Value* (*)(Context&, Pair*);
+using SyntaxFn = mlir::Value (*)(Context&, Pair*);
 
 // The resulting Value* of these functions
 // may be invalidated on a call to garbage
@@ -684,6 +686,7 @@ public:
   Environment* SystemEnvironment;
   Value* EnvStack;
   std::unordered_map<void*, Value*> EmbeddedEnvs;
+  mlir::MLIRContext MlirContext;
   Value* Err = nullptr;
   bool IsTopLevel = true;
 
