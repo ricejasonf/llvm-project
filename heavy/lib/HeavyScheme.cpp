@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "heavy/HeavyScheme.h"
+#include "heavy/OpGen.h"
 #include "heavy/Source.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -42,6 +43,7 @@ Context::Context()
   , SystemModule(CreateModule())
   , SystemEnvironment(CreateEnvironment(CreatePair(SystemModule)))
   , EnvStack(SystemEnvironment)
+  , MlirContext()
 {
   LoadSystemModule();
 }
@@ -232,6 +234,7 @@ Value* GetSingleSyntaxArg(Pair* P) {
 } // end namespace heavy
 
 namespace {
+#if 0
 class SyntaxExpander : public ValueVisitor<SyntaxExpander, Value*> {
   friend class ValueVisitor<SyntaxExpander, Value*>;
   heavy::Context& Context;
@@ -324,6 +327,7 @@ private:
     return New;
   }
 };
+#endif
 
 class Quasiquoter : private ValueVisitor<Quasiquoter, Value*> {
   friend class ValueVisitor<Quasiquoter, Value*>;
@@ -442,7 +446,7 @@ private:
     }
   }
 
-  // TODO VisitVector (it appears to be missing from Evaluator too)
+  // TODO VisitVector
 };
 
 
@@ -451,6 +455,7 @@ private:
 //    evaluation stack
 //  - to work with builtins and bytecode
 //  - uses RAII to replace the Context.EnvStack
+// TODO make this work on Ops instead of raw AST
 class Evaluator : public ValueVisitor<Evaluator> {
   friend class ValueVisitor<Evaluator>;
   heavy::Context& Context;
@@ -709,6 +714,8 @@ private:
 } // end anon namespace
 namespace heavy { namespace builtin {
 void eval(Context& C, int Len) {
+  // TODO `eval` map input Value to an Op and
+  //      evaluate the Op to a result Value
   assert((Len == 1 || Len == 2) && "Invalid arity to builtin `eval`");
   Value* ExprOrDef = C.EvalStack.pop();
   Value* EnvStack = (Len == 2) ? C.EvalStack.pop() : nullptr;
@@ -717,7 +724,7 @@ void eval(Context& C, int Len) {
     EnvStack = C.CreatePair(E);
   }
 
-  Value* Val = syntax_expand(C, ExprOrDef, EnvStack);
+  mlir::Value Val = opGen(C, ExprOrDef, EnvStack);
   if (C.CheckError()) return;
   Evaluator Eval(C);
   Eval.Visit(Val);
@@ -820,6 +827,7 @@ void append(Context& C, int Len) {
 
 }} // end of namespace heavy::builtin
 
+#if 0
 namespace heavy { namespace builtin_syntax {
 
 Value* define(Context& C, Pair* P) {
@@ -870,13 +878,14 @@ Value* quasiquote(Context& C, Pair* P) {
 }
 
 }} // end of namespace heavy::builtin_syntax
+#endif
 
 namespace heavy { namespace builtin_core {
   // top level define that just evaluates the
   // RHS of the Binding object
   void define(Context& C, int len) {
     Value* V = C.EvalStack.pop();
-    assert(isa<Binding>(V) && "builtin form define requires binding object");
+    assert(isa<Binding>(V) && "builtin form `define` requires binding object");
     Binding* B = cast<Binding>(V);
     // This is really lame
     Evaluator Eval(C);

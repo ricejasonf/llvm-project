@@ -24,3 +24,23 @@ Dialect::Dialect(mlir::MLIRContext* Ctx) : mlir::Dialect("heavy", Ctx) {
 #include "heavy/Ops.cpp.inc"
     >();
 }
+
+void ApplyOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                    mlir::Value Operator, ArrayRef<mlir::Value> Operands) {
+  llvm_unreachable("TODO");
+}
+
+void BindingOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                      mlir::Value Input) {
+  llvm_unreachable("TODO");
+}
+
+void DefineOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                     mlir::Value Input) {
+  llvm_unreachable("TODO");
+}
+
+void Literal::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                     heavy::Value* Input) {
+  llvm_unreachable("TODO");
+}
