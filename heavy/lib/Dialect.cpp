@@ -19,6 +19,9 @@
 using namespace heavy;
 
 Dialect::Dialect(mlir::MLIRContext* Ctx) : mlir::Dialect("heavy", Ctx) {
+  addTypes<HeavyValue>();
+  addAttributes<HeavyValueAttr>();
+
   addOperations<
 #define GET_OP_LIST
 #include "heavy/Ops.cpp.inc"

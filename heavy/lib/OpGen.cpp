@@ -17,7 +17,7 @@
 
 using namespace heavy;
 
-mlir::OwningModuleRef opGen(Context&, Value* V, Value* EnvStack) {
+mlir::Value opGen(Context&, Value* V, Value* EnvStack) {
   OpGen O(C, EnvStack);
   return O.Visit(V);
 }
@@ -29,7 +29,6 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value*> {
   // we want a corresponding Operation or mlir::Value
   llvm::DenseMap<heavy::Binding*, mlir::Value> BindingTable;
 
-  mlir::ModuleOp Module;
   mlir::OpBuilder Builder;
 
 public:
