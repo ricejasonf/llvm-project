@@ -13,6 +13,7 @@ set(CLANG_LIB ../clang/lib)
 include_directories(BEFORE
                     ${CMAKE_CURRENT_SOURCE_DIR}/include
                     ${CMAKE_CURRENT_SOURCE_DIR}/../mlir/include
+                    ${CMAKE_BINARY_DIR}/tools/mlir/include
                     ../clang/include)
 
 add_subdirectory(include/heavy)
