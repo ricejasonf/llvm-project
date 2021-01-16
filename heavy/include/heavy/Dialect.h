@@ -23,6 +23,20 @@ class Dialect : public mlir::Dialect {
   static llvm::StringRef getDialectNamespace() { return "heavy"; }
 };
 
+class HeavyValue : public mlir::Type::TypeBase<
+                            HeavyValue,
+                            mlir::Type,
+                            mlir::TypeStorage> {
+  using Base::Base;
+};
+
+class HeavyValueAttr : public mlir::Type::AttributeBase<
+                            HeavyValueAttr,
+                            mlir::Attribute,
+                            mlir::AttributeStorage> {
+  using Base::Base;
+};
+
 #define GET_OP_CLASSES
 #include "heavy/Ops.h.inc"
 }
