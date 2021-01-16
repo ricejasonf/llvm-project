@@ -13,6 +13,7 @@
 #include "heavy/HeavyScheme.h"
 #include "heavy/OpGen.h"
 #include "heavy/Source.h"
+#include "mlir/IR/Module.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/SmallVector.h"
@@ -724,10 +725,10 @@ void eval(Context& C, int Len) {
     EnvStack = C.CreatePair(E);
   }
 
-  mlir::Value Val = opGen(C, ExprOrDef, EnvStack);
+  mlir::OwningModuleRef Module = opGen(C, ExprOrDef);
   if (C.CheckError()) return;
   Evaluator Eval(C);
-  Eval.Visit(Val);
+  Eval.Visit(Module);
 }
 
 template <typename Op>

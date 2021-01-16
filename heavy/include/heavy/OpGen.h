@@ -24,7 +24,8 @@ namespace mlir {
 
 namespace heavy {
 
-mlir::OwningModuleRef opGen(Context&, Value*);
+mlir::Value opGen(Context&, Value*);
+void opEval(mlir::Value);
 
 }
 

@@ -38,7 +38,7 @@ def heavy_ApplyOp : HeavyOp<"apply"> {
     be a user defined lambda, a builtin, or an FFI wrapper.
   }];
 
-  let arguments = (ins HeavyValue:$operator_, Variadic<HeavyValue>:$operands);
+  let arguments = (ins HeavyValue:$fn, Variadic<HeavyValue>:$args);
   let results   = (outs HeavyValue:$result);
   let builders = [
     OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&,"
@@ -108,8 +108,8 @@ def heavy_LiteralOp : HeavyOp<"literal", [NoSideEffect]> {
     run-time heavy::Value*.
   }];
 
-  let arguments = (ins HeavyValueAttr:$inputz);
-  let results   = (outs HeavyValue:$resultz);
+  let arguments = (ins HeavyValueAttr:$input);
+  let results   = (outs HeavyValue:$result);
   let builders = [
     OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, ::heavy::Value*">
   ];
