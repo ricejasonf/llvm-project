@@ -12,15 +12,12 @@
 
 #include "heavy/HeavyScheme.h"
 #include "heavy/OpGen.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/Value.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Casting.h"
 
 using namespace heavy;
-
-mlir::Value opGen(Context&, Value* V, Value* EnvStack) {
-  OpGen O(C, EnvStack);
-  return O.Visit(V);
-}
 
 class OpGen : public ValueVisitor<OpGen, mlir::Value*> {
   friend class ValueVisitor<OpGen, Value*>;
@@ -28,60 +25,106 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value*> {
   // heavy::Context::Lookup returns a heavy::Binding that
   // we want a corresponding Operation or mlir::Value
   llvm::DenseMap<heavy::Binding*, mlir::Value> BindingTable;
-
   mlir::OpBuilder Builder;
+  bool IsTopLevel = false;
 
 public:
   OpGen(heavy::Context& C)
     : Context(C),
-      MlirContext(C.MlirContext),
-      IsTopLevel(false)
+      Builder(&(C.MlirContext))
   { }
 
-  Value* VisitTopLevel(Value* V) {
+  mlir::Value VisitTopLevel(Value* V) {
     IsTopLevel = true;
     return Visit(V);
   }
 
+  template <typename Op, typename ...Args>
+  mlir::Value create(Args&& ...args) {
+    return Builder.create<Op>(
+      std::forward<Args>(args)...);
+  }
+
+  mlir::Value createTopLevelDefine(Symbol* S, Value *V, Value* OrigCall) {
+    // A module at the top of the EnvStack is mutable
+    Module* M = nullptr;
+    Value* EnvRest = nullptr;
+    if (isa<Pair>(EnvStack)) {
+      Value* EnvTop  = cast<Pair>(EnvStack)->Car;
+      EnvRest = cast<Pair>(EnvStack)->Cdr;
+      M = dyn_cast<Module>(EnvTop);
+    }
+    if (!M) return SetError("define used in immutable environment", OrigCall);
+
+    // If the name already exists in the current module
+    // then it behaves like `set!`
+    Binding* B = M->Lookup(S);
+    if (B) {
+      return SetError("TODO create SetOp for top level define");
+      //B->Val = V;
+      //return B;
+    }
+
+    // Top Level definitions may not shadow names in
+    // the parent environment
+    B = Lookup(S, EnvRest);
+    if (B) return SetError("define overwrites immutable location", S);
+
+    // Create the BindingOp
+    B = Context.CreateBinding(S, V);
+    mlir::Value B_op = create<BindingOp>(Context.CreateBinding(S, V));
+    M->Insert(B);
+    BindingTable.try_emplace(B, B_op);
+
+    return create<DefineOp>(B_Op);
+  }
+
+  mlir::Value SetError(StringRef Str, Value* V) {
+    String* Msg = Context.CreateString("unbound symbol: ", Str);
+    Context.SetError(Msg, S);
+    return Builder.create<LiteralOp>(Context.CreateUndefined());
+  }
+
 private:
-  Value* VisitValue(Value* V) {
-    // TODO constant values should be wrapped
-    //      in a ConstantOp
-    //      These should only be literals here
-    return V;
+  mlir::Value VisitValue(Value* V) {
+    return Builder.create<LiteralOp>(V);
   }
 
   mlir::Value VisitSymbol(Symbol* S) {
-    // TODO return variable reference
-    if (Binding* B = Context.Lookup(S)) return B;
+    Binding* B = Context.Lookup(S)
+    mlir::Value V = BindingTable.lookup(B);
+    // V should be a value for a BindingOp or nothing
+    // BindingOps are created in the `define` syntax
+    if (V) return V;
 
-    String* Msg = Context.CreateString("unbound symbol: ", S->getVal());
-    Context.SetError(Msg, S);
-    return Context.CreateUndefined();
+    return SetError("unbound symbol: ", S->getVal());
   }
 
-  mlir::Value HandleCallArgs(Value *V) {
+  mlir::Value HandleCall(Pair* P) {
+    mlir::Value Fn = Visit(P->Car);
+    llvm::SmallVector<mlir::Value, 16> Args;
+    HandleCallArgs(P->Cdr, Args);
+    return Builder.create<ApplyOp>(Fn, Args);
+  }
+
+  void HandleCallArgs(Value *V,
+                      llvm::SmallVectorImpl<mlir::Value>& Args) {
     if (isa<Empty>(V)) return V;
     if (!isa<Pair>(V)) {
-      return Context.SetError("improper list as call expression", V);
+      return SetError("improper list as call expression", V);
     }
     Pair* P = cast<Pair>(V);
-    Value* CarResult = Visit(P->Car);
-    Value* CdrResult = HandleCallArgs(P->Cdr);
-    // TODO
-    // Create a CallExpr AST node with a
-    // known number of arguments instead of
-    // recreating lists
-    return Context.CreatePair(CarResult, CdrResult);
+    Args.push_back(Visit(P->Car));
+    HandleCallArgs(P->Cdr, Args);
   }
 
   mlir::Value VisitPair(Pair* P) {
     if (Context.CheckError()) return Context.CreateEmpty();
-    Binding* B = Context.Lookup(P->Car);
-    if (!B) return P;
-
-    // Operator might be some kind of syntax transformer
-    Value* Operator = B->getValue();
+    Value* Operator = P->Car;
+    // A named operator might point to some kind of syntax transformer
+    if (Binding* B = Context.Lookup(Operator)) {
+      Operator = B->getValue();
+    }
 
     switch (Operator->getKind()) {
       case Value::Kind::BuiltinSyntax: {
@@ -93,10 +136,11 @@ private:
         return Context.CreateEmpty();
       default:
         IsTopLevel = false;
-        return HandleCallArgs(P);
+        return HandleCall(P);
     }
   }
 
+#if 0 // TODO VectorOp??
   mlir::Value VisitVector(Vector* V) {
     llvm::ArrayRef<Value*> Xs = V->getElements();
     Vector* New = Context.CreateVector(Xs.size());
@@ -107,15 +151,22 @@ private:
     } 
     return New;
   }
+#endif
 };
+
+
+mlir::Value opGen(Context&, Value* V, Value* EnvStack) {
+  OpGen O(C, EnvStack);
+  return O.Visit(V);
+}
 
 namespace heavy { namespace builtin_syntax {
 
-mlir::Value define(Context& C, Pair* P) {
+mlir::Value define(OpGen& OG, Pair* P) {
   Pair*   P2  = dyn_cast<Pair>(P->Cdr);
   Symbol* S   = nullptr;
   Value*  V   = nullptr;
-  if (!P2) return C.SetError("invalid define syntax", P);
+  if (!P2) return OG.SetError("invalid define syntax", P);
   if (Pair* LambdaSpec = dyn_cast<Pair>(P2->Car)) {
     llvm_unreachable("TODO");
     S = dyn_cast<Symbol>(LambdaSpec->Car);
@@ -128,16 +179,18 @@ mlir::Value define(Context& C, Pair* P) {
     S = dyn_cast<Symbol>(P2->Car);
     V = GetSingleSyntaxArg(P2);
   }
-  if (!S || !V) return C.SetError("invalid define syntax", P);
-  if (C.IsTopLevel) {
+  if (!S || !V) return OG.SetError("invalid define syntax", P);
+  if (OG.IsTopLevel) {
     // TODO build a DefineOp and add it to the map of bindings to ops
+    Binding* B = C.CreateGlobal(S, V, P);
+    return OG.create<DefineOp>(
     return C.CreatePair(C.GetBuiltin("__define"),
             C.CreatePair(C.CreateQuote(
               C.CreateGlobal(S, V, P))));
   } else {
     // Handle internal definitions inside
     // lambda syntax
-    return C.SetError("unexpected define", P);
+    return OG.SetError("unexpected define", P);
   }
 }
 
@@ -163,5 +216,3 @@ mlir::Value quasiquote(Context& C, Pair* P) {
 }} // end of namespace heavy::builtin_syntax
 
 }
-
-#endif
