@@ -60,7 +60,7 @@ def heavy_BindingOp : HeavyOp<"binding"> {
   let arguments = (ins HeavyValue:$input);
   let results   = (outs HeavyValue:$result);
   let builders = [
-    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, ::mlir::Value">
+    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, ::mlir::Value input">
   ];
 }
 
@@ -69,12 +69,17 @@ def heavy_DefineOp : HeavyOp<"define"> {
   let description = [{
     This initializes top level and local variables.
     The result of the expression is always Undefined.
+    I think the difference between this and SetOp is
+    that an input expr that has no side-effects and is not
+    used can be elided entirely. (ie We don't need a value for a
+    stateless function when all of its uses are substitued with
+    CallOps.)
   }];
 
-  let arguments = (ins HeavyValue:$input);
+  let arguments = (ins HeavyValue:$binding);
   let results   = (outs HeavyValue:$result);
   let builders = [
-    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, ::mlir::Value">
+    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, ::mlir::Value binding">
   ];
 }
 
