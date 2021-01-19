@@ -725,10 +725,11 @@ void eval(Context& C, int Len) {
     EnvStack = C.CreatePair(E);
   }
 
-  mlir::OwningModuleRef Module = opGen(C, ExprOrDef);
+  mlir::Value OpGenResult = opGen(C, ExprOrDef);
+  OpGenResult.dump();
   if (C.CheckError()) return;
-  Evaluator Eval(C);
-  Eval.Visit(Module);
+  //Evaluator Eval(C);
+  //Eval.Visit(OpResult);
 }
 
 template <typename Op>
@@ -901,8 +902,9 @@ namespace heavy { namespace builtin_core {
 
 namespace heavy {
 Value* syntax_expand(Context& C, Value* V, Value* EnvStack) {
-  SyntaxExpander S(C, EnvStack);
-  return S.Visit(V);
+  return C.CreateUndefined();
+  //SyntaxExpander S(C, EnvStack);
+  //return S.Visit(V);
 }
 
 Value* eval(Context& C, Value* V, Value* EnvStack) {
