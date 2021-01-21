@@ -44,11 +44,12 @@ using llvm::dyn_cast;
 using llvm::dyn_cast_or_null;
 using llvm::isa;
 
+class OpGen;
 class Context;
 class Value;
 class Pair;
 using ValueFn = void (*)(Context&, int NumArgs);
-using SyntaxFn = mlir::Value (*)(Context&, Pair*);
+using SyntaxFn = mlir::Value (*)(OpGen&, Pair*);
 
 // The resulting Value* of these functions
 // may be invalidated on a call to garbage
@@ -306,6 +307,8 @@ public:
     , Val(V)
   { }
 
+  using ValueWithSource::getSourceLocation;
+
   StringRef getVal() { return Val; }
   static bool classof(Value const* V) { return V->getKind() == Kind::Symbol; }
 
@@ -552,6 +555,7 @@ class Module : public Value {
   //      as keys.
   MapTy Map;
 
+public:
   Module(AllocatorTy& A)
     : Value(Kind::Module)
     , Map(A)
@@ -572,7 +576,6 @@ class Module : public Value {
     return Lookup(Name->getVal());
   }
 
-public:
   static bool classof(Value const* V) { return V->getKind() == Kind::Module; }
 
   class Iterator : public llvm::iterator_facade_base<
@@ -690,8 +693,6 @@ public:
   Value* Err = nullptr;
   bool IsTopLevel = true;
 
-private:
-  //bool ProcessFormals(Value* V, BindingRegion* Region, int& Arity);
   Binding* AddBuiltin(StringRef Str, ValueFn Fn) {
     return SystemModule->Insert(CreateBinding(CreateSymbol(Str),
                                               CreateBuiltin(Fn)));
@@ -701,8 +702,6 @@ private:
     return SystemModule->Insert(CreateBinding(CreateSymbol(Str),
                                               CreateBuiltinSyntax(Fn)));
   }
-
-public:
 
   static std::unique_ptr<Context> CreateEmbedded();
 
