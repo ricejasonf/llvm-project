@@ -15,9 +15,13 @@
 
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Function.h"
-#include "mlir/IR/Interfaces/SideEffectInterfaces.h"
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
+#include "llvm/ADT/ArrayRef.h"
 
 namespace heavy {
+class Value;
+
 class Dialect : public mlir::Dialect {
   explicit Dialect(mlir::MLIRContext* Ctx);
   static llvm::StringRef getDialectNamespace() { return "heavy"; }
@@ -30,12 +34,18 @@ class HeavyValue : public mlir::Type::TypeBase<
   using Base::Base;
 };
 
-class HeavyValueAttr : public mlir::Type::AttributeBase<
+class HeavyValueAttr : public mlir::Attribute::AttrBase<
                             HeavyValueAttr,
                             mlir::Attribute,
                             mlir::AttributeStorage> {
   using Base::Base;
 };
+
+// FIXME mabye fixe mlir's table gen stuff
+// These aliases fix mlir tablegen stuff
+namespace OpTrait = mlir::OpTrait;
+namespace MemoryEffects = mlir::MemoryEffects;
+using llvm::ArrayRef;
 
 #define GET_OP_CLASSES
 #include "heavy/Ops.h.inc"

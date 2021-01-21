@@ -14,6 +14,7 @@ include_directories(BEFORE
                     ${CMAKE_CURRENT_SOURCE_DIR}/include
                     ${CMAKE_CURRENT_SOURCE_DIR}/../mlir/include
                     ${CMAKE_BINARY_DIR}/tools/mlir/include
+                    ${CMAKE_BINARY_DIR}/tools/heavy/include
                     ../clang/include)
 
 add_subdirectory(include/heavy)

@@ -923,11 +923,7 @@ void write(llvm::raw_ostream& OS, Value* V) {
 } // end namespace heavy
 
 void Context::LoadSystemModule() {
-  // Builtin Syntaxes
-  AddBuiltinSyntax("quote",       builtin_syntax::quote);
-  AddBuiltinSyntax("quasiquote",  builtin_syntax::quasiquote);
-  AddBuiltinSyntax("define",      builtin_syntax::define);
-
+  LoadBuiltinSyntax(*this);
   // Builtin Procedures
   AddBuiltin("+",                 builtin::operator_add);
   AddBuiltin("*",                 builtin::operator_mul);
@@ -936,8 +932,4 @@ void Context::LoadSystemModule() {
   AddBuiltin("list",              builtin::list);
   AddBuiltin("cons-source",       builtin::cons_source);
   AddBuiltin("append",            builtin::append);
-
-  // Core forms
-  // TODO these should probably be refactored to opcodes
-  AddBuiltin("__define",          builtin_core::define);
 }
