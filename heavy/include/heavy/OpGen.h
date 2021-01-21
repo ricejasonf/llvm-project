@@ -27,14 +27,8 @@ namespace heavy {
 mlir::Value opGen(Context&, Value*);
 void opEval(mlir::Value);
 
+void LoadBuiltinSyntax(Context& C);
+
 }
-
-namespace heavy { namespace builtin_syntax {
-
-mlir::Value define(Context& C, Pair* P);
-mlir::Value quote(Context& C, Pair* P);
-mlir::Value quasiquote(Context& C, Pair* P);
-
-}}
 
 #endif
