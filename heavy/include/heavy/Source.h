@@ -22,6 +22,11 @@
 namespace heavy {
 class SourceManager;
 
+// This exists for the reinterpret_cast<uintptr_t>
+// stuff that mlir::OpaqueLoc does.
+// (because they expect a pointer)
+struct SourceLocationEncoding;
+
 class SourceLocation {
   friend class SourceManager;
   unsigned Loc = 0;
@@ -31,6 +36,10 @@ class SourceLocation {
 public:
   SourceLocation() = default;
   SourceLocation(SourceLocation const&) = default;
+
+  SourceLocation(SourceLocationEncoding* E)
+    : Loc(reinterpret_cast<uintptr_t>(E))
+  { }
 
   // getLocWithOffset - The caller is responsible for ensuring
   //                    that the offset does not go out of bounds
@@ -45,6 +54,10 @@ public:
   }
 
   unsigned getEncoding() const { return Loc; }
+  SourceLocationEncoding* getOpaqueEncoding() const {
+    uintptr_t E = Loc;
+    return reinterpret_cast<SourceLocationEncoding*>(E);
+  };
 };
 
 class SourceFileStorage {
