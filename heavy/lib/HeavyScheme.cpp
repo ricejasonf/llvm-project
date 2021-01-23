@@ -40,14 +40,12 @@ std::unique_ptr<Context> Context::CreateEmbedded() {
 
 Context::Context()
   : TrashHeap()
-  , EvalStack()
   , SystemModule(CreateModule())
   , SystemEnvironment(CreateEnvironment(CreatePair(SystemModule)))
   , EnvStack(SystemEnvironment)
+  , EvalStack(*this)
   , MlirContext()
-{
-  LoadSystemModule();
-}
+{ }
 
 String* Context::CreateString(StringRef S) {
   // Allocate and copy the string data
@@ -199,41 +197,6 @@ Builtin* Context::GetBuiltin(StringRef Name) {
   return cast<Builtin>(B->getValue());
 }
 
-namespace heavy {
-struct NumberOp {
-  // These operations always mutate the first operand
-  struct Add {
-    static void f(Integer* X, Integer* Y) { X->Val += Y->Val; }
-    static void f(Float* X, Float *Y) { X->Val = X->Val + Y->Val; }
-  };
-  struct Sub {
-    static void f(Integer* X, Integer* Y) { X->Val -= Y->Val; }
-    static void f(Float* X, Float *Y) { X->Val = X->Val - Y->Val; }
-  };
-  struct Mul {
-    static void f(Integer* X, Integer* Y) { X->Val *= Y->Val; }
-    static void f(Float* X, Float *Y) { X->Val = X->Val * Y->Val; }
-  };
-  struct Div {
-    static void f(Integer* X, Integer* Y) { X-> Val = X->Val.sdiv(Y->Val); }
-    static void f(Float* X, Float *Y) { X->Val = X->Val / Y->Val; }
-  };
-};
-
-// GetSingleArg - Given a macro expression (keyword datum)
-//                return the first argument iff there is only
-//                one argument otherwise returns nullptr
-//                (same as `cadr`)
-Value* GetSingleSyntaxArg(Pair* P) {
-  // P->Car is the syntactic keyword
-  Pair* P2 = dyn_cast<Pair>(P->Cdr);
-  if (P2 && isa<Empty>(P2->Cdr)) {
-    return P2->Car;
-  }
-  return nullptr;
-}
-} // end namespace heavy
-
 namespace {
 #if 0
 class SyntaxExpander : public ValueVisitor<SyntaxExpander, Value*> {
@@ -330,6 +293,7 @@ private:
 };
 #endif
 
+#if 0 // migrate to OpGen
 class Quasiquoter : private ValueVisitor<Quasiquoter, Value*> {
   friend class ValueVisitor<Quasiquoter, Value*>;
   heavy::Context& Context;
@@ -449,8 +413,10 @@ private:
 
   // TODO VisitVector
 };
+#endif
 
 
+#if 0 // deprecated in favor of OpEvaluator
 // Evaluator
 //  - tree evaluator that uses the
 //    evaluation stack
@@ -476,6 +442,7 @@ private:
   Value* top() {
     return Context.EvalStack.top();
   }
+  
 
   // Most objects simply evaluate to themselves
   void VisitValue(Value* V) {
@@ -594,6 +561,7 @@ private:
   }
 #endif
 };
+#endif
 
 class Writer : public ValueVisitor<Writer>
 {
@@ -713,208 +681,8 @@ private:
 };
 
 } // end anon namespace
-namespace heavy { namespace builtin {
-void eval(Context& C, int Len) {
-  // TODO `eval` map input Value to an Op and
-  //      evaluate the Op to a result Value
-  assert((Len == 1 || Len == 2) && "Invalid arity to builtin `eval`");
-  Value* ExprOrDef = C.EvalStack.pop();
-  Value* EnvStack = (Len == 2) ? C.EvalStack.pop() : nullptr;
-  if (Environment* E = dyn_cast_or_null<Environment>(EnvStack)) {
-    // nest the Environment in the EnvStack
-    EnvStack = C.CreatePair(E);
-  }
-
-  mlir::Value OpGenResult = opGen(C, ExprOrDef);
-  OpGenResult.dump();
-  if (C.CheckError()) return;
-  //Evaluator Eval(C);
-  //Eval.Visit(OpResult);
-}
-
-template <typename Op>
-void operator_rec(Context& C, int Len) {
-  if (Len == 1) return;
-  if (Len == 0) {
-    C.push(C.CreateInteger(0));
-    return;
-  }
-  // pop two arguments and push the result of adding them
-  Number* X = C.popArg<Number>();
-  Number* Y = C.popArg<Number>();
-  if (C.CheckError()) return;
-  Value::Kind CommonKind = Number::CommonKind(X, Y);
-  Number* Result;
-  switch (CommonKind) {
-    case Value::Kind::Float: {
-      Float* CopyX = C.CreateFloat(cast<Float>(X)->getVal());
-      Float* CopyY = C.CreateFloat(cast<Float>(Y)->getVal());
-      Op::f(CopyX, CopyY);
-      Result = CopyX;
-      break;
-    }
-    case Value::Kind::Integer: {
-      // we can assume they are both integers
-      Integer* CopyX = C.CreateInteger(cast<Integer>(X)->getVal());
-      Op::f(CopyX, cast<Integer>(Y));
-      Result = CopyX;
-      break;
-    }
-    default:
-      llvm_unreachable("Invalid arithmetic type");
-  }
-  C.push(Result);
-  operator_rec<Op>(C, Len - 1);
-}
-
-void forbid_div_zeros(Context& C, int Len) {
-  if (Len == 0) return;
-  Number* Num = C.popArg<Number>();
-  if (Num->isExactZero()) {
-    C.SetError("divide by exact zero", Num);
-    return;
-  }
-
-  forbid_div_zeros(C, Len - 1);
-  // put the value back on the stack
-  C.EvalStack.push(Num);
-}
-
-void operator_add(Context&C, int Len) {
-  operator_rec<NumberOp::Add>(C, Len);
-}
-void operator_mul(Context&C, int Len) {
-  operator_rec<NumberOp::Mul>(C, Len);
-}
-void operator_sub(Context&C, int Len) {
-  operator_rec<NumberOp::Sub>(C, Len);
-}
-void operator_div(Context& C, int Len) {
-  Number* Num = C.popArg<Number>();
-  if (C.CheckError()) return;
-  if (Num->isExactZero()) {
-    C.discard(Len - 1);
-    C.push(Num);
-    return;
-  }
-  forbid_div_zeros(C, Len - 1);
-  if (C.CheckError()) return;
-  // put the first arg back on the stack
-  C.EvalStack.push(Num);
-  operator_rec<NumberOp::Div>(C, Len);
-}
-
-void list(Context& C, int Len) {
-  // Returns a *newly allocated* list of its arguments.
-  if (Len == 0) {
-    C.push(C.CreateEmpty());
-    return;
-  };
-  Value* Arg = C.pop();
-  list(C, Len - 1);
-  Value* Next = C.pop();
-  C.push(C.CreatePair(Arg, Next));
-}
-
-void cons_source(Context& C, int Len) {
-  Value* V1 = C.pop();
-  Value* V2 = C.pop();
-  Value* V3 = C.pop();
-  C.push(C.CreatePairWithSource(V1, V2, V3->getSourceLocation()));
-}
-
-void append(Context& C, int Len) {
-  llvm_unreachable("TODO appendable");
-}
-
-}} // end of namespace heavy::builtin
-
-#if 0
-namespace heavy { namespace builtin_syntax {
-
-Value* define(Context& C, Pair* P) {
-  Pair*   P2  = dyn_cast<Pair>(P->Cdr);
-  Symbol* S   = nullptr;
-  Value*  V   = nullptr;
-  if (!P2) return C.SetError("invalid define syntax", P);
-  if (Pair* LambdaSpec = dyn_cast<Pair>(P2->Car)) {
-    llvm_unreachable("TODO");
-    S = dyn_cast<Symbol>(LambdaSpec->Car);
-#if 0 // CheckLambda would return nullptr
-    V = C.CheckLambda(/*LambdaParams=*/LambdaSpec->Cdr,
-                      /*LambdaBody=*/P2->Cdr,
-                      /*LambdaName=*/S);
-#endif
-  } else {
-    S = dyn_cast<Symbol>(P2->Car);
-    V = GetSingleSyntaxArg(P2);
-  }
-  if (!S || !V) return C.SetError("invalid define syntax", P);
-  if (C.IsTopLevel) {
-    // create call expr with the core define op
-    // TODO refactor to use bytecode or something
-    //      this is lame
-    return C.CreatePair(C.GetBuiltin("__define"),
-            C.CreatePair(C.CreateQuote(
-              C.CreateGlobal(S, V, P))));
-  } else {
-    // Handle internal definitions inside
-    // lambda syntax
-    return C.SetError("unexpected define", P);
-  }
-}
-
-Value* quote(Context& C, Pair* P) {
-  Value* Result = GetSingleSyntaxArg(P);
-  if (!Result) {
-    C.SetError("invalid quote syntax", P);
-    return C.CreateEmpty();
-  }
-
-  return C.CreateQuote(Result);
-}
-
-Value* quasiquote(Context& C, Pair* P) {
-  Quasiquoter QQ(C);
-  return QQ.Run(P);
-}
-
-}} // end of namespace heavy::builtin_syntax
-#endif
-
-namespace heavy { namespace builtin_core {
-  // top level define that just evaluates the
-  // RHS of the Binding object
-  void define(Context& C, int len) {
-    Value* V = C.EvalStack.pop();
-    assert(isa<Binding>(V) && "builtin form `define` requires binding object");
-    Binding* B = cast<Binding>(V);
-    // This is really lame
-    Evaluator Eval(C);
-    // the evaluator pushes the result on the stack
-    Eval.Visit(B->getValue());
-    V = C.EvalStack.pop();
-    B->Val = V;
-    C.EvalStack.push(C.CreateUndefined());
-  }
-}} // end of namespace heavy::builtin_core
-
 
 namespace heavy {
-Value* syntax_expand(Context& C, Value* V, Value* EnvStack) {
-  return C.CreateUndefined();
-  //SyntaxExpander S(C, EnvStack);
-  //return S.Visit(V);
-}
-
-Value* eval(Context& C, Value* V, Value* EnvStack) {
-  if (EnvStack) C.push(EnvStack);
-  C.push(V);
-  int ArgCount = EnvStack ? 2 : 1;
-  builtin::eval(C, ArgCount);
-  return C.pop();
-}
-
 void write(llvm::raw_ostream& OS, Value* V) {
   Writer W(OS);
   return W.Visit(V);
@@ -922,14 +690,6 @@ void write(llvm::raw_ostream& OS, Value* V) {
 
 } // end namespace heavy
 
-void Context::LoadSystemModule() {
-  LoadBuiltinSyntax(*this);
-  // Builtin Procedures
-  AddBuiltin("+",                 builtin::operator_add);
-  AddBuiltin("*",                 builtin::operator_mul);
-  AddBuiltin("-",                 builtin::operator_sub);
-  AddBuiltin("/",                 builtin::operator_div);
-  AddBuiltin("list",              builtin::list);
-  AddBuiltin("cons-source",       builtin::cons_source);
-  AddBuiltin("append",            builtin::append);
+void EvaluationStack::EmitStackSpaceError() {
+  Context.SetError("insufficient stack space");
 }

@@ -48,7 +48,7 @@ static cl::opt<ExecutionMode> InputMode(
 void ProcessTopLevelExpr(heavy::Context& Context, heavy::Value* Val) {
   switch (InputMode.getValue()) {
   case ExecutionMode::repl:
-    Val = eval(Context, Val);
+    Val = heavy::eval(Context, Val);
     LLVM_FALLTHROUGH;
   case ExecutionMode::read:
     if (!Context.CheckError()) Val->dump();

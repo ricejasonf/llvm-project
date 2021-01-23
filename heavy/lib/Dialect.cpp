@@ -12,7 +12,7 @@
 
 #include "heavy/Dialect.h"
 
-#include "mlir/IR/Builder.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/StandardTypes.h"
 
@@ -43,7 +43,7 @@ void DefineOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
   llvm_unreachable("TODO");
 }
 
-void Literal::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
-                     heavy::Value* Input) {
+void LiteralOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                      heavy::Value* Input) {
   llvm_unreachable("TODO");
 }
