@@ -13,6 +13,7 @@
 #ifndef LLVM_HEAVY_HEAVY_SCHEME_H
 #define LLVM_HEAVY_HEAVY_SCHEME_H
 
+#include "heavy/EvaluationStack.h"
 #include "heavy/Source.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
@@ -48,15 +49,17 @@ class OpGen;
 class Context;
 class Value;
 class Pair;
-using ValueFn = void (*)(Context&, int NumArgs);
+using ValueRefs = llvm::ArrayRef<heavy::Value*>;
+using ValueFn = heavy::Value* (*)(Context&, ValueRefs);
 using SyntaxFn = mlir::Value (*)(OpGen&, Pair*);
+
 
 // The resulting Value* of these functions
 // may be invalidated on a call to garbage
 // collection if it is not bound to a variable
 // at top level scope
+// (defined in OpGen.cpp)
 Value* eval(Context&, Value* V, Value* EnvStack = nullptr);
-Value* syntax_expand(Context&, Value* V, Value* EnvStack = nullptr);
 void write(llvm::raw_ostream&, Value*);
 
 // Value - A result of an evaluation
@@ -100,7 +103,8 @@ protected:
 public:
   bool isMutable() const { return IsMutable; }
   Kind getKind() const { return ValueKind; }
-  StringRef getKindName();
+  static StringRef getKindName(heavy::Value::Kind);
+  StringRef getKindName() const { return getKindName(getKind()); }
 
   // not used
   bool isSyntax() const {
@@ -234,7 +238,7 @@ public:
     return getKind() == Kind::Integer;
   }
 
-  bool isExactZero();
+  static bool isExactZero(heavy::Value*);
   static Value::Kind CommonKind(Number* X, Number* Y);
 };
 
@@ -276,9 +280,9 @@ inline Value::Kind Number::CommonKind(Number* X, Number* Y) {
   }
   return Value::Kind::Integer;
 }
-inline bool Number::isExactZero() {
-  if (getKind() == Kind::Integer) {
-    return cast<Integer>(this)->Val == 0;
+inline bool Number::isExactZero(Value* V) {
+  if (V->getKind() == Kind::Integer) {
+    return cast<Integer>(V)->Val == 0;
   }
   return false;
 }
@@ -477,7 +481,7 @@ class Vector final
     return Len;
   }
 
-  Vector(ArrayRef<Value*> Vs)
+  Vector(llvm::ArrayRef<Value*> Vs)
     : Value(Kind::Vector),
       Len(Vs.size())
   {
@@ -643,34 +647,6 @@ inline SourceLocation Value::getSourceLocation() {
   return VS->getSourceLocation();
 }
 
-class EvaluationStack {
-  std::vector<Value*> Storage;
-public:
-  EvaluationStack(std::size_t Size = 1024)
-   : Storage(1, nullptr)
-  {
-    Storage.reserve(Size);
-  }
-
-  void push(Value* V) {
-    Storage.push_back(V);
-  }
-
-  Value* pop() {
-    Value* Back = Storage.back();
-    Storage.pop_back();
-    return Back;
-  }
-
-  void discard(int N = 1) {
-    for (int i = 0; i < N; ++i) pop();
-  }
-
-  Value* top() {
-    return Storage.back();
-  }
-};
-
 class Context {
   AllocatorTy TrashHeap;
 
@@ -684,14 +660,31 @@ class Context {
   //  - Calls to procedures or eval will set the EnvStack
   //    and swap it back upon completion (via RAII)
 public:
-  EvaluationStack EvalStack;
   Module* SystemModule;
   Environment* SystemEnvironment;
   Value* EnvStack;
   std::unordered_map<void*, Value*> EmbeddedEnvs;
+  EvaluationStack EvalStack;
   mlir::MLIRContext MlirContext;
   Value* Err = nullptr;
   bool IsTopLevel = true;
+
+  template <typename T>
+  T* CheckKind(heavy::Value* Val) {
+    if (T* V = dyn_cast<T>(Val)) return V;
+
+    // TODO get the Kind from T
+    SetError("invalid type, expecting ???", Val);
+    return nullptr;
+  }
+
+  // used by builtin functions
+  bool CheckArity(unsigned Len, ValueRefs Args) {
+    StackFrame* F = EvalStack.top();
+    if (Args.size() == Len) return false;
+    SetError(F->getCallLoc(), "invalid arity", F->getCallee());
+  }
+
 
   Binding* AddBuiltin(StringRef Str, ValueFn Fn) {
     return SystemModule->Insert(CreateBinding(CreateSymbol(Str),
@@ -748,7 +741,6 @@ public:
   Value* SetError(Value* E) {
     assert(isa<Error>(E) || isa<Exception>(E));
     Err = E;
-    EvalStack.push(E);
     return CreateUndefined();
   }
 
@@ -763,6 +755,10 @@ public:
 
   Value* SetError(StringRef S, Value* V) {
     return SetError(CreateString(S), V);
+  }
+
+  Value* SetError(StringRef S) {
+    return SetError(S, CreateUndefined());
   }
 
   Value* SetError(SourceLocation Loc, StringRef S, Value* V) {
@@ -781,29 +777,6 @@ public:
     } else {
       return "Unknown error (invalid error type)";
     }
-  }
-
-  // Stack functions are shortcuts to EvalStack
-  void push(Value* V) {
-    return EvalStack.push(V);
-  }
-  Value* pop() {
-    return EvalStack.pop();
-  }
-  template <typename T>
-  T* popArg() {
-    T* V = dyn_cast<T>(EvalStack.pop());
-    if (V == nullptr) {
-      SetError("Contract violation: ???", CreateEmpty());
-    }
-
-    return V;
-  }
-  void discard(int N = 1) {
-    EvalStack.discard(N);
-  }
-  Value* top() {
-    return EvalStack.top();
   }
 
   Undefined*  CreateUndefined() { return &Undefined_; }
@@ -977,8 +950,8 @@ public:
 
 #define GET_KIND_NAME_CASE(KIND) \
   case Value::Kind::KIND: return StringRef(#KIND, sizeof(#KIND));
-inline StringRef Value::getKindName() {
-  switch (getKind()) {
+inline StringRef Value::getKindName(heavy::Value::Kind Kind) {
+  switch (Kind) {
   GET_KIND_NAME_CASE(Undefined)
   GET_KIND_NAME_CASE(Binding)
   GET_KIND_NAME_CASE(Boolean)
