@@ -229,9 +229,158 @@ mlir::Value quasiquote(OpGen& C, Pair* P) {
 
 }} // end of namespace heavy::builtin_syntax
 
-void LoadBuiltinSyntax(Context& C) {
+namespace heavy {
+// TODO Replace NumberOp here with corresponding arithmetic ops in OpGen and OpEval
+struct NumberOp {
+  // These operations always mutate the first operand
+  struct Add {
+    static void f(Integer* X, Integer* Y) { X->Val += Y->Val; }
+    static void f(Float* X, Float *Y) { X->Val = X->Val + Y->Val; }
+  };
+  struct Sub {
+    static void f(Integer* X, Integer* Y) { X->Val -= Y->Val; }
+    static void f(Float* X, Float *Y) { X->Val = X->Val - Y->Val; }
+  };
+  struct Mul {
+    static void f(Integer* X, Integer* Y) { X->Val *= Y->Val; }
+    static void f(Float* X, Float *Y) { X->Val = X->Val * Y->Val; }
+  };
+  struct Div {
+    static void f(Integer* X, Integer* Y) { X-> Val = X->Val.sdiv(Y->Val); }
+    static void f(Float* X, Float *Y) { X->Val = X->Val / Y->Val; }
+  };
+};
+
+// GetSingleArg - Given a macro expression (keyword datum)
+//                return the first argument iff there is only
+//                one argument otherwise returns nullptr
+//                (same as `cadr`)
+Value* GetSingleSyntaxArg(Pair* P) {
+  // P->Car is the syntactic keyword
+  Pair* P2 = dyn_cast<Pair>(P->Cdr);
+  if (P2 && isa<Empty>(P2->Cdr)) {
+    return P2->Car;
+  }
+  return nullptr;
+}
+} // end namespace heavy
+
+namespace heavy { namespace builtin {
+heavy::Value* eval(Context& C, ValueRefs Args) {
+  unsigned Len = Args.size();
+  assert((Len == 1 || Len == 2) && "Invalid arity to builtin `eval`");
+  unsigned i = 0;
+  Value* EnvStack = (Len == 2) ? Args[i++] : nullptr;
+  Value* ExprOrDef = Args[i];
+  if (Environment* E = dyn_cast_or_null<Environment>(EnvStack)) {
+    // nest the Environment in the EnvStack
+    EnvStack = C.CreatePair(E);
+  }
+
+  mlir::Value OpGenResult = opGen(C, ExprOrDef);
+  OpGenResult.dump();
+  return C.CreateUndefined();
+  //return opEval(OpGenResult);
+}
+
+template <typename Op>
+heavy::Value* operator_helper(Context& C, Value* XVal, Value *YVal) {
+  Number* X = C.CheckKind<Number>(XVal);
+  if (C.CheckError()) return C.CreateUndefined();
+  Number* Y = C.CheckKind<Number>(YVal);
+  if (C.CheckError()) return C.CreateUndefined();
+  Value::Kind CommonKind = Number::CommonKind(X, Y);
+  Number* Result;
+  switch (CommonKind) {
+    case Value::Kind::Float: {
+      Float* CopyX = C.CreateFloat(cast<Float>(X)->getVal());
+      Float* CopyY = C.CreateFloat(cast<Float>(Y)->getVal());
+      Op::f(CopyX, CopyY);
+      Result = CopyX;
+      break;
+    }
+    case Value::Kind::Integer: {
+      // we can assume they are both integers
+      Integer* CopyX = C.CreateInteger(cast<Integer>(X)->getVal());
+      Op::f(CopyX, cast<Integer>(Y));
+      Result = CopyX;
+      break;
+    }
+    default:
+      llvm_unreachable("Invalid arithmetic type");
+  }
+  return Result;
+}
+
+heavy::Value* operator_add(Context& C, ValueRefs Args) {
+  Value* Temp = Args[0];
+  for (heavy::Value* X : Args.drop_front()) {
+    Temp = operator_helper<NumberOp::Add>(C, Temp, X);
+  }
+  return Temp;
+}
+
+heavy::Value* operator_mul(Context&C, ValueRefs Args) {
+  Value* Temp = Args[0];
+  for (heavy::Value* X : Args.drop_front()) {
+    Temp = operator_helper<NumberOp::Mul>(C, Temp, X);
+  }
+  return Temp;
+}
+
+heavy::Value* operator_sub(Context&C, ValueRefs Args) {
+  Value* Temp = Args[0];
+  for (heavy::Value* X : Args.drop_front()) {
+    Temp = operator_helper<NumberOp::Sub>(C, Temp, X);
+  }
+  return Temp;
+}
+
+heavy::Value* operator_div(Context& C, ValueRefs Args) {
+  Value* Temp = Args[0];
+  for (heavy::Value* X : Args.drop_front()) {
+    if (Number::isExactZero(X)) {
+      C.SetError("divide by exact zero", X);
+      return X;
+    }
+    Temp = operator_helper<NumberOp::Div>(C, Temp, X);
+  }
+  return Temp;
+}
+
+heavy::Value* list(Context& C, ValueRefs Args) {
+  // Returns a *newly allocated* list of its arguments.
+  heavy::Value* List = C.CreateEmpty();
+  for (heavy::Value* Arg : Args) {
+    List = C.CreatePair(Arg, List);
+  }
+  return List;
+}
+
+heavy::Value* append(Context& C, ValueRefs Args) {
+  llvm_unreachable("TODO append");
+}
+
+}} // end of namespace heavy::builtin
+
+
+void LoadSystemModule(Context& C) {
+  // Builtin Syntax
   C.AddBuiltinSyntax("quote",       builtin_syntax::quote);
   C.AddBuiltinSyntax("quasiquote",  builtin_syntax::quasiquote);
   C.AddBuiltinSyntax("define",      builtin_syntax::define);
+
+  // Builtin Procedures
+  C.AddBuiltin("+",                 builtin::operator_add);
+  C.AddBuiltin("*",                 builtin::operator_mul);
+  C.AddBuiltin("-",                 builtin::operator_sub);
+  C.AddBuiltin("/",                 builtin::operator_div);
+  C.AddBuiltin("list",              builtin::list);
+  C.AddBuiltin("append",            builtin::append);
 }
 
+Value* eval(Context& C, Value* V, Value* EnvStack) {
+  heavy::Value* Args[2] = {V, EnvStack};
+  int ArgCount = EnvStack ? 2 : 1;
+  return builtin::eval(C, ValueRefs(Args, ArgCount));
+}
