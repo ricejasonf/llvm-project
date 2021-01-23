@@ -13,7 +13,7 @@
 #ifndef LLVM_HEAVY_EVALUATION_STACK_H
 #define LLVM_HEAVY_EVALUATION_STACK_H
 
-#include "heavy/HeavyScheme.h"
+#include "heavy/Source.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/Casting.h"
@@ -32,11 +32,13 @@
 #endif
 
 namespace heavy {
-using AllocatorTy = llvm::BumpPtrAllocator;
+
+class Context;
+class Value;
 
 struct RedZoneByte { };
 
-class StackFrame : public llvm::TrailingObjects<StackFrame, Value*,
+class StackFrame final : public llvm::TrailingObjects<StackFrame, Value*,
                                                 RedZoneByte> {
   friend class llvm::TrailingObjects<StackFrame, Value*>;
 
@@ -63,8 +65,8 @@ public:
     // "Zero fill" everything except the red zone bytes
     ArgCount = 0;
     CallLoc = {};
-    Value** Vs getTrailingObjects<Value*>();
-    std::fill(Vs[0], Vs[ArgCount], nullptr);
+    Value** Vs = getTrailingObjects<Value*>();
+    std::fill(&Vs[0], &Vs[ArgCount], nullptr);
   }
 
   static size_t sizeToAlloc(unsigned ArgCount) {
@@ -80,7 +82,7 @@ public:
   // Gets the size in bytes that we allocated
   // minus the red zone bytes
   unsigned getMemLength() const {
-    return totalSizeToAlloc<Value*>(ArgCount);
+    return sizeToAlloc(ArgCount) - HEAVY_STACK_RED_ZONE_SIZE;
   }
 
   SourceLocation getCallLoc() const {
@@ -89,19 +91,19 @@ public:
 
   // Returns the value for callee or nullptr
   // if the StackFrame is invalid
-  Value* getCallee() {
+  Value* getCallee() const {
     if (isInvalid()) return nullptr;
-    return getTrailingObjects<Value*>()[ArgCount - 1];
+    return getTrailingObjects<Value*>()[0];
   }
 
-  // Returns the argument or nullptr if N
-  // is out of range or refers the the callee
-  // Argument #0 is the first operand starting
-  // from the right (but it is stored in reverse
-  // order so its the first element in the array)
-  Value* getArg(unsigned N) const {
-    if (isInvalid() || N >= ArgCount - 1) return nullptr;
-    return getTrailingObjects<Value*>()[N];
+  void setCallee(heavy::Value* X) {
+    if (isInvalid()) return;
+    getTrailingObjects<Value*>()[0] = X;
+  }
+
+  llvm::MutableArrayRef<heavy::Value*> getArgs() {
+    return llvm::MutableArrayRef<heavy::Value*>(
+        getTrailingObjects<Value*>() + 1, ArgCount - 1);
   }
 
   // Get the previous stack frame. This assumes that
@@ -112,7 +114,7 @@ public:
   // previous stack frame is valid and in bounds
   StackFrame* getPrevious() {
     char* PrevPtr = reinterpret_cast<char*>(this) + sizeToAlloc(ArgCount);
-    return reinterpret_cast<StackFrame*>(CurPtr);
+    return reinterpret_cast<StackFrame*>(PrevPtr);
   }
 };
 
@@ -123,16 +125,24 @@ public:
 //      - manages a stack for unwinding TODO
 //      - grows downward in memory
 class EvaluationStack {
-  static_assert(HEAVY_STACK_SIZE > 0);
+  static_assert(HEAVY_STACK_SIZE > 0, "HEAVY_STACK_SIZE must be valid");
   heavy::Context& Context;
-  heavy::StackFrame* Top;
   std::vector<char> Storage;
+  heavy::StackFrame* Top;
+
+  heavy::StackFrame* getStartingPoint() {
+    // The bottom, invalid frame is pushed on top of this.
+    // This frame should never be accessed.
+    return reinterpret_cast<heavy::StackFrame*>(&Storage.back());
+  }
+
+  void EmitStackSpaceError();
 
 public:
-  EvaluationStack(Context& C)
-   : Context(C),
-     Storage(HEAVY_STACK_SIZE, 0),
-     Top(Storage.back())
+  EvaluationStack(heavy::Context& C)
+    : Context(C),
+      Storage(HEAVY_STACK_SIZE, 0),
+      Top(getStartingPoint())
   {
     // push an invalid StackFrame as the bottom
     push(0, {});
@@ -144,10 +154,10 @@ public:
   StackFrame* push(unsigned ArgCount, SourceLocation CallLoc) {
     unsigned ByteLen = StackFrame::sizeToAlloc(ArgCount);
 
-    void* CurPtr = Top;
-    void* NewPtr = CurPtr - ByteLen;
+    char* CurPtr = reinterpret_cast<char*>(Top);
+    char* NewPtr = CurPtr - ByteLen;
     if (CurPtr <= NewPtr) {
-      Context.SetError("insufficient stack space");
+      EmitStackSpaceError();
       return nullptr;
     }
 
@@ -155,8 +165,8 @@ public:
   }
 
   void pop() {
-    StackFrame* Prev = Top->getPrevious()
-    T->~StackFrame();
+    StackFrame* Prev = Top->getPrevious();
+    Top->~StackFrame();
     Top = Prev;
   }
 
@@ -165,5 +175,6 @@ public:
   }
 };
 
-
 }
+
+#endif

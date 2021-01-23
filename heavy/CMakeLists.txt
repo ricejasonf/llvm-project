@@ -18,5 +18,6 @@ include_directories(BEFORE
                     ../clang/include)
 
 add_subdirectory(include/heavy)
+add_subdirectory(lib)
 add_subdirectory(tools/heavy-scheme)
 add_subdirectory(test)

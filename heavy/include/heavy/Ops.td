@@ -76,7 +76,7 @@ def heavy_DefineOp : HeavyOp<"define"> {
     CallOps.)
   }];
 
-  let arguments = (ins HeavyValue:$binding);
+  let arguments = (ins HeavyValue:$binding, HeavyValue:$input);
   let results   = (outs HeavyValue:$result);
   let builders = [
     OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, ::mlir::Value binding">

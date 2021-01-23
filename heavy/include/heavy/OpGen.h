@@ -25,9 +25,9 @@ namespace mlir {
 namespace heavy {
 
 mlir::Value opGen(Context&, Value*);
-void opEval(mlir::Value);
+heavy::Value* opEval(mlir::Value);
 
-void LoadBuiltinSyntax(Context& C);
+void LoadSystemModule(Context&);
 
 }
 
