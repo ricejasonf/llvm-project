@@ -19,36 +19,89 @@
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "llvm/ADT/ArrayRef.h"
 
+// Kinds go away with an August 2020 MLIR commit in `main`
+#define HEAVY_VALUE_KIND \
+  mlir::Attribute::Kind::FIRST_PRIVATE_EXPERIMENTAL_0_ATTR
+
 namespace heavy {
 class Value;
+}
 
-class Dialect : public mlir::Dialect {
+namespace mlir {
+namespace heavy_mlir {
+
+struct Dialect : public mlir::Dialect {
   explicit Dialect(mlir::MLIRContext* Ctx);
   static llvm::StringRef getDialectNamespace() { return "heavy"; }
+
+  void printAttribute(mlir::Attribute Attr,
+                      mlir::DialectAsmPrinter& P) const override;
+  void printType(mlir::Type, mlir::DialectAsmPrinter&) const override;
 };
 
-class HeavyValue : public mlir::Type::TypeBase<
+struct DialectRegisterer {
+  DialectRegisterer() {
+    mlir::registerDialect<Dialect>();
+  }
+};
+
+struct HeavyValue : public mlir::Type::TypeBase<
                             HeavyValue,
                             mlir::Type,
                             mlir::TypeStorage> {
   using Base::Base;
+
+
+  // This will go away
+  static HeavyValue get(mlir::MLIRContext* C) {
+    return Base::get(C, HEAVY_VALUE_KIND);
+  }
+};
+
+struct HeavyValueAttrStorage : public mlir::AttributeStorage {
+  heavy::Value* Val;
+
+  HeavyValueAttrStorage(heavy::Value* V)
+    : Val(V)
+  { }
+
+  using KeyTy = heavy::Value*;
+  bool operator==(KeyTy const& Key) const {
+    return Key == Val;
+  }
+
+  static HeavyValueAttrStorage* construct(
+      mlir::AttributeStorageAllocator& Allocator, heavy::Value* V) {
+    return new (Allocator.allocate<HeavyValueAttrStorage>())
+      HeavyValueAttrStorage(V);
+  }
 };
 
 class HeavyValueAttr : public mlir::Attribute::AttrBase<
                             HeavyValueAttr,
                             mlir::Attribute,
-                            mlir::AttributeStorage> {
+                            HeavyValueAttrStorage> {
   using Base::Base;
-};
 
-// FIXME mabye fixe mlir's table gen stuff
-// These aliases fix mlir tablegen stuff
-namespace OpTrait = mlir::OpTrait;
-namespace MemoryEffects = mlir::MemoryEffects;
-using llvm::ArrayRef;
+public:
+  heavy::Value* getValue() const;
+
+  static bool kindof(unsigned K) {
+    return K == HEAVY_VALUE_KIND;
+  }
+
+  static HeavyValueAttr get(MLIRContext* C, heavy::Value* V) {
+    return Base::get(C, HEAVY_VALUE_KIND, V);
+  }
+};
 
 #define GET_OP_CLASSES
 #include "heavy/Ops.h.inc"
+}
+}
+
+namespace heavy {
+  using namespace mlir::heavy_mlir;
 }
 
 #endif

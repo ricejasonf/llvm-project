@@ -119,7 +119,10 @@ public:
   heavy::Value* Visit(DefineOp Op) {
     // Evaluate the initializer expression
     // and assign it the the binding
-    setValue(Op.binding(), Visit(Op.input()));
+    if (BindingOp B = dyn_cast<BindingOp>(Op.binding().getDefiningOp())) {
+      assert(B && "DefineOp must contain BindingOp");
+      setValue(Op.binding(), Visit(B.input()));
+    }
     return Context.CreateUndefined();
   }
 };
