@@ -80,9 +80,7 @@ public:
 
     // Create the BindingOp
     B = Context.CreateBinding(S, Context.CreateUndefined());
-    mlir::Value BVal = create<BindingOp>(
-        S->getSourceLocation(),
-        InitVal);
+    mlir::Value BVal = create<BindingOp>(S->getSourceLocation(), InitVal);
     M->Insert(B);
     BindingTable.try_emplace(B, BVal);
 
@@ -164,7 +162,7 @@ private:
 #endif
 };
 
-mlir::Value opGen(Context& C, Value* V) {
+mlir::Value heavy::opGen(Context& C, Value* V) {
   OpGen O(C);
   return O.Visit(V);
 }
@@ -379,7 +377,7 @@ void LoadSystemModule(Context& C) {
   C.AddBuiltin("append",            builtin::append);
 }
 
-Value* eval(Context& C, Value* V, Value* EnvStack) {
+Value* heavy::eval(Context& C, Value* V, Value* EnvStack) {
   heavy::Value* Args[2] = {V, EnvStack};
   int ArgCount = EnvStack ? 2 : 1;
   return builtin::eval(C, ValueRefs(Args, ArgCount));

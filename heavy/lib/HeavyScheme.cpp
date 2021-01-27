@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "heavy/Dialect.h"
 #include "heavy/HeavyScheme.h"
 #include "heavy/OpGen.h"
 #include "heavy/Source.h"
@@ -39,7 +40,8 @@ std::unique_ptr<Context> Context::CreateEmbedded() {
 }
 
 Context::Context()
-  : TrashHeap()
+  : DialectRegisterer()
+  , TrashHeap()
   , SystemModule(CreateModule())
   , SystemEnvironment(CreateEnvironment(CreatePair(SystemModule)))
   , EnvStack(SystemEnvironment)
