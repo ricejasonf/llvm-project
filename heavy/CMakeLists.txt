@@ -9,12 +9,13 @@ if(POLICY CMP0075)
 endif()
 
 set(HEAVY_LIB ${CMAKE_CURRENT_SOURCE_DIR}/lib)
+set(HEAVY_GEN_INC ${CMAKE_BINARY_DIR}/tools/heavy/include)
 set(CLANG_LIB ../clang/lib)
 include_directories(BEFORE
                     ${CMAKE_CURRENT_SOURCE_DIR}/include
                     ${CMAKE_CURRENT_SOURCE_DIR}/../mlir/include
                     ${CMAKE_BINARY_DIR}/tools/mlir/include
-                    ${CMAKE_BINARY_DIR}/tools/heavy/include
+                    ${HEAVY_GEN_INC}
                     ../clang/include)
 
 add_subdirectory(include/heavy)
