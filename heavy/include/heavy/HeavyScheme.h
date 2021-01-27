@@ -13,6 +13,7 @@
 #ifndef LLVM_HEAVY_HEAVY_SCHEME_H
 #define LLVM_HEAVY_HEAVY_SCHEME_H
 
+#include "heavy/Dialect.h"
 #include "heavy/EvaluationStack.h"
 #include "heavy/Source.h"
 #include "mlir/IR/MLIRContext.h"
@@ -647,7 +648,7 @@ inline SourceLocation Value::getSourceLocation() {
   return VS->getSourceLocation();
 }
 
-class Context {
+class Context : DialectRegisterer {
   AllocatorTy TrashHeap;
 
   // "static" values
