@@ -22,9 +22,10 @@ def HeavyDialect : Dialect {
 def HeavyValue : OpaqueType<"heavy", "HeavyValue",
                        "HeavyValue represents a heavy::Value*">;
 
-def HeavyValueAttr : Attr<CPred<"::heavy::isConvertibleToValue($_self)">,
+//def HeavyValueAttr : Attr<CPred<"::heavy::isConvertibleToValue($_self)">,
+def HeavyValueAttr : Attr<CPred<"true">,
                           "Any Attribute convertible to heavy::Value"> {
-  let storageType = "::mlir::Attribute";
+  let storageType = "::mlir::heavy_mlir::HeavyValueAttr";
   let returnType = "::heavy::Value *";
 }
 
@@ -76,10 +77,11 @@ def heavy_DefineOp : HeavyOp<"define"> {
     CallOps.)
   }];
 
-  let arguments = (ins HeavyValue:$binding, HeavyValue:$input);
+  let arguments = (ins HeavyValue:$binding);
   let results   = (outs HeavyValue:$result);
   let builders = [
-    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, ::mlir::Value binding">
+    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&,"
+              "::mlir::Value binding">
   ];
 }
 
