@@ -32,6 +32,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -46,6 +47,7 @@ using llvm::dyn_cast;
 using llvm::dyn_cast_or_null;
 using llvm::isa;
 
+class OpEval;
 class OpGen;
 class Context;
 class Value;
@@ -62,6 +64,7 @@ using SyntaxFn = mlir::Value (*)(OpGen&, Pair*);
 // (defined in OpGen.cpp)
 Value* eval(Context&, Value* V, Value* EnvStack = nullptr);
 void write(llvm::raw_ostream&, Value*);
+void LoadSystemModule(Context&);
 
 // Value - A result of an evaluation
 class Value {
@@ -331,6 +334,7 @@ class String final
     return Len;
   }
 
+public:
   String(StringRef S)
     : Value(Kind::String),
       Len(S.size())
@@ -338,20 +342,23 @@ class String final
     std::memcpy(getTrailingObjects<char>(), S.data(), S.size());
   }
 
-  String(StringRef S1, StringRef S2)
+  template <typename ...StringRefs>
+  String(unsigned TotalLen, StringRefs ...Ss)
     : Value(Kind::String),
-      Len(S1.size() + S2.size())
+      Len(TotalLen)
   { 
+    std::array<StringRef, sizeof...(Ss)> Arr = {Ss...};
     char* StrData = getTrailingObjects<char>();
-    std::memcpy(StrData,             S1.data(), S1.size());
-    std::memcpy(StrData + S1.size(), S2.data(), S2.size());
+    for (StringRef S : Arr) {
+      std::memcpy(StrData, S.data(), S.size());
+      StrData += S.size();
+    }
   }
   
   static size_t sizeToAlloc(unsigned Length) {
     return totalSizeToAlloc<char>(Length);
   }
 
-public:
   llvm::StringRef getView() const {
     return llvm::StringRef(getTrailingObjects<char>(), Len);
   }
@@ -667,6 +674,8 @@ public:
   std::unordered_map<void*, Value*> EmbeddedEnvs;
   EvaluationStack EvalStack;
   mlir::MLIRContext MlirContext;
+  std::unique_ptr<heavy::OpGen> OpGen;
+  std::unique_ptr<heavy::OpEval> OpEval;
   Value* Err = nullptr;
   bool IsTopLevel = true;
 
@@ -700,8 +709,7 @@ public:
   static std::unique_ptr<Context> CreateEmbedded();
 
   Context();
-
-  void LoadSystemModule();
+  ~Context();
 
   // Returns a Builtin from the SystemModule
   // for use within builtin syntaxes that wish
@@ -803,6 +811,7 @@ public:
   }
   String*     CreateString(StringRef S);
   String*     CreateString(StringRef S1, StringRef S2);
+  String*     CreateString(StringRef, StringRef, StringRef);
   Symbol*     CreateSymbol(StringRef V,
                          SourceLocation Loc = SourceLocation()) {
     // FIXME uhh this should store a copy V's contents somewhere
@@ -849,6 +858,11 @@ public:
     return new (TrashHeap) Module(TrashHeap);
   }
   Binding* CreateBinding(Symbol* S, Value* V) {
+    return new (TrashHeap) Binding(S, V);
+  }
+  Binding* CreateBinding(Value* V) {
+    // TODO create Binding class with no symbol
+    Symbol* S = CreateSymbol("NONAME");
     return new (TrashHeap) Binding(S, V);
   }
 
