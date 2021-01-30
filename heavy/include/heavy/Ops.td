@@ -61,9 +61,31 @@ def heavy_BindingOp : HeavyOp<"binding"> {
   let arguments = (ins HeavyValue:$input);
   let results   = (outs HeavyValue:$result);
   let builders = [
-    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, ::mlir::Value input">
+    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, "
+              "::mlir::Value input">
   ];
 }
+
+/*
+def heavy_BuiltinOp : HeavyOp<"builtin"> {
+  let summary = "builtin";
+  let description = [{
+    This is a heavy::Value wrapper for a function
+    of type heavy::ValueFn implemented in C++.
+    This takes the callee name as a string as well
+    as a constructed heavy::BuiltinFn for the tree
+    evaluator.
+  }];
+
+  let arguments = (ins FlatSymbolRefAttr:$calleeName,
+                   HeavyValueAttr:$builtinFn);
+  let results   = (outs HeavyValue:$result);
+  let builders  = [
+    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, "
+              "::llvm::StringRef calleeName, ::heavy::ValueFn">
+  ];
+}
+*/
 
 def heavy_DefineOp : HeavyOp<"define"> {
   let summary = "define";

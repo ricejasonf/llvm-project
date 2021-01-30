@@ -14,13 +14,12 @@
 #include "heavy/HeavyScheme.h"
 #include "heavy/Source.h"
 #include "heavy/OpGen.h"
-#include "mlir/IR/Module.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Casting.h"
 
 using namespace heavy;
 
-namespace {
+namespace heavy {
 heavy::SourceLocation getSourceLocation(mlir::Location Loc) {
   if (!Loc.isa<mlir::OpaqueLoc>()) return {};
   return heavy::SourceLocation(
@@ -28,7 +27,7 @@ heavy::SourceLocation getSourceLocation(mlir::Location Loc) {
       Loc.cast<mlir::OpaqueLoc>()));
 }
 
-class OpEvaluator {
+class OpEval {
   heavy::Context& Context;
   llvm::DenseMap<mlir::Value, heavy::Value*> ValueMap;
 
@@ -44,8 +43,7 @@ class OpEvaluator {
     return V;
   }
 
-public:
-  OpEvaluator(heavy::Context& C)
+  OpEval(heavy::Context& C)
     : Context(C),
       ValueMap()
   { }
@@ -54,6 +52,7 @@ public:
     return Visit(V.getDefiningOp());
   }
 
+public:
   heavy::Value* Visit(mlir::Operation* Op) {
     // FIXME there has to be a better way to do this
     if (llvm::isa<ApplyOp>(Op))   return Visit(llvm::cast<ApplyOp>(Op));
@@ -106,7 +105,11 @@ public:
   }
 
   heavy::Value* Visit(BindingOp Op) {
-    return getValue(Op.result());
+    if (auto* B = dyn_cast<heavy::Binding>(getValue(Op.result()))) {
+      return B->getValue();
+    }
+    llvm_unreachable("A BindingOp must have an entry in ValueMap");
+    return Context.CreateUndefined();
   }
 
   heavy::Value* Visit(LiteralOp Op) {
@@ -128,7 +131,6 @@ public:
 };
 }
 
-heavy::Value* opEval(heavy::Context& C, mlir::Value V) {
-  OpEvaluator Eval(C);
-  return Eval.Visit(V.getDefiningOp());
+heavy::Value* heavy::opEval(heavy::Context& C, mlir::Value V) {
+  return C.OpEval->Visit(V.getDefiningOp());
 }
