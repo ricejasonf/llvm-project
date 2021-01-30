@@ -12,6 +12,7 @@
 
 #include "heavy/Dialect.h"
 #include "heavy/HeavyScheme.h"
+#include "heavy/OpEval.h"
 #include "heavy/OpGen.h"
 #include "heavy/Source.h"
 #include "mlir/IR/Module.h"
@@ -47,23 +48,41 @@ Context::Context()
   , EnvStack(SystemEnvironment)
   , EvalStack(*this)
   , MlirContext()
+  , OpGen(std::make_unique<heavy::OpGen>(*this))
+  , OpEval(std::make_unique<heavy::OpEval>(*this))
 { }
+
+Context::~Context() = default;
+
+template <typename A, typename ...StringRefs>
+String* CreateStringHelper(A& TrashHeap, StringRefs ...S) {
+  std::array<unsigned, sizeof...(S)> Sizes{static_cast<unsigned>(S.size())...};
+  unsigned TotalLen = 0;
+  for (unsigned Size : Sizes) {
+    TotalLen += Size;
+  }
+
+  unsigned MemSize = String::sizeToAlloc(TotalLen);
+  void* Mem = TrashHeap.Allocate(MemSize, alignof(String));
+
+  return new (Mem) String(TotalLen, S...);
+}
 
 String* Context::CreateString(StringRef S) {
   // Allocate and copy the string data
-  size_t size = String::sizeToAlloc(S.size());
-  void* Mem = TrashHeap.Allocate(size, alignof(String));
+  size_t MemSize = String::sizeToAlloc(S.size());
+  void* Mem = TrashHeap.Allocate(MemSize, alignof(String));
   return new (Mem) String(S);
 }
 
-// This is handy for creating error messages that usually involve
-// concatenating two string constants, usually a message and a
-// value kind.
 String* Context::CreateString(StringRef S1, StringRef S2) {
-  // Allocate and copy the string data
-  unsigned size = String::sizeToAlloc(S1.size() + S2.size());
-  void* Mem = TrashHeap.Allocate(size, alignof(String));
-  return new (Mem) String(S1, S2);
+  return CreateStringHelper(TrashHeap, S1, S2);
+}
+
+String* Context::CreateString(StringRef S1,
+                              StringRef S2,
+                              StringRef S3) {
+  return CreateStringHelper(TrashHeap, S1, S2, S3);
 }
 
 Integer* Context::CreateInteger(llvm::APInt Val) {
