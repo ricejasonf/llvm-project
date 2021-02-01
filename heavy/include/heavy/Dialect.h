@@ -24,7 +24,12 @@
   mlir::Attribute::Kind::FIRST_PRIVATE_EXPERIMENTAL_0_ATTR
 
 namespace heavy {
+class Context;
 class Value;
+using ValueRefs = llvm::ArrayRef<heavy::Value*>;
+using ValueFn = heavy::Value* (*)(Context&, ValueRefs);
+
+class Builtin;
 }
 
 namespace mlir {

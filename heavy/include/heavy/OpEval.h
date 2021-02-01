@@ -56,6 +56,7 @@ public:
     // FIXME there has to be a better way to do this
     if (llvm::isa<ApplyOp>(Op))   return Visit(llvm::cast<ApplyOp>(Op));
     if (llvm::isa<BindingOp>(Op)) return Visit(llvm::cast<BindingOp>(Op));
+    if (llvm::isa<BuiltinOp>(Op)) return Visit(llvm::cast<BuiltinOp>(Op));
     if (llvm::isa<DefineOp>(Op))  return Visit(llvm::cast<DefineOp>(Op));
     if (llvm::isa<LiteralOp>(Op)) return Visit(llvm::cast<LiteralOp>(Op));
     llvm_unreachable("Unknown Operation");
@@ -89,6 +90,7 @@ public:
       case Value::Kind::Builtin: {
         Builtin* B = cast<Builtin>(Callee);
         Result = B->Fn(Context, Args);
+        break;
       }
       default: {
         String* Msg = Context.CreateString(
@@ -109,6 +111,13 @@ public:
     }
     llvm_unreachable("A BindingOp must have an entry in ValueMaps");
     return Context.CreateUndefined();
+  }
+
+  heavy::Value* Visit(BuiltinOp Op) {
+    // Map the IR value node to the run-time value
+    heavy::Value* V = Op.builtinFn(); 
+    setValue(Op.result(), V);
+    return V;
   }
 
   heavy::Value* Visit(LiteralOp Op) {
