@@ -53,6 +53,8 @@ public:
                               std::forward<Args>(args)...);
   }
 
+  mlir::Value createTopLevelDefine(Symbol* S, Value *V, Module* M,
+                                   SourceLocation DefineLoc = {});
   mlir::Value createTopLevelDefine(Symbol* S, Value *V, Value* OrigCall);
 
   template <typename T>
@@ -65,6 +67,10 @@ public:
 private:
   mlir::Value VisitValue(Value* V) {
     return create<LiteralOp>(V->getSourceLocation(), V);
+  }
+
+  mlir::Value VisitBuiltin(Builtin* V) {
+    return create<BuiltinOp>(V->getSourceLocation(), V);
   }
 
   mlir::Value VisitSymbol(Symbol* S);

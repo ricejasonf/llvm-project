@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "heavy/Builtins.h"
 #include "heavy/Dialect.h"
 #include "heavy/HeavyScheme.h"
 #include "heavy/OpEval.h"
@@ -50,7 +51,20 @@ Context::Context()
   , MlirContext()
   , OpGen(std::make_unique<heavy::OpGen>(*this))
   , OpEval(std::make_unique<heavy::OpEval>(*this))
-{ }
+{
+  // Load Builtin Syntax
+  AddBuiltinSyntax("quote",       builtin_syntax::quote);
+  AddBuiltinSyntax("quasiquote",  builtin_syntax::quasiquote);
+  AddBuiltinSyntax("define",      builtin_syntax::define);
+
+  // Load Builtin Procedures
+  AddBuiltin("+",                 builtin::operator_add);
+  AddBuiltin("*",                 builtin::operator_mul);
+  AddBuiltin("-",                 builtin::operator_sub);
+  AddBuiltin("/",                 builtin::operator_div);
+  AddBuiltin("list",              builtin::list);
+  AddBuiltin("append",            builtin::append);
+}
 
 Context::~Context() = default;
 
@@ -205,6 +219,16 @@ Value* Context::CreateGlobal(Symbol* S, Value *V, Value* OrigCall) {
   return B;
 }
 
+void Context::AddBuiltin(StringRef Str, ValueFn Fn) {
+  Symbol* S = CreateSymbol(Str);
+  Value* V = CreateBuiltin(Fn);
+  Module* M = SystemModule;
+  mlir::Value Op = OpGen->createTopLevelDefine(S, V, M, SourceLocation());
+  OpEval->Visit(Op);
+}
+
+#if 0
+// TODO remove I don't think it is used after OpGen was added
 Builtin* Context::GetBuiltin(StringRef Name) {
   Binding* B = nullptr;
   Value* Result = SystemModule->Lookup(Name);
@@ -217,6 +241,7 @@ Builtin* Context::GetBuiltin(StringRef Name) {
   assert(B && isa<Builtin>(B->getValue()) && "Internal builtin lookup failed");
   return cast<Builtin>(B->getValue());
 }
+#endif
 
 namespace {
 #if 0

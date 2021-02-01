@@ -80,7 +80,7 @@ int main(int argc, char const** argv) {
 
   // Top level Scheme parse/eval stuff
 
-  heavy::Context Context{};
+  heavy::Context Context;
   heavy::Lexer   SchemeLexer(File.StartLoc, File.Buffer);
   heavy::Parser  Parser(SchemeLexer, Context);
 

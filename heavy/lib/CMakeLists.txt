@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.4.3)
 
 add_llvm_library(heavy
+  ${HEAVY_LIB}/Builtins.cpp
   ${HEAVY_LIB}/Dialect.cpp
   ${HEAVY_LIB}/OpGen.cpp
   ${HEAVY_LIB}/HeavyScheme.cpp

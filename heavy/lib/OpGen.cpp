@@ -26,35 +26,35 @@ using namespace heavy;
 OpGen::OpGen(heavy::Context& C)
   : Context(C),
     Builder(&(C.MlirContext))
-{
-  // Load Builtin Syntax
-  C.AddBuiltinSyntax("quote",       builtin_syntax::quote);
-  C.AddBuiltinSyntax("quasiquote",  builtin_syntax::quasiquote);
-  C.AddBuiltinSyntax("define",      builtin_syntax::define);
+{ }
 
-  // Load Builtin Procedures
-  C.AddBuiltin("+",                 builtin::operator_add);
-  C.AddBuiltin("*",                 builtin::operator_mul);
-  C.AddBuiltin("-",                 builtin::operator_sub);
-  C.AddBuiltin("/",                 builtin::operator_div);
-  C.AddBuiltin("list",              builtin::list);
-  C.AddBuiltin("append",            builtin::append);
+mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value* V, Module* M,
+                                        SourceLocation DefineLoc) {
+  // Create the BindingOp
+  mlir::Value InitVal = Visit(V);
+  Binding* B = Context.CreateBinding(S, Context.CreateUndefined());
+  mlir::Value BVal = create<BindingOp>(S->getSourceLocation(), InitVal);
+  mlir::Value DVal = create<DefineOp>(DefineLoc, BVal);
+  M->Insert(B);
+  BindingTable.try_emplace(B, BVal);
+
+  return DVal;
 }
 
-mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value *V, Value* OrigCall) {
+mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value* V,
+                                        Value* OrigCall) {
   heavy::Value* EnvStack = Context.EnvStack;
   heavy::SourceLocation DefineLoc = OrigCall->getSourceLocation();
   // A module at the top of the EnvStack is mutable
   Module* M = nullptr;
   Value* EnvRest = nullptr;
   if (isa<Pair>(EnvStack)) {
-    Value* EnvTop  = cast<Pair>(EnvStack)->Car;
+    Value* EnvTop = cast<Pair>(EnvStack)->Car;
     EnvRest = cast<Pair>(EnvStack)->Cdr;
     M = dyn_cast<Module>(EnvTop);
   }
   if (!M) return SetError("define used in immutable environment", OrigCall);
 
-  mlir::Value InitVal = Visit(V);
   // If the name already exists in the current module
   // then it behaves like `set!`
   Binding* B = M->Lookup(S);
@@ -69,17 +69,7 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value *V, Value* OrigCall) {
   B = Context.Lookup(S, EnvRest);
   if (B) return SetError("define overwrites immutable location", S);
 
-  // Create the BindingOp
-  B = Context.CreateBinding(S, Context.CreateUndefined());
-  mlir::Value BVal = create<BindingOp>(S->getSourceLocation(), InitVal);
-  mlir::Value DVal = create<DefineOp>(DefineLoc, BVal);
-  M->Insert(B);
-  BindingTable.try_emplace(B, BVal);
-  assert(BindingTable.lookup(B) == BVal &&
-      "BindingTable should contain the value");
-  BindingTable.lookup(B).dump();
-
-  return DVal;
+  return createTopLevelDefine(S, V, M, DefineLoc);
 }
 
 mlir::Value OpGen::VisitSymbol(Symbol* S) {
