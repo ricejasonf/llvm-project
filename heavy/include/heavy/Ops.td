@@ -66,7 +66,6 @@ def heavy_BindingOp : HeavyOp<"binding"> {
   ];
 }
 
-/*
 def heavy_BuiltinOp : HeavyOp<"builtin"> {
   let summary = "builtin";
   let description = [{
@@ -77,15 +76,15 @@ def heavy_BuiltinOp : HeavyOp<"builtin"> {
     evaluator.
   }];
 
-  let arguments = (ins FlatSymbolRefAttr:$calleeName,
-                   HeavyValueAttr:$builtinFn);
+  //let arguments = (ins FlatSymbolRefAttr:$calleeName,
+                   //HeavyValueAttr:$builtinFn);
+  let arguments = (ins HeavyValueAttr:$builtinFn);
   let results   = (outs HeavyValue:$result);
   let builders  = [
     OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, "
-              "::llvm::StringRef calleeName, ::heavy::ValueFn">
+              "heavy::Builtin*">
   ];
 }
-*/
 
 def heavy_DefineOp : HeavyOp<"define"> {
   let summary = "define";
