@@ -695,15 +695,11 @@ public:
     SetError(F->getCallLoc(), "invalid arity", F->getCallee());
   }
 
+  void AddBuiltin(StringRef Str, ValueFn Fn);
 
-  Binding* AddBuiltin(StringRef Str, ValueFn Fn) {
-    return SystemModule->Insert(CreateBinding(CreateSymbol(Str),
-                                              CreateBuiltin(Fn)));
-  }
-
-  Binding* AddBuiltinSyntax(StringRef Str, SyntaxFn Fn) {
-    return SystemModule->Insert(CreateBinding(CreateSymbol(Str),
-                                              CreateBuiltinSyntax(Fn)));
+  void AddBuiltinSyntax(StringRef Str, SyntaxFn Fn) {
+    SystemModule->Insert(CreateBinding(CreateSymbol(Str),
+                                       CreateBuiltinSyntax(Fn)));
   }
 
   static std::unique_ptr<Context> CreateEmbedded();
