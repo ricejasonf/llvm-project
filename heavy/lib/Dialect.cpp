@@ -58,6 +58,13 @@ void BindingOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
   BindingOp::build(B, OpState, B.getType<HeavyValue>(), Input);
 }
 
+void BuiltinOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                      heavy::Builtin* Builtin) {
+  // TODO eventually we need to have a "symbol" to the externally linked function
+  BuiltinOp::build(B, OpState, B.getType<HeavyValue>(),
+      HeavyValueAttr::get(B.getContext(), Builtin));
+}
+
 void DefineOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                      mlir::Value Binding) {
   DefineOp::build(B, OpState, B.getType<HeavyValue>(), Binding);
