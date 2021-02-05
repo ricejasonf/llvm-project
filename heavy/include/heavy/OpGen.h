@@ -53,9 +53,15 @@ public:
                               std::forward<Args>(args)...);
   }
 
-  mlir::Value createTopLevelDefine(Symbol* S, Value *V, Module* M,
-                                   SourceLocation DefineLoc = {});
-  mlir::Value createTopLevelDefine(Symbol* S, Value *V, Value* OrigCall);
+  mlir::Value createLambda(Value* Formals, Value* Body,
+                           SourceLocation Loc,
+                           llvm::StringRef Name = {});
+          
+  mlir::Value createDefine(Symbol* S, Value *V, Value* OrigCall);
+  mlir::Value createDefine(Symbol* S, mlir::Value Init,
+                                   Value* OrigCall);
+  mlir::Value createDefine(Symbol* S, mlir::Value Init, Module* M,
+                           SourceLocation DefineLoc = {});
 
   template <typename T>
   mlir::Value SetError(T Str, Value* V) {

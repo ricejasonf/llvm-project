@@ -120,8 +120,56 @@ Vector* Context::CreateVector(unsigned N) {
   return new (Mem) Vector(CreateUndefined(), N);
 }
 
-#if 0 // TODO implement creating a Procedure
-bool Context::CheckFormals(Value* V, int& Arity) {
+EnvFrame* Context::PushLambdaFormals(Value* Formals,
+                                     bool& HasRestParam) {
+  llvm::SmallVector<Symbol*, 16> Names;
+  HasRestParam = false;
+  if CheckLambdaFormals(Formals, Names, HasRestParam) return true;
+
+  llvm::SmallSet<llvm::StringRef, 16> NameSet;
+  // ensure uniqueness of names
+  for (Symbol* Name : Names) {
+    auto Result = NameSet.insert(Name->getValue());
+    if (!Result.second) {
+      Context.SetError("duplicate parameter name", Name);
+    }
+  }
+
+  return PushEnvFrame(Names);
+}
+
+EnvFrame* Context::PushEnvFrame(llvm::ArrayRef<Symbol*> Names) {
+  EnvFrame* E = CreateEnvFrame(Names);
+  EnvStack = CreatePair(E, EnvStack);
+  return E;
+}
+
+void Context::PopEnvFrame() {
+  // We want to remove the current local scope
+  // and assert that we aren't popping anything else
+  assert(isa<EnvFrame>(EnvStack->Car) && "Current scope must be an EnvFrame");
+  EnvStack = EnvStack->Cdr;
+}
+
+EnvFrame* Context::CreateEnvFrame(llvm::ArrayRef<Symbols*> Names) {
+  unsigned MemSize = EnvFrame::sizeToAlloc(Names.size());  
+
+  void* Mem = TrashHeap.Allocate(MemSize, alignof(EnvFrame));
+
+  EnvFrame* E = new (Mem) EnvFrame(Names.size());
+  auto Bindings = E->getBindings();
+  for (int i = 0; i < Bindings.size(); i++) {
+    Bindings[i] = CreateBinding(Names[i], CreateUndefined());
+  }
+  return E;
+}
+
+
+// CheckLambdaFormals - Returns true on error
+bool Context::CheckLambdaFormals(Value* Formals,
+                               llvm::SmallVectorImpl<Symbol*>& Names,
+                               bool& HasRestParam) {
+  Value* V = Formals;
   if (isa<Empty>(V)) return;
   if (isa<Symbol>(V)) {
     // If the formals are just a Symbol
@@ -129,20 +177,20 @@ bool Context::CheckFormals(Value* V, int& Arity) {
     // Symbol, then that Symbol is a "rest"
     // parameter that binds remaining
     // arguments as a list.
-    Arity = -1;
+    Names.push_back(cast<Symbol>(V));
+    HasRestParam = true;
     return false;
   }
 
   Pair* P = dyn_cast<Pair>(V);
-  Symbol* S = nullptr;
   if (!P || !isa<Symbol>(P->Car)) {
-    llvm::errs() << "\nTODO diagnose invalid formals\n";
+    Context.SetError("invalid formals syntax", V);
     return true;
   }
-
-  ++Arity;
-  return CheckFormals(P->Cdr, Arity);
+  Names.push_back(cast<Symbol>(P->Car));
+  return CheckLambdaFormals(P->Cdr, Names, HasRestParam);
 }
+#if 0 // TODO implement creating a Procedure
 
 Procedure* Context::CreateProcedure(Pair* P) {
   int Arity = 0;
@@ -165,11 +213,9 @@ Binding* Context::Lookup(Symbol* Name, Value* Stack, Value* NextStack) {
   Value* V    = cast<Pair>(Stack)->Car;
   Value* Next = cast<Pair>(Stack)->Cdr;
   switch (V->getKind()) {
-#if 0
     case Value::Kind::EnvFrame:
       Result = cast<EnvFrame>(V)->Lookup(Name);
       break;
-#endif
     case Value::Kind::Module:
       Result = cast<Module>(V)->Lookup(Name);
       break;

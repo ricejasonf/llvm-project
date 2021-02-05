@@ -106,11 +106,10 @@ def heavy_DefineOp : HeavyOp<"define"> {
   ];
 }
 
-/*
-def heavy_ProcedureOp : HeavyOp<"procedure", [FunctionLike]> {
-  let summary = "procedure";
+def heavy_LambdaOp : HeavyOp<"lambda", []> {
+  let summary = "lambda";
   let description = [{
-    Procedures represent function objects that have
+    Lambdas represent function objects that have
     two significant properties:
       - Variables that are lexically defined in a parent scope are implicitly
         captured if they appear in the procedures scope. 
@@ -121,10 +120,19 @@ def heavy_ProcedureOp : HeavyOp<"procedure", [FunctionLike]> {
         into procedures during syntax expansion
   }];
 
-  let arguments = (ins ???);
-  let result = (outs ???);
+  let arguments = (ins StrAttr:$name,
+                       UI32Attr:$arity,
+                       BoolAttr:$hasRestParam,
+                       Variadic<HeavyValue>:$captures);
+  // $result is the instance of the closure/"function object"
+  let results = (outs HeavyValue:$result);
+
+  let builders = [
+    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&,"
+              "::llvm::StringRef Name, uint32_t Arity, bool HasResetParam,"
+              "::llvm::ArrayRef<::mlir::Value> Captures">
+  ];
 }
-*/
 
 def heavy_LiteralOp : HeavyOp<"literal", [NoSideEffect]> {
   let summary = "literal";
