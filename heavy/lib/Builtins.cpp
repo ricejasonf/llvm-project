@@ -40,25 +40,35 @@ mlir::Value define(OpGen& OG, Pair* P) {
   Value*  V   = nullptr;
   if (!P2) return OG.SetError("invalid define syntax", P);
   if (Pair* LambdaSpec = dyn_cast<Pair>(P2->Car)) {
-    llvm_unreachable("TODO");
     S = dyn_cast<Symbol>(LambdaSpec->Car);
-#if 0 // CheckLambda would return nullptr
-    V = C.CheckLambda(/*LambdaParams=*/LambdaSpec->Cdr,
-                      /*LambdaBody=*/P2->Cdr,
-                      /*LambdaName=*/S);
-#endif
+    Value* Formals = LambdaSpec->Cdr;
+    Value* Body = P2->Cdr;
+    if (!S) return OG.SetError("invalid define lambda syntax", LambdaSpec);
+    mlir::Value Lambda = OG.createLambda(Formals, Body,
+                                         S->getSourceLocation(),
+                                         S->getVal());
+    return OG.createDefine(S, Lambda, P);
+
   } else {
     S = dyn_cast<Symbol>(P2->Car);
     V = GetSingleSyntaxArg(P2);
   }
   if (!S || !V) return OG.SetError("invalid define syntax", P);
   if (OG.IsTopLevel) {
-    return OG.createTopLevelDefine(S, V, P);
+    return OG.createDefine(S, V, P);
   } else {
     // Handle internal definitions inside
     // lambda syntax
     return OG.SetError("unexpected define", P);
   }
+}
+
+mlir::Value lambda(OpGen& OG, Pair* P) {
+  Pair* P2 = dyn_cast<Pair>(P->Cdr);
+  Value* Formals = P2->Car;
+  Pair* Body = dyn_cast<Pair>(P2->Cdr);
+
+  return OG.createLambda(Formals, Body, P->getSourceLocation());
 }
 
 mlir::Value quote(OpGen& OG, Pair* P) {

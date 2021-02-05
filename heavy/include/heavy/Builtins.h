@@ -35,6 +35,7 @@ using ValueRefs = llvm::ArrayRef<heavy::Value*>;
 namespace heavy { namespace builtin_syntax {
 
 mlir::Value define(OpGen& OG, Pair* P);
+mlir::Value lambda(OpGen& OG, Pair* P);
 mlir::Value quote(OpGen& OG, Pair* P);
 mlir::Value quasiquote(OpGen& C, Pair* P);
 
