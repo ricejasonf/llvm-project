@@ -70,6 +70,18 @@ void DefineOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
   DefineOp::build(B, OpState, B.getType<HeavyValue>(), Binding);
 }
 
+void LambdaOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                     llvm::StringRef Name,
+                     uint32_t Arity, bool HasRestParam,
+                     llvm::ArrayRef<mlir::Value> Captures) {
+  // The name can be empty for anonymous functions
+  LambdaOp::build(B, OpState, B.getType<HeavyValue>(),
+                  B.getStringAttr(Name),
+                  B.getUI32IntegerAttr(Arity),
+                  B.getBoolAttr(HasRestParam),
+                  Captures);
+}
+
 void LiteralOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                       heavy::Value* V) {
   // create a HeavyValueAttr from heavy::Value*
