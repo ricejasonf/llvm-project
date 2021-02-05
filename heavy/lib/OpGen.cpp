@@ -28,21 +28,26 @@ OpGen::OpGen(heavy::Context& C)
     Builder(&(C.MlirContext))
 { }
 
-mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value* V, Module* M,
-                                        SourceLocation DefineLoc) {
-  // Create the BindingOp
-  mlir::Value InitVal = Visit(V);
-  Binding* B = Context.CreateBinding(S, Context.CreateUndefined());
-  mlir::Value BVal = create<BindingOp>(S->getSourceLocation(), InitVal);
-  mlir::Value DVal = create<DefineOp>(DefineLoc, BVal);
-  M->Insert(B);
-  BindingTable.try_emplace(B, BVal);
+mlir::Value OpGen::createLambda(Value* Formals, Value* Body,
+                                SourceLocation Loc,
+                                llvm::StringRef Name) {
+  bool HasRestParam = false;
+  EnvFrame* E = Context.PushLambdaFormals(Formals, HasRestParam);
+  // TODO
+  // Create the BindingOps and code that initializes them in the body
+  // Visit each element in the body and add the result
 
-  return DVal;
+  return create<LambdaOp>(Params, RestParam, OpBody);
 }
 
-mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value* V,
-                                        Value* OrigCall) {
+mlir::Value OpGen::createDefine(Symbol* S, Value* V,
+                                Value* OrigCall) {
+  mlir::Value Init = Visit(V);
+  return return createDefine(S, Init, OrigCall);
+}
+
+mlir::Value OpGen::createDefine(Symbol* S, mlir::Value Init,
+                                Value* OrigCall) {
   heavy::Value* EnvStack = Context.EnvStack;
   heavy::SourceLocation DefineLoc = OrigCall->getSourceLocation();
   // A module at the top of the EnvStack is mutable
@@ -59,9 +64,8 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value* V,
   // then it behaves like `set!`
   Binding* B = M->Lookup(S);
   if (B) {
+    // require IsTopLevel == true
     return SetError("TODO create SetOp for top level define", OrigCall);
-    //B->Val = V;
-    //return B;
   }
 
   // Top Level definitions may not shadow names in
@@ -69,7 +73,19 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value* V,
   B = Context.Lookup(S, EnvRest);
   if (B) return SetError("define overwrites immutable location", S);
 
-  return createTopLevelDefine(S, V, M, DefineLoc);
+  return createDefine(S, Init, M, DefineLoc);
+}
+
+mlir::Value OpGen::createDefine(Symbol* S, mlir::Value Init,
+                                Module* M, SourceLocation DefineLoc) {
+  // Create the BindingOp
+  Binding* B = Context.CreateBinding(S, Context.CreateUndefined());
+  mlir::Value BVal = create<BindingOp>(S->getSourceLocation(), Init);
+  mlir::Value DVal = create<DefineOp>(DefineLoc, BVal);
+  M->Insert(B);
+  BindingTable.try_emplace(B, BVal);
+
+  return DVal;
 }
 
 mlir::Value OpGen::VisitSymbol(Symbol* S) {
@@ -85,7 +101,6 @@ mlir::Value OpGen::VisitSymbol(Symbol* S) {
   // BindingOps are created in the `define` syntax
   if (V) return V;
 
-  // FIXME this is happening for BuiltinFns
   String* Msg = Context.CreateString("binding has no associated value for '",
                                      S->getVal(), "'");
   return SetError(Msg, S);
@@ -144,6 +159,7 @@ mlir::Value OpGen::VisitVector(Vector* V) {
   return New;
 }
 #endif
+}
 
 Value* heavy::eval(Context& C, Value* V, Value* EnvStack) {
   heavy::Value* Args[2] = {V, EnvStack};

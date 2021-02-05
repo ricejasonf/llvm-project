@@ -52,6 +52,7 @@ class OpGen;
 class Context;
 class Value;
 class Pair;
+class Binding;
 using ValueRefs = llvm::ArrayRef<heavy::Value*>;
 using ValueFn = heavy::Value* (*)(Context&, ValueRefs);
 using SyntaxFn = mlir::Value (*)(OpGen&, Pair*);
@@ -80,6 +81,7 @@ public:
     Empty,
     Error,
     Environment,
+    EnvFrame,
     Exception,
     Float,
     ForwardRef,
@@ -87,7 +89,7 @@ public:
     Module,
     Pair,
     PairWithSource,
-    Procedure,
+    Lambda,
     Quote,
     String,
     Symbol,
@@ -200,6 +202,57 @@ public:
   { return V->getKind() == Kind::Environment; }
 };
 
+// EnvFrame - Represents a local scope that introduces variables
+//          - This should be used exclusively at compile time
+//            (unless we go the route of capturing entire scopes
+//             to keep values alive)
+class EnvFrame final
+  : public Value,
+    private llvm::TrailingObjects<EnvFrame, Binding*> {
+
+  friend class llvm::TrailingObjects<EnvFrame, Binding*>;
+  friend class Context;
+
+  unsigned NumBindings;
+  size_t numTrailingObjects(OverloadToken<Binding*> const) const {
+    return NumBindings;
+  }
+
+  EnvFrame(unsigned NumBindings)
+    : Value(Value::Kind::EnvFrame),
+      NumBindings(NumBindings)
+  { }
+
+public:
+  llvm::ArrayRef<Binding*> getBindings() const {
+    return llvm::ArrayRef<Binding*>(
+        getTrailingObjects<Binding*>(), NumBindings);
+  }
+
+  llvm::MutableArrayRef<Binding*> getBindings() {
+    return llvm::MutableArrayRef<Binding*>(
+        getTrailingObjects<Binding*>(), NumBindings);
+  }
+
+  static size_t sizeToAlloc(unsigned NumBindings) {
+    return totalSizeToAlloc<Binding*>(NumBindings);
+  }
+
+#if 0
+  // Returns nullptr if not found
+  Binding* Lookup(Symbol* Name) const {
+    // linear search
+    for (Binding* B : getBindings()) {
+      if (Name->equals(B->getName())) return B;
+    }
+    return nullptr;
+  }
+#endif
+  static bool classof(Value const* V) {
+    return V->getKind() == Kind::EnvFrame;
+  }
+};
+
 class Exception: public Value {
 public:
   Value* Val;
@@ -208,7 +261,9 @@ public:
     , Val(Val)
   { }
 
-  static bool classof(Value const* V) { return V->getKind() == Kind::Exception; }
+  static bool classof(Value const* V) {
+    return V->getKind() == Kind::Exception;
+  }
 };
 
 class Boolean : public Value {
@@ -320,7 +375,10 @@ public:
   StringRef getVal() { return Val; }
   static bool classof(Value const* V) { return V->getKind() == Kind::Symbol; }
 
-  bool equals(StringRef Str) { return Val == Str; }
+  bool equals(StringRef Str) const { return Val == Str; }
+  bool equals(Symbol* S) const {
+    return S->getVal() == Val;
+  }
 };
 
 class String final
@@ -436,24 +494,41 @@ public:
   }
 };
 
-class Procedure : public Value {
-  Value* Body;
-  Value* Bindings;
-  unsigned Arity;
+// A lambda object that has not been compiled
+class Lambda final
+  : public Value,
+    private llvm::TrailingObjects<Lambda, Value*> {
+
+  friend class llvm::TrailingObjects<Lambda, Value*>;
+
+  mlir::Operation* Op;
+  unsigned NumCaptures: 8;
+
+  size_t numTrailingObjects(OverloadToken<Value*> const) const {
+    return NumCaptures;
+  }
 
 public:
-  Procedure(Pair* Body, Value* Bindings, unsigned Arity)
-    : Value(Kind::Procedure)
-    , Body(Body)
-    , Bindings(Bindings)
-    , Arity(0)
+  Lambda(mlir::Operation* Op, unsigned NumCaptures)
+    : Value(Kind::Lambda)
+    , Op(Op)
+    , NumCaptures(NumCaptures)
   { }
 
-  Value* getBody() { return Body; }
-  Value* getBindings() { return Bindings; }
-
   static bool classof(Value const* V) {
-    return V->getKind() == Kind::Procedure;
+    return V->getKind() == Kind::Lambda;
+  }
+
+  mlir::Operation* getOp() const { return Op; }
+
+  llvm::ArrayRef<Value*> getCaptures() const {
+    return llvm::ArrayRef<Value*>(
+        getTrailingObjects<Value*>(), NumCaptures);
+  }
+
+  llvm::MutableArrayRef<Value*> getCaptures() {
+    return llvm::MutableArrayRef<Value*>(
+        getTrailingObjects<Value*>(), NumCaptures);
   }
 };
 
@@ -731,7 +806,22 @@ public:
     return Lookup(S);
   }
 
+  // PushEnvFrame - Creates and pushes an EnvFrame to the
+  //                current environment (EnvStack)
+  EnvFrame* PushEnvFrame(llvm::ArrayRef<Symbol*> Names);
+  void PopEnvFrame();
+
   Value* CreateGlobal(Symbol* S, Value* V, Value* OrigCall);
+
+  // PushLambdaFormals - Checks formals, creates an EnvFrame,
+  //                     and pushes it onto the EnvStack
+  //                     Returns the pushed EnvFrame
+  EnvFrame* PushLambdaFormals(Value* Formals, bool& HasRestParam);
+private:
+  bool CheckLambdaFormals(Value* Formals,
+                          llvm::SmallVectorImpl<Symbol*>& Names,
+                          bool& HasRestParam);
+public:
 
   // Check Error
   //  - Returns true if there is an error or exception
@@ -819,6 +909,7 @@ public:
   Environment* CreateEnvironment(Value* Stack) {
     return new (TrashHeap) Environment(Stack);
   }
+  EnvFrame*   CreateEnvFrame(llvm::ArrayRef<Symbol*> Names);
 
   String* CreateMutableString(StringRef V) {
     String* New = CreateString(V);
@@ -826,7 +917,7 @@ public:
     return New;
   }
 
-  Vector* CreateMutableVector(ArrayRef<Value*> Vs) {
+  Vector* CreateMutableVector(llvm::ArrayRef<Value*> Vs) {
     Vector* New = CreateVector(Vs);
     New->IsMutable = true;
     return New;
@@ -905,6 +996,7 @@ protected:
   VISIT_FN(Empty)
   VISIT_FN(Error)
   VISIT_FN(Environment)
+  VISIT_FN(EnvFrame)
   VISIT_FN(Exception)
   VISIT_FN(Float)
   VISIT_FN(ForwardRef)
@@ -912,7 +1004,7 @@ protected:
   VISIT_FN(Module)
   VISIT_FN(Pair)
   // VISIT_FN(PairWithSource) **PairWithSource Implemented below**
-  VISIT_FN(Procedure)
+  VISIT_FN(Lambda)
   VISIT_FN(Quote)
   VISIT_FN(String)
   VISIT_FN(Symbol)
@@ -937,6 +1029,7 @@ public:
     case Value::Kind::Empty:          DISPATCH(Empty);
     case Value::Kind::Error:          DISPATCH(Error);
     case Value::Kind::Environment:    DISPATCH(Environment);
+    case Value::Kind::EnvFrame:       DISPATCH(EnvFrame);
     case Value::Kind::Exception:      DISPATCH(Exception);
     case Value::Kind::Float:          DISPATCH(Float);
     case Value::Kind::ForwardRef:     DISPATCH(ForwardRef);
@@ -944,7 +1037,7 @@ public:
     case Value::Kind::Module:         DISPATCH(Module);
     case Value::Kind::Pair:           DISPATCH(Pair);
     case Value::Kind::PairWithSource:    DISPATCH(PairWithSource);
-    case Value::Kind::Procedure:      DISPATCH(Procedure);
+    case Value::Kind::Lambda:      DISPATCH(Lambda);
     case Value::Kind::Quote:          DISPATCH(Quote);
     case Value::Kind::String:         DISPATCH(String);
     case Value::Kind::Symbol:         DISPATCH(Symbol);
@@ -972,6 +1065,7 @@ inline StringRef Value::getKindName(heavy::Value::Kind Kind) {
   GET_KIND_NAME_CASE(Empty)
   GET_KIND_NAME_CASE(Error)
   GET_KIND_NAME_CASE(Environment)
+  GET_KIND_NAME_CASE(EnvFrame)
   GET_KIND_NAME_CASE(Exception)
   GET_KIND_NAME_CASE(Float)
   GET_KIND_NAME_CASE(ForwardRef)
@@ -979,7 +1073,7 @@ inline StringRef Value::getKindName(heavy::Value::Kind Kind) {
   GET_KIND_NAME_CASE(Module)
   GET_KIND_NAME_CASE(Pair)
   GET_KIND_NAME_CASE(PairWithSource)
-  GET_KIND_NAME_CASE(Procedure)
+  GET_KIND_NAME_CASE(Lambda)
   GET_KIND_NAME_CASE(Quote)
   GET_KIND_NAME_CASE(String)
   GET_KIND_NAME_CASE(Symbol)

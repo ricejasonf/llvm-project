@@ -84,7 +84,7 @@ public:
     heavy::Value* Result = Context.CreateUndefined();
 
     switch (Callee->getKind()) {
-      case Value::Kind::Procedure:
+      case Value::Kind::Lambda:
         llvm_unreachable("TODO");
         break;
       case Value::Kind::Builtin: {
