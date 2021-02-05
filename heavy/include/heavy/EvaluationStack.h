@@ -118,7 +118,7 @@ public:
   }
 };
 
-// TODO EvaluationStack
+// EvaluationStack
 //
 //      - performs setup and tear down of function
 //        calls
