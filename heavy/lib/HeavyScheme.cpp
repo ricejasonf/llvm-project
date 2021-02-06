@@ -20,6 +20,7 @@
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/Casting.h"
@@ -53,9 +54,10 @@ Context::Context()
   , OpEval(std::make_unique<heavy::OpEval>(*this))
 {
   // Load Builtin Syntax
-  AddBuiltinSyntax("quote",       builtin_syntax::quote);
-  AddBuiltinSyntax("quasiquote",  builtin_syntax::quasiquote);
   AddBuiltinSyntax("define",      builtin_syntax::define);
+  AddBuiltinSyntax("lambda",      builtin_syntax::lambda);
+  AddBuiltinSyntax("quasiquote",  builtin_syntax::quasiquote);
+  AddBuiltinSyntax("quote",       builtin_syntax::quote);
 
   // Load Builtin Procedures
   AddBuiltin("+",                 builtin::operator_add);
@@ -124,14 +126,15 @@ EnvFrame* Context::PushLambdaFormals(Value* Formals,
                                      bool& HasRestParam) {
   llvm::SmallVector<Symbol*, 16> Names;
   HasRestParam = false;
-  if CheckLambdaFormals(Formals, Names, HasRestParam) return true;
+  if (CheckLambdaFormals(Formals, Names,
+                         HasRestParam)) return nullptr;
 
   llvm::SmallSet<llvm::StringRef, 16> NameSet;
   // ensure uniqueness of names
   for (Symbol* Name : Names) {
-    auto Result = NameSet.insert(Name->getValue());
+    auto Result = NameSet.insert(Name->getVal());
     if (!Result.second) {
-      Context.SetError("duplicate parameter name", Name);
+      SetError("duplicate parameter name", Name);
     }
   }
 
@@ -147,18 +150,20 @@ EnvFrame* Context::PushEnvFrame(llvm::ArrayRef<Symbol*> Names) {
 void Context::PopEnvFrame() {
   // We want to remove the current local scope
   // and assert that we aren't popping anything else
-  assert(isa<EnvFrame>(EnvStack->Car) && "Current scope must be an EnvFrame");
-  EnvStack = EnvStack->Cdr;
+  Pair* Env = cast<Pair>(EnvStack);
+  assert(isa<EnvFrame>(Env->Car) &&
+      "Current scope must be an EnvFrame");
+  EnvStack = Env->Cdr;
 }
 
-EnvFrame* Context::CreateEnvFrame(llvm::ArrayRef<Symbols*> Names) {
+EnvFrame* Context::CreateEnvFrame(llvm::ArrayRef<Symbol*> Names) {
   unsigned MemSize = EnvFrame::sizeToAlloc(Names.size());  
 
   void* Mem = TrashHeap.Allocate(MemSize, alignof(EnvFrame));
 
   EnvFrame* E = new (Mem) EnvFrame(Names.size());
   auto Bindings = E->getBindings();
-  for (int i = 0; i < Bindings.size(); i++) {
+  for (unsigned i = 0; i < Bindings.size(); i++) {
     Bindings[i] = CreateBinding(Names[i], CreateUndefined());
   }
   return E;
@@ -170,7 +175,7 @@ bool Context::CheckLambdaFormals(Value* Formals,
                                llvm::SmallVectorImpl<Symbol*>& Names,
                                bool& HasRestParam) {
   Value* V = Formals;
-  if (isa<Empty>(V)) return;
+  if (isa<Empty>(V)) return false;
   if (isa<Symbol>(V)) {
     // If the formals are just a Symbol
     // or an improper list ending with a
@@ -184,7 +189,7 @@ bool Context::CheckLambdaFormals(Value* Formals,
 
   Pair* P = dyn_cast<Pair>(V);
   if (!P || !isa<Symbol>(P->Car)) {
-    Context.SetError("invalid formals syntax", V);
+    SetError("invalid formals syntax", V);
     return true;
   }
   Names.push_back(cast<Symbol>(P->Car));
@@ -267,9 +272,9 @@ Value* Context::CreateGlobal(Symbol* S, Value *V, Value* OrigCall) {
 
 void Context::AddBuiltin(StringRef Str, ValueFn Fn) {
   Symbol* S = CreateSymbol(Str);
-  Value* V = CreateBuiltin(Fn);
   Module* M = SystemModule;
-  mlir::Value Op = OpGen->createTopLevelDefine(S, V, M, SourceLocation());
+  mlir::Value V = OpGen->VisitTopLevel(CreateBuiltin(Fn));
+  mlir::Value Op = OpGen->createDefine(S, V, M, SourceLocation());
   OpEval->Visit(Op);
 }
 
