@@ -53,6 +53,7 @@ class Context;
 class Value;
 class Pair;
 class Binding;
+class Symbol;
 using ValueRefs = llvm::ArrayRef<heavy::Value*>;
 using ValueFn = heavy::Value* (*)(Context&, ValueRefs);
 using SyntaxFn = mlir::Value (*)(OpGen&, Pair*);
@@ -238,16 +239,9 @@ public:
     return totalSizeToAlloc<Binding*>(NumBindings);
   }
 
-#if 0
   // Returns nullptr if not found
-  Binding* Lookup(Symbol* Name) const {
-    // linear search
-    for (Binding* B : getBindings()) {
-      if (Name->equals(B->getName())) return B;
-    }
-    return nullptr;
-  }
-#endif
+  Binding* Lookup(Symbol* Name) const;
+
   static bool classof(Value const* V) {
     return V->getKind() == Kind::EnvFrame;
   }
@@ -815,7 +809,7 @@ public:
 
   // PushLambdaFormals - Checks formals, creates an EnvFrame,
   //                     and pushes it onto the EnvStack
-  //                     Returns the pushed EnvFrame
+  //                     Returns the pushed EnvFrame or nullptr
   EnvFrame* PushLambdaFormals(Value* Formals, bool& HasRestParam);
 private:
   bool CheckLambdaFormals(Value* Formals,
@@ -961,6 +955,14 @@ inline StringRef Error::getErrorMessage() {
     return  S->getView();
   }
   return "Unknown error (invalid error message)";
+}
+
+inline Binding* EnvFrame::Lookup(Symbol* Name) const {
+  // linear search
+  for (Binding* B : getBindings()) {
+    if (Name->equals(B->getName())) return B;
+  }
+  return nullptr;
 }
 
 // ValueVisitor
