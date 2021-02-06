@@ -46,7 +46,7 @@ public:
   }
 
   template <typename Op, typename ...Args>
-  mlir::Value create(heavy::SourceLocation Loc, Args&& ...args) {
+  Op create(heavy::SourceLocation Loc, Args&& ...args) {
     mlir::Location MLoc = mlir::OpaqueLoc::get(Loc.getOpaqueEncoding(),
                                                Builder.getContext());
     return Builder.create<Op>(MLoc,
@@ -66,8 +66,11 @@ public:
   template <typename T>
   mlir::Value SetError(T Str, Value* V) {
     Context.SetError(Str, V);
-    return create<LiteralOp>(V->getSourceLocation(),
-                             Context.CreateUndefined());
+    return Error(V->getSourceLocation());
+  }
+
+  mlir::Value Error(SourceLocation Loc) {
+    return create<LiteralOp>(Loc, Context.CreateUndefined());
   }
 
 private:

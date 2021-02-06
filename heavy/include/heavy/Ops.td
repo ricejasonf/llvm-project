@@ -89,13 +89,10 @@ def heavy_BuiltinOp : HeavyOp<"builtin"> {
 def heavy_DefineOp : HeavyOp<"define"> {
   let summary = "define";
   let description = [{
-    This initializes top level and local variables.
-    The result of the expression is always Undefined.
-    I think the difference between this and SetOp is
-    that an input expr that has no side-effects and is not
-    used can be elided entirely. (ie We don't need a value for a
-    stateless function when all of its uses are substitued with
-    CallOps.)
+    DefineOp initializes top level and local variables.
+    This behaves the same as SetOp except that it is
+    strictly for initialization where SetOp is changing
+    the value of an existing variable.
   }];
 
   let arguments = (ins HeavyValue:$binding);
@@ -106,7 +103,7 @@ def heavy_DefineOp : HeavyOp<"define"> {
   ];
 }
 
-def heavy_LambdaOp : HeavyOp<"lambda", []> {
+def heavy_LambdaOp : HeavyOp<"lambda", [FunctionLike]> {
   let summary = "lambda";
   let description = [{
     Lambdas represent function objects that have
@@ -121,7 +118,7 @@ def heavy_LambdaOp : HeavyOp<"lambda", []> {
   }];
 
   let arguments = (ins StrAttr:$name,
-                       UI32Attr:$arity,
+                       TypeAttr:$type,
                        BoolAttr:$hasRestParam,
                        Variadic<HeavyValue>:$captures);
   // $result is the instance of the closure/"function object"
@@ -129,9 +126,17 @@ def heavy_LambdaOp : HeavyOp<"lambda", []> {
 
   let builders = [
     OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&,"
-              "::llvm::StringRef Name, uint32_t Arity, bool HasResetParam,"
+              "::llvm::StringRef Name, uint32_t Arity, bool HasRestParam,"
               "::llvm::ArrayRef<::mlir::Value> Captures">
   ];
+
+  let extraClassDeclaration = [{
+    // Hooks for FunctionLike
+    unsigned getNumFuncArguments() {
+      return FunctionLike::getType().getInputs().size();
+    }
+    unsigned getNumFuncResults() { return 1; }
+  }];
 }
 
 def heavy_LiteralOp : HeavyOp<"literal", [NoSideEffect]> {
