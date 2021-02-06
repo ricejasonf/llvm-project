@@ -33,17 +33,25 @@ mlir::Value OpGen::createLambda(Value* Formals, Value* Body,
                                 llvm::StringRef Name) {
   bool HasRestParam = false;
   EnvFrame* E = Context.PushLambdaFormals(Formals, HasRestParam);
+  if (!E) return Error(Loc);
+  unsigned Arity = E->getBindings().size();
+  
+  LambdaOp L = create<LambdaOp>(Loc, Name, Arity, HasRestParam,
+                                /*Captures=*/llvm::ArrayRef<mlir::Value>{});
+  mlir::Block& Entry = *L.addEntryBlock();
   // TODO
-  // Create the BindingOps and code that initializes them in the body
-  // Visit each element in the body and add the result
 
-  return create<LambdaOp>(Params, RestParam, OpBody);
+  // Create the BindingOps/DefineOps for the arguments
+
+  // Visit each element in the body and add the Op
+
+  return L;
 }
 
 mlir::Value OpGen::createDefine(Symbol* S, Value* V,
                                 Value* OrigCall) {
   mlir::Value Init = Visit(V);
-  return return createDefine(S, Init, OrigCall);
+  return createDefine(S, Init, OrigCall);
 }
 
 mlir::Value OpGen::createDefine(Symbol* S, mlir::Value Init,
@@ -159,7 +167,6 @@ mlir::Value OpGen::VisitVector(Vector* V) {
   return New;
 }
 #endif
-}
 
 Value* heavy::eval(Context& C, Value* V, Value* EnvStack) {
   heavy::Value* Args[2] = {V, EnvStack};
