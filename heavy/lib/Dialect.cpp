@@ -74,10 +74,25 @@ void LambdaOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                      llvm::StringRef Name,
                      uint32_t Arity, bool HasRestParam,
                      llvm::ArrayRef<mlir::Value> Captures) {
-  // The name can be empty for anonymous functions
-  LambdaOp::build(B, OpState, B.getType<HeavyValue>(),
+  mlir::Type HeavyValueTy = B.getType<HeavyValue>();
+
+  // create the FunctionType
+  llvm::SmallVector<mlir::Type, 16> Types{};
+  if (Arity > 0) {
+    for (unsigned i = 0; i < Arity - 1; i++) {
+      Types.push_back(HeavyValueTy);
+    }
+    mlir::Type LastParamTy = HasRestParam ?
+                                HeavyValueTy :
+                                HeavyValueTy;
+    Types.push_back(LastParamTy);
+  }
+
+  FunctionType FuncTy = B.getFunctionType(Types, HeavyValueTy);
+  OpState.addRegion();
+  LambdaOp::build(B, OpState, HeavyValueTy,
                   B.getStringAttr(Name),
-                  B.getUI32IntegerAttr(Arity),
+                  TypeAttr::get(FuncTy),
                   B.getBoolAttr(HasRestParam),
                   Captures);
 }
