@@ -17,6 +17,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Value.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include <memory>
 
@@ -28,6 +29,14 @@ OpGen::OpGen(heavy::Context& C)
     Builder(&(C.MlirContext))
 { }
 
+// addLocalDefine - This adds to the list of local variables.
+//                  Since local vars can refer to each other
+//                  we must fully enumerate them before generating
+//                  the initializer expressions
+void OpGen::addLocalDefine(heavy::Symbol* Name, heavy::Value* InitExpr) {
+  LocalDefines.push_back({Name, InitExpr});
+}
+
 mlir::Value OpGen::createLambda(Value* Formals, Value* Body,
                                 SourceLocation Loc,
                                 llvm::StringRef Name) {
@@ -35,27 +44,112 @@ mlir::Value OpGen::createLambda(Value* Formals, Value* Body,
   EnvFrame* E = Context.PushLambdaFormals(Formals, HasRestParam);
   if (!E) return Error(Loc);
   unsigned Arity = E->getBindings().size();
-  
+
   LambdaOp L = create<LambdaOp>(Loc, Name, Arity, HasRestParam,
                                 /*Captures=*/llvm::ArrayRef<mlir::Value>{});
-  mlir::Block& Entry = *L.addEntryBlock();
-  // TODO
+  mlir::Block& Block = *L.addEntryBlock();
+  // TODO setup scope for BindingTable for args
 
-  // Create the BindingOps/DefineOps for the arguments
+  // Create the BindingOps for the arguments
+  for (Binding* B : EnvFrame->getBindings()) {
+    mlir::Value Arg = /* the value of the arg */
+    mlir::Value BVal = createBinding(B, Arg);
+    Block.push_back(BVal);
+  }
 
-  // Visit each element in the body and add the Op
+  processBody(Block, Body);
 
   return L;
 }
 
-mlir::Value OpGen::createDefine(Symbol* S, Value* V,
-                                Value* OrigCall) {
+void processBody(mlir::Block* Block, Value* Body) {
+  // TODO add an additional BindingTable scope for "defines"
+
+  // TODO we need to splice nested sequences (via begin)
+
+  // A "Body" consists of local defines and a sequence.
+  // The sequence is either a single op or we wrap multiple
+  // ops in a SequenceOp
+  Value* RestBody = Body;
+  // enumerate local defines until we get an op
+  LocalDefines.clear();
+  mlir::Value FirstOp;
+  while (Pair* Current = dyn_cast<Pair>(RestBody)) {
+    FirstOp = Visit(Current->Car);
+    RestBody = Current->Cdr;
+    if (FirstOp) break;
+  }
+  // insert the BindingOps
+  for (std::pair<Symbol*, Value*> X : LocalDefines) {
+    Value* Init = X.second;
+    mlir::Value BVal = createBinding(Context.CreateBinding(X.first));
+    Block.push_back(BVal);
+  }
+  // insert the DefineOps (which initialize the Bindings)
+  for (std::pair<Symbol*, Value*> X : LocalDefines) {
+    mlir::Value Init = Visit(X.second);
+    mlir::Value DVal = create<DefineOp>(DefineLoc, BVal, Init);
+    Block.push_back(DVal);
+  }
+
+  assert(FirstOp && "A body must have at least one expression");
+  // A single expression can be added and we're done
+  if (!isa<Pair>(RestBody)) {
+    Block.push_back(FirstOp);
+    return L;
+  }
+
+  llvm::SmallVector<mlir::Value, 16> Ops;
+  Ops.push_back(FirstOp);
+  mlir::Value SeqOp = createSequence(RestBody->getSourceLocation(),
+                                     RestBody, Ops);
+  Block.push_back(SeqOp);
+  LocalDefines.clear();
+}
+
+mlir::Value OpGen::createSequence(SourceLocation Loc, Value* Exprs) {
+  llvm::SmallVector<mlir::Value, 16> Ops;
+  return createSequence(Loc, Exprs, Ops);
+}
+
+mlir::Value OpGen::createSequence(SourceLocation Loc, Value* Exprs,
+                              llvm::SmallVectorImpl<mlir::Value>& Ops) {
+  while (Pair* Current = dyn_cast<Pair>(Exprs)) {
+    Exprs = Current->Cdr;
+    Ops.push_back(Visit(Current->Car));
+  }
+  create<SequenceOp>(Loc, Ops);
+}
+
+mlir::Value OpGen::createBinding(Binding *B, mlir::Value Init) {
+  if (!Init) Init = createUndefined();
+  Sourcelocation SymbolLoc = B->getSymbol()->getSourceLocation();
+  mlir::Value BVal = create<BindingOp>(SymbolLoc, Init);
+  BindingTable.try_emplace(B, BVal);
+
+  return BVal;
+}
+
+// This could be a top-level or local variable
+// BindingTable scope should already be handled
+mlir::Value OpGen::createDefine(Binding* B, mlir::Value Init,
+                                SourceLocation DefineLoc) {
+  mlir::Value BVal = createBinding(B, Init);
+  mlir::Value DVal = create<DefineOp>(DefineLoc, BVal);
+
+  return DVal;
+}
+
+mlir::Value OpGen::createDefine(Symbol* S, Value* V, Value* OrigCall) {
   mlir::Value Init = Visit(V);
+  if (OG.IsTopLevel) {
+    return createTopLevelDefine(S, Init, OrigCall);
+  }
   return createDefine(S, Init, OrigCall);
 }
 
-mlir::Value OpGen::createDefine(Symbol* S, mlir::Value Init,
-                                Value* OrigCall) {
+mlir::Value OpGen::createTopLevelDefine(Symbol* S, mlir::Value Init,
+                                        Value* OrigCall) {
   heavy::Value* EnvStack = Context.EnvStack;
   heavy::SourceLocation DefineLoc = OrigCall->getSourceLocation();
   // A module at the top of the EnvStack is mutable
@@ -81,19 +175,14 @@ mlir::Value OpGen::createDefine(Symbol* S, mlir::Value Init,
   B = Context.Lookup(S, EnvRest);
   if (B) return SetError("define overwrites immutable location", S);
 
-  return createDefine(S, Init, M, DefineLoc);
+  return createTopLevelDefine(S, Init, M, DefineLoc);
 }
 
-mlir::Value OpGen::createDefine(Symbol* S, mlir::Value Init,
+mlir::Value OpGen::createTopLevelDefine(Symbol* S, mlir::Value Init,
                                 Module* M, SourceLocation DefineLoc) {
-  // Create the BindingOp
   Binding* B = Context.CreateBinding(S, Context.CreateUndefined());
-  mlir::Value BVal = create<BindingOp>(S->getSourceLocation(), Init);
-  mlir::Value DVal = create<DefineOp>(DefineLoc, BVal);
   M->Insert(B);
-  BindingTable.try_emplace(B, BVal);
-
-  return DVal;
+  return createDefine(B, Init, DefineLoc);
 }
 
 mlir::Value OpGen::VisitSymbol(Symbol* S) {

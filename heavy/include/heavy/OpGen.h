@@ -16,6 +16,7 @@
 #include "heavy/HeavyScheme.h"
 #include "mlir/IR/Builders.h"
 #include "llvm/Support/Casting.h"
+#include <utility>
 
 namespace mlir {
   class MLIRContext;
@@ -32,8 +33,13 @@ class OpEval;
 class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   friend class ValueVisitor<OpGen, mlir::Value>;
   heavy::Context& Context;
-  llvm::DenseMap<heavy::Binding*, mlir::Value> BindingTable;
   mlir::OpBuilder Builder;
+  llvm::ScopedHashTable<heavy::Binding*, mlir::Value> BindingTable;
+  llvm::SmallVector<std::pair<heavy::Symbol*, heavy::Value*>> LocalDefines;
+
+  auto MakeBindingTableScope() {
+    return llvm::ScopedHashTableScope<heavy::Binding*, mlir::Value>(BindingTable);
+  }
 
 public:
   bool IsTopLevel = false;
@@ -52,6 +58,8 @@ public:
     return Builder.create<Op>(MLoc,
                               std::forward<Args>(args)...);
   }
+
+  void addLocalDefine(heavy::Symbol* Name, heavy::Value* InitExpr);
 
   mlir::Value createLambda(Value* Formals, Value* Body,
                            SourceLocation Loc,
