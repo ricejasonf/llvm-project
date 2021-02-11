@@ -54,13 +54,7 @@ mlir::Value define(OpGen& OG, Pair* P) {
     V = GetSingleSyntaxArg(P2);
   }
   if (!S || !V) return OG.SetError("invalid define syntax", P);
-  if (OG.IsTopLevel) {
-    return OG.createDefine(S, V, P);
-  } else {
-    // Handle internal definitions inside
-    // lambda syntax
-    return OG.SetError("unexpected define", P);
-  }
+  return OG.createDefine(S, V, P);
 }
 
 mlir::Value lambda(OpGen& OG, Pair* P) {
