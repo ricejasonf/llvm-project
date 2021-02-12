@@ -218,6 +218,9 @@ Binding* Context::Lookup(Symbol* Name, Value* Stack, Value* NextStack) {
   Value* V    = cast<Pair>(Stack)->Car;
   Value* Next = cast<Pair>(Stack)->Cdr;
   switch (V->getKind()) {
+    case Value::Kind::Binding:
+      Result = cast<Binding>(V)->Lookup(Name);
+      break;
     case Value::Kind::EnvFrame:
       Result = cast<EnvFrame>(V)->Lookup(Name);
       break;
