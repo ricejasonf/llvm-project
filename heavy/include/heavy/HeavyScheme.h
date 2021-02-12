@@ -615,15 +615,10 @@ public:
     return Val;
   }
 
-#if 0
-  // TODO not sure if this is needed
-  Value* Lookup(Symbol* OtherName) {
-    if (Name->getVal() == OtherName->getVal()) {
-      return Val;
-    }
+  Value* Lookup(Symbol* S) {
+    if (Name->equals(S)) return Val;
     return nullptr;
   }
-#endif
 
   static bool classof(Value const* V) { return V->getKind() == Kind::Binding; }
 };
