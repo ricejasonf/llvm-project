@@ -35,11 +35,11 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   heavy::Context& Context;
   mlir::OpBuilder Builder;
   llvm::ScopedHashTable<heavy::Binding*, mlir::Value> BindingTable;
-  llvm::SmallVector<std::pair<heavy::Symbol*, heavy::Value*>> LocalDefines;
+  llvm::SmallVector<heavy::Binding*> LocalDefines;
 
-  auto MakeBindingTableScope() {
-    return llvm::ScopedHashTableScope<heavy::Binding*, mlir::Value>(BindingTable);
-  }
+  using BindingScope = llvm::ScopedHashTableScope<
+                                            heavy::Binding*,
+                                            mlir::Value>;
 
 public:
   bool IsTopLevel = false;
