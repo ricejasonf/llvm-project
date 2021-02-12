@@ -29,50 +29,52 @@ OpGen::OpGen(heavy::Context& C)
     Builder(&(C.MlirContext))
 { }
 
-// addLocalDefine - This adds to the list of local variables.
-//                  Since local vars can refer to each other
-//                  we must fully enumerate them before generating
-//                  the initializer expressions
-void OpGen::addLocalDefine(heavy::Symbol* Name, heavy::Value* InitExpr) {
-  LocalDefines.push_back({Name, InitExpr});
-}
-
 mlir::Value OpGen::createLambda(Value* Formals, Value* Body,
                                 SourceLocation Loc,
                                 llvm::StringRef Name) {
+  auto BScope = BindingScope(BindingTable);
+
   bool HasRestParam = false;
-  EnvFrame* E = Context.PushLambdaFormals(Formals, HasRestParam);
+  heavy::EnvFrame* EnvFrame = Context.PushLambdaFormals(Formals,
+                                                        HasRestParam);
   if (!E) return Error(Loc);
   unsigned Arity = E->getBindings().size();
 
+  // Create the BindingOps for the arguments
+  llvm::SmallVector<mlir::Value, 8> BindingOps;
+  for (Binding* B : EnvFrame->getBindings()) {
+    mlir::Value Arg = /* TODO the value of the arg */;
+    mlir::Value BVal = createBinding(B, Arg);
+    BindingOps.push_back(BVal);
+  }
+
+  // This will be a SequenceOp or single tail Op
+  mlir::Operation* BodyOp = createBody(Block, Body);
+
+  //
   LambdaOp L = create<LambdaOp>(Loc, Name, Arity, HasRestParam,
                                 /*Captures=*/llvm::ArrayRef<mlir::Value>{});
   mlir::Block& Block = *L.addEntryBlock();
-  // TODO setup scope for BindingTable for args
-
-  // Create the BindingOps for the arguments
-  for (Binding* B : EnvFrame->getBindings()) {
-    mlir::Value Arg = /* the value of the arg */
-    mlir::Value BVal = createBinding(B, Arg);
-    Block.push_back(BVal);
+  // Add the BindingOps
+  for (mlir::Value BVal : BindingOps) {
+    assert(BVal->getDefiningOp() && "Expecting an Operation");
+    Block.push_back(BVal->getDefiningOp());
   }
-
-  processBody(Block, Body);
-
+  // Create/Add the BindingOps from the Bindings in the EnvStack (local defines)
+  //            Pop them as we go
+  // Create/Add the corresponding SetOps to lazy initialize the local defines
+  // Pop the EnvFrame
   return L;
 }
 
 void processBody(mlir::Block* Block, Value* Body) {
-  // TODO add an additional BindingTable scope for "defines"
-
-  // TODO we need to splice nested sequences (via begin)
+  // TODO we need to splice nested sequences
 
   // A "Body" consists of local defines and a sequence.
   // The sequence is either a single op or we wrap multiple
   // ops in a SequenceOp
   Value* RestBody = Body;
   // enumerate local defines until we get an op
-  LocalDefines.clear();
   mlir::Value FirstOp;
   while (Pair* Current = dyn_cast<Pair>(RestBody)) {
     FirstOp = Visit(Current->Car);
@@ -81,13 +83,15 @@ void processBody(mlir::Block* Block, Value* Body) {
   }
   // insert the BindingOps
   for (std::pair<Symbol*, Value*> X : LocalDefines) {
-    Value* Init = X.second;
     mlir::Value BVal = createBinding(Context.CreateBinding(X.first));
     Block.push_back(BVal);
   }
+  LocalDefines.clear();
+
   // insert the DefineOps (which initialize the Bindings)
-  for (std::pair<Symbol*, Value*> X : LocalDefines) {
-    mlir::Value Init = Visit(X.second);
+  // Walk the EnvStack while we get Bindings
+  for (Value* InitExpr : InitExprs) {
+    mlir::Value Init = Visit(InitExpr);
     mlir::Value DVal = create<DefineOp>(DefineLoc, BVal, Init);
     Block.push_back(DVal);
   }
@@ -104,7 +108,6 @@ void processBody(mlir::Block* Block, Value* Body) {
   mlir::Value SeqOp = createSequence(RestBody->getSourceLocation(),
                                      RestBody, Ops);
   Block.push_back(SeqOp);
-  LocalDefines.clear();
 }
 
 mlir::Value OpGen::createSequence(SourceLocation Loc, Value* Exprs) {
