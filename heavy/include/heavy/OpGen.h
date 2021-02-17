@@ -33,43 +33,53 @@ class OpEval;
 class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   friend class ValueVisitor<OpGen, mlir::Value>;
   heavy::Context& Context;
-  mlir::OpBuilder Builder;
+  mlir::OpBuilder TopLevel;
+  mlir::OpBuilder LocalInits;
+  mlir::OpBuilder LocalSequence;
   llvm::ScopedHashTable<heavy::Binding*, mlir::Value> BindingTable;
   llvm::SmallVector<heavy::Binding*> LocalDefines;
+  bool IsTopLevel = false;
 
   using BindingScope = llvm::ScopedHashTableScope<
                                             heavy::Binding*,
                                             mlir::Value>;
 
 public:
-  bool IsTopLevel = false;
-
   explicit OpGen(heavy::Context& C);
 
   mlir::Value VisitTopLevel(Value* V) {
+    // there should be an insertion point already setup
+    // for the module init function
     IsTopLevel = true;
     return Visit(V);
   }
 
+  bool isTopLevel() { return IsTopLevel; }
+  bool isLocalDefineAllowed();
+
   template <typename Op, typename ...Args>
-  Op create(heavy::SourceLocation Loc, Args&& ...args) {
+  static Op create(OpBuilder& Builder, heavy::SourceLocation Loc,
+                   Args&& ...args) {
+    assert(Builder.getInsertionBlock() != nullptr &&
+        "Operation must have insertion point");
     mlir::Location MLoc = mlir::OpaqueLoc::get(Loc.getOpaqueEncoding(),
                                                Builder.getContext());
-    return Builder.create<Op>(MLoc,
-                              std::forward<Args>(args)...);
+    return Builder.create<Op>(MLoc, std::forward<Args>(args)...);
   }
 
-  void addLocalDefine(heavy::Symbol* Name, heavy::Value* InitExpr);
+  template <typename Op, typename ...Args>
+  Op create(heavy::SourceLocation Loc, Args&& ...args) {
+    return create<Op>(Builder, Loc, std::forward<Args>(args));
+  }
 
   mlir::Value createLambda(Value* Formals, Value* Body,
                            SourceLocation Loc,
                            llvm::StringRef Name = {});
           
   mlir::Value createDefine(Symbol* S, Value *V, Value* OrigCall);
-  mlir::Value createDefine(Symbol* S, mlir::Value Init,
+  mlir::Value createTopLevelDefine(Symbol* S, mlir::Value Init,
                                    Value* OrigCall);
-  mlir::Value createDefine(Symbol* S, mlir::Value Init, Module* M,
-                           SourceLocation DefineLoc = {});
+  mlir::Value createTopLevelDefine(Symbol* S, mlir::Value Init, Module* M);
 
   template <typename T>
   mlir::Value SetError(T Str, Value* V) {

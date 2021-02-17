@@ -113,12 +113,6 @@ public:
   static StringRef getKindName(heavy::Value::Kind);
   StringRef getKindName() const { return getKindName(getKind()); }
 
-  // not used
-  bool isSyntax() const {
-    return getKind() == Kind::Syntax ||
-           getKind() == Kind::BuiltinSyntax;
-  }
-
   bool isSymbol(StringRef);
   SourceLocation getSourceLocation();
   void dump();
@@ -620,6 +614,12 @@ public:
     return nullptr;
   }
 
+  bool isSyntactic() const {
+    return Val->getKind() == Kind::Syntax ||
+           Val->getKind() == Kind::BuiltinSyntax;
+  }
+
+
   static bool classof(Value const* V) { return V->getKind() == Kind::Binding; }
 };
 
@@ -799,6 +799,7 @@ public:
   //                current environment (EnvStack)
   EnvFrame* PushEnvFrame(llvm::ArrayRef<Symbol*> Names);
   void PopEnvFrame();
+  void PushLocalBinding(Binding* B);
 
   Value* CreateGlobal(Symbol* S, Value* V, Value* OrigCall);
 
