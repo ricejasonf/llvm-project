@@ -26,7 +26,8 @@ using namespace heavy;
 
 OpGen::OpGen(heavy::Context& C)
   : Context(C),
-    Builder(&(C.MlirContext))
+    Builder(&(C.MlirContext)),
+    LocalInits(&(C.MlirContext))
 { }
 
 mlir::Value OpGen::createLambda(Value* Formals, Value* Body,
@@ -40,92 +41,70 @@ mlir::Value OpGen::createLambda(Value* Formals, Value* Body,
   if (!E) return Error(Loc);
   unsigned Arity = E->getBindings().size();
 
-  // Create the BindingOps for the arguments
-  llvm::SmallVector<mlir::Value, 8> BindingOps;
-  for (Binding* B : EnvFrame->getBindings()) {
-    mlir::Value Arg = /* TODO the value of the arg */;
-    mlir::Value BVal = createBinding(B, Arg);
-    BindingOps.push_back(BVal);
-  }
-
-  // This will be a SequenceOp or single tail Op
-  mlir::Operation* BodyOp = createBody(Block, Body);
-
-  //
   LambdaOp L = create<LambdaOp>(Loc, Name, Arity, HasRestParam,
                                 /*Captures=*/llvm::ArrayRef<mlir::Value>{});
+
   mlir::Block& Block = *L.addEntryBlock();
-  // Add the BindingOps
-  for (mlir::Value BVal : BindingOps) {
-    assert(BVal->getDefiningOp() && "Expecting an Operation");
-    Block.push_back(BVal->getDefiningOp());
+  mlir::InsertionGuard IG_1(Builder);
+  mlir::InsertionGuard IG_2(LocalInits);
+
+  Builder.setInsertionPointToStart(Block);
+
+  // Create the BindingOps for the arguments
+  for (auto tup : llvm::zip(EnvFrame->getBindings(),
+                            Block->getArguments())) {
+    Binding *B        = std::get<0>(tup);
+    mlir::Value Arg   = std::get<1>(tup);
+    createBinding(B, Arg);
   }
-  // Create/Add the BindingOps from the Bindings in the EnvStack (local defines)
-  //            Pop them as we go
-  // Create/Add the corresponding SetOps to lazy initialize the local defines
-  // Pop the EnvFrame
+
+  processBody(Body);
+  Context.PopEnvFrame();
+
   return L;
 }
 
-void processBody(mlir::Block* Block, Value* Body) {
-  // TODO we need to splice nested sequences
+bool OpGen::isLocalDefineAllowed() {
+  return LocalInits.getInsertionPoint() == Builder.getInsertionPoint();
+}
 
-  // A "Body" consists of local defines and a sequence.
-  // The sequence is either a single op or we wrap multiple
-  // ops in a SequenceOp
+void OpGen::processBody(Value* Body) {
+  // InsertionGuards for Builder and LocalInits
+  // should be set above this
+  mlir::InsertionGuard IG(LocalInits);
+  LocalInits = Builder;
+
+  // Each local "define" should update the LocalInits
+  // insertion point
+
+  IsTopLevel = false;
+
   Value* RestBody = Body;
-  // enumerate local defines until we get an op
-  mlir::Value FirstOp;
+  mlir::Value LastOp;
   while (Pair* Current = dyn_cast<Pair>(RestBody)) {
-    FirstOp = Visit(Current->Car);
+    LastOp = Visit(Current->Car);
     RestBody = Current->Cdr;
-    if (FirstOp) break;
-  }
-  // insert the BindingOps
-  for (std::pair<Symbol*, Value*> X : LocalDefines) {
-    mlir::Value BVal = createBinding(Context.CreateBinding(X.first));
-    Block.push_back(BVal);
-  }
-  LocalDefines.clear();
-
-  // insert the DefineOps (which initialize the Bindings)
-  // Walk the EnvStack while we get Bindings
-  for (Value* InitExpr : InitExprs) {
-    mlir::Value Init = Visit(InitExpr);
-    mlir::Value DVal = create<DefineOp>(DefineLoc, BVal, Init);
-    Block.push_back(DVal);
   }
 
-  assert(FirstOp && "A body must have at least one expression");
-  // A single expression can be added and we're done
-  if (!isa<Pair>(RestBody)) {
-    Block.push_back(FirstOp);
-    return L;
+  // The BindingOps for the local defines have
+  // been inserted by the `define` syntax. They are
+  // initialized to "undefined" and their corresponding
+  // heavy::Bindings placed in the EnvStack.
+  // Walk the EnvStack to collect these and insert the lazy
+  // initializers via SetOp
+  Value* Env = Context.EnvStack;
+  while (Pair* EnvPair : dyn_cast<Pair>(Env)) {
+    Binding* B = dyn_cast<Binding>(EnvPair.Car);
+    // We should eventually hit the EnvFrame that wraps this local scope
+    if (!B) break;
+    mlir::Value BVal  = BindingTable.lookup(B);
+    assert(BVal && "BindingTable should have an entry for local define");
+    mlir::Value Init  = Visit(B.getValue())
+    create<SetOp>(LocalInits, BVal, Init);
   }
-
-  llvm::SmallVector<mlir::Value, 16> Ops;
-  Ops.push_back(FirstOp);
-  mlir::Value SeqOp = createSequence(RestBody->getSourceLocation(),
-                                     RestBody, Ops);
-  Block.push_back(SeqOp);
-}
-
-mlir::Value OpGen::createSequence(SourceLocation Loc, Value* Exprs) {
-  llvm::SmallVector<mlir::Value, 16> Ops;
-  return createSequence(Loc, Exprs, Ops);
-}
-
-mlir::Value OpGen::createSequence(SourceLocation Loc, Value* Exprs,
-                              llvm::SmallVectorImpl<mlir::Value>& Ops) {
-  while (Pair* Current = dyn_cast<Pair>(Exprs)) {
-    Exprs = Current->Cdr;
-    Ops.push_back(Visit(Current->Car));
-  }
-  create<SequenceOp>(Loc, Ops);
 }
 
 mlir::Value OpGen::createBinding(Binding *B, mlir::Value Init) {
-  if (!Init) Init = createUndefined();
   Sourcelocation SymbolLoc = B->getSymbol()->getSourceLocation();
   mlir::Value BVal = create<BindingOp>(SymbolLoc, Init);
   BindingTable.try_emplace(B, BVal);
@@ -133,28 +112,30 @@ mlir::Value OpGen::createBinding(Binding *B, mlir::Value Init) {
   return BVal;
 }
 
-// This could be a top-level or local variable
-// BindingTable scope should already be handled
-mlir::Value OpGen::createDefine(Binding* B, mlir::Value Init,
-                                SourceLocation DefineLoc) {
-  mlir::Value BVal = createBinding(B, Init);
-  mlir::Value DVal = create<DefineOp>(DefineLoc, BVal);
-
-  return DVal;
-}
-
 mlir::Value OpGen::createDefine(Symbol* S, Value* V, Value* OrigCall) {
   mlir::Value Init = Visit(V);
-  if (OG.IsTopLevel) {
+  if (OG.isTopLevel()) {
     return createTopLevelDefine(S, Init, OrigCall);
+  } else if (OG.isLocalDefineAllowed()) {
+    // create the binding with a lazy init
+    Binding* B = Context.CreateBinding(S, V);
+    // push to the local environment
+    Context.PushLocalBinding(B);
+    mlir::Value BVal = createBinding(B, createUndefined());
+    // The LocalInits insertion point should be
+    // after the last "define"
+    LocalInits.setInsertionPointAfter(BVal->getDefiningOp());
+    assert(isLocalDefineAllowed() && "define should still be allowed");
+    return BVal;
   }
-  return createDefine(S, Init, OrigCall);
+
+  return SetError("unexpected define", OrigCall);
 }
 
 mlir::Value OpGen::createTopLevelDefine(Symbol* S, mlir::Value Init,
                                         Value* OrigCall) {
   heavy::Value* EnvStack = Context.EnvStack;
-  heavy::SourceLocation DefineLoc = OrigCall->getSourceLocation();
+
   // A module at the top of the EnvStack is mutable
   Module* M = nullptr;
   Value* EnvRest = nullptr;
@@ -168,24 +149,25 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, mlir::Value Init,
   // If the name already exists in the current module
   // then it behaves like `set!`
   Binding* B = M->Lookup(S);
-  if (B) {
-    // require IsTopLevel == true
-    return SetError("TODO create SetOp for top level define", OrigCall);
+  if (B && !B->isSyntactic()) {
+    return create<SetOp>(BVal, Init);
   }
 
   // Top Level definitions may not shadow names in
   // the parent environment
   B = Context.Lookup(S, EnvRest);
-  if (B) return SetError("define overwrites immutable location", S);
+  if (B) {
+    return SetError("define overwrites immutable location", S);
+  }
 
-  return createTopLevelDefine(S, Init, M, DefineLoc);
+  return createTopLevelDefine(S, Init, M);
 }
 
 mlir::Value OpGen::createTopLevelDefine(Symbol* S, mlir::Value Init,
-                                Module* M, SourceLocation DefineLoc) {
+                                        Module* M) {
   Binding* B = Context.CreateBinding(S, Context.CreateUndefined());
   M->Insert(B);
-  return createDefine(B, Init, DefineLoc);
+  return createBinding(B, Init);
 }
 
 mlir::Value OpGen::VisitSymbol(Symbol* S) {
@@ -241,9 +223,10 @@ mlir::Value OpGen::VisitPair(Pair* P) {
     case Value::Kind::Syntax:
       llvm_unreachable("TODO");
       return mlir::Value();
-    default:
+    default: {
       IsTopLevel = false;
       return HandleCall(P);
+    }
   }
 }
 
