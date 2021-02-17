@@ -151,9 +151,17 @@ void Context::PopEnvFrame() {
   // We want to remove the current local scope
   // and assert that we aren't popping anything else
   Pair* Env = cast<Pair>(EnvStack);
+  // Walk through the local bindings
+  while (dyn_cast<Binding>(Env->Cdr)) {
+    Env = cast<Pair>(Env->Cdr);
+  }
   assert(isa<EnvFrame>(Env->Car) &&
-      "Current scope must be an EnvFrame");
+      "Scope must be in an EnvFrame");
   EnvStack = Env->Cdr;
+}
+
+void Context::PushLocalBinding(Binding* B) {
+  EnvStack = CreatePair(B, EnvStack);
 }
 
 EnvFrame* Context::CreateEnvFrame(llvm::ArrayRef<Symbol*> Names) {
@@ -277,7 +285,7 @@ void Context::AddBuiltin(StringRef Str, ValueFn Fn) {
   Symbol* S = CreateSymbol(Str);
   Module* M = SystemModule;
   mlir::Value V = OpGen->VisitTopLevel(CreateBuiltin(Fn));
-  mlir::Value Op = OpGen->createDefine(S, V, M, SourceLocation());
+  mlir::Value Op = OpGen->createTopLevelDefine(S, V, M);
   OpEval->Visit(Op);
 }
 
