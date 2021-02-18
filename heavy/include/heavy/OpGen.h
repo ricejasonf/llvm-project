@@ -33,19 +33,25 @@ class OpEval;
 
 class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   friend class ValueVisitor<OpGen, mlir::Value>;
+  using BindingScopeTable = llvm::ScopedHashTable<
+                                            heavy::Binding*,
+                                            mlir::Value>;
+  using BindingScope = typename BindingScopeTable::ScopeTy;
+
   heavy::Context& Context;
   mlir::OpBuilder Builder;
   mlir::OpBuilder LocalInits;
+  BindingScopeTable BindingTable;
+  BindingScope BindingTableTop;
+  mlir::Operation* TopLevel;
   mlir::Value Undefined_;
-  llvm::ScopedHashTable<heavy::Binding*, mlir::Value> BindingTable;
   bool IsTopLevel = false;
 
-  using BindingScope = llvm::ScopedHashTableScope<
-                                            heavy::Binding*,
-                                            mlir::Value>;
 
 public:
   explicit OpGen(heavy::Context& C);
+
+  mlir::ModuleOp getTopLevel();
 
   mlir::Value VisitTopLevel(Value* V) {
     // there should be an insertion point already setup
