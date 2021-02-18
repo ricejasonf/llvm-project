@@ -15,6 +15,7 @@
 #include "heavy/HeavyScheme.h"
 #include "heavy/OpGen.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/Module.h"
 #include "mlir/IR/Value.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
@@ -27,8 +28,19 @@ using namespace heavy;
 OpGen::OpGen(heavy::Context& C)
   : Context(C),
     Builder(&(C.MlirContext)),
-    LocalInits(&(C.MlirContext))
-{ }
+    LocalInits(&(C.MlirContext)),
+    BindingTable(),
+    BindingTableTop(BindingTable)
+{
+  mlir::ModuleOp TL =  Builder.create<mlir::ModuleOp>(
+      Builder.getUnknownLoc());
+  Builder.setInsertionPointToStart(TL.getBody());
+  TopLevel = TL;
+}
+
+mlir::ModuleOp OpGen::getTopLevel() {
+  return cast<mlir::ModuleOp>(TopLevel);
+}
 
 mlir::Value OpGen::createUndefined() {
   if (!Undefined_) {

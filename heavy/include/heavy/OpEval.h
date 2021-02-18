@@ -109,7 +109,10 @@ public:
     if (auto* B = dyn_cast<heavy::Binding>(getValue(Op))) {
       return B->getValue();
     }
-    llvm_unreachable("A BindingOp must have an entry in ValueMaps");
+    // create a Binding
+    heavy::Value* V = Visit(Op.input());
+    heavy::Binding* B = Context.CreateBinding(V);
+    setValue(Op.result(), B);
     return Context.CreateUndefined();
   }
 
@@ -131,10 +134,9 @@ public:
     if (BindingOp BVal = dyn_cast<BindingOp>(Op.binding().getDefiningOp())) {
       assert(BVal && "SetOp binding should be BindingOp");
       heavy::Binding* B = dyn_cast_or_null<heavy::Binding>(getValue(BVal));
-      heavy::Value* RHS = Visit(BVal.input());
-      if (B) {
-        B->Val = RHS;
-      }
+      assert(B && "A value for binding must exist");
+      heavy::Value* RHS = Visit(Op.input());
+      B->Val = RHS;
     }
     return Context.CreateUndefined();
   }
