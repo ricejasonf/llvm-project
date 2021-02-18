@@ -65,11 +65,6 @@ void BuiltinOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
       HeavyValueAttr::get(B.getContext(), Builtin));
 }
 
-void DefineOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
-                     mlir::Value Binding) {
-  DefineOp::build(B, OpState, B.getType<HeavyValue>(), Binding);
-}
-
 void LambdaOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                      llvm::StringRef Name,
                      uint32_t Arity, bool HasRestParam,
@@ -102,6 +97,11 @@ void LiteralOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
   // create a HeavyValueAttr from heavy::Value*
   LiteralOp::build(B, OpState, B.getType<HeavyValue>(),
                    HeavyValueAttr::get(B.getContext(), V));
+}
+
+void SetOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                     mlir::Value Binding, mlir::Value Input) {
+  SetOp::build(B, OpState, B.getType<HeavyValue>(), Binding, Input);
 }
 
 using namespace mlir;

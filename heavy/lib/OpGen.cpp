@@ -30,29 +30,35 @@ OpGen::OpGen(heavy::Context& C)
     LocalInits(&(C.MlirContext))
 { }
 
+mlir::Value OpGen::createUndefined() {
+  if (!Undefined_) {
+    Undefined_ = create<LiteralOp>(SourceLocation(),
+                                   Context.CreateUndefined());
+  }
+  return Undefined_;
+}
+
 mlir::Value OpGen::createLambda(Value* Formals, Value* Body,
                                 SourceLocation Loc,
                                 llvm::StringRef Name) {
-  auto BScope = BindingScope(BindingTable);
+  BindingScope BScope(BindingTable);
 
   bool HasRestParam = false;
   heavy::EnvFrame* EnvFrame = Context.PushLambdaFormals(Formals,
                                                         HasRestParam);
-  if (!E) return Error(Loc);
-  unsigned Arity = E->getBindings().size();
+  if (!EnvFrame) return Error();
+  unsigned Arity = EnvFrame->getBindings().size();
 
   LambdaOp L = create<LambdaOp>(Loc, Name, Arity, HasRestParam,
                                 /*Captures=*/llvm::ArrayRef<mlir::Value>{});
 
   mlir::Block& Block = *L.addEntryBlock();
-  mlir::InsertionGuard IG_1(Builder);
-  mlir::InsertionGuard IG_2(LocalInits);
-
-  Builder.setInsertionPointToStart(Block);
+  mlir::OpBuilder::InsertionGuard IG_1(Builder);
+  Builder.setInsertionPointToStart(&Block);
 
   // Create the BindingOps for the arguments
   for (auto tup : llvm::zip(EnvFrame->getBindings(),
-                            Block->getArguments())) {
+                            Block.getArguments())) {
     Binding *B        = std::get<0>(tup);
     mlir::Value Arg   = std::get<1>(tup);
     createBinding(B, Arg);
@@ -69,9 +75,7 @@ bool OpGen::isLocalDefineAllowed() {
 }
 
 void OpGen::processBody(Value* Body) {
-  // InsertionGuards for Builder and LocalInits
-  // should be set above this
-  mlir::InsertionGuard IG(LocalInits);
+  mlir::OpBuilder::InsertionGuard IG(LocalInits);
   LocalInits = Builder;
 
   // Each local "define" should update the LocalInits
@@ -93,47 +97,48 @@ void OpGen::processBody(Value* Body) {
   // Walk the EnvStack to collect these and insert the lazy
   // initializers via SetOp
   Value* Env = Context.EnvStack;
-  while (Pair* EnvPair : dyn_cast<Pair>(Env)) {
-    Binding* B = dyn_cast<Binding>(EnvPair.Car);
+  while (Pair* EnvPair = dyn_cast<Pair>(Env)) {
+    Binding* B = dyn_cast<Binding>(EnvPair->Car);
     // We should eventually hit the EnvFrame that wraps this local scope
     if (!B) break;
-    mlir::Value BVal  = BindingTable.lookup(B);
+    mlir::Value BVal = BindingTable.lookup(B);
+    mlir::Value Init = VisitDefineArgs(B->getValue());
+    SourceLocation Loc = B->getValue()->getSourceLocation();
     assert(BVal && "BindingTable should have an entry for local define");
-    mlir::Value Init  = Visit(B.getValue())
-    create<SetOp>(LocalInits, BVal, Init);
+
+    create<SetOp>(LocalInits, Loc, BVal, Init);
   }
 }
 
 mlir::Value OpGen::createBinding(Binding *B, mlir::Value Init) {
-  Sourcelocation SymbolLoc = B->getSymbol()->getSourceLocation();
+  SourceLocation SymbolLoc = B->getName()->getSourceLocation();
   mlir::Value BVal = create<BindingOp>(SymbolLoc, Init);
-  BindingTable.try_emplace(B, BVal);
+  BindingTable.insert(B, BVal);
 
   return BVal;
 }
 
-mlir::Value OpGen::createDefine(Symbol* S, Value* V, Value* OrigCall) {
-  mlir::Value Init = Visit(V);
-  if (OG.isTopLevel()) {
-    return createTopLevelDefine(S, Init, OrigCall);
-  } else if (OG.isLocalDefineAllowed()) {
-    // create the binding with a lazy init
-    Binding* B = Context.CreateBinding(S, V);
-    // push to the local environment
-    Context.PushLocalBinding(B);
-    mlir::Value BVal = createBinding(B, createUndefined());
-    // The LocalInits insertion point should be
-    // after the last "define"
-    LocalInits.setInsertionPointAfter(BVal->getDefiningOp());
-    assert(isLocalDefineAllowed() && "define should still be allowed");
-    return BVal;
-  }
-
-  return SetError("unexpected define", OrigCall);
+mlir::Value OpGen::createDefine(Symbol* S, Value* Args, Value* OrigCall) {
+  if (isTopLevel()) return createTopLevelDefine(S, Args, OrigCall);
+  if (!isLocalDefineAllowed()) return SetError("unexpected define", OrigCall);
+  // create the binding with a lazy init
+  // (include everything after the define
+  //  keyword to visit it later because it could
+  //  be a terse lambda syntax)
+  Binding* B = Context.CreateBinding(S, Args);
+  // push to the local environment
+  Context.PushLocalBinding(B);
+  mlir::Value BVal = createBinding(B, createUndefined());
+  // The LocalInits insertion point should be
+  // after the last "define"
+  LocalInits.setInsertionPointAfter(BVal.getDefiningOp());
+  assert(isLocalDefineAllowed() && "define should still be allowed");
+  return BVal;
 }
 
-mlir::Value OpGen::createTopLevelDefine(Symbol* S, mlir::Value Init,
+mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value* Args,
                                         Value* OrigCall) {
+  mlir::Value Init = VisitDefineArgs(Args);
   heavy::Value* EnvStack = Context.EnvStack;
 
   // A module at the top of the EnvStack is mutable
@@ -150,7 +155,10 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, mlir::Value Init,
   // then it behaves like `set!`
   Binding* B = M->Lookup(S);
   if (B && !B->isSyntactic()) {
-    return create<SetOp>(BVal, Init);
+    SourceLocation DefineLoc = OrigCall->getSourceLocation();
+    mlir::Value BVal = BindingTable.lookup(B);
+    assert(BVal && "expecting BindingOp for Binding");
+    return create<SetOp>(DefineLoc, BVal, Init);
   }
 
   // Top Level definitions may not shadow names in
@@ -168,6 +176,27 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, mlir::Value Init,
   Binding* B = Context.CreateBinding(S, Context.CreateUndefined());
   M->Insert(B);
   return createBinding(B, Init);
+}
+
+// This handles everything after the `define` keyword
+// including terse lambda syntax. This supports lazy
+// visitation of local bindings' initializers.
+mlir::Value OpGen::VisitDefineArgs(Value* Args) {
+  Pair* P = cast<Pair>(Args);
+  if (Pair* LambdaSpec = dyn_cast<Pair>(P->Car)) {
+    // we already checked the name
+    Symbol* S = cast<Symbol>(LambdaSpec->Car);
+    Value* Formals = LambdaSpec->Cdr;
+    Value* Body = P->Cdr;
+    return createLambda(Formals, Body,
+                        S->getSourceLocation(),
+                        S->getVal());
+
+  } else if (isa<Empty>(P->Cdr)) {
+    return Visit(P->Car);
+  } else {
+    return SetError("invalid define syntax", P);
+  }
 }
 
 mlir::Value OpGen::VisitSymbol(Symbol* S) {
