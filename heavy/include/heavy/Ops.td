@@ -50,12 +50,10 @@ def heavy_ApplyOp : HeavyOp<"apply"> {
 def heavy_BindingOp : HeavyOp<"binding"> {
   let summary = "binding";
   let description = [{
-    All DefineOps have initializer expressions that are
-    wrapped in a BindingOp to create a mutable reference. In the
-    absence of mutation or multiple captures, the binding may be
-    elided and refer directly to the result of the initializer
-    expression. A binding denotes potential shared ownership and is
-    handled as such during garbage collection.
+    BindingOp creates a value wrapper (heavy::Binding) that allows
+    shared ownership of a reference. This has meaning with SetOp,
+    and in the absence of such mutation, the binding may be
+    elided and the result can refer directly to the enclosed value.
   }];
 
   let arguments = (ins HeavyValue:$input);
@@ -83,23 +81,6 @@ def heavy_BuiltinOp : HeavyOp<"builtin"> {
   let builders  = [
     OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, "
               "heavy::Builtin*">
-  ];
-}
-
-def heavy_DefineOp : HeavyOp<"define"> {
-  let summary = "define";
-  let description = [{
-    DefineOp initializes top level and local variables.
-    This behaves the same as SetOp except that it is
-    strictly for initialization where SetOp is changing
-    the value of an existing variable.
-  }];
-
-  let arguments = (ins HeavyValue:$binding);
-  let results   = (outs HeavyValue:$result);
-  let builders = [
-    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&,"
-              "::mlir::Value binding">
   ];
 }
 
@@ -153,6 +134,22 @@ def heavy_LiteralOp : HeavyOp<"literal", [NoSideEffect]> {
   let results   = (outs HeavyValue:$result);
   let builders = [
     OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, ::heavy::Value*">
+  ];
+}
+
+def heavy_SetOp : HeavyOp<"set"> {
+  let summary = "set";
+  let description = [{
+    SetOp sets the enclosed value of a binding. This is used
+    by the `set` syntax as well as lazy initialization of local
+    variables needed by `letrec` and similar binding constructs.
+  }];
+
+  let arguments = (ins HeavyValue:$binding, HeavyValue:$input);
+  let results   = (outs HeavyValue:$result);
+  let builders = [
+    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&,"
+              "::mlir::Value binding, ::mlir::Value input">
   ];
 }
 
