@@ -15,6 +15,7 @@
 
 #include "heavy/HeavyScheme.h"
 #include "mlir/IR/Builders.h"
+#include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/Support/Casting.h"
 #include <utility>
 
@@ -33,11 +34,10 @@ class OpEval;
 class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   friend class ValueVisitor<OpGen, mlir::Value>;
   heavy::Context& Context;
-  mlir::OpBuilder TopLevel;
+  mlir::OpBuilder Builder;
   mlir::OpBuilder LocalInits;
-  mlir::OpBuilder LocalSequence;
+  mlir::Value Undefined_;
   llvm::ScopedHashTable<heavy::Binding*, mlir::Value> BindingTable;
-  llvm::SmallVector<heavy::Binding*> LocalDefines;
   bool IsTopLevel = false;
 
   using BindingScope = llvm::ScopedHashTableScope<
@@ -58,7 +58,7 @@ public:
   bool isLocalDefineAllowed();
 
   template <typename Op, typename ...Args>
-  static Op create(OpBuilder& Builder, heavy::SourceLocation Loc,
+  static Op create(mlir::OpBuilder& Builder, heavy::SourceLocation Loc,
                    Args&& ...args) {
     assert(Builder.getInsertionBlock() != nullptr &&
         "Operation must have insertion point");
@@ -69,29 +69,34 @@ public:
 
   template <typename Op, typename ...Args>
   Op create(heavy::SourceLocation Loc, Args&& ...args) {
-    return create<Op>(Builder, Loc, std::forward<Args>(args));
+    return create<Op>(Builder, Loc, std::forward<Args>(args)...);
   }
+
+  void processBody(Value* Body);
 
   mlir::Value createLambda(Value* Formals, Value* Body,
                            SourceLocation Loc,
                            llvm::StringRef Name = {});
-          
-  mlir::Value createDefine(Symbol* S, Value *V, Value* OrigCall);
-  mlir::Value createTopLevelDefine(Symbol* S, mlir::Value Init,
-                                   Value* OrigCall);
+
+  mlir::Value createBinding(Binding *B, mlir::Value Init);
+  mlir::Value createDefine(Symbol* S, Value *Args, Value* OrigCall);
+  mlir::Value createTopLevelDefine(Symbol* S, Value* Args, Value* OrigCall);
   mlir::Value createTopLevelDefine(Symbol* S, mlir::Value Init, Module* M);
+  mlir::Value createUndefined();
 
   template <typename T>
   mlir::Value SetError(T Str, Value* V) {
     Context.SetError(Str, V);
-    return Error(V->getSourceLocation());
+    return Error();
   }
 
-  mlir::Value Error(SourceLocation Loc) {
-    return create<LiteralOp>(Loc, Context.CreateUndefined());
+  mlir::Value Error() {
+    return createUndefined();
   }
 
 private:
+  mlir::Value VisitDefineArgs(Value* Args);
+
   mlir::Value VisitValue(Value* V) {
     return create<LiteralOp>(V->getSourceLocation(), V);
   }

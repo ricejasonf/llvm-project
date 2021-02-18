@@ -35,26 +35,20 @@ heavy::Value* GetSingleSyntaxArg(heavy::Pair* P) {
 namespace heavy { namespace builtin_syntax {
 
 mlir::Value define(OpGen& OG, Pair* P) {
-  Pair*   P2  = dyn_cast<Pair>(P->Cdr);
-  Symbol* S   = nullptr;
-  Value*  V   = nullptr;
+  Pair*   P2    = dyn_cast<Pair>(P->Cdr);
+  Symbol* S     = nullptr;
+  Value*  Args  = nullptr;
   if (!P2) return OG.SetError("invalid define syntax", P);
   if (Pair* LambdaSpec = dyn_cast<Pair>(P2->Car)) {
     S = dyn_cast<Symbol>(LambdaSpec->Car);
-    Value* Formals = LambdaSpec->Cdr;
-    Value* Body = P2->Cdr;
-    if (!S) return OG.SetError("invalid define lambda syntax", LambdaSpec);
-    mlir::Value Lambda = OG.createLambda(Formals, Body,
-                                         S->getSourceLocation(),
-                                         S->getVal());
-    return OG.createDefine(S, Lambda, P);
+    Args = LambdaSpec;
 
   } else {
     S = dyn_cast<Symbol>(P2->Car);
-    V = GetSingleSyntaxArg(P2);
+    Args = P2->Cdr;
   }
-  if (!S || !V) return OG.SetError("invalid define syntax", P);
-  return OG.createDefine(S, V, P);
+  if (!S) return OG.SetError("invalid define syntax", P);
+  return OG.createDefine(S, Args, P);
 }
 
 mlir::Value lambda(OpGen& OG, Pair* P) {

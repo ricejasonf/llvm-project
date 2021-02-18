@@ -57,7 +57,7 @@ public:
     if (llvm::isa<ApplyOp>(Op))   return Visit(llvm::cast<ApplyOp>(Op));
     if (llvm::isa<BindingOp>(Op)) return Visit(llvm::cast<BindingOp>(Op));
     if (llvm::isa<BuiltinOp>(Op)) return Visit(llvm::cast<BuiltinOp>(Op));
-    if (llvm::isa<DefineOp>(Op))  return Visit(llvm::cast<DefineOp>(Op));
+    if (llvm::isa<SetOp>(Op))     return Visit(llvm::cast<SetOp>(Op));
     if (llvm::isa<LiteralOp>(Op)) return Visit(llvm::cast<LiteralOp>(Op));
     llvm_unreachable("Unknown Operation");
   }
@@ -127,18 +127,13 @@ public:
     return V;
   }
 
-  heavy::Value* Visit(DefineOp Op) {
-    // Evaluate the initializer expression
-    // and assign it the the binding
-    if (BindingOp B = dyn_cast<BindingOp>(Op.binding().getDefiningOp())) {
-      assert(B && "DefineOp must contain BindingOp");
-      heavy::Value* InitResult = Visit(B.input());
-      // get or create a heavy::Binding
-      // (this assumes top level define and may behave like set!)
-      heavy::Value* Binding = getValue(B);
-      if (!isa<heavy::Binding>(Binding)) {
-        Binding = Context.CreateBinding(InitResult);
-        setValue(B, Binding);
+  heavy::Value* Visit(SetOp Op) {
+    if (BindingOp BVal = dyn_cast<BindingOp>(Op.binding().getDefiningOp())) {
+      assert(BVal && "SetOp binding should be BindingOp");
+      heavy::Binding* B = dyn_cast_or_null<heavy::Binding>(getValue(BVal));
+      heavy::Value* RHS = Visit(BVal.input());
+      if (B) {
+        B->Val = RHS;
       }
     }
     return Context.CreateUndefined();
