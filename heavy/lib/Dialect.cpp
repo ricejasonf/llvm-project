@@ -104,6 +104,10 @@ void SetOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
   SetOp::build(B, OpState, B.getType<HeavyValue>(), Binding, Input);
 }
 
+void UndefinedOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState) {
+  UndefinedOp::build(B, OpState, B.getType<HeavyValue>());
+}
+
 using namespace mlir;
 #define GET_OP_CLASSES
 #include "heavy/Ops.cpp.inc"

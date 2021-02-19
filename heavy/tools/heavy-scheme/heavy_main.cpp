@@ -87,8 +87,7 @@ int main(int argc, char const** argv) {
   Parser.ConsumeToken();
 
   // Make the Top Level Environment mutable
-  Context.EnvStack = Context.CreatePair(Context.CreateModule(),
-                                        Context.EnvStack);
+  Context.PushMutableModule();
 
   heavy::ValueResult Result;
   bool HasError = Context.CheckError();
