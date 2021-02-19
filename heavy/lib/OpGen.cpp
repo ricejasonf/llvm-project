@@ -44,8 +44,7 @@ mlir::ModuleOp OpGen::getTopLevel() {
 
 mlir::Value OpGen::createUndefined() {
   if (!Undefined_) {
-    Undefined_ = create<LiteralOp>(SourceLocation(),
-                                   Context.CreateUndefined());
+    Undefined_ = create<UndefinedOp>(SourceLocation());
   }
   return Undefined_;
 }
@@ -119,6 +118,7 @@ void OpGen::processBody(Value* Body) {
     assert(BVal && "BindingTable should have an entry for local define");
 
     create<SetOp>(LocalInits, Loc, BVal, Init);
+    Env = EnvPair->Cdr;
   }
 }
 

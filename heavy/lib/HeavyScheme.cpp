@@ -150,14 +150,16 @@ EnvFrame* Context::PushEnvFrame(llvm::ArrayRef<Symbol*> Names) {
 void Context::PopEnvFrame() {
   // We want to remove the current local scope
   // and assert that we aren't popping anything else
-  Pair* Env = cast<Pair>(EnvStack);
   // Walk through the local bindings
-  while (dyn_cast<Binding>(Env->Cdr)) {
-    Env = cast<Pair>(Env->Cdr);
+  Value* Env = EnvStack;
+  Pair* EnvPair;
+  while ((EnvPair = dyn_cast<Pair>(Env))) {
+    if (!isa<Binding>(EnvPair->Car)) break;
+    Env = EnvPair->Cdr;
   }
-  assert(isa<EnvFrame>(Env->Car) &&
+  assert(isa<EnvFrame>(EnvPair->Car) &&
       "Scope must be in an EnvFrame");
-  EnvStack = Env->Cdr;
+  EnvStack = EnvPair->Cdr;
 }
 
 void Context::PushLocalBinding(Binding* B) {
