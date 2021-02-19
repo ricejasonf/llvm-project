@@ -153,5 +153,20 @@ def heavy_SetOp : HeavyOp<"set"> {
   ];
 }
 
+def heavy_UndefinedOp : HeavyOp<"undefined", [NoSideEffect]> {
+  let summary = "undefined";
+  let description = [{
+    This is a singleton literal for heavy::Undefined
+  }];
+
+  let arguments = (ins);
+  let results   = (outs HeavyValue:$result);
+
+  let builders = [
+    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&">
+  ];
+}
+
+
 
 #endif

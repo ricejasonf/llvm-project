@@ -720,6 +720,8 @@ inline SourceLocation Value::getSourceLocation() {
 }
 
 class Context : DialectRegisterer {
+  friend class OpGen;
+  friend class OpEval;
   AllocatorTy TrashHeap;
 
   // "static" values
@@ -731,17 +733,16 @@ class Context : DialectRegisterer {
   //    an Environment
   //  - Calls to procedures or eval will set the EnvStack
   //    and swap it back upon completion (via RAII)
-public:
   Module* SystemModule;
   Environment* SystemEnvironment;
   Value* EnvStack;
-  std::unordered_map<void*, Value*> EmbeddedEnvs;
   EvaluationStack EvalStack;
   mlir::MLIRContext MlirContext;
+  Value* Err = nullptr;
+  std::unordered_map<void*, Value*> EmbeddedEnvs;
+public:
   std::unique_ptr<heavy::OpGen> OpGen;
   std::unique_ptr<heavy::OpEval> OpEval;
-  Value* Err = nullptr;
-  bool IsTopLevel = true;
 
   template <typename T>
   T* CheckKind(heavy::Value* Val) {
@@ -752,11 +753,8 @@ public:
     return nullptr;
   }
 
-  // used by builtin functions
-  bool CheckArity(unsigned Len, ValueRefs Args) {
-    StackFrame* F = EvalStack.top();
-    if (Args.size() == Len) return false;
-    SetError(F->getCallLoc(), "invalid arity", F->getCallee());
+  void PushMutableModule() {
+    EnvStack = CreatePair(CreateModule(), EnvStack);
   }
 
   void AddBuiltin(StringRef Str, ValueFn Fn);
