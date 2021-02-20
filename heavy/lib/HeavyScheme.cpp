@@ -291,6 +291,14 @@ void Context::AddBuiltin(StringRef Str, ValueFn Fn) {
   OpEval->Visit(Op);
 }
 
+void Context::dumpModuleOp() {
+  OpGen->getTopLevel().dump();
+}
+
+void Context::PushTopLevel(heavy::Value* V) {
+  OpGen->VisitTopLevel(V);
+}
+
 #if 0
 // TODO remove I don't think it is used after OpGen was added
 Builtin* Context::GetBuiltin(StringRef Name) {
