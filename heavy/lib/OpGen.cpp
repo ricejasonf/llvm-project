@@ -43,10 +43,7 @@ mlir::ModuleOp OpGen::getTopLevel() {
 }
 
 mlir::Value OpGen::createUndefined() {
-  if (!Undefined_) {
-    Undefined_ = create<UndefinedOp>(SourceLocation());
-  }
-  return Undefined_;
+  return create<UndefinedOp>(SourceLocation());
 }
 
 mlir::Value OpGen::createLambda(Value* Formals, Value* Body,
