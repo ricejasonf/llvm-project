@@ -44,7 +44,6 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   BindingScopeTable BindingTable;
   BindingScope BindingTableTop;
   mlir::Operation* TopLevel;
-  mlir::Value Undefined_;
   bool IsTopLevel = false;
 
 
