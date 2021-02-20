@@ -744,6 +744,9 @@ public:
   std::unique_ptr<heavy::OpGen> OpGen;
   std::unique_ptr<heavy::OpEval> OpEval;
 
+  void dumpModuleOp();
+  void PushTopLevel(Value*);
+
   template <typename T>
   T* CheckKind(heavy::Value* Val) {
     if (T* V = dyn_cast<T>(Val)) return V;

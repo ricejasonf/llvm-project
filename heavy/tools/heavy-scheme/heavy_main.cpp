@@ -54,7 +54,7 @@ void ProcessTopLevelExpr(heavy::Context& Context, heavy::Value* Val) {
     if (!Context.CheckError()) Val->dump();
     break;
   case ExecutionMode::mlir:
-    llvm_unreachable("TODO generate and output mlir");
+    Context.PushTopLevel(Val);
     break;
   default:
     llvm_unreachable("Invalid execution mode for loop");
@@ -110,4 +110,9 @@ int main(int argc, char const** argv) {
   };
 
   if (HasError) return 1;
+
+  if (InputMode.getValue() == ExecutionMode::mlir) {
+    Context.dumpModuleOp();
+    llvm::errs() << "\n";
+  }
 }
