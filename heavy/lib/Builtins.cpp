@@ -117,7 +117,6 @@ heavy::Value* eval(Context& C, ValueRefs Args) {
 
   mlir::Value OpGenResult = C.OpGen->VisitTopLevel(ExprOrDef);
   if (C.CheckError()) return C.CreateUndefined();
-  OpGenResult.dump();
   return C.OpEval->Visit(OpGenResult);
 }
 
