@@ -77,7 +77,7 @@ public:
     return create<Op>(Builder, Loc, std::forward<Args>(args)...);
   }
 
-  void processBody(Value* Body);
+  void processBody(SourceLocation Loc, Value* Body);
 
   mlir::Value createLambda(Value* Formals, Value* Body,
                            SourceLocation Loc,
@@ -92,6 +92,12 @@ public:
   template <typename T>
   mlir::Value SetError(T Str, Value* V) {
     Context.SetError(Str, V);
+    return Error();
+  }
+
+  template <typename T>
+  mlir::Value SetError(SourceLocation Loc, T Str, Value* V) {
+    Context.SetError(Loc, Str, V);
     return Error();
   }
 

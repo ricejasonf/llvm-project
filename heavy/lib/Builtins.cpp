@@ -37,18 +37,15 @@ namespace heavy { namespace builtin_syntax {
 mlir::Value define(OpGen& OG, Pair* P) {
   Pair*   P2    = dyn_cast<Pair>(P->Cdr);
   Symbol* S     = nullptr;
-  Value*  Args  = nullptr;
   if (!P2) return OG.SetError("invalid define syntax", P);
   if (Pair* LambdaSpec = dyn_cast<Pair>(P2->Car)) {
     S = dyn_cast<Symbol>(LambdaSpec->Car);
-    Args = LambdaSpec;
 
   } else {
     S = dyn_cast<Symbol>(P2->Car);
-    Args = P2->Cdr;
   }
   if (!S) return OG.SetError("invalid define syntax", P);
-  return OG.createDefine(S, Args, P);
+  return OG.createDefine(S, P2, P);
 }
 
 mlir::Value lambda(OpGen& OG, Pair* P) {
