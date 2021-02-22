@@ -21,7 +21,26 @@ namespace heavy {
 
 class OpEval {
   heavy::Context& Context;
+  // TODO ValueMap should probably be a scoped
+  //      hash table so we can have local values
+  //      in function scopes
   llvm::DenseMap<mlir::Value, heavy::Value*> ValueMap;
+
+  struct StackScope {
+    heavy::Context& Context;
+    // TODO store ScopedHashTableScope
+    StackScope(OpEval& E, llvm::ArrayRef<heavy::Value*> Args,
+                          SourceLocation CallLoc)
+      : Context(E.Context),
+        // TODO initialize Scope table thingy
+    {
+      heavy::StackFrame* Frame = Context.EvalStack.push(Args, CallLoc);
+    }
+
+    ~StackScope() {
+      Context.EvalStack.pop();
+    }
+  };
 
   void setValue(mlir::Value M, heavy::Value* H) {
     ValueMap[M] = H;
@@ -59,50 +78,60 @@ public:
     if (llvm::isa<BuiltinOp>(Op)) return Visit(llvm::cast<BuiltinOp>(Op));
     if (llvm::isa<SetOp>(Op))     return Visit(llvm::cast<SetOp>(Op));
     if (llvm::isa<LiteralOp>(Op)) return Visit(llvm::cast<LiteralOp>(Op));
+    if (llvm::isa<LambdaOp>(Op))  return Visit(llvm::cast<LambdaOp>(Op));
     llvm_unreachable("Unknown Operation");
   }
 
-  heavy::Value* Visit(ApplyOp Op) {
-    heavy::SourceLocation CallLoc = getSourceLocation(Op.getLoc());
-    // The Callee should be a procedure or builtin
-    unsigned ArgCount = Op.args().size() + 1; // includes callee
-    heavy::StackFrame* Frame = Context.EvalStack.push(ArgCount, CallLoc);
-    if (!Frame) return Context.CreateUndefined();
+  heavy::Value* Visit(ApplyOp OrigOp) {
+    mlir::Operation* OpTail = OrigOp;
+    while (ApplyOp Op = dyn_cast<ApplyOp>(OpTail)) {
+      heavy::SourceLocation CallLoc = getSourceLocation(Op.getLoc());
+      llvm::SmallVector<heavy::Value*, 8> ArgResults(nullptr,
+                                                     Op.args.size() + 1);
 
-    llvm::MutableArrayRef<heavy::Value*> Args = Frame->getArgs();
+      // We store args left to right, but we want to evaluate them
+      // in reverse order to prevent accidental reliance on unspecified
+      // behaviour
+      for (int i = Op.args().size() - 1; i >= 0; --i) {
+        ArgResults[i](Visit(Op.args()[i]));
+      }
+      heavy::Value* Callee = Visit(Op.fn());
+      ArgsResults[0](Callee);
 
-    // We store args left to right, but we want to evaluate them
-    // in reverse order to prevent accidental reliance on unspecified
-    // behaviour
-    for (int i = Op.args().size() - 1; i >= 0; --i) {
-      Args[i] = Visit(Op.args()[i]);
+      StackScope SS(*this, ArgsResults, CallLoc);
+      // ^ TODO move this in the RAII object
+      // heavy::StackFrame* Frame = Context.EvalStack.push(ArgResults, CallLoc);
+       heavy::StackFrame* Frame = SS.getFrame();
+      if (!Frame) return Context.CreateUndefined();
+
+      Frame->setCallee(Callee);
+
+      heavy::Value* Result = Context.CreateUndefined();
+
+      switch (Callee->getKind()) {
+        case Value::Kind::Lambda:
+          llvm_unreachable("TODO");
+          break;
+        case Value::Kind::LambdaIr:
+          llvm_unreachable("TODO");
+          LambdaIr* L = cast<LambdaIr>(Callee);
+          mlir::Operation* OpTail = VisitBodyUntilTail(L->getOp());
+          break;
+        case Value::Kind::Builtin: {
+          Builtin* B = cast<Builtin>(Callee);
+          return B->Fn(Context, Frame->getArgs());
+        }
+        default: {
+          String* Msg = Context.CreateString(
+            "invalid operator for call expression: ",
+            Callee->getKindName()
+          );
+          return Context.SetError(CallLoc, Msg, Callee);
+        }
+      }
     }
 
-    heavy::Value* Callee = Visit(Op.fn());
-    Frame->setCallee(Callee);
-
-    heavy::Value* Result = Context.CreateUndefined();
-
-    switch (Callee->getKind()) {
-      case Value::Kind::Lambda:
-        llvm_unreachable("TODO");
-        break;
-      case Value::Kind::Builtin: {
-        Builtin* B = cast<Builtin>(Callee);
-        Result = B->Fn(Context, Args);
-        break;
-      }
-      default: {
-        String* Msg = Context.CreateString(
-          "invalid operator for call expression: ",
-          Callee->getKindName()
-        );
-        Context.SetError(CallLoc, Msg, Callee);
-      }
-    }
-
-    Context.EvalStack.pop();
-    return Result;
+    return Visit(OpTail);
   }
 
   heavy::Value* Visit(BindingOp Op) {
@@ -121,6 +150,10 @@ public:
     heavy::Value* V = Op.builtinFn(); 
     setValue(Op.result(), V);
     return V;
+  }
+
+  heavy::Value* Visit(LambdaOp Op) {
+    return Context.CreateLambdaIr(Op, llvm::None);
   }
 
   heavy::Value* Visit(LiteralOp Op) {

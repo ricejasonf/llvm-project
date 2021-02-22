@@ -122,14 +122,24 @@ Vector* Context::CreateVector(unsigned N) {
   return new (Mem) Vector(CreateUndefined(), N);
 }
 
+Lambda* Context::CreateLambda(heavy::ValueFn Fn,
+                              llvm::ArrayRef<heavy::Value*> Captures) {
+  return new (TrashHeap) Lambda(Fn, /*NumCaptures=*/0);
+}
+
+LambdaIr* Context::CreateLambdaIr(mlir::Operation* Op,
+                              llvm::ArrayRef<heavy::Value*> Captures) {
+  return new (TrashHeap) LambdaIr(Op, /*NumCaptures=*/0);
+}
+
 EnvFrame* Context::PushLambdaFormals(Value* Formals,
                                      bool& HasRestParam) {
-  llvm::SmallVector<Symbol*, 16> Names;
+  llvm::SmallVector<Symbol*, 8> Names;
   HasRestParam = false;
   if (CheckLambdaFormals(Formals, Names,
                          HasRestParam)) return nullptr;
 
-  llvm::SmallSet<llvm::StringRef, 16> NameSet;
+  llvm::SmallSet<llvm::StringRef, 8> NameSet;
   // ensure uniqueness of names
   for (Symbol* Name : Names) {
     auto Result = NameSet.insert(Name->getVal());

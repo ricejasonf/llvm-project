@@ -72,7 +72,7 @@ mlir::Value OpGen::createLambda(Value* Formals, Value* Body,
     createBinding(B, Arg);
   }
 
-  processBody(Body);
+  processBody(Loc, Body);
   Context.PopEnvFrame();
 
   return L;
@@ -82,7 +82,7 @@ bool OpGen::isLocalDefineAllowed() {
   return LocalInits.getInsertionPoint() == Builder.getInsertionPoint();
 }
 
-void OpGen::processBody(Value* Body) {
+void OpGen::processBody(SourceLocation Loc, Value* Body) {
   mlir::OpBuilder::InsertionGuard IG(LocalInits);
   LocalInits = Builder;
 
@@ -90,6 +90,10 @@ void OpGen::processBody(Value* Body) {
   // insertion point
 
   IsTopLevel = false;
+
+  if (!isa<Pair>(Body)) {
+    SetError(Loc, "body must contain an expression", Body);
+  }
 
   Value* RestBody = Body;
   mlir::Value LastOp;
@@ -127,14 +131,15 @@ mlir::Value OpGen::createBinding(Binding *B, mlir::Value Init) {
   return BVal;
 }
 
-mlir::Value OpGen::createDefine(Symbol* S, Value* Args, Value* OrigCall) {
-  if (isTopLevel()) return createTopLevelDefine(S, Args, OrigCall);
+mlir::Value OpGen::createDefine(Symbol* S, Value* DefineArgs,
+                                           Value* OrigCall) {
+  if (isTopLevel()) return createTopLevelDefine(S, DefineArgs, OrigCall);
   if (!isLocalDefineAllowed()) return SetError("unexpected define", OrigCall);
   // create the binding with a lazy init
   // (include everything after the define
   //  keyword to visit it later because it could
   //  be a terse lambda syntax)
-  Binding* B = Context.CreateBinding(S, Args);
+  Binding* B = Context.CreateBinding(S, DefineArgs);
   // push to the local environment
   Context.PushLocalBinding(B);
   mlir::Value BVal = createBinding(B, createUndefined());
@@ -145,9 +150,9 @@ mlir::Value OpGen::createDefine(Symbol* S, Value* Args, Value* OrigCall) {
   return BVal;
 }
 
-mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value* Args,
+mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value* DefineArgs,
                                         Value* OrigCall) {
-  mlir::Value Init = VisitDefineArgs(Args);
+  mlir::Value Init = VisitDefineArgs(DefineArgs);
   heavy::Value* EnvStack = Context.EnvStack;
 
   // A module at the top of the EnvStack is mutable
@@ -201,11 +206,11 @@ mlir::Value OpGen::VisitDefineArgs(Value* Args) {
                         S->getSourceLocation(),
                         S->getVal());
 
-  } else if (isa<Empty>(P->Cdr)) {
-    return Visit(P->Car);
-  } else {
-    return SetError("invalid define syntax", P);
   }
+  if (isa<Symbol>(P->Car) && isa<Pair>(P->Cdr)) {
+    return Visit(cast<Pair>(P->Cdr)->Car);
+  }
+  return SetError("invalid define syntax", P);
 }
 
 mlir::Value OpGen::VisitSymbol(Symbol* S) {
