@@ -91,6 +91,7 @@ public:
     Pair,
     PairWithSource,
     Lambda,
+    LambdaIr,
     Quote,
     String,
     Symbol,
@@ -482,12 +483,50 @@ public:
   }
 };
 
-// A lambda object that has not been compiled
 class Lambda final
   : public Value,
     private llvm::TrailingObjects<Lambda, Value*> {
 
   friend class llvm::TrailingObjects<Lambda, Value*>;
+
+  ValueFn Fn;
+  unsigned NumCaptures: 8;
+
+  size_t numTrailingObjects(OverloadToken<Value*> const) const {
+    return NumCaptures;
+  }
+
+public:
+  Lambda(ValueFn Fn, unsigned NumCaptures)
+    : Value(Kind::Lambda)
+    , Fn(Fn)
+    , NumCaptures(NumCaptures)
+  { }
+
+  static bool classof(Value const* V) {
+    return V->getKind() == Kind::Lambda;
+  }
+
+  ValueFn getFn() const { return Fn; }
+
+  llvm::ArrayRef<Value*> getCaptures() const {
+    return llvm::ArrayRef<Value*>(
+        getTrailingObjects<Value*>(), NumCaptures);
+  }
+
+  llvm::MutableArrayRef<Value*> getCaptures() {
+    return llvm::MutableArrayRef<Value*>(
+        getTrailingObjects<Value*>(), NumCaptures);
+  }
+};
+
+// A lambda object that has not been compiled
+// for use with the tree walking evaluator (OpEval)
+class LambdaIr final
+  : public Value,
+    private llvm::TrailingObjects<LambdaIr, Value*> {
+
+  friend class llvm::TrailingObjects<LambdaIr, Value*>;
 
   mlir::Operation* Op;
   unsigned NumCaptures: 8;
@@ -497,14 +536,14 @@ class Lambda final
   }
 
 public:
-  Lambda(mlir::Operation* Op, unsigned NumCaptures)
-    : Value(Kind::Lambda)
+  LambdaIr(mlir::Operation* Op, unsigned NumCaptures)
+    : Value(Kind::LambdaIr)
     , Op(Op)
     , NumCaptures(NumCaptures)
   { }
 
   static bool classof(Value const* V) {
-    return V->getKind() == Kind::Lambda;
+    return V->getKind() == Kind::LambdaIr;
   }
 
   mlir::Operation* getOp() const { return Op; }
@@ -914,6 +953,11 @@ public:
     return New;
   }
 
+  LambdaIr* CreateLambdaIr(mlir::Operation* Op,
+                           llvm::ArrayRef<heavy::Value*> Captures);
+  Lambda*   CreateLambda(ValueFn Fn,
+                         llvm::ArrayRef<heavy::Value*> Captures);
+
   Builtin* CreateBuiltin(ValueFn Fn) {
     return new (TrashHeap) Builtin(Fn);
   }
@@ -1004,6 +1048,7 @@ protected:
   VISIT_FN(Pair)
   // VISIT_FN(PairWithSource) **PairWithSource Implemented below**
   VISIT_FN(Lambda)
+  VISIT_FN(LambdaIr)
   VISIT_FN(Quote)
   VISIT_FN(String)
   VISIT_FN(Symbol)
@@ -1035,8 +1080,9 @@ public:
     case Value::Kind::Integer:        DISPATCH(Integer);
     case Value::Kind::Module:         DISPATCH(Module);
     case Value::Kind::Pair:           DISPATCH(Pair);
-    case Value::Kind::PairWithSource:    DISPATCH(PairWithSource);
-    case Value::Kind::Lambda:      DISPATCH(Lambda);
+    case Value::Kind::PairWithSource: DISPATCH(PairWithSource);
+    case Value::Kind::Lambda:         DISPATCH(Lambda);
+    case Value::Kind::LambdaIr:       DISPATCH(LambdaIr);
     case Value::Kind::Quote:          DISPATCH(Quote);
     case Value::Kind::String:         DISPATCH(String);
     case Value::Kind::Symbol:         DISPATCH(Symbol);
@@ -1073,6 +1119,7 @@ inline StringRef Value::getKindName(heavy::Value::Kind Kind) {
   GET_KIND_NAME_CASE(Pair)
   GET_KIND_NAME_CASE(PairWithSource)
   GET_KIND_NAME_CASE(Lambda)
+  GET_KIND_NAME_CASE(LambdaIr)
   GET_KIND_NAME_CASE(Quote)
   GET_KIND_NAME_CASE(String)
   GET_KIND_NAME_CASE(Symbol)
