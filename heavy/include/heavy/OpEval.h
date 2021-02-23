@@ -15,27 +15,31 @@
 
 #include "heavy/HeavyScheme.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/Support/Casting.h"
 
 namespace heavy {
 
 class OpEval {
   heavy::Context& Context;
-  // TODO ValueMap should probably be a scoped
-  //      hash table so we can have local values
-  //      in function scopes
-  llvm::DenseMap<mlir::Value, heavy::Value*> ValueMap;
+
+  using ValueMapTy = llvm::ScopedHashTable<mlir::Value, heavy::Value*>;
+  using ValueMapScope = typename ValueMapTy::ScopeTy;
+
+  ValueMapTy ValueMap;
+  ValueMapScope ValueMapBaseScope;
 
   struct StackScope {
     heavy::Context& Context;
-    // TODO store ScopedHashTableScope
+    ValueMapScope ScopeObj;
+    heavy::StackFrame* Frame;
+
     StackScope(OpEval& E, llvm::ArrayRef<heavy::Value*> Args,
                           SourceLocation CallLoc)
       : Context(E.Context),
-        // TODO initialize Scope table thingy
-    {
-      heavy::StackFrame* Frame = Context.EvalStack.push(Args, CallLoc);
-    }
+        ScopeObj(E.ValueMap),
+        Frame(Context.EvalStack.push(Args, CallLoc))
+    { }
 
     ~StackScope() {
       Context.EvalStack.pop();
@@ -43,7 +47,8 @@ class OpEval {
   };
 
   void setValue(mlir::Value M, heavy::Value* H) {
-    ValueMap[M] = H;
+    assert(M && H && "must set to a valid value");
+    ValueMap.insert(M, H);
   }
 
   heavy::Value* getValue(mlir::Value M) {
@@ -64,11 +69,17 @@ class OpEval {
 public:
   OpEval(heavy::Context& C)
     : Context(C),
-      ValueMap()
+      ValueMap(),
+      ValueMapBaseScope(ValueMap)
   { }
 
   heavy::Value* Visit(mlir::Value V) {
-    return Visit(V.getDefiningOp());
+    if (V.isa<mlir::OpResult>()) {
+      return Visit(V.getDefiningOp());
+    } else {
+      // for block arguments and such
+      return getValue(V);
+    }
   }
 
   heavy::Value* Visit(mlir::Operation* Op) {
@@ -79,44 +90,54 @@ public:
     if (llvm::isa<SetOp>(Op))     return Visit(llvm::cast<SetOp>(Op));
     if (llvm::isa<LiteralOp>(Op)) return Visit(llvm::cast<LiteralOp>(Op));
     if (llvm::isa<LambdaOp>(Op))  return Visit(llvm::cast<LambdaOp>(Op));
+    if (llvm::isa<UndefinedOp>(Op)) {
+      return Context.CreateUndefined();
+    }
+    Op->dump();
     llvm_unreachable("Unknown Operation");
+  }
+
+  void LoadArgs(StackFrame* Frame, ApplyOp Op) {
+    assert(Frame->getCallee());
+    setValue(Op.fn(), Frame->getCallee());
+    auto OpArgs = Op.args();
+    auto FrameArgs = Frame->getArgs();
+    for (unsigned i = 0; i < OpArgs.size(); ++i) {
+      setValue(OpArgs[i], FrameArgs[i]);
+    }
   }
 
   heavy::Value* Visit(ApplyOp OrigOp) {
     mlir::Operation* OpTail = OrigOp;
     while (ApplyOp Op = dyn_cast<ApplyOp>(OpTail)) {
       heavy::SourceLocation CallLoc = getSourceLocation(Op.getLoc());
-      llvm::SmallVector<heavy::Value*, 8> ArgResults(nullptr,
-                                                     Op.args.size() + 1);
+      llvm::SmallVector<heavy::Value*, 8> ArgResults(Op.args().size() + 1);
 
       // We store args left to right, but we want to evaluate them
       // in reverse order to prevent accidental reliance on unspecified
       // behaviour
       for (int i = Op.args().size() - 1; i >= 0; --i) {
-        ArgResults[i](Visit(Op.args()[i]));
+        ArgResults[i] = Visit(Op.args()[i]);
       }
       heavy::Value* Callee = Visit(Op.fn());
-      ArgsResults[0](Callee);
+      ArgResults[0] = Callee;
 
-      StackScope SS(*this, ArgsResults, CallLoc);
-      // ^ TODO move this in the RAII object
-      // heavy::StackFrame* Frame = Context.EvalStack.push(ArgResults, CallLoc);
-       heavy::StackFrame* Frame = SS.getFrame();
+      StackScope SS(*this, ArgResults, CallLoc);
+      heavy::StackFrame* Frame = SS.Frame;
       if (!Frame) return Context.CreateUndefined();
 
       Frame->setCallee(Callee);
-
-      heavy::Value* Result = Context.CreateUndefined();
 
       switch (Callee->getKind()) {
         case Value::Kind::Lambda:
           llvm_unreachable("TODO");
           break;
-        case Value::Kind::LambdaIr:
-          llvm_unreachable("TODO");
+        case Value::Kind::LambdaIr: {
           LambdaIr* L = cast<LambdaIr>(Callee);
-          mlir::Operation* OpTail = VisitBodyUntilTail(L->getOp());
+          LoadArgs(Frame, Op);
+          OpTail = VisitBodyUntilTail(L->getBody());
           break;
+        }
         case Value::Kind::Builtin: {
           Builtin* B = cast<Builtin>(Callee);
           return B->Fn(Context, Frame->getArgs());
@@ -173,6 +194,26 @@ public:
     }
     return Context.CreateUndefined();
   }
+
+  mlir::Operation* VisitBodyUntilTail(mlir::Block& Body) {
+    using ForwardItrTy = decltype(Body.begin());
+    auto TailItr = ForwardItrTy(Body.rbegin());
+    assert(TailItr != Body.end() && "body must have at least one operation");
+    for (auto itr = Body.begin(); itr != TailItr; ++itr) {
+      Visit(&*itr);
+    }
+    return &Body.back();
+  }
+
+#if 0
+  // TODO 
+  // Visit operations having tail positions within them
+  // IfOp, CondOp, SequenceOp
+        
+  mlir::Operation* VisitUntilTail(IfOp Op) {
+    // TODO
+  }
+#endif
 };
 
 }

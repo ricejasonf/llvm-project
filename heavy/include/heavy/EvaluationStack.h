@@ -76,7 +76,7 @@ public:
   }
 
   bool isInvalid() const {
-    return ArgCount > 0;
+    return ArgCount == 0;
   }
 
   // Gets the size in bytes that we allocated
@@ -162,6 +162,20 @@ public:
     }
 
     return new (NewPtr) StackFrame(ArgCount, CallLoc);
+  }
+
+  StackFrame* push(llvm::ArrayRef<Value*> Args, SourceLocation CallLoc) {
+    StackFrame* Frame = push(Args.size(), CallLoc);
+    if (!Frame) return nullptr;
+
+    Frame->setCallee(Args[0]); 
+    assert(Frame->getCallee());
+    auto DestArgs = Frame->getArgs();
+    for (unsigned i = 0; i < DestArgs.size(); ++i) {
+      DestArgs[i] = Args[i + 1];
+    }
+
+    return Frame;
   }
 
   void pop() {
