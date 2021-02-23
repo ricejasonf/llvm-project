@@ -127,7 +127,7 @@ Lambda* Context::CreateLambda(heavy::ValueFn Fn,
   return new (TrashHeap) Lambda(Fn, /*NumCaptures=*/0);
 }
 
-LambdaIr* Context::CreateLambdaIr(mlir::Operation* Op,
+LambdaIr* Context::CreateLambdaIr(LambdaOp Op,
                               llvm::ArrayRef<heavy::Value*> Captures) {
   return new (TrashHeap) LambdaIr(Op, /*NumCaptures=*/0);
 }
