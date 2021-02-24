@@ -111,22 +111,29 @@ void OpGen::processBody(SourceLocation Loc, Value* Body) {
   // heavy::Bindings placed in the EnvStack.
   // Walk the EnvStack to collect these and insert the lazy
   // initializers via SetOp
-  BindingOp LastBindingOp = dyn_cast<BindingOp>(
-      *LocalInits.getInsertionPoint());
-  LocalInits.setInsertionPointAfter(LastBindingOp);
+
+  {
+    mlir::Block* Block = LocalInits.getInsertionBlock();
+    mlir::Block::iterator Itr = LocalInits.getInsertionPoint();
+    if (Block && Itr != Block->end() && isa<BindingOp>(*Itr)) {
+      BindingOp LastBindingOp = cast<BindingOp>(*Itr);
+      LocalInits.setInsertionPointAfter(LastBindingOp);
+    }
+  }
+  mlir::OpBuilder::InsertionGuard IG2(Builder);
+  Builder = LocalInits;
+
   Value* Env = Context.EnvStack;
   while (Pair* EnvPair = dyn_cast<Pair>(Env)) {
     Binding* B = dyn_cast<Binding>(EnvPair->Car);
     // We should eventually hit the EnvFrame that wraps this local scope
     if (!B) break;
-    mlir::OpBuilder::InsertionGuard IG(Builder);
-    Builder = LocalInits;
     mlir::Value BVal = BindingTable.lookup(B);
     mlir::Value Init = VisitDefineArgs(B->getValue());
     SourceLocation Loc = B->getValue()->getSourceLocation();
     assert(BVal && "BindingTable should have an entry for local define");
 
-    create<SetOp>(LocalInits, Loc, BVal, Init);
+    create<SetOp>(Loc, BVal, Init);
     Env = EnvPair->Cdr;
   }
 }
@@ -288,7 +295,7 @@ mlir::Value OpGen::VisitVector(Vector* V) {
   for (unsigned i = 0; i < Xs.size(); ++i) {
     Visit(Xs[i]);
     Ys[i] = Visit(Xs[i]);
-  } 
+  }
   return New;
 }
 #endif
