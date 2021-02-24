@@ -169,7 +169,6 @@ public:
     if (!Frame) return nullptr;
 
     Frame->setCallee(Args[0]); 
-    assert(Frame->getCallee());
     auto DestArgs = Frame->getArgs();
     for (unsigned i = 0; i < DestArgs.size(); ++i) {
       DestArgs[i] = Args[i + 1];
