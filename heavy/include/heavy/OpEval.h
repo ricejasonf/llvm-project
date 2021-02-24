@@ -39,12 +39,9 @@ class OpEval {
       : Context(E.Context),
         ScopeObj(E.ValueMap),
         Frame(Context.EvalStack.push(Args, CallLoc))
-    {
-      llvm::errs() << "pushing StackScope\n";
-    }
+    { }
 
     ~StackScope() {
-      llvm::errs() << "popping StackScope\n";
       Context.EvalStack.pop();
     }
   };
@@ -82,7 +79,6 @@ public:
       return Visit(MVal.getDefiningOp());
     } else {
       // BlockArgument
-      llvm::errs() << "getting arg value M: " << (size_t) MVal.getAsOpaquePointer() << '\n';
       heavy::Value* V = ValueMap.lookup(MVal);
       assert(V && "argument must be in value table");
       assert(!isa<Undefined>(V) && "argument must not be undefined");
@@ -113,7 +109,6 @@ public:
     auto OpArgs = Body.getArguments();
     auto FrameArgs = Frame->getArgs();
     for (unsigned i = 0; i < OpArgs.size(); ++i) {
-      llvm::errs() << "setting arg value M: " << (size_t) OpArgs[i].getAsOpaquePointer() << '\n';
       setValue(OpArgs[i], FrameArgs[i]);
     }
   }
@@ -152,7 +147,6 @@ public:
           break;
         case Value::Kind::LambdaIr: {
           LambdaIr* L = cast<LambdaIr>(Callee);
-          L->getOp().dump(); // FIXME looks like there is no actual body
           mlir::Block& Body = L->getBody();
           LoadArgs(Frame, Body);
           OpTail = VisitBodyUntilTail(Body);
