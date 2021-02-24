@@ -39,15 +39,19 @@ class OpEval {
       : Context(E.Context),
         ScopeObj(E.ValueMap),
         Frame(Context.EvalStack.push(Args, CallLoc))
-    { }
+    {
+      llvm::errs() << "pushing StackScope\n";
+    }
 
     ~StackScope() {
+      llvm::errs() << "popping StackScope\n";
       Context.EvalStack.pop();
     }
   };
 
   void setValue(mlir::Value M, heavy::Value* H) {
-    assert(M && H && "must set to a valid value");
+    assert(M && "must set to a valid value");
+    assert(H && "must set to a valid value");
     ValueMap.insert(M, H);
   }
 
@@ -73,12 +77,16 @@ public:
       ValueMapBaseScope(ValueMap)
   { }
 
-  heavy::Value* Visit(mlir::Value V) {
-    if (V.isa<mlir::OpResult>()) {
-      return Visit(V.getDefiningOp());
+  heavy::Value* Visit(mlir::Value MVal) {
+    if (MVal.isa<mlir::OpResult>()) {
+      return Visit(MVal.getDefiningOp());
     } else {
-      // for block arguments and such
-      return getValue(V);
+      // BlockArgument
+      llvm::errs() << "getting arg value M: " << (size_t) MVal.getAsOpaquePointer() << '\n';
+      heavy::Value* V = ValueMap.lookup(MVal);
+      assert(V && "argument must be in value table");
+      assert(!isa<Undefined>(V) && "argument must not be undefined");
+      return V;
     }
   }
 
@@ -97,35 +105,45 @@ public:
     llvm_unreachable("Unknown Operation");
   }
 
-  void LoadArgs(StackFrame* Frame, ApplyOp Op) {
-    assert(Frame->getCallee());
-    setValue(Op.fn(), Frame->getCallee());
-    auto OpArgs = Op.args();
+  void LoadArgs(StackFrame* Frame, mlir::Block& Body) {
+    // This associate values with BlockArguments
+    // which should later be assigned to BingingOps (in code)
+
+    // Note we are not setting the callee (which might end as a param)
+    auto OpArgs = Body.getArguments();
     auto FrameArgs = Frame->getArgs();
     for (unsigned i = 0; i < OpArgs.size(); ++i) {
+      llvm::errs() << "setting arg value M: " << (size_t) OpArgs[i].getAsOpaquePointer() << '\n';
       setValue(OpArgs[i], FrameArgs[i]);
     }
   }
 
-  heavy::Value* Visit(ApplyOp OrigOp) {
-    mlir::Operation* OpTail = OrigOp;
-    while (ApplyOp Op = dyn_cast<ApplyOp>(OpTail)) {
-      heavy::SourceLocation CallLoc = getSourceLocation(Op.getLoc());
-      llvm::SmallVector<heavy::Value*, 8> ArgResults(Op.args().size() + 1);
-
+  void EvaluateArgs(ApplyOp Op, llvm::SmallVectorImpl<heavy::Value*>& ArgResults) {
+      ArgResults.clear();
+      ArgResults.resize(Op.args().size() + 1);
       // We store args left to right, but we want to evaluate them
       // in reverse order to prevent accidental reliance on unspecified
       // behaviour
       for (int i = Op.args().size() - 1; i >= 0; --i) {
-        ArgResults[i] = Visit(Op.args()[i]);
+        ArgResults[i + 1] = Visit(Op.args()[i]);
       }
       heavy::Value* Callee = Visit(Op.fn());
       ArgResults[0] = Callee;
+  }
+
+  heavy::Value* Visit(ApplyOp OrigOp) {
+    mlir::Operation* OpTail = OrigOp;
+    llvm::SmallVector<heavy::Value*, 8> ArgResults;
+    EvaluateArgs(OrigOp, ArgResults);
+    while (true) {
+      ApplyOp Op = cast<ApplyOp>(OpTail);
+      heavy::SourceLocation CallLoc = getSourceLocation(Op.getLoc());
 
       StackScope SS(*this, ArgResults, CallLoc);
       heavy::StackFrame* Frame = SS.Frame;
       if (!Frame) return Context.CreateUndefined();
 
+      heavy::Value* Callee = ArgResults[0];
       Frame->setCallee(Callee);
 
       switch (Callee->getKind()) {
@@ -134,8 +152,10 @@ public:
           break;
         case Value::Kind::LambdaIr: {
           LambdaIr* L = cast<LambdaIr>(Callee);
-          LoadArgs(Frame, Op);
-          OpTail = VisitBodyUntilTail(L->getBody());
+          L->getOp().dump(); // FIXME looks like there is no actual body
+          mlir::Block& Body = L->getBody();
+          LoadArgs(Frame, Body);
+          OpTail = VisitBodyUntilTail(Body);
           break;
         }
         case Value::Kind::Builtin: {
@@ -150,9 +170,12 @@ public:
           return Context.SetError(CallLoc, Msg, Callee);
         }
       }
-    }
 
-    return Visit(OpTail);
+      if(!isa<ApplyOp>(OpTail)) return Visit(OpTail);
+
+      // evaluates arguments in current environment
+      EvaluateArgs(cast<ApplyOp>(OpTail), ArgResults);
+    }
   }
 
   heavy::Value* Visit(BindingOp Op) {
@@ -196,13 +219,12 @@ public:
   }
 
   mlir::Operation* VisitBodyUntilTail(mlir::Block& Body) {
-    using ForwardItrTy = decltype(Body.begin());
-    auto TailItr = ForwardItrTy(Body.rbegin());
-    assert(TailItr != Body.end() && "body must have at least one operation");
+    assert(!Body.empty() && "body must have at least one operation");
+    auto TailItr = --Body.end();
     for (auto itr = Body.begin(); itr != TailItr; ++itr) {
       Visit(&*itr);
     }
-    return &Body.back();
+    return &*TailItr;
   }
 
 #if 0
