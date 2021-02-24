@@ -793,8 +793,9 @@ public:
   T* CheckKind(heavy::Value* Val) {
     if (T* V = dyn_cast<T>(Val)) return V;
 
-    // TODO get the Kind from T
-    SetError("invalid type, expecting ???", Val);
+    String* S = CreateString("invalid type ",
+                             Val->getKindName());
+    SetError(S, Val);
     return nullptr;
   }
 
