@@ -79,7 +79,10 @@ mlir::Value OpGen::createLambda(Value* Formals, Value* Body,
 }
 
 bool OpGen::isLocalDefineAllowed() {
-  return LocalInits.getInsertionPoint() == Builder.getInsertionPoint();
+  mlir::Block* Block = Builder.getInsertionBlock();
+  if (!Block) return false;
+  return (Block->empty() ||
+          isa<BindingOp>(Block->back()));
 }
 
 void OpGen::processBody(SourceLocation Loc, Value* Body) {
@@ -108,11 +111,16 @@ void OpGen::processBody(SourceLocation Loc, Value* Body) {
   // heavy::Bindings placed in the EnvStack.
   // Walk the EnvStack to collect these and insert the lazy
   // initializers via SetOp
+  BindingOp LastBindingOp = dyn_cast<BindingOp>(
+      *LocalInits.getInsertionPoint());
+  LocalInits.setInsertionPointAfter(LastBindingOp);
   Value* Env = Context.EnvStack;
   while (Pair* EnvPair = dyn_cast<Pair>(Env)) {
     Binding* B = dyn_cast<Binding>(EnvPair->Car);
     // We should eventually hit the EnvFrame that wraps this local scope
     if (!B) break;
+    mlir::OpBuilder::InsertionGuard IG(Builder);
+    Builder = LocalInits;
     mlir::Value BVal = BindingTable.lookup(B);
     mlir::Value Init = VisitDefineArgs(B->getValue());
     SourceLocation Loc = B->getValue()->getSourceLocation();
@@ -143,9 +151,8 @@ mlir::Value OpGen::createDefine(Symbol* S, Value* DefineArgs,
   // push to the local environment
   Context.PushLocalBinding(B);
   mlir::Value BVal = createBinding(B, createUndefined());
-  // The LocalInits insertion point should be
-  // after the last "define"
-  LocalInits.setInsertionPointAfter(BVal.getDefiningOp());
+  // Have LocalInits insertion point to the last BindingOp
+  LocalInits.setInsertionPoint(BVal.getDefiningOp());
   assert(isLocalDefineAllowed() && "define should still be allowed");
   return BVal;
 }
