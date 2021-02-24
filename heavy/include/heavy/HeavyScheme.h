@@ -652,7 +652,7 @@ public:
   }
 
   Value* Lookup(Symbol* S) {
-    if (Name->equals(S)) return Val;
+    if (Name->equals(S)) return this;
     return nullptr;
   }
 
