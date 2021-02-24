@@ -254,12 +254,10 @@ Binding* Context::Lookup(Symbol* Name, Value* Stack, Value* NextStack) {
     default:
       llvm_unreachable("Invalid Lookup Type");
   }
-  if (Result) {
-    if (ForwardRef* F = dyn_cast<ForwardRef>(Result)) {
-      Result = F->Val;
-    }
+  if (Result && isa<Binding>(Result)) {
     return cast<Binding>(Result);
   }
+  assert(!Result && "lookup result should be a binding or null");
   return Lookup(Name, Next, NextStack);
 }
 
