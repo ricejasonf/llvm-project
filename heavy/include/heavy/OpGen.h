@@ -27,10 +27,6 @@ namespace mlir {
 
 namespace heavy {
 
-heavy::Value* opEval(Context&, mlir::Value);
-
-class OpEval;
-
 class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   friend class ValueVisitor<OpGen, mlir::Value>;
   using BindingScopeTable = llvm::ScopedHashTable<
