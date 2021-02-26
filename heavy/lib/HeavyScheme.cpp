@@ -13,7 +13,6 @@
 #include "heavy/Builtins.h"
 #include "heavy/Dialect.h"
 #include "heavy/HeavyScheme.h"
-#include "heavy/OpEval.h"
 #include "heavy/OpGen.h"
 #include "heavy/Source.h"
 #include "mlir/IR/Module.h"
@@ -51,7 +50,7 @@ Context::Context()
   , EvalStack(*this)
   , MlirContext()
   , OpGen(std::make_unique<heavy::OpGen>(*this))
-  , OpEval(std::make_unique<heavy::OpEval>(*this))
+  , OpEval(*this)
 {
   // Load Builtin Syntax
   AddBuiltinSyntax("define",      builtin_syntax::define);
@@ -295,10 +294,12 @@ void Context::AddBuiltin(StringRef Str, ValueFn Fn) {
   Symbol* S = CreateSymbol(Str);
   Module* M = SystemModule;
   mlir::Value V = OpGen->VisitTopLevel(CreateBuiltin(Fn));
-  mlir::Value Op = OpGen->createTopLevelDefine(S, V, M);
-  OpEval->Visit(Op);
+  OpGen->createTopLevelDefine(S, V, M);
 }
 
+ModuleOp Context::getModuleOp() {
+  return OpGen->getTopLevel();
+}
 void Context::dumpModuleOp() {
   OpGen->getTopLevel().dump();
 }

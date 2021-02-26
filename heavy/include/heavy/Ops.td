@@ -13,6 +13,7 @@
 #define LLVM_HEAVY_OPS_TD
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
 def HeavyDialect : Dialect {
@@ -82,6 +83,19 @@ def heavy_BuiltinOp : HeavyOp<"builtin"> {
     OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, "
               "heavy::Builtin*">
   ];
+}
+
+def heavy_ContOp : HeavyOp<"cont", [ReturnLike, Terminator/*,
+                                    ZeroResult, ZeroSuccessor*/]> {
+  let summary = "cont";
+  let description = [{
+    ContOp models calling the current continuation. It can take
+    an arbitrary amount of inputs and represents the result(s) of
+    an expression.
+  }];
+
+  let arguments = (ins Variadic<HeavyValue>:$args);
+  let results   = (outs); // no result
 }
 
 def heavy_LambdaOp : HeavyOp<"lambda", [FunctionLike]> {
