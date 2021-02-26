@@ -11,7 +11,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "heavy/HeavyScheme.h"
-#include "heavy/OpEval.h"
 #include "heavy/OpGen.h"
 #include "llvm/Support/Casting.h"
 
@@ -112,9 +111,16 @@ heavy::Value* eval(Context& C, ValueRefs Args) {
     EnvStack = C.CreatePair(E);
   }
 
-  mlir::Value OpGenResult = C.OpGen->VisitTopLevel(ExprOrDef);
+  // TODO
+  // uhh we didn't change anything about where we are
+  // inserting operations in relation to the "environment"
+  // We need to set the insertion point to the relevant ModuleOp
+  // inside "VisitTopLevel"
+  // (I think heavy::Module needs to be upgraded to wrap ModuleOp
+  //  or something)
+  C.OpGen->VisitTopLevel(ExprOrDef);
   if (C.CheckError()) return C.CreateUndefined();
-  return C.OpEval->Visit(OpGenResult);
+  return opEval(C.OpEval);
 }
 
 template <typename Op>

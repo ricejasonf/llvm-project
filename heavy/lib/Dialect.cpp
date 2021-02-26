@@ -49,7 +49,8 @@ heavy::Value* HeavyValueAttr::getValue() const {
 }
 
 void ApplyOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
-                    mlir::Value Operator, ArrayRef<mlir::Value> Operands) {
+                    mlir::Value Operator,
+                    llvm::ArrayRef<mlir::Value> Operands) {
   ApplyOp::build(B, OpState, B.getType<HeavyValue>(), Operator, Operands);
 }
 
@@ -60,7 +61,8 @@ void BindingOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
 
 void BuiltinOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                       heavy::Builtin* Builtin) {
-  // TODO eventually we need to have a "symbol" to the externally linked function
+  // TODO eventually we need to have a "symbol" to the externally
+  //      linked function
   BuiltinOp::build(B, OpState, B.getType<HeavyValue>(),
       HeavyValueAttr::get(B.getContext(), Builtin));
 }

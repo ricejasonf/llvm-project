@@ -66,7 +66,16 @@ using SyntaxFn = mlir::Value (*)(OpGen&, Pair*);
 // (defined in OpGen.cpp)
 Value* eval(Context&, Value* V, Value* EnvStack = nullptr);
 void write(llvm::raw_ostream&, Value*);
+
+Value* opEval(OpEval&);
 void LoadSystemModule(Context&);
+
+class OpEvalImpl;
+struct OpEval {
+  std::unique_ptr<OpEvalImpl> Impl;
+  OpEval(Context& C);
+  ~OpEval();
+};
 
 // Value - A result of an evaluation
 class Value {
@@ -633,9 +642,9 @@ public:
 class Binding : public Value {
   friend class Context;
   Symbol* Name;
+  Value* Val;
 
 public:
-  Value* Val;
 
   Binding(Symbol* N, Value* V)
     : Value(Kind::Binding)
@@ -649,6 +658,11 @@ public:
 
   Value* getValue() {
     return Val;
+  }
+
+  void setValue(Value* V) {
+    assert(!isa<Binding>(V) && "bindings may not nest bindings");
+    Val = V;
   }
 
   Value* Lookup(Symbol* S) {
@@ -763,7 +777,7 @@ inline SourceLocation Value::getSourceLocation() {
 
 class Context : DialectRegisterer {
   friend class OpGen;
-  friend class OpEval;
+  friend class OpEvalImpl;
   AllocatorTy TrashHeap;
 
   // "static" values
@@ -784,8 +798,9 @@ class Context : DialectRegisterer {
   std::unordered_map<void*, Value*> EmbeddedEnvs;
 public:
   std::unique_ptr<heavy::OpGen> OpGen;
-  std::unique_ptr<heavy::OpEval> OpEval;
+  heavy::OpEval OpEval;
 
+  ModuleOp getModuleOp();
   void dumpModuleOp();
   void PushTopLevel(Value*);
 
