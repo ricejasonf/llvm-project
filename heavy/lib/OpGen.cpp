@@ -99,10 +99,16 @@ void OpGen::processBody(SourceLocation Loc, Value* Body) {
   }
 
   Value* RestBody = Body;
-  mlir::Value LastOp;
+  mlir::Value LastOp; // can also be BlockArgument
   while (Pair* Current = dyn_cast<Pair>(RestBody)) {
     LastOp = Visit(Current->Car);
     RestBody = Current->Cdr;
+  }
+
+  // Terminate the block if still needed
+  if (LastOp.isa<mlir::BlockArgument>() ||
+      !LastOp.getDefiningOp()->hasTrait<mlir::OpTrait::ReturnLike>()) {
+    Builder.create<ContOp>(LastOp.getLoc(), LastOp);
   }
 
   // The BindingOps for the local defines have
@@ -120,21 +126,24 @@ void OpGen::processBody(SourceLocation Loc, Value* Body) {
       LocalInits.setInsertionPointAfter(LastBindingOp);
     }
   }
-  mlir::OpBuilder::InsertionGuard IG2(Builder);
-  Builder = LocalInits;
+  {
+    mlir::OpBuilder::InsertionGuard IG2(Builder);
+    Builder = LocalInits;
 
-  Value* Env = Context.EnvStack;
-  while (Pair* EnvPair = dyn_cast<Pair>(Env)) {
-    Binding* B = dyn_cast<Binding>(EnvPair->Car);
-    // We should eventually hit the EnvFrame that wraps this local scope
-    if (!B) break;
-    mlir::Value BVal = BindingTable.lookup(B);
-    mlir::Value Init = VisitDefineArgs(B->getValue());
-    SourceLocation Loc = B->getValue()->getSourceLocation();
-    assert(BVal && "BindingTable should have an entry for local define");
+    Value* Env = Context.EnvStack;
+    while (Pair* EnvPair = dyn_cast<Pair>(Env)) {
+      Binding* B = dyn_cast<Binding>(EnvPair->Car);
+      // We should eventually hit the EnvFrame that wraps this local scope
+      if (!B) break;
+      mlir::Value BVal = BindingTable.lookup(B);
+      mlir::Value Init = VisitDefineArgs(B->getValue());
+      SourceLocation Loc = B->getValue()->getSourceLocation();
+      assert(BVal && "BindingTable should have an entry for local define");
 
-    create<SetOp>(Loc, BVal, Init);
-    Env = EnvPair->Cdr;
+      create<SetOp>(Loc, BVal, Init);
+      Env = EnvPair->Cdr;
+    }
+    // Builder is restored to the end of the body block
   }
 }
 

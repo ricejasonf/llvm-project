@@ -42,13 +42,18 @@ class StackFrame final : public llvm::TrailingObjects<StackFrame, Value*,
                                                 RedZoneByte> {
   friend class llvm::TrailingObjects<StackFrame, Value*>;
 
-  // The first argument will be the callee
-  // An ArgCount of zero will indicate the bottom most StackFrame
-  unsigned ArgCount;
+  mlir::Operation* Op;
   SourceLocation CallLoc;
 
+  unsigned getArgCount(Op) {
+    if (ApplyOp A = dyn_cast_or_null<ApplyOp>(Op)) {
+      return A.args().size();
+    }
+    return 0;
+  }
+
   size_t numTrailingObjects(OverloadToken<Value*> const) const {
-    return ArgCount;
+    return getArgCount(Op);
   }
 
   size_t numTrailingObjects(OverloadToken<RedZoneByte> const) const {
@@ -56,54 +61,52 @@ class StackFrame final : public llvm::TrailingObjects<StackFrame, Value*,
   }
 
 public:
-  StackFrame(unsigned ArgN, SourceLocation Loc)
-    : ArgCount(ArgN),
-      CallLoc(Loc)
+  StackFrame(mlir::Operation* Op)
+    : Op(Op)
   { }
 
   ~StackFrame() {
     // "Zero fill" everything except the red zone bytes
-    ArgCount = 0;
     CallLoc = {};
     Value** Vs = getTrailingObjects<Value*>();
-    std::fill(&Vs[0], &Vs[ArgCount], nullptr);
+    std::fill(&Vs[0], &Vs[getArgCount(Op)], nullptr);
+    Op = nullptr;
   }
 
-  static size_t sizeToAlloc(unsigned ArgCount) {
+  static size_t sizeToAlloc(mlir::Operation* Op) {
     // this could potentially include a "red zone" of trailing bytes
     return totalSizeToAlloc<Value*, RedZoneByte>(
-        ArgCount, HEAVY_STACK_RED_ZONE_SIZE);
+        getArgCount(Op), HEAVY_STACK_RED_ZONE_SIZE);
   }
 
   bool isInvalid() const {
-    return ArgCount == 0;
+    return Op == nullptr;
   }
 
   // Gets the size in bytes that we allocated
   // minus the red zone bytes
   unsigned getMemLength() const {
-    return sizeToAlloc(ArgCount) - HEAVY_STACK_RED_ZONE_SIZE;
+    return sizeToAlloc(getArgCount(Op)) - HEAVY_STACK_RED_ZONE_SIZE;
   }
 
-  SourceLocation getCallLoc() const {
-    return CallLoc;
-  }
+  // "instruction pointer" Op
+  mlir::Operation* getOp() { return Op; }
 
   // Returns the value for callee or nullptr
   // if the StackFrame is invalid
   Value* getCallee() const {
-    if (isInvalid()) return nullptr;
+    if (getArgCount(Op) == 0) return nullptr;
     return getTrailingObjects<Value*>()[0];
   }
 
   void setCallee(heavy::Value* X) {
-    if (isInvalid()) return;
+    if (getArgCount(Op) == 0) return;
     getTrailingObjects<Value*>()[0] = X;
   }
 
   llvm::MutableArrayRef<heavy::Value*> getArgs() {
     return llvm::MutableArrayRef<heavy::Value*>(
-        getTrailingObjects<Value*>() + 1, ArgCount - 1);
+        getTrailingObjects<Value*>() + 1, getArgCount(Op) - 1);
   }
 
   // Get the previous stack frame. This assumes that
@@ -113,7 +116,7 @@ public:
   // The client is responsible for ensuring that the
   // previous stack frame is valid and in bounds
   StackFrame* getPrevious() {
-    char* PrevPtr = reinterpret_cast<char*>(this) + sizeToAlloc(ArgCount);
+    char* PrevPtr = reinterpret_cast<char*>(this) + sizeToAlloc(Op);
     return reinterpret_cast<StackFrame*>(PrevPtr);
   }
 };
@@ -138,6 +141,7 @@ class EvaluationStack {
 
   void EmitStackSpaceError();
 
+
 public:
   EvaluationStack(heavy::Context& C)
     : Context(C),
@@ -145,14 +149,11 @@ public:
       Top(getStartingPoint())
   {
     // push an invalid StackFrame as the bottom
-    push(0, {});
+    push(nullptr);
   }
 
-  // ArgCount includes the callee
-  // The client is responsible for setting the argument values
-  // Returns the new StackFrame* or nullptr on error
-  StackFrame* push(unsigned ArgCount, SourceLocation CallLoc) {
-    unsigned ByteLen = StackFrame::sizeToAlloc(ArgCount);
+  StackFrame* push(mlir::Operation* Op) {
+    unsigned ByteLen = StackFrame::sizeToAlloc(Op);
 
     char* CurPtr = reinterpret_cast<char*>(Top);
     char* NewPtr = CurPtr - ByteLen;
@@ -161,11 +162,11 @@ public:
       return nullptr;
     }
 
-    return new (NewPtr) StackFrame(ArgCount, CallLoc);
+    return new (NewPtr) StackFrame(Op);
   }
 
-  StackFrame* push(llvm::ArrayRef<Value*> Args, SourceLocation CallLoc) {
-    StackFrame* Frame = push(Args.size(), CallLoc);
+  StackFrame* push(mlir::Operation* Op, llvm::ArrayRef<Value*> Args) {
+    StackFrame* Frame = push(Op)
     if (!Frame) return nullptr;
 
     Frame->setCallee(Args[0]); 
