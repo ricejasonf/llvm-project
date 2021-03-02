@@ -45,8 +45,8 @@ class StackFrame final : public llvm::TrailingObjects<StackFrame, Value*,
   mlir::Operation* Op;
   SourceLocation CallLoc;
 
-  unsigned getArgCount(Op) {
-    if (ApplyOp A = dyn_cast_or_null<ApplyOp>(Op)) {
+  static unsigned getArgCount(mlir::Operation* Op) {
+    if (ApplyOp A = llvm::dyn_cast_or_null<ApplyOp>(Op)) {
       return A.args().size();
     }
     return 0;
@@ -86,7 +86,7 @@ public:
   // Gets the size in bytes that we allocated
   // minus the red zone bytes
   unsigned getMemLength() const {
-    return sizeToAlloc(getArgCount(Op)) - HEAVY_STACK_RED_ZONE_SIZE;
+    return sizeToAlloc(Op) - HEAVY_STACK_RED_ZONE_SIZE;
   }
 
   // "instruction pointer" Op
@@ -166,7 +166,7 @@ public:
   }
 
   StackFrame* push(mlir::Operation* Op, llvm::ArrayRef<Value*> Args) {
-    StackFrame* Frame = push(Op)
+    StackFrame* Frame = push(Op);
     if (!Frame) return nullptr;
 
     Frame->setCallee(Args[0]); 
