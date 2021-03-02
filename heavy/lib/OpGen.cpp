@@ -17,13 +17,12 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/Value.h"
-#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include <memory>
 
 using namespace heavy;
-
 
 OpGen::OpGen(heavy::Context& C)
   : Context(C),
@@ -85,6 +84,36 @@ bool OpGen::isLocalDefineAllowed() {
           isa<BindingOp>(Block->back()));
 }
 
+// processSequence creates a sequence of operations in the current block
+void OpGen::processSequence(SourceLocation Loc, Value* Body) {
+  if (!isa<Pair>(Body)) {
+    SetError(Loc, "sequence must contain an expression", Body);
+  }
+
+  Value* Rest = Body;
+  {
+    TailPosScope TPS(*this);
+    IsTailPos = false;
+    while (true) {
+      Pair* Current = cast<Pair>(Rest);
+      Rest = Current->Cdr;
+      if (isa<Empty>(Rest)) {
+        Rest= Current->Car;
+        break;
+      }
+      Visit(Current->Car);
+    }
+  }
+  // This could be in tail position
+  mlir::Value LastVal = Visit(Rest);
+
+  // Create terminator if needed
+  mlir::Operation* LastOp = LastVal.getDefiningOp();
+  if (!LastOp || !LastOp->hasTrait<mlir::OpTrait::IsTerminator>()) {
+    Builder.create<ContOp>(LastVal.getLoc(), LastVal);
+  }
+}
+
 void OpGen::processBody(SourceLocation Loc, Value* Body) {
   mlir::OpBuilder::InsertionGuard IG(LocalInits);
   LocalInits = Builder;
@@ -93,23 +122,7 @@ void OpGen::processBody(SourceLocation Loc, Value* Body) {
   // insertion point
 
   IsTopLevel = false;
-
-  if (!isa<Pair>(Body)) {
-    SetError(Loc, "body must contain an expression", Body);
-  }
-
-  Value* RestBody = Body;
-  mlir::Value LastOp; // can also be BlockArgument
-  while (Pair* Current = dyn_cast<Pair>(RestBody)) {
-    LastOp = Visit(Current->Car);
-    RestBody = Current->Cdr;
-  }
-
-  // Terminate the block if still needed
-  if (LastOp.isa<mlir::BlockArgument>() ||
-      !LastOp.getDefiningOp()->hasTrait<mlir::OpTrait::ReturnLike>()) {
-    Builder.create<ContOp>(LastOp.getLoc(), LastOp);
-  }
+  processSequence(Loc, Body);
 
   // The BindingOps for the local defines have
   // been inserted by the `define` syntax. They are
@@ -259,7 +272,8 @@ mlir::Value OpGen::HandleCall(Pair* P) {
   mlir::Value Fn = Visit(P->Car);
   llvm::SmallVector<mlir::Value, 16> Args;
   HandleCallArgs(P->Cdr, Args);
-  return create<ApplyOp>(P->getSourceLocation(), Fn, Args);
+  return create<ApplyOp>(P->getSourceLocation(), Fn, Args,
+                         IsTailPos);
 }
 
 void OpGen::HandleCallArgs(Value *V,
@@ -269,8 +283,14 @@ void OpGen::HandleCallArgs(Value *V,
     SetError("improper list as call expression", V);
     return;
   }
+  // FIXME this would probably be
+  // better as a loop
   Pair* P = cast<Pair>(V);
-  Args.push_back(Visit(P->Car));
+  {
+    TailPosScope TPS(*this);
+    IsTailPos = false;
+    Args.push_back(Visit(P->Car));
+  }
   HandleCallArgs(P->Cdr, Args);
 }
 
