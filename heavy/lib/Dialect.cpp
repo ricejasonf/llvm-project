@@ -50,8 +50,10 @@ heavy::Value* HeavyValueAttr::getValue() const {
 
 void ApplyOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                     mlir::Value Operator,
-                    llvm::ArrayRef<mlir::Value> Operands) {
-  ApplyOp::build(B, OpState, B.getType<HeavyValue>(), Operator, Operands);
+                    llvm::ArrayRef<mlir::Value> Operands,
+                    bool IsTailPos) {
+  ApplyOp::build(B, OpState, B.getType<HeavyValue>(), Operator, Operands,
+                 B.getBoolAttr(IsTailPos));
 }
 
 void BindingOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
