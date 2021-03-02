@@ -14,9 +14,12 @@
 #define LLVM_HEAVY_OP_EVAL_H
 
 #include "heavy/HeavyScheme.h"
+#include "heavy/OpGen.h"
+#include "mlir/IR/Module.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/Support/Casting.h"
+#include <stack>
 
 namespace heavy {
 
@@ -25,30 +28,8 @@ class OpEvalImpl {
   using ValueMapTy = llvm::ScopedHashTable<mlir::Value, heavy::Value*>;
   using ValueMapScope = typename ValueMapTy::ScopeTy;
 
-  struct StackScope {
-    heavy::Context& Context;
-    ValueMapScope ScopeObj;
-    heavy::StackFrame* Frame;
-
-    StackScope(OpEvalImpl& E, mlir::Operation* Op,
-               llvm::ArrayRef<heavy::Value*> Args)
-      : Context(E.Context),
-        ScopeObj(E.ValueMap),
-        Frame(Context.EvalStack.push(Op))
-    {
-      llvm::errs() << "pushing StackScope\n";
-    }
-
-    StackScope(StackScope const&) = delete;
-
-    ~StackScope() {
-      llvm::errs() << "popping StackScope\n";
-      Context.EvalStack.pop();
-    }
-  };
-
   heavy::Context& Context;
-  mlir::Operation* LastIp = nullptr; // the last op evaluated
+  BlockItrTy LastIp; // the last op evaluated
   ValueMapTy ValueMap;
   std::stack<ValueMapScope> ValueMapScopes;
 
@@ -82,41 +63,63 @@ class OpEvalImpl {
 public:
   OpEvalImpl(heavy::Context& C)
     : Context(C),
+      LastIp(),
       ValueMap(),
-      ValueMapScopes(ValueMapScope(ValueMap))
-  { }
+      ValueMapScopes()
+  {
+    // there has to be at least one scope on the stack
+    ValueMapScopes.emplace(ValueMap);
+  }
 
-  // evaluate the current program up to
-  // the last operation in the top level module
+  // Evaluate expressions inserted at the top level.
+  // Subsequent calls resume from the last expression evaluated
+  // to allow REPL like behaviour
   heavy::Value* Run() {
-    ModuleOp = TopLevel = Context.getTopLevel();
+    mlir::ModuleOp TopLevel = Context.OpGen->getTopLevel();
+    BlockItrTy End = TopLevel.end();
 
-    if (TopLevel.getBody()->empty()) {
-      return Context::CreateUndefined();
+    BlockItrTy Itr;
+    if (LastIp == BlockItrTy()) {
+      Itr = TopLevel.begin();
+    } else {
+      Itr = LastIp;
+      ++Itr;
     }
 
-    BlockItrTy Itr = LastIp ? LastIp : TopLevel.begin();
+    if (Itr == End) return Context.CreateUndefined();
     do {
-      Itr = Visit(*Itr);
-    } while (Itr != TopLevel.end());
+      Itr = Visit(&*Itr);
+    } while (Itr != BlockItrTy() && Itr != End);
 
-    LastIp = *(--Itr);
-    return getValue(LastIp->getResult());
+    if (Itr == BlockItrTy() ||
+        Context.CheckError()) return Context.CreateUndefined();
+
+    LastIp = --Itr;
+    return getValue(LastIp->getResult(0));
   }
 
 private:
-  void push_frame(mlir::Operation* Op, llvm::ArrayRef<heavy::Value*> Args) {
-    Context.EvalStack.push(Op, Args);
+  heavy::StackFrame* push_frame(mlir::Operation* Op, llvm::ArrayRef<heavy::Value*> Args) {
+    ValueMapScopes.emplace(ValueMap);
+    return Context.EvalStack.push(Op, Args);
   }
-
-  void pop_frame() {
+  void pop_frame()  {
     Context.EvalStack.pop();
+    ValueMapScopes.pop();
   }
 
-  void next(mlir::Operation* Op) {
+  BlockItrTy next(mlir::Operation* Op) {
     return ++BlockItrTy(Op);
   }
 
+  template <typename T>
+  BlockItrTy SetError(SourceLocation Loc, T Str, Value* V) {
+    Context.SetError(Loc, Str, V);
+    // TODO we eventually want to unwind and stuff here
+    return BlockItrTy();
+  }
+
+#if 0
   heavy::Value* Visit(mlir::Value MVal) {
     if (MVal.isa<mlir::OpResult>()) {
       return Visit(MVal.getDefiningOp());
@@ -126,35 +129,59 @@ private:
       return V;
     }
   }
+#endif
 
-  heavy::Value* Visit(mlir::Operation* Op) {
+  BlockItrTy Visit(mlir::Operation* Op) {
          if (isa<ApplyOp>(Op))      return Visit(cast<ApplyOp>(Op));
     else if (isa<BindingOp>(Op))    return Visit(cast<BindingOp>(Op));
     else if (isa<BuiltinOp>(Op))    return Visit(cast<BuiltinOp>(Op));
     else if (isa<SetOp>(Op))        return Visit(cast<SetOp>(Op));
     else if (isa<LiteralOp>(Op))    return Visit(cast<LiteralOp>(Op));
     else if (isa<LambdaOp>(Op))     return Visit(cast<LambdaOp>(Op));
-    else if (UndefinedOp UOp = dyn_cast<UndefinedOp>(Op))  {
-      setValue(UOp, Context.CreateUndefined());
-      return Context.CreateUndefined();
+    else if (UndefinedOp UndefOp = dyn_cast<UndefinedOp>(Op))  {
+      setValue(UndefOp, Context.CreateUndefined());
+      return next(Op);
     }
     else {
       Op->dump();
       llvm_unreachable("Unknown Operation");
-      return Context.CreateUndefined();
+      return BlockItrTy();
     }
   }
 
   void LoadArgs(StackFrame* Frame, mlir::Block& Body) {
-    // This associate values with BlockArguments
+    // This associates values with BlockArguments
     // which later gets assigned to BingingOps (in code)
 
-    // Note we are not setting the callee (which might end as a param)
+    // Note we are not setting the callee (which might end up as a param)
     auto OpArgs = Body.getArguments();
     auto FrameArgs = Frame->getArgs();
     for (unsigned i = 0; i < OpArgs.size(); ++i) {
       setValue(OpArgs[i], FrameArgs[i]);
     }
+  }
+
+  BlockItrTy CallLambdaIr(heavy::ApplyOp ApplyOp, heavy::LambdaIr* L,
+                          llvm::ArrayRef<heavy::Value*> Args) {
+    heavy::SourceLocation CallLoc = getSourceLocation(ApplyOp.getLoc());
+    heavy::LambdaOp LambdaOp = L->getOp();
+
+    // check arguments
+    {
+      mlir::FunctionType FT = LambdaOp.type().cast<mlir::FunctionType>();
+      assert(!LambdaOp.hasRestParam() && "TODO support rest parameters");
+      if (FT.getNumInputs() != Args.size()) {
+        return SetError(CallLoc, "invalid arity", L);
+      }
+    }
+
+    heavy::StackFrame* Frame = push_frame(LambdaOp, Args);
+    if (!Frame) return BlockItrTy();
+
+    mlir::Block& Body = L->getBody();
+    LoadArgs(Frame, Body);
+    // return the first instruction of the function body
+    return BlockItrTy(Body.front());
   }
 
   void LoadArgResults(ApplyOp Op,
@@ -168,62 +195,49 @@ private:
     ArgResults[0] = getValue(Op.fn());
   }
 
-  heavy::Value* Visit(ApplyOp OrigOp) {
-    mlir::Operation* OpTail = OrigOp;
+  BlockItrTy Visit(ApplyOp Op) {
+    heavy::SourceLocation CallLoc = getSourceLocation(Op.getLoc());
     llvm::SmallVector<heavy::Value*, 8> ArgResults;
-    LoadArgResults(OrigOp, ArgResults);
-    while (true) {
-      ApplyOp Op = cast<ApplyOp>(OpTail);
-      heavy::SourceLocation CallLoc = getSourceLocation(Op.getLoc());
+    LoadArgResults(Op, ArgResults);
+    heavy::Value* Callee = ArgResults[0];
 
-      StackScope SS(*this, ArgResults, CallLoc);
-      heavy::StackFrame* Frame = SS.Frame;
-      if (!Frame) return Context.CreateUndefined();
+    // Now that we have ArgResults, we can pop the frame
+    // before any tail call
+    if (Op.isTailPos()) {
+      pop_frame();
+    }
 
-      heavy::Value* Callee = ArgResults[0];
-      Frame->setCallee(Callee);
-
-      switch (Callee->getKind()) {
-        case Value::Kind::Lambda:
-          llvm_unreachable("TODO");
-          break;
-        case Value::Kind::LambdaIr: {
-          LambdaIr* L = cast<LambdaIr>(Callee);
-          mlir::Block& Body = L->getBody();
-          LoadArgs(Frame, Body);
-          OpTail = VisitBodyUntilTail(Body);
-          break;
-        }
-        case Value::Kind::Builtin: {
-          Builtin* B = cast<Builtin>(Callee);
-          return B->Fn(Context, Frame->getArgs());
-        }
-        default: {
-          String* Msg = Context.CreateString(
-            "invalid operator for call expression: ",
-            Callee->getKindName()
-          );
-          return Context.SetError(CallLoc, Msg, Callee);
-        }
+    switch (Callee->getKind()) {
+      case Value::Kind::Lambda:
+        llvm_unreachable("TODO");
+        break;
+      case Value::Kind::LambdaIr: {
+        LambdaIr* L = cast<LambdaIr>(Callee);
+        return CallLambdaIr(Op, L, ArgResults);
       }
-
-      if(!isa<ApplyOp>(OpTail)) {
-        heavy::Value* Result = Visit(OpTail);
-        setValue(OrigOp.result(), Result);
-        return Result;
+      case Value::Kind::Builtin: {
+        Builtin* B = cast<Builtin>(Callee);
+        heavy::Value* Result = B->Fn(Context, ArgResults);
+        if (isa<Error>(Result)) return BlockItrTy();
+        setValue(Op.result(), Result);
+        return next(Op);
       }
-
-      // Load the ArgResults before StackScope is destroyed
-      LoadArgResults(cast<ApplyOp>(OpTail), ArgResults);
+      default: {
+        String* Msg = Context.CreateString(
+          "invalid operator for call expression: ",
+          Callee->getKindName()
+        );
+        return SetError(CallLoc, Msg, Callee);
+      }
     }
   }
 
-  heavy::Value* Visit(BindingOp Op) {
+  BlockItrTy Visit(BindingOp Op) {
     // create a Binding
     heavy::Value* V = getValue(Op.input());
     heavy::Binding* B = Context.CreateBinding(V);
     setValue(Op.result(), B);
-    return B;
+    return next(Op);
   }
 
   BlockItrTy Visit(BuiltinOp Op) {
@@ -236,16 +250,22 @@ private:
     // This is the end of the road for the current block.
     // Get the op after the one in the current frame
     // and then pop the frame
-    mlir::Operation* Caller = Context.EvalStack.Top->getOp();
-    auto Args = Op.args();
-    auto Results = Caller.getResults();
-    assert(Args.size() == Results.size() &&
-        "continuation must arity must match");
-    for (unsigned i = 0; i < Args.size(); 
-      setValue(Results 
+    mlir::Operation* Caller = Context.EvalStack.top()->getOp();
+    auto ContArgs = Op.args();
+    auto Results = Caller->getResults();
+    assert((Results.empty() ||
+           Results.size() == ContArgs.size()) &&
+        "continuation arity must match");
+    for (unsigned i = 0; i < Results.size(); ++i) {
+      setValue(Results[i], getValue(ContArgs[i])); 
     }
 
-    pop_frame();
+    // if this isn't receiving a tail call
+    // then pop the frame
+    // OR we can check that Caller is ... oh wait
+    if (!ContArgs[0].getDefiningOp<ApplyOp>()) {
+      pop_frame();
+    }
     return next(Caller);
   }
 
@@ -271,6 +291,7 @@ private:
     return next(Op);
   }
 
+#if 0 // hopefully won't need this GetTail stuff anymore
   mlir::Operation* GetTail(mlir::Block& Body) {
     assert(!Body.empty() && "body must have at least one operation");
     auto TailItr = --Body.end();
@@ -298,6 +319,7 @@ private:
     // TODO operations like IfOp may contain tail calls
     return Op;
   }
+#endif
 
 #if 0
   // TODO 

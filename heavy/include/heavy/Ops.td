@@ -40,11 +40,13 @@ def heavy_ApplyOp : HeavyOp<"apply"> {
     be a user defined lambda, a builtin, or an FFI wrapper.
   }];
 
-  let arguments = (ins HeavyValue:$fn, Variadic<HeavyValue>:$args);
+  let arguments = (ins HeavyValue:$fn, Variadic<HeavyValue>:$args,
+                       BoolAttr:$isTailPos);
   let results   = (outs HeavyValue:$result);
   let builders = [
-    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&,"
-              "::mlir::Value, ArrayRef<::mlir::Value>">
+    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, "
+              "::mlir::Value, ArrayRef<::mlir::Value>, "
+              "bool IsTailPos">
   ];
 }
 
@@ -85,8 +87,7 @@ def heavy_BuiltinOp : HeavyOp<"builtin"> {
   ];
 }
 
-def heavy_ContOp : HeavyOp<"cont", [ReturnLike, Terminator/*,
-                                    ZeroResult, ZeroSuccessor*/]> {
+def heavy_ContOp : HeavyOp<"cont", [ReturnLike, Terminator]> {
   let summary = "cont";
   let description = [{
     ContOp models calling the current continuation. It can take

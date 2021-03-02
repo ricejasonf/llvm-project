@@ -297,7 +297,7 @@ void Context::AddBuiltin(StringRef Str, ValueFn Fn) {
   OpGen->createTopLevelDefine(S, V, M);
 }
 
-ModuleOp Context::getModuleOp() {
+mlir::Operation* Context::getModuleOp() {
   return OpGen->getTopLevel();
 }
 void Context::dumpModuleOp() {
