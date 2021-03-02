@@ -800,7 +800,7 @@ public:
   std::unique_ptr<heavy::OpGen> OpGen;
   heavy::OpEval OpEval;
 
-  ModuleOp getModuleOp();
+  mlir::Operation* getModuleOp();
   void dumpModuleOp();
   void PushTopLevel(Value*);
 

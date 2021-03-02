@@ -41,7 +41,23 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   BindingScope BindingTableTop;
   mlir::Operation* TopLevel;
   bool IsTopLevel = false;
+  bool IsTailPos = true;
 
+  struct TailPosScope {
+    bool& State;
+    bool PrevState;
+
+    TailPosScope(heavy::OpGen& OpGen)
+      : State(OpGen.IsTailPos),
+        PrevState(State)
+    { }
+      
+    TailPosScope(TailPosScope&) = delete;
+
+    ~TailPosScope() {
+      State = PrevState;
+    }
+  };
 
 public:
   explicit OpGen(heavy::Context& C);
@@ -56,6 +72,7 @@ public:
   }
 
   bool isTopLevel() { return IsTopLevel; }
+  bool isTailpos() { return IsTailPos && !IsTopLevel; }
   bool isLocalDefineAllowed();
 
   template <typename Op, typename ...Args>
@@ -74,6 +91,7 @@ public:
   }
 
   void processBody(SourceLocation Loc, Value* Body);
+  void processSequence(SourceLocation Loc, Value* Body);
 
   mlir::Value createLambda(Value* Formals, Value* Body,
                            SourceLocation Loc,
