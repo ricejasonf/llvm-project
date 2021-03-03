@@ -34,14 +34,12 @@ class OpEvalImpl {
   std::stack<ValueMapScope> ValueMapScopes;
 
   void setValue(mlir::Value M, heavy::Value* H) {
-    llvm::errs() << "setValue: " << hash_value(M) << '\n';
     assert(M && "must set to a valid value");
     assert(H && "must set to a valid value");
     ValueMap.insert(M, H);
   }
 
   heavy::Value* getValue(mlir::Value M, bool UnwrapBinding = true) {
-    llvm::errs() << "getValue: " << hash_value(M) << '\n';
     heavy::Value* V = ValueMap.lookup(M);
     assert(V && "getValue requires a value in the table");
     //if (!V) return Context.CreateUndefined();
@@ -51,6 +49,10 @@ class OpEvalImpl {
       V = B->getValue();
     }
     return V;
+  }
+
+  heavy::StackFrame& getCurrentFrame() {
+    return *Context.EvalStack.top();
   }
   
   static heavy::SourceLocation getSourceLocation(mlir::Location Loc) {
@@ -76,7 +78,7 @@ public:
   // to allow REPL like behaviour
   heavy::Value* Run() {
     mlir::ModuleOp TopLevel = Context.OpGen->getTopLevel();
-    BlockItrTy End = TopLevel.end();
+    BlockItrTy End(TopLevel.getBody()->getTerminator());
 
     BlockItrTy Itr;
     if (LastIp == BlockItrTy()) {
@@ -100,10 +102,14 @@ public:
 
 private:
   heavy::StackFrame* push_frame(mlir::Operation* Op, llvm::ArrayRef<heavy::Value*> Args) {
+      //llvm::errs() << "push_frame: (Operation*) " << (size_t) Op << '\n';
+    assert(Op && "stack frame op must be a valid op");
     ValueMapScopes.emplace(ValueMap);
     return Context.EvalStack.push(Op, Args);
   }
   void pop_frame()  {
+      //auto* Op = getCurrentFrame().getOp();
+      //llvm::errs() << "pop_frame: (Operation*) " << (size_t) Op << '\n';
     Context.EvalStack.pop();
     ValueMapScopes.pop();
   }
@@ -132,19 +138,20 @@ private:
 #endif
 
   BlockItrTy Visit(mlir::Operation* Op) {
-         if (isa<ApplyOp>(Op))      return Visit(cast<ApplyOp>(Op));
-    else if (isa<BindingOp>(Op))    return Visit(cast<BindingOp>(Op));
-    else if (isa<BuiltinOp>(Op))    return Visit(cast<BuiltinOp>(Op));
-    else if (isa<SetOp>(Op))        return Visit(cast<SetOp>(Op));
+         if (isa<BindingOp>(Op))    return Visit(cast<BindingOp>(Op));
     else if (isa<LiteralOp>(Op))    return Visit(cast<LiteralOp>(Op));
+    else if (isa<ApplyOp>(Op))      return Visit(cast<ApplyOp>(Op));
+    else if (isa<BuiltinOp>(Op))    return Visit(cast<BuiltinOp>(Op));
+    else if (isa<ContOp>(Op))       return Visit(cast<ContOp>(Op));
     else if (isa<LambdaOp>(Op))     return Visit(cast<LambdaOp>(Op));
+    else if (isa<SetOp>(Op))        return Visit(cast<SetOp>(Op));
     else if (UndefinedOp UndefOp = dyn_cast<UndefinedOp>(Op))  {
       setValue(UndefOp, Context.CreateUndefined());
       return next(Op);
     }
     else {
       Op->dump();
-      llvm_unreachable("Unknown Operation");
+      llvm_unreachable("unknown operation");
       return BlockItrTy();
     }
   }
@@ -168,14 +175,15 @@ private:
 
     // check arguments
     {
+      unsigned NumArgs = Args.size() - 1; // removes callee
       mlir::FunctionType FT = LambdaOp.type().cast<mlir::FunctionType>();
       assert(!LambdaOp.hasRestParam() && "TODO support rest parameters");
-      if (FT.getNumInputs() != Args.size()) {
+      if (FT.getNumInputs() != NumArgs) {
         return SetError(CallLoc, "invalid arity", L);
       }
     }
 
-    heavy::StackFrame* Frame = push_frame(LambdaOp, Args);
+    heavy::StackFrame* Frame = push_frame(ApplyOp, Args);
     if (!Frame) return BlockItrTy();
 
     mlir::Block& Body = L->getBody();
@@ -203,7 +211,9 @@ private:
 
     // Now that we have ArgResults, we can pop the frame
     // before any tail call
-    if (Op.isTailPos()) {
+    // (we want keep the original call that is not in tail position)
+    ApplyOp Caller = dyn_cast_or_null<ApplyOp>(getCurrentFrame().getOp());
+    if (Op.isTailPos() && Caller && Caller.isTailPos()) {
       pop_frame();
     }
 
@@ -216,8 +226,11 @@ private:
         return CallLambdaIr(Op, L, ArgResults);
       }
       case Value::Kind::Builtin: {
+        llvm::ArrayRef<heavy::Value*> ArgResultsRef(ArgResults);
         Builtin* B = cast<Builtin>(Callee);
-        heavy::Value* Result = B->Fn(Context, ArgResults);
+
+        heavy::Value* Result = B->Fn(Context,
+                                     ArgResultsRef.drop_front());
         if (isa<Error>(Result)) return BlockItrTy();
         setValue(Op.result(), Result);
         return next(Op);
@@ -250,22 +263,34 @@ private:
     // This is the end of the road for the current block.
     // Get the op after the one in the current frame
     // and then pop the frame
-    mlir::Operation* Caller = Context.EvalStack.top()->getOp();
     auto ContArgs = Op.args();
+    llvm::SmallVector<heavy::Value*, 1> ContValues(ContArgs.size(),
+                                                   nullptr);
+    for (unsigned i = 0; i < ContArgs.size(); ++i) {
+      ContValues[i] = getValue(ContArgs[i]); 
+    }
+
+    mlir::Operation* Caller = getCurrentFrame().getOp();
+    assert(Caller && "heavy.cont op must return to a valid stack frame");
     auto Results = Caller->getResults();
     assert((Results.empty() ||
            Results.size() == ContArgs.size()) &&
         "continuation arity must match");
-    for (unsigned i = 0; i < Results.size(); ++i) {
-      setValue(Results[i], getValue(ContArgs[i])); 
-    }
 
+    // TODO only call pop_frame if the caller is not uhhh something
+    //
     // if this isn't receiving a tail call
     // then pop the frame
-    // OR we can check that Caller is ... oh wait
-    if (!ContArgs[0].getDefiningOp<ApplyOp>()) {
+    //if (!ContArgs[0].getDefiningOp<ApplyOp>()) {
+    ApplyOp AppOp = ContArgs[0].getDefiningOp<ApplyOp>();
+    if (!AppOp || AppOp.isTailPos()) {
       pop_frame();
     }
+
+    for (unsigned i = 0; i < Results.size(); ++i) {
+      setValue(Results[i], ContValues[i]); 
+    }
+
     return next(Caller);
   }
 
