@@ -45,13 +45,6 @@ class StackFrame final : public llvm::TrailingObjects<StackFrame, Value*,
   mlir::Operation* Op;
   SourceLocation CallLoc;
 
-  static unsigned getArgCount(mlir::Operation* Op) {
-    if (ApplyOp A = llvm::dyn_cast_or_null<ApplyOp>(Op)) {
-      return A.args().size();
-    }
-    return 0;
-  }
-
   size_t numTrailingObjects(OverloadToken<Value*> const) const {
     return getArgCount(Op);
   }
@@ -71,6 +64,13 @@ public:
     Value** Vs = getTrailingObjects<Value*>();
     std::fill(&Vs[0], &Vs[getArgCount(Op)], nullptr);
     Op = nullptr;
+  }
+
+  static unsigned getArgCount(mlir::Operation* Op) {
+    if (ApplyOp A = llvm::dyn_cast_or_null<ApplyOp>(Op)) {
+      return A.args().size() + 1; // includes callee
+    }
+    return 0;
   }
 
   static size_t sizeToAlloc(mlir::Operation* Op) {
@@ -162,17 +162,22 @@ public:
       return nullptr;
     }
 
-    return new (NewPtr) StackFrame(Op);
+    StackFrame* New = new (NewPtr) StackFrame(Op);
+    Top = New;
+    return New;
   }
 
+  // Args here includes the callee
   StackFrame* push(mlir::Operation* Op, llvm::ArrayRef<Value*> Args) {
+    assert(StackFrame::getArgCount(Op) == Args.size() &&
+        "operation arity mismatch");
     StackFrame* Frame = push(Op);
     if (!Frame) return nullptr;
 
     Frame->setCallee(Args[0]); 
     auto DestArgs = Frame->getArgs();
-    for (unsigned i = 0; i < DestArgs.size(); ++i) {
-      DestArgs[i] = Args[i + 1];
+    for (unsigned i = 1; i < Args.size(); ++i) {
+      DestArgs[i - 1] = Args[i];
     }
 
     return Frame;

@@ -72,7 +72,7 @@ public:
   }
 
   bool isTopLevel() { return IsTopLevel; }
-  bool isTailpos() { return IsTailPos && !IsTopLevel; }
+  bool isTailPos() { return IsTailPos && !IsTopLevel; }
   bool isLocalDefineAllowed();
 
   template <typename Op, typename ...Args>
