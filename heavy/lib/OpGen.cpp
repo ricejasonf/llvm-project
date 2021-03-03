@@ -269,11 +269,13 @@ mlir::Value OpGen::VisitSymbol(Symbol* S) {
 }
 
 mlir::Value OpGen::HandleCall(Pair* P) {
+  bool TailPos = isTailPos();
+  IsTopLevel = false;
   mlir::Value Fn = Visit(P->Car);
   llvm::SmallVector<mlir::Value, 16> Args;
   HandleCallArgs(P->Cdr, Args);
   return create<ApplyOp>(P->getSourceLocation(), Fn, Args,
-                         IsTailPos);
+                         TailPos);
 }
 
 void OpGen::HandleCallArgs(Value *V,
@@ -310,7 +312,6 @@ mlir::Value OpGen::VisitPair(Pair* P) {
       llvm_unreachable("TODO");
       return mlir::Value();
     default: {
-      IsTopLevel = false;
       return HandleCall(P);
     }
   }
