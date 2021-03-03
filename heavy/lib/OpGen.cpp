@@ -188,7 +188,7 @@ mlir::Value OpGen::createDefine(Symbol* S, Value* DefineArgs,
 
 mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value* DefineArgs,
                                         Value* OrigCall) {
-  mlir::Value Init = VisitDefineArgs(DefineArgs);
+  SourceLocation DefineLoc = OrigCall->getSourceLocation();
   heavy::Value* EnvStack = Context.EnvStack;
 
   // A module at the top of the EnvStack is mutable
@@ -205,9 +205,9 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value* DefineArgs,
   // then it behaves like `set!`
   Binding* B = M->Lookup(S);
   if (B && !B->isSyntactic()) {
-    SourceLocation DefineLoc = OrigCall->getSourceLocation();
     mlir::Value BVal = BindingTable.lookup(B);
     assert(BVal && "expecting BindingOp for Binding");
+    mlir::Value Init = VisitDefineArgs(DefineArgs);
     return create<SetOp>(DefineLoc, BVal, Init);
   }
 
@@ -218,9 +218,14 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value* DefineArgs,
     return SetError("define overwrites immutable location", S);
   }
 
-  return createTopLevelDefine(S, Init, M);
+  B = Context.CreateBinding(S, DefineArgs);
+  M->Insert(B);
+  mlir::Value BVal = createBinding(B, createUndefined());
+  mlir::Value Init = VisitDefineArgs(DefineArgs);
+  return create<SetOp>(DefineLoc, BVal, Init);
 }
 
+// used by builtins
 mlir::Value OpGen::createTopLevelDefine(Symbol* S, mlir::Value Init,
                                         Module* M) {
   Binding* B = Context.CreateBinding(S, Context.CreateUndefined());

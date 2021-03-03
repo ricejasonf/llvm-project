@@ -41,10 +41,15 @@ class OpEvalImpl {
 
   heavy::Value* getValue(mlir::Value M, bool UnwrapBinding = true) {
     heavy::Value* V = ValueMap.lookup(M);
-    assert(V && "getValue requires a value in the table");
-    //if (!V) return Context.CreateUndefined();
-    if (!UnwrapBinding) return V;
+    if (!V && (M.getDefiningOp<UndefinedOp>() ||
+               M.getDefiningOp<SetOp>())) {
+      return Context.CreateUndefined();
+    }
 
+    // failure here could mean failure to capture in a closure
+    assert(V && "getValue requires a value in the table");
+
+    if (!UnwrapBinding) return V;
     if (Binding* B = dyn_cast<Binding>(V)) {
       V = B->getValue();
     }
@@ -107,6 +112,7 @@ private:
     ValueMapScopes.emplace(ValueMap);
     return Context.EvalStack.push(Op, Args);
   }
+
   void pop_frame()  {
       //auto* Op = getCurrentFrame().getOp();
       //llvm::errs() << "pop_frame: (Operation*) " << (size_t) Op << '\n';
@@ -121,7 +127,12 @@ private:
   template <typename T>
   BlockItrTy SetError(SourceLocation Loc, T Str, Value* V) {
     Context.SetError(Loc, Str, V);
-    // TODO we eventually want to unwind and stuff here
+
+    // TODO unwinding stuff
+    while (!ValueMapScopes.empty()) {
+      ValueMapScopes.pop();
+    }
+
     return BlockItrTy();
   }
 
