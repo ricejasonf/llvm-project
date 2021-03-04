@@ -69,6 +69,11 @@ void BuiltinOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
       HeavyValueAttr::get(B.getContext(), Builtin));
 }
 
+void IfOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                 mlir::Value Input) {
+  IfOp::build(B, OpState, B.getType<HeavyValue>(), Input);
+}
+
 void LambdaOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                      llvm::StringRef Name,
                      uint32_t Arity, bool HasRestParam,

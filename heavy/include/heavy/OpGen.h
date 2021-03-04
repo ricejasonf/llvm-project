@@ -99,6 +99,8 @@ public:
 
   mlir::Value createBinding(Binding *B, mlir::Value Init);
   mlir::Value createDefine(Symbol* S, Value *Args, Value* OrigCall);
+  mlir::Value createIf(SourceLocation Loc, Value* Cond, Value* Then,
+                       Value* Else);
   mlir::Value createTopLevelDefine(Symbol* S, Value* Args, Value* OrigCall);
   mlir::Value createTopLevelDefine(Symbol* S, mlir::Value Init, Module* M);
   mlir::Value createUndefined();
