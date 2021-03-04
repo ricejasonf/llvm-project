@@ -174,10 +174,12 @@ public:
     StackFrame* Frame = push(Op);
     if (!Frame) return nullptr;
 
-    Frame->setCallee(Args[0]); 
-    auto DestArgs = Frame->getArgs();
-    for (unsigned i = 1; i < Args.size(); ++i) {
-      DestArgs[i - 1] = Args[i];
+    if (!Args.empty()) {
+      Frame->setCallee(Args[0]); 
+      auto DestArgs = Frame->getArgs();
+      for (unsigned i = 1; i < Args.size(); ++i) {
+        DestArgs[i - 1] = Args[i];
+      }
     }
 
     return Frame;

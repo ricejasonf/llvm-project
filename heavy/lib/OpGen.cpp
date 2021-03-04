@@ -233,6 +233,39 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, mlir::Value Init,
   return createBinding(B, Init);
 }
 
+mlir::Value OpGen::createIf(SourceLocation Loc, Value* Cond, Value* Then,
+                            Value* Else) {
+  // Cond
+  mlir::Value CondResult;
+  {
+    TailPosScope TPS(*this);
+    IsTailPos = false;
+    CondResult = Visit(Cond);
+  }
+
+  auto IfOp = create<heavy::IfOp>(Loc, CondResult);
+  IfOp.thenRegion().push_back(new mlir::Block());
+  IfOp.elseRegion().push_back(new mlir::Block());
+
+  // Then
+  {
+    mlir::OpBuilder::InsertionGuard IG(Builder);
+    Builder.setInsertionPointToStart(&IfOp.thenRegion().front());
+    mlir::Value Result = Visit(Then);
+    create<ContOp>(Loc, Result);
+  }
+
+  // Else
+  {
+    mlir::OpBuilder::InsertionGuard IG(Builder);
+    Builder.setInsertionPointToStart(&IfOp.elseRegion().front());
+    mlir::Value Result = Visit(Else);
+    create<ContOp>(Loc, Result);
+  }
+
+  return IfOp;
+}
+
 // This handles everything after the `define` keyword
 // including terse lambda syntax. This supports lazy
 // visitation of local bindings' initializers.

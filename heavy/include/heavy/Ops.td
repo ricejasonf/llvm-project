@@ -99,6 +99,24 @@ def heavy_ContOp : HeavyOp<"cont", [ReturnLike, Terminator]> {
   let results   = (outs); // no result
 }
 
+def heavy_IfOp : HeavyOp<"if", []> {
+  let summary = "if";
+  let description = [{
+    IfOp handles branching to one of two regions based on an
+    input result.
+  }];
+
+  let arguments = (ins HeavyValue:$input);
+  let results   = (outs HeavyValue:$result);
+
+  let regions   = (region SizedRegion<1>:$thenRegion,
+                          SizedRegion<1>:$elseRegion);
+  let builders = [
+    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, "
+              "::mlir::Value" >
+  ];
+}
+
 def heavy_LambdaOp : HeavyOp<"lambda", [FunctionLike]> {
   let summary = "lambda";
   let description = [{

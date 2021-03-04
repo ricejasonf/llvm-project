@@ -55,6 +55,23 @@ mlir::Value lambda(OpGen& OG, Pair* P) {
   return OG.createLambda(Formals, Body, P->getSourceLocation());
 }
 
+mlir::Value if_(OpGen& OG, Pair* P) {
+  Pair* P2 = dyn_cast<Pair>(P->Cdr);
+  if (!P2) return OG.SetError("invalid if syntax", P);
+  Value* CondExpr = P2->Car;
+  P2 = dyn_cast<Pair>(P2->Cdr);
+  if (!P2) return OG.SetError("invalid if syntax", P);
+  Value* ThenExpr = P2->Car;
+  P2 = dyn_cast<Pair>(P2->Cdr);
+  if (!P2) return OG.SetError("invalid if syntax", P);
+  Value* ElseExpr = P2->Car;
+  if (!isa<Empty>(P2->Cdr)) {
+    return OG.SetError("invalid if syntax", P);
+  }
+  return OG.createIf(P->getSourceLocation(), CondExpr,
+                     ThenExpr, ElseExpr);
+}
+
 mlir::Value quote(OpGen& OG, Pair* P) {
   Value* Arg = GetSingleSyntaxArg(P);
   if (!Arg) {
