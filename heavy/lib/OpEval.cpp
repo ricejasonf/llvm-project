@@ -155,6 +155,7 @@ private:
     else if (isa<BuiltinOp>(Op))    return Visit(cast<BuiltinOp>(Op));
     else if (isa<ContOp>(Op))       return Visit(cast<ContOp>(Op));
     else if (isa<LambdaOp>(Op))     return Visit(cast<LambdaOp>(Op));
+    else if (isa<IfOp>(Op))         return Visit(cast<IfOp>(Op));
     else if (isa<SetOp>(Op))        return Visit(cast<SetOp>(Op));
     else if (UndefinedOp UndefOp = dyn_cast<UndefinedOp>(Op))  {
       setValue(UndefOp, Context.CreateUndefined());
@@ -288,11 +289,8 @@ private:
            Results.size() == ContArgs.size()) &&
         "continuation arity must match");
 
-    // TODO only call pop_frame if the caller is not uhhh something
-    //
     // if this isn't receiving a tail call
     // then pop the frame
-    //if (!ContArgs[0].getDefiningOp<ApplyOp>()) {
     ApplyOp AppOp = ContArgs[0].getDefiningOp<ApplyOp>();
     if (!AppOp || AppOp.isTailPos()) {
       pop_frame();
@@ -303,6 +301,15 @@ private:
     }
 
     return next(Caller);
+  }
+
+  BlockItrTy Visit(IfOp Op) {
+    auto* Input = dyn_cast<heavy::Boolean>(getValue(Op.input()));
+    // only explicit boolean false is considered false
+    bool CondResult = !Input || Input->getVal();
+    push_frame(Op, llvm::None);
+    return CondResult ? Op.thenRegion().front().begin() :
+                        Op.elseRegion().front().begin();
   }
 
   BlockItrTy Visit(LambdaOp Op) {
