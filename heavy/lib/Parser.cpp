@@ -125,10 +125,14 @@ ValueResult Parser::ParseExpr() {
     return ParseSymbol();
   case tok::char_constant:
     return ParseCharConstant();
-  case tok::true_:
+  case tok::true_: {
+    ConsumeToken();
     return Context.CreateBoolean(true);
-  case tok::false_:
+  }
+  case tok::false_: {
+    ConsumeToken();
     return Context.CreateBoolean(false);
+  }
   case tok::string_literal:
     return ParseString();
   case tok::quote:
