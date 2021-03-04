@@ -54,6 +54,7 @@ Context::Context()
 {
   // Load Builtin Syntax
   AddBuiltinSyntax("define",      builtin_syntax::define);
+  AddBuiltinSyntax("if",          builtin_syntax::if_);
   AddBuiltinSyntax("lambda",      builtin_syntax::lambda);
   AddBuiltinSyntax("quasiquote",  builtin_syntax::quasiquote);
   AddBuiltinSyntax("quote",       builtin_syntax::quote);
