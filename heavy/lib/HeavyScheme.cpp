@@ -66,6 +66,8 @@ Context::Context()
   AddBuiltin("/",                 builtin::operator_div);
   AddBuiltin("list",              builtin::list);
   AddBuiltin("append",            builtin::append);
+  AddBuiltin("eqv?",              builtin::eqv);
+  AddBuiltin("eq?",               builtin::eqv);
 }
 
 Context::~Context() = default;
