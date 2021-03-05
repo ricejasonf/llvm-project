@@ -205,6 +205,58 @@ heavy::Value* operator_div(Context& C, ValueRefs Args) {
   return Temp;
 }
 
+heavy::Value* operator_gt(Context& C, ValueRefs Args) {
+  llvm_unreachable("TODO");
+  return nullptr;
+}
+
+heavy::Value* operator_lt(Context& C, ValueRefs Args) {
+  llvm_unreachable("TODO");
+  return nullptr;
+}
+
+heavy::Value* eqv(Context& C, ValueRefs Args) {
+  if (Args.size() != 2) return C.SetError("invalid arity");
+  Value* V1 = Args[0];
+  Value* V2 = Args[1];
+  if (V1 == V2) return C.CreateBoolean(true);
+  if (V1->getKind() != V2->getKind()) {
+    return C.CreateBoolean(false);
+  }
+
+  bool R;
+  switch (V1->getKind()) {
+  case Value::Kind::Symbol:
+      R = cast<Symbol>(V1)->equals(
+          cast<Symbol>(V2));
+      break;
+    // TODO For primitives this is temporary until
+    // they are embedded in the pointers
+  case Value::Kind::Boolean:
+      R = cast<Boolean>(V1)->getVal() ==
+          cast<Boolean>(V2)->getVal();
+      break;
+  case Value::Kind::Char:
+      R = cast<Char>(V1)->getVal() ==
+          cast<Char>(V2)->getVal();
+      break;
+  case Value::Kind::Integer:
+      R = cast<Integer>(V1)->getVal() ==
+          cast<Integer>(V2)->getVal();
+      break;
+  case Value::Kind::Float:
+      R = cast<Float>(V1)->getVal() ==
+          cast<Float>(V2)->getVal();
+      break;
+  case Value::Kind::Empty:
+      R = true;
+      break;
+  default:
+      R = false;
+  }
+  return C.CreateBoolean(R);
+}
+
 heavy::Value* list(Context& C, ValueRefs Args) {
   // Returns a *newly allocated* list of its arguments.
   heavy::Value* List = C.CreateEmpty();
