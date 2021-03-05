@@ -49,6 +49,10 @@ heavy::Value* operator_add(Context& C, ValueRefs Args);
 heavy::Value* operator_mul(Context&C, ValueRefs Args);
 heavy::Value* operator_sub(Context&C, ValueRefs Args);
 heavy::Value* operator_div(Context& C, ValueRefs Args);
+heavy::Value* operator_gt(Context& C, ValueRefs Args);
+heavy::Value* operator_lt(Context& C, ValueRefs Args);
+heavy::Value* eq(Context& C, ValueRefs Args);
+heavy::Value* eqv(Context& C, ValueRefs Args);
 heavy::Value* list(Context& C, ValueRefs Args);
 heavy::Value* append(Context& C, ValueRefs Args);
 
