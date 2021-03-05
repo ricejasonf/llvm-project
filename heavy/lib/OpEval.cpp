@@ -120,6 +120,16 @@ private:
     ValueMapScopes.pop();
   }
 
+  void pop_tail_calls() {
+    // since some frames aren't calls we have to iterate until
+    // we get a non-tail call
+    while (true) {
+      pop_frame();
+      ApplyOp Caller = dyn_cast_or_null<ApplyOp>(getCurrentFrame().getOp());
+      if (!Caller || !Caller.isTailPos()) break;
+    }
+  }
+
   BlockItrTy next(mlir::Operation* Op) {
     return ++BlockItrTy(Op);
   }
@@ -221,12 +231,11 @@ private:
     LoadArgResults(Op, ArgResults);
     heavy::Value* Callee = ArgResults[0];
 
-    // Now that we have ArgResults, we can pop the frame
+    // Now that we have ArgResults, we can pop the call frame
     // before any tail call
     // (we want keep the original call that is not in tail position)
-    ApplyOp Caller = dyn_cast_or_null<ApplyOp>(getCurrentFrame().getOp());
-    if (Op.isTailPos() && Caller && Caller.isTailPos()) {
-      pop_frame();
+    if (Op.isTailPos()) {
+      pop_tail_calls();
     }
 
     switch (Callee->getKind()) {
