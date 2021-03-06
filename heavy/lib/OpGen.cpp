@@ -162,7 +162,7 @@ void OpGen::processBody(SourceLocation Loc, Value* Body) {
 
 mlir::Value OpGen::createBinding(Binding *B, mlir::Value Init) {
   SourceLocation SymbolLoc = B->getName()->getSourceLocation();
-  mlir::Value BVal = create<BindingOp>(SymbolLoc, Init);
+  mlir::Value BVal = create<BindingOp>(SymbolLoc, Init, isTopLevel());
   BindingTable.insert(B, BVal);
 
   return BVal;
