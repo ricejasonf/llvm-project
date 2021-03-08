@@ -49,6 +49,7 @@ mlir::Value OpGen::createLambda(Value* Formals, Value* Body,
                                 SourceLocation Loc,
                                 llvm::StringRef Name) {
   BindingScope BScope(BindingTable);
+  IsTopLevel = false;
 
   bool HasRestParam = false;
   heavy::EnvFrame* EnvFrame = Context.PushLambdaFormals(Formals,
