@@ -34,11 +34,47 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
                                             mlir::Value>;
   using BindingScope = typename BindingScopeTable::ScopeTy;
 
+  // LambdaScope - RAII object that pushes an operation that is
+  //               FunctionLike to the scope stack along with a
+  //               BindingScope where we can insert stack local
+  //               values resulting from operations that load from
+  //               a global or variable captured by a closure.
+  //
+  //               Note that BindingScope is still used for
+  //               non-isolated scopes (e.g. `let` syntax).
+  struct LambdaScope {
+    OpGen& O;
+
+    LambdaScope(OpGen& O, mlir::Operation* Op)
+      : O(O)
+    {
+      O.LambdaScopes.emplace_back(Op, BindingTable);
+    }
+
+    ~LambdaScope()
+    {
+      O.LambdaScopes.pop_back();
+    }
+  };
+
+  struct LambdaScopeNode {
+    mlir::Operation* Op;
+    llvm::SmallVector<mlir::Value, 8> Captures;
+    BindingScope BindingScope;
+
+    LambdaScopeNode(mlir::Operation* Op,
+          BindingScopeTable& Table)
+      : Op(Op),
+        Captures(),
+        BindingScope(Table)
+    { }
+  };
+
   heavy::Context& Context;
   mlir::OpBuilder Builder;
   mlir::OpBuilder LocalInits;
   BindingScopeTable BindingTable;
-  BindingScope BindingTableTop;
+  std::deque<LambdaScopeNode> LambdaScopes;
   mlir::Operation* TopLevel;
   bool IsTopLevel = false;
   bool IsTailPos = true;
@@ -140,6 +176,8 @@ private:
 
   mlir::Value VisitPair(Pair* P);
   // TODO mlir::Value VisitVector(Vector* V);
+
+  mlir::Value LocalizeValue(mlir::Value V);
 };
 
 }

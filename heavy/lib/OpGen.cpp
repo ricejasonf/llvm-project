@@ -166,6 +166,10 @@ mlir::Value OpGen::createBinding(Binding *B, mlir::Value Init) {
   mlir::Value BVal = create<BindingOp>(SymbolLoc, Init, isTopLevel());
   BindingTable.insert(B, BVal);
 
+  if (isTopLevel()) {
+    BVal.getDefiningOp<BindingOp>().setName(B->getName()->getVal());
+  }
+
   return BVal;
 }
 
@@ -299,12 +303,13 @@ mlir::Value OpGen::VisitSymbol(Symbol* S) {
   mlir::Value V = BindingTable.lookup(B);
   // V should be a value for a BindingOp or nothing
   // BindingOps are created in the `define` syntax
-  if (V) return V;
+
+  if (V) return LocalizeValue(V);
+
 
   String* Msg = Context.CreateString("binding has no associated value for '",
                                      S->getVal(), "'");
   return SetError(Msg, S);
-
 }
 
 mlir::Value OpGen::HandleCall(Pair* P) {
@@ -368,6 +373,23 @@ mlir::Value OpGen::VisitVector(Vector* V) {
   return New;
 }
 #endif
+
+// LocalizeValue - If a value belongs to a parent region from
+//                 which the current region should be isolated
+//                 we generate one of two operations (LoadGlobal or
+//                 LoadCapture), and we return the result of that.
+//                 Tracking of captures for nested scopes is handled
+//                 here too.
+//
+mlir::Value OpGen::LocalizeValue(mlir::Value V) {
+  // is Op in the current Lambda?
+  if (isLocal(Value)) return Op;
+  if (GlobalOp G = V.getDefiningOp<GlobalOp>()) {
+     create<LoadGlobalOp>(G.getName())
+  }
+
+  llvm_unreachable("TODO");
+}
 
 Value* heavy::eval(Context& C, Value* V, Value* EnvStack) {
   heavy::Value* Args[2] = {V, EnvStack};

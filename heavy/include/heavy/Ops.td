@@ -13,6 +13,7 @@
 #define LLVM_HEAVY_OPS_TD
 
 include "mlir/IR/OpBase.td"
+include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
@@ -23,7 +24,6 @@ def HeavyDialect : Dialect {
 def HeavyValue : OpaqueType<"heavy", "HeavyValue",
                        "HeavyValue represents a heavy::Value*">;
 
-//def HeavyValueAttr : Attr<CPred<"::heavy::isConvertibleToValue($_self)">,
 def HeavyValueAttr : Attr<CPred<"true">,
                           "Any Attribute convertible to heavy::Value"> {
   let storageType = "::mlir::heavy_mlir::HeavyValueAttr";
@@ -50,7 +50,7 @@ def heavy_ApplyOp : HeavyOp<"apply"> {
   ];
 }
 
-def heavy_BindingOp : HeavyOp<"binding"> {
+def heavy_BindingOp : HeavyOp<"binding", [Symbol]> {
   let summary = "binding";
   let description = [{
     BindingOp creates a value wrapper (heavy::Binding) that allows
@@ -65,6 +65,14 @@ def heavy_BindingOp : HeavyOp<"binding"> {
     OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, "
               "::mlir::Value input, bool IsTopLevel">
   ];
+
+  let extraClassDeclaration = [{
+    bool isOptionalSymbol() { return true; }
+    bool isSymbol() {
+      return static_cast<bool>(getAttr(
+        ::mlir::SymbolTable::getSymbolAttrName()));
+    }
+  }];
 }
 
 def heavy_BuiltinOp : HeavyOp<"builtin"> {
