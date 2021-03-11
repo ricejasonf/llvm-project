@@ -21,8 +21,11 @@ def HeavyDialect : Dialect {
   let name = "heavy";
 }
 
-def HeavyClosure  : OpaqueType<"heavy", "HeavyClosure",
-                              "Same as heavy::Closure*">;
+def HeavyLambda   : OpaqueType<"heavy", "HeavyLambda",
+                               "Same as heavy::Lambda*">;
+def HeavyRest     : OpaqueType<"heavy", "HeavyRest",
+                               "Same as heavy::Value* but "
+                               "denotes a rest parameter">;
 def HeavyValue    : OpaqueType<"heavy", "HeavyValue",
                                "Same as heavy::Value*">;
 
@@ -127,40 +130,22 @@ def heavy_IfOp : HeavyOp<"if", []> {
   ];
 }
 
-def heavy_LambdaOp : HeavyOp<"lambda", [FunctionLike]> {
+def heavy_LambdaOp : HeavyOp<"lambda"> {
   let summary = "lambda";
   let description = [{
-    Lambdas represent function objects that have
-    two significant properties:
-      - Variables that are lexically defined in a parent scope are implicitly
-        captured if they appear in the procedures scope. 
-      - The object is callable with an arity that can be analyzed statically
-        in call expression syntax, but must also be checked dynamically when
-        using dynamic function application via `apply`
-      - Note also that other syntaxes that bind local variables will transform
-        into procedures during syntax expansion
+    Lambdas represent a closure. They take the name of a function
+    and a list of values to capture.
   }];
 
   let arguments = (ins StrAttr:$name,
-                       TypeAttr:$type,
-                       BoolAttr:$hasRestParam,
                        Variadic<HeavyValue>:$captures);
-  // $result is the instance of the closure/"function object"
   let results = (outs HeavyValue:$result);
 
   let builders = [
     OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&,"
-              "::llvm::StringRef Name, uint32_t Arity, bool HasRestParam,"
+              "::llvm::StringRef Name"
               "::llvm::ArrayRef<::mlir::Value> Captures">
   ];
-
-  let extraClassDeclaration = [{
-    // Hooks for FunctionLike
-    unsigned getNumFuncArguments() {
-      return FunctionLike::getType().getInputs().size();
-    }
-    unsigned getNumFuncResults() { return 1; }
-  }];
 }
 
 def heavy_LiteralOp : HeavyOp<"literal", [NoSideEffect]> {
@@ -177,6 +162,36 @@ def heavy_LiteralOp : HeavyOp<"literal", [NoSideEffect]> {
   let results   = (outs HeavyValue:$result);
   let builders = [
     OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, ::heavy::Value*">
+  ];
+}
+
+def heavy_LoadClosureOp : HeavyOp<"load_closure"> {
+  let summary = "load_closure";
+  let description = [{
+    Read an element from lambda's capture list.
+  }];
+
+  let arguments = (ins HeavyLambda:$closure, UI32Attr:$index);
+  let results   = (outs HeavyValue:$value);
+  
+  let builders = [
+    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&,"
+              "::mlir::Value Closure, uint32_t index">
+  ];
+}
+
+def heavy_LoadGlobalOp : HeavyOp<"load_global"> {
+  let summary = "load_global";
+  let description = [{
+    Read the value from a global.
+  }];
+
+  let arguments = (ins FlatSymbolRefAttr:$name);
+  let results   = (outs HeavyValue:$result);
+  
+  let builders = [
+    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&,"
+              "StringRef Name">
   ];
 }
 
