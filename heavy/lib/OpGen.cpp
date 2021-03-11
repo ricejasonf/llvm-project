@@ -47,7 +47,8 @@ mlir::Value OpGen::createUndefined() {
 
 mlir::FunctionType createFunctionType(unsigned Arity,
                                       bool HasRestParam) {
-  mlir::Type HeavyClosureTy = B.getType<HeavyClosure>();
+  mlir::Type HeavyLambdaTy  = B.getType<HeavyLambda>();
+  mlir::Type HeavyRestTy    = B.getType<HeavyRest>();
   mlir::Type HeavyValueTy   = B.getType<HeavyValue>();
 
   llvm::SmallVector<mlir::Type, 16> Types{};
@@ -56,10 +57,8 @@ mlir::FunctionType createFunctionType(unsigned Arity,
     for (unsigned i = 0; i < Arity - 1; i++) {
       Types.push_back(HeavyValueTy);
     }
-    // TODO Do we want a special type for rest params?
-    mlir::Type LastParamTy = HasRestParam ?
-                                HeavyValueTy :
-                                HeavyValueTy;
+    mlir::Type LastParamTy = HasRestParam ? HeavyValueTy :
+                                            HeavyRestTy;
     Types.push_back(LastParamTy);
   }
 
@@ -68,8 +67,14 @@ mlir::FunctionType createFunctionType(unsigned Arity,
 
 mlir::Value OpGen::createLambda(Value* Formals, Value* Body,
                                 SourceLocation Loc,
-                                llvm::StringRef ProvidedName) {
+                                llvm::StringRef Name) {
   IsTopLevel = false;
+
+  std::string GeneratedName;
+  if (Name.size() == 0) {
+    GeneratedName = generateLambdaName();
+    Name = GeneratedName;
+  }
 
   bool HasRestParam = false;
   heavy::EnvFrame* EnvFrame = Context.PushLambdaFormals(Formals,
@@ -77,20 +82,21 @@ mlir::Value OpGen::createLambda(Value* Formals, Value* Body,
   if (!EnvFrame) return Error();
   unsigned Arity = EnvFrame->getBindings().size();
   mlir::FunctionType FTy createFunctionType(Arity, HasRestParam);
-  std::string Name = generateLambdaName();
 
-  auto F = create<mlir::FuncOp>(Loc, Name, Fty);
+  auto F = create<mlir::FuncOp>(Loc, Name, FTy);
   LambdaScope LS(*this, F);
 
   // Insert into the function body
   {
-    mlir::OpBuilder::InsertionGuard IG_1(Builder);
-    mlir::Block& Block = *L.addEntryBlock();
-    Builder.setInsertionPointToStart(&Block);
+    mlir::Block& Body = *F.addEntryBlock();
+    mlir::OpBuilder::InsertionGuard IG(Builder);
+    Builder.setInsertionPointToStart(&Body);
 
+    // ValueArgs drops the Closure arg at the front
+    auto ValueArgs  = Body.getArguments().drop_front();
     // Create the BindingOps for the arguments
     for (auto tup : llvm::zip(EnvFrame->getBindings(),
-                              Block.getArguments())) {
+                              ValueArgs)) {
       Binding *B        = std::get<0>(tup);
       mlir::Value Arg   = std::get<1>(tup);
       createBinding(B, Arg);
@@ -434,19 +440,18 @@ mlir::Operation* OpGen::Localize(heavy::Binding* B,
 
   mlir::Operation* ParentLocal = Localize(Op, Owner, ++Itr);
 
-  // nested locals should all still be BindingOps
-  assert(isa<heavy::BindingOp>(ParentLocal) &&
-    "nested locals should all still be bindings");
+  {
+    mlir::OpBuilder::InsertionGuard IG(Builder);
+    auto FuncOp = cast<mlir::FuncOp>(LS.Op);
+    mlir::Block& Body = FuncOp.getBody();
+    Builder.setInsertionPointToStart(Body);
 
-  // code write the capture
-  LS.Captures.push_back(ParentLocal);
-  unsigned Index = LS.Captures.size() - 1;
-
-  // code read the capture
-  // TODO get the BlockArgument for the closure
-  //      should be the first arg
-  create<LoadCapture>(Closure, Index);
-  BindingTable.insertIntoScope(LS.BindingScope, B, ParentLocal);
+    LS.Captures.push_back(ParentLocal);
+    uint32_t Index = LS.Captures.size() - 1;
+    mlir::Value Closure = Body.getArguments().front();
+    mlir::Value NewVal = create<LoadClosureOp>(Closure, Index);
+    BindingTable.insertIntoScope(LS.BindingScope, B, NewVal);
+  }
 }
 
 Value* heavy::eval(Context& C, Value* V, Value* EnvStack) {
