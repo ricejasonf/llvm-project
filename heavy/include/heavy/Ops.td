@@ -21,8 +21,10 @@ def HeavyDialect : Dialect {
   let name = "heavy";
 }
 
-def HeavyValue : OpaqueType<"heavy", "HeavyValue",
-                       "HeavyValue represents a heavy::Value*">;
+def HeavyClosure  : OpaqueType<"heavy", "HeavyClosure",
+                              "Same as heavy::Closure*">;
+def HeavyValue    : OpaqueType<"heavy", "HeavyValue",
+                               "Same as heavy::Value*">;
 
 def HeavyValueAttr : Attr<CPred<"true">,
                           "Any Attribute convertible to heavy::Value"> {
