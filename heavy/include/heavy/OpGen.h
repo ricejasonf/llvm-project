@@ -76,6 +76,7 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   BindingScopeTable BindingTable;
   std::deque<LambdaScopeNode> LambdaScopes;
   mlir::Operation* TopLevel;
+  unsigned LambdaNameCount = 0;
   bool IsTopLevel = false;
   bool IsTailPos = true;
 
@@ -110,6 +111,11 @@ public:
   bool isTopLevel() { return IsTopLevel; }
   bool isTailPos() { return IsTailPos && !IsTopLevel; }
   bool isLocalDefineAllowed();
+
+  std::string generateLambdaName() {
+    return std::string("lambda__") +
+           std::to_string(LambdaNameCount++);
+  }
 
   template <typename Op, typename ...Args>
   static Op create(mlir::OpBuilder& Builder, heavy::SourceLocation Loc,
