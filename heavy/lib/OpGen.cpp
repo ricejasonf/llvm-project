@@ -28,13 +28,13 @@ OpGen::OpGen(heavy::Context& C)
   : Context(C),
     Builder(&(C.MlirContext)),
     LocalInits(&(C.MlirContext)),
-    BindingTable(),
-    BindingTableTop(BindingTable)
+    BindingTable()
 {
   mlir::ModuleOp TL =  Builder.create<mlir::ModuleOp>(
       Builder.getUnknownLoc());
   Builder.setInsertionPointToStart(TL.getBody());
   TopLevel = TL;
+  LambdaScopes.emplace_back(TL, BindingTable);
 }
 
 mlir::ModuleOp OpGen::getTopLevel() {
@@ -45,10 +45,30 @@ mlir::Value OpGen::createUndefined() {
   return create<UndefinedOp>(SourceLocation());
 }
 
+mlir::FunctionType createFunctionType(unsigned Arity,
+                                      bool HasRestParam) {
+  mlir::Type HeavyClosureTy = B.getType<HeavyClosure>();
+  mlir::Type HeavyValueTy   = B.getType<HeavyValue>();
+
+  llvm::SmallVector<mlir::Type, 16> Types{};
+  Types.push_back(HeavyClosureTy);
+  if (Arity > 0) {
+    for (unsigned i = 0; i < Arity - 1; i++) {
+      Types.push_back(HeavyValueTy);
+    }
+    // TODO Do we want a special type for rest params?
+    mlir::Type LastParamTy = HasRestParam ?
+                                HeavyValueTy :
+                                HeavyValueTy;
+    Types.push_back(LastParamTy);
+  }
+
+  return Builder.getFunctionType(Types, HeavyValueTy);
+}
+
 mlir::Value OpGen::createLambda(Value* Formals, Value* Body,
                                 SourceLocation Loc,
-                                llvm::StringRef Name) {
-  BindingScope BScope(BindingTable);
+                                llvm::StringRef ProvidedName) {
   IsTopLevel = false;
 
   bool HasRestParam = false;
@@ -56,26 +76,34 @@ mlir::Value OpGen::createLambda(Value* Formals, Value* Body,
                                                         HasRestParam);
   if (!EnvFrame) return Error();
   unsigned Arity = EnvFrame->getBindings().size();
+  mlir::FunctionType FTy createFunctionType(Arity, HasRestParam);
+  std::string Name = generateLambdaName();
 
-  LambdaOp L = create<LambdaOp>(Loc, Name, Arity, HasRestParam,
-                                /*Captures=*/llvm::ArrayRef<mlir::Value>{});
+  auto F = create<mlir::FuncOp>(Loc, Name, Fty);
+  LambdaScope LS(*this, F);
 
-  mlir::Block& Block = *L.addEntryBlock();
-  mlir::OpBuilder::InsertionGuard IG_1(Builder);
-  Builder.setInsertionPointToStart(&Block);
+  // Insert into the function body
+  {
+    mlir::OpBuilder::InsertionGuard IG_1(Builder);
+    mlir::Block& Block = *L.addEntryBlock();
+    Builder.setInsertionPointToStart(&Block);
 
-  // Create the BindingOps for the arguments
-  for (auto tup : llvm::zip(EnvFrame->getBindings(),
-                            Block.getArguments())) {
-    Binding *B        = std::get<0>(tup);
-    mlir::Value Arg   = std::get<1>(tup);
-    createBinding(B, Arg);
+    // Create the BindingOps for the arguments
+    for (auto tup : llvm::zip(EnvFrame->getBindings(),
+                              Block.getArguments())) {
+      Binding *B        = std::get<0>(tup);
+      mlir::Value Arg   = std::get<1>(tup);
+      createBinding(B, Arg);
+    }
+
+    processBody(Loc, Body);
+    Context.PopEnvFrame();
   }
 
-  processBody(Loc, Body);
-  Context.PopEnvFrame();
-
-  return L;
+  // TODO I don't think we will need Arity/HasRestParam in LambdaOp
+  //      if we encode all of that information in the function type
+  //      and/or adaptor function
+  return create<LambdaOp>(Loc, Name, Arity, HasRestParam, LS.Captures);
 }
 
 bool OpGen::isLocalDefineAllowed() {
@@ -381,14 +409,44 @@ mlir::Value OpGen::VisitVector(Vector* V) {
 //                 Tracking of captures for nested scopes is handled
 //                 here too.
 //
-mlir::Value OpGen::LocalizeValue(mlir::Value V) {
-  // is Op in the current Lambda?
-  if (isLocal(Value)) return Op;
-  if (GlobalOp G = V.getDefiningOp<GlobalOp>()) {
-     create<LoadGlobalOp>(G.getName())
+mlir::Value OpGen::LocalizeValue(heavy::Binding* B, mlir::Value V) {
+  mlir::Operation* Op = V.getDefiningOp();
+  assert(Op && "expecting a binding or local alias to a binding");
+
+  mlir::Operation* Owner = Op->getParentWithTrait<mlir::IsolatedFromAbove>();
+  if (Owner == Op) return V;
+
+  return Localize(B, Op, Owner, LambdaScopes.rbegin());
+}
+
+mlir::Operation* OpGen::Localize(heavy::Binding* B,
+                                 mlir::Operation* Op,
+                                 mlir::Operation* Owner,
+                                 LambdaScopeIterator Itr) {
+  assert(Itr != LambdaScopes.rend() && "value must be in a scope");
+  LambdaScopeNode& LS = *Itr;
+  if (LS.Op == Owner) return Op;
+
+  // symbols can be aliased immediately
+  if (auto GlobalOp = dyn_cast<heavy::GlobalOp>(Op)) {
+    llvm_unreachable("TODO");
   }
 
-  llvm_unreachable("TODO");
+  mlir::Operation* ParentLocal = Localize(Op, Owner, ++Itr);
+
+  // nested locals should all still be BindingOps
+  assert(isa<heavy::BindingOp>(ParentLocal) &&
+    "nested locals should all still be bindings");
+
+  // code write the capture
+  LS.Captures.push_back(ParentLocal);
+  unsigned Index = LS.Captures.size() - 1;
+
+  // code read the capture
+  // TODO get the BlockArgument for the closure
+  //      should be the first arg
+  create<LoadCapture>(Closure, Index);
+  BindingTable.insertIntoScope(LS.BindingScope, B, ParentLocal);
 }
 
 Value* heavy::eval(Context& C, Value* V, Value* EnvStack) {
