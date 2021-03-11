@@ -22,7 +22,7 @@
 using namespace mlir::heavy_mlir;
 
 Dialect::Dialect(mlir::MLIRContext* Ctx) : mlir::Dialect("heavy", Ctx) {
-  addTypes<HeavyValue>();
+  addTypes<HeavyLambda, HeavyValue>();
   addAttributes<HeavyValueAttr>();
 
   addOperations<
