@@ -166,6 +166,7 @@ private:
     else if (isa<BuiltinOp>(Op))      return Visit(cast<BuiltinOp>(Op));
     else if (isa<ContOp>(Op))         return Visit(cast<ContOp>(Op));
     else if (isa<LoadClosureOp>(Op))  return Visit(cast<LoadClosureOp>(Op));
+    else if (isa<LoadGlobalOp>(Op))   return Visit(cast<LoadGlobalOp>(Op));
     else if (isa<LambdaOp>(Op))       return Visit(cast<LambdaOp>(Op));
     else if (isa<IfOp>(Op))           return Visit(cast<IfOp>(Op));
     else if (isa<SetOp>(Op))          return Visit(cast<SetOp>(Op));
@@ -328,7 +329,6 @@ private:
 
   BlockItrTy Visit(LambdaOp Op) {
     // We could use the symbol to lookup the function
-    // with mlir::SymbolTable::lookupNearestSymbolFrom<FuncOp>,
     // but here we just assume the FuncOp precedes the LambdaOp
     // since they are always generated that way in OpGen
     FuncOp F = cast<FuncOp>(Op.getOperation()->getPrevNode());
@@ -362,6 +362,13 @@ private:
     assert(V && "must have a valid closure type");
 
     setValue(Op.result(), V);
+    return next(Op);
+  }
+
+  BlockItrTy Visit(LoadGlobalOp Op) {
+    mlir::ModuleOp M = Context.OpGen->getTopLevel();
+    mlir::Operation* G = M.lookupSymbol(Op.name());
+    setValue(Op, getValue(G->getResult(0)));
     return next(Op);
   }
 
