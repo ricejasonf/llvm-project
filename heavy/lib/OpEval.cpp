@@ -95,7 +95,6 @@ public:
 
     if (Itr == End) return Context.CreateUndefined();
     do {
-      Itr->dump();
       Itr = Visit(&*Itr);
     } while (Itr != BlockItrTy() && Itr != End);
 
@@ -108,15 +107,14 @@ public:
 
 private:
   heavy::StackFrame* push_frame(mlir::Operation* Op, llvm::ArrayRef<heavy::Value*> Args) {
-      //llvm::errs() << "push_frame: (Operation*) " << (size_t) Op << '\n';
+      // llvm::errs() << "push_frame: "; Op->dump();
     assert(Op && "stack frame op must be a valid op");
     ValueMapScopes.emplace(ValueMap);
     return Context.EvalStack.push(Op, Args);
   }
 
   void pop_frame()  {
-      //auto* Op = getCurrentFrame().getOp();
-      //llvm::errs() << "pop_frame: (Operation*) " << (size_t) Op << '\n';
+      // llvm::errs() << "pop_frame:  "; getCurrentFrame().getOp()->dump();
     Context.EvalStack.pop();
     ValueMapScopes.pop();
   }
@@ -125,9 +123,9 @@ private:
     // since some frames aren't calls we have to iterate until
     // we get a non-tail call
     while (true) {
-      pop_frame();
       ApplyOp Caller = dyn_cast_or_null<ApplyOp>(getCurrentFrame().getOp());
       if (!Caller || !Caller.isTailPos()) break;
+      pop_frame();
     }
   }
 
