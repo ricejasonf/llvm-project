@@ -537,7 +537,7 @@ class LambdaIr final
 
   friend class llvm::TrailingObjects<LambdaIr, Value*>;
 
-  LambdaOp Op;
+  FuncOp Op;
   unsigned NumCaptures: 8;
 
   size_t numTrailingObjects(OverloadToken<Value*> const) const {
@@ -545,7 +545,7 @@ class LambdaIr final
   }
 
 public:
-  LambdaIr(LambdaOp Op, unsigned NumCaptures)
+  LambdaIr(FuncOp Op, unsigned NumCaptures)
     : Value(Kind::LambdaIr)
     , Op(Op)
     , NumCaptures(NumCaptures)
@@ -555,7 +555,7 @@ public:
     return V->getKind() == Kind::LambdaIr;
   }
 
-  LambdaOp getOp() const { return Op; }
+  FuncOp getOp() const { return Op; }
   mlir::Block& getBody() {
     return Op.getBody().front();
   }
@@ -568,6 +568,10 @@ public:
   llvm::MutableArrayRef<Value*> getCaptures() {
     return llvm::MutableArrayRef<Value*>(
         getTrailingObjects<Value*>(), NumCaptures);
+  }
+
+  static size_t sizeToAlloc(unsigned Length) {
+    return totalSizeToAlloc<Value*>(Length);
   }
 };
 
@@ -972,7 +976,7 @@ public:
     return New;
   }
 
-  LambdaIr* CreateLambdaIr(LambdaOp Op,
+  LambdaIr* CreateLambdaIr(FuncOp Op,
                            llvm::ArrayRef<heavy::Value*> Captures);
   Lambda*   CreateLambda(ValueFn Fn,
                          llvm::ArrayRef<heavy::Value*> Captures);

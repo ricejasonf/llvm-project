@@ -29,6 +29,7 @@ class Context;
 class Value;
 using ValueRefs = llvm::ArrayRef<heavy::Value*>;
 using ValueFn = heavy::Value* (*)(Context&, ValueRefs);
+using mlir::FuncOp;
 
 class Builtin;
 }
@@ -60,6 +61,32 @@ struct HeavyValue : public mlir::Type::TypeBase<
 
   // This will go away
   static HeavyValue get(mlir::MLIRContext* C) {
+    return Base::get(C, HEAVY_VALUE_KIND);
+  }
+};
+
+struct HeavyRest : public mlir::Type::TypeBase<
+                            HeavyRest,
+                            mlir::Type,
+                            mlir::TypeStorage> {
+  using Base::Base;
+
+
+  // This will go away
+  static HeavyRest get(mlir::MLIRContext* C) {
+    return Base::get(C, HEAVY_VALUE_KIND);
+  }
+};
+
+struct HeavyLambda : public mlir::Type::TypeBase<
+                            HeavyLambda,
+                            mlir::Type,
+                            mlir::TypeStorage> {
+  using Base::Base;
+
+
+  // This will go away
+  static HeavyLambda get(mlir::MLIRContext* C) {
     return Base::get(C, HEAVY_VALUE_KIND);
   }
 };

@@ -34,8 +34,8 @@ class OpEvalImpl {
   std::stack<ValueMapScope> ValueMapScopes;
 
   void setValue(mlir::Value M, heavy::Value* H) {
-    assert(M && "must set to a valid value");
-    assert(H && "must set to a valid value");
+    assert(M && "must be set to a valid value");
+    assert(H && "must be set to a valid value");
     ValueMap.insert(M, H);
   }
 
@@ -95,6 +95,7 @@ public:
 
     if (Itr == End) return Context.CreateUndefined();
     do {
+      Itr->dump();
       Itr = Visit(&*Itr);
     } while (Itr != BlockItrTy() && Itr != End);
 
@@ -159,14 +160,16 @@ private:
 #endif
 
   BlockItrTy Visit(mlir::Operation* Op) {
-         if (isa<BindingOp>(Op))    return Visit(cast<BindingOp>(Op));
-    else if (isa<LiteralOp>(Op))    return Visit(cast<LiteralOp>(Op));
-    else if (isa<ApplyOp>(Op))      return Visit(cast<ApplyOp>(Op));
-    else if (isa<BuiltinOp>(Op))    return Visit(cast<BuiltinOp>(Op));
-    else if (isa<ContOp>(Op))       return Visit(cast<ContOp>(Op));
-    else if (isa<LambdaOp>(Op))     return Visit(cast<LambdaOp>(Op));
-    else if (isa<IfOp>(Op))         return Visit(cast<IfOp>(Op));
-    else if (isa<SetOp>(Op))        return Visit(cast<SetOp>(Op));
+         if (isa<BindingOp>(Op))      return Visit(cast<BindingOp>(Op));
+    else if (isa<LiteralOp>(Op))      return Visit(cast<LiteralOp>(Op));
+    else if (isa<ApplyOp>(Op))        return Visit(cast<ApplyOp>(Op));
+    else if (isa<BuiltinOp>(Op))      return Visit(cast<BuiltinOp>(Op));
+    else if (isa<ContOp>(Op))         return Visit(cast<ContOp>(Op));
+    else if (isa<LoadClosureOp>(Op))  return Visit(cast<LoadClosureOp>(Op));
+    else if (isa<LambdaOp>(Op))       return Visit(cast<LambdaOp>(Op));
+    else if (isa<IfOp>(Op))           return Visit(cast<IfOp>(Op));
+    else if (isa<SetOp>(Op))          return Visit(cast<SetOp>(Op));
+    else if (isa<FuncOp>(Op))         return next(Op); // skip functions
     else if (UndefinedOp UndefOp = dyn_cast<UndefinedOp>(Op))  {
       setValue(UndefOp, Context.CreateUndefined());
       return next(Op);
@@ -193,13 +196,15 @@ private:
   BlockItrTy CallLambdaIr(heavy::ApplyOp ApplyOp, heavy::LambdaIr* L,
                           llvm::ArrayRef<heavy::Value*> Args) {
     heavy::SourceLocation CallLoc = getSourceLocation(ApplyOp.getLoc());
-    heavy::LambdaOp LambdaOp = L->getOp();
+    heavy::FuncOp F = L->getOp();
 
     // check arguments
     {
-      unsigned NumArgs = Args.size() - 1; // removes callee
-      mlir::FunctionType FT = LambdaOp.type().cast<mlir::FunctionType>();
-      assert(!LambdaOp.hasRestParam() && "TODO support rest parameters");
+      unsigned NumArgs = Args.size();
+      mlir::FunctionType FT = F.getTypeAttr()
+                               .getValue()
+                               .cast<mlir::FunctionType>();
+      // assert(!F.hasRestParam() && "TODO support rest parameters");
       if (FT.getNumInputs() != NumArgs) {
         return SetError(CallLoc, "invalid arity", L);
       }
@@ -322,7 +327,17 @@ private:
   }
 
   BlockItrTy Visit(LambdaOp Op) {
-    heavy::Value* V = Context.CreateLambdaIr(Op, llvm::None);
+    // We could use the symbol to lookup the function
+    // with mlir::SymbolTable::lookupNearestSymbolFrom<FuncOp>,
+    // but here we just assume the FuncOp precedes the LambdaOp
+    // since they are always generated that way in OpGen
+    FuncOp F = cast<FuncOp>(Op.getOperation()->getPrevNode());
+    llvm::SmallVector<heavy::Value*, 8> Captures;
+    for (mlir::Value Val : Op.captures()) {
+      Captures.push_back(getValue(Val));
+    }
+      
+    heavy::Value* V = Context.CreateLambdaIr(F, Captures);
     setValue(Op.result(), V);
     return next(Op);
   }
@@ -330,6 +345,22 @@ private:
   BlockItrTy Visit(LiteralOp Op) {
     // Map the IR value node to the run-time value
     heavy::Value* V = Op.input(); 
+    setValue(Op.result(), V);
+    return next(Op);
+  }
+
+  BlockItrTy Visit(LoadClosureOp Op) {
+    // get the Lambda object and get its
+    // closure value and set it to the value
+    uint32_t Index = Op.index().getZExtValue();
+    heavy::Value* Closure = getValue(Op.closure());
+    heavy::Value* V = nullptr;
+    if (auto* C = dyn_cast<LambdaIr>(Closure)) {
+      V = C->getCaptures()[Index];
+    }
+
+    assert(V && "must have a valid closure type");
+
     setValue(Op.result(), V);
     return next(Op);
   }
