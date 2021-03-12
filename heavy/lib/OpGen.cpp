@@ -303,6 +303,16 @@ mlir::Value OpGen::createIf(SourceLocation Loc, Value* Cond, Value* Then,
   return IfOp;
 }
 
+// LHS can be a symbol or a binding
+mlir::Value OpGen::createSet(SourceLocation Loc, Value* LHS,
+                                                 Value* RHS) {
+  assert((isa<Binding>(LHS) || isa<Symbol>(LHS)) &&
+      "expects a Symbol or Binding for LHS");
+  mlir::Value BVal = Visit(LHS);
+  mlir::Value ExprVal = Visit(RHS);
+  return create<SetOp>(Loc, BVal, ExprVal);
+}
+
 // This handles everything after the `define` keyword
 // including terse lambda syntax. This supports lazy
 // visitation of local bindings' initializers.
@@ -332,16 +342,16 @@ mlir::Value OpGen::VisitSymbol(Symbol* S) {
                                        S->getVal(), "'");
     return SetError(Msg, S);
   }
+  return VisitBinding(B);
+}
+
+mlir::Value OpGen::VisitBinding(Binding* B) {
   mlir::Value V = BindingTable.lookup(B);
   // V should be a value for a BindingOp or nothing
   // BindingOps are created in the `define` syntax
 
-  if (V) return LocalizeValue(B, V);
-
-
-  String* Msg = Context.CreateString("binding has no associated value for '",
-                                     S->getVal(), "'");
-  return SetError(Msg, S);
+  assert(V && "binding must exist in BindingTable");
+  return LocalizeValue(B, V);
 }
 
 mlir::Value OpGen::HandleCall(Pair* P) {
