@@ -76,29 +76,11 @@ void IfOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
 
 void LambdaOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                      llvm::StringRef Name,
-                     uint32_t Arity, bool HasRestParam,
                      llvm::ArrayRef<mlir::Value> Captures) {
   mlir::Type HeavyValueTy = B.getType<HeavyValue>();
 
-  // create the FunctionType
-  llvm::SmallVector<mlir::Type, 16> Types{};
-  if (Arity > 0) {
-    for (unsigned i = 0; i < Arity - 1; i++) {
-      Types.push_back(HeavyValueTy);
-    }
-    mlir::Type LastParamTy = HasRestParam ?
-                                HeavyValueTy :
-                                HeavyValueTy;
-    Types.push_back(LastParamTy);
-  }
-
-  FunctionType FuncTy = B.getFunctionType(Types, HeavyValueTy);
-  OpState.addRegion();
   LambdaOp::build(B, OpState, HeavyValueTy,
-                  B.getStringAttr(Name),
-                  TypeAttr::get(FuncTy),
-                  B.getBoolAttr(HasRestParam),
-                  Captures);
+                  Name, Captures);
 }
 
 void LiteralOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
@@ -106,6 +88,19 @@ void LiteralOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
   // create a HeavyValueAttr from heavy::Value*
   LiteralOp::build(B, OpState, B.getType<HeavyValue>(),
                    HeavyValueAttr::get(B.getContext(), V));
+}
+
+void LoadClosureOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                          mlir::Value Closure, uint32_t Index) {
+  mlir::Type HeavyValueTy = B.getType<HeavyValue>();
+  LoadClosureOp::build(B, OpState, HeavyValueTy, Closure,
+                       B.getUI32IntegerAttr(Index));
+}
+
+void LoadGlobalOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                         llvm::StringRef SymName) {
+  mlir::Type HeavyValueTy = B.getType<HeavyValue>();
+  LoadGlobalOp::build(B, OpState, HeavyValueTy, SymName);
 }
 
 void SetOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
