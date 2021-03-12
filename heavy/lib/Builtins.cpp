@@ -81,13 +81,25 @@ mlir::Value quote(OpGen& OG, Pair* P) {
   return OG.create<LiteralOp>(P->getSourceLocation(), Arg);
 }
 
-mlir::Value quasiquote(OpGen& C, Pair* P) {
+mlir::Value quasiquote(OpGen& OG, Pair* P) {
   llvm_unreachable("TODO migrate Quasiquoter to OpGen");
 #if 0
   Quasiquoter QQ(C);
   return QQ.Run(P);
 #endif
   return {}; // ??
+}
+
+mlir::Value set(OpGen& OG, Pair* P) {
+  Pair* P2 = dyn_cast<Pair>(P->Cdr);
+  if (!P2) return OG.SetError("invalid set syntax", P);
+  heavy::Symbol* S = dyn_cast<Symbol>(P2->Car);
+  if (!S) return OG.SetError("expecting symbol", P2);
+  P2 = dyn_cast<Pair>(P2->Cdr);
+  if (!P2) return OG.SetError("invalid set syntax", P2);
+  heavy::Value* Expr = P2->Car;
+  if (!isa<Empty>(P2->Cdr)) return OG.SetError("invalid set syntax", P2);
+  return OG.createSet(P->getSourceLocation(), S, Expr);
 }
 
 }} // end of namespace heavy::builtin_syntax
