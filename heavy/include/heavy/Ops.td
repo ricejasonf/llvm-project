@@ -112,6 +112,19 @@ def heavy_ContOp : HeavyOp<"cont", [ReturnLike, Terminator]> {
   let results   = (outs); // no result
 }
 
+def heavy_GlobalOp : HeavyOp<"global", [Symbol]> {
+  let summary = "global";
+  let description = [{
+    This indicates a module top level variable providing
+    a symbol. The input would be a binding but it should be
+    possible to reference a value directly.
+  }];
+
+  let arguments = (ins StrAttr:$sym_name,
+                       HeavyValue:$input);
+  let results   = (outs); // no result
+}
+
 def heavy_IfOp : HeavyOp<"if", []> {
   let summary = "if";
   let description = [{
@@ -142,8 +155,8 @@ def heavy_LambdaOp : HeavyOp<"lambda"> {
   let results = (outs HeavyValue:$result);
 
   let builders = [
-    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&,"
-              "::llvm::StringRef Name"
+    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, "
+              "::llvm::StringRef Name, "
               "::llvm::ArrayRef<::mlir::Value> Captures">
   ];
 }
@@ -172,11 +185,11 @@ def heavy_LoadClosureOp : HeavyOp<"load_closure"> {
   }];
 
   let arguments = (ins HeavyLambda:$closure, UI32Attr:$index);
-  let results   = (outs HeavyValue:$value);
+  let results   = (outs HeavyValue:$result);
   
   let builders = [
     OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&,"
-              "::mlir::Value Closure, uint32_t index">
+              "::mlir::Value Closure, uint32_t Index">
   ];
 }
 

@@ -129,9 +129,18 @@ Lambda* Context::CreateLambda(heavy::ValueFn Fn,
   return new (TrashHeap) Lambda(Fn, /*NumCaptures=*/0);
 }
 
-LambdaIr* Context::CreateLambdaIr(LambdaOp Op,
+LambdaIr* Context::CreateLambdaIr(FuncOp Op,
                               llvm::ArrayRef<heavy::Value*> Captures) {
-  return new (TrashHeap) LambdaIr(Op, /*NumCaptures=*/0);
+  size_t size = LambdaIr::sizeToAlloc(Captures.size());
+  void* Mem = TrashHeap.Allocate(size, alignof(LambdaIr));
+  LambdaIr* New = new (Mem) LambdaIr(Op, Captures.size());
+  auto CapturesItr = Captures.begin();
+  for (heavy::Value*& V : New->getCaptures()) {
+    V = *CapturesItr;
+    ++CapturesItr;
+  }
+  assert(New->getCaptures().size() == Captures.size());
+  return New;
 }
 
 EnvFrame* Context::PushLambdaFormals(Value* Formals,
