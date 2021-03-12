@@ -39,7 +39,7 @@ class OpEvalImpl {
     ValueMap.insert(M, H);
   }
 
-  heavy::Value* getValue(mlir::Value M, bool UnwrapBinding = true) {
+  heavy::Value* getBindingOrValue(mlir::Value M) {
     heavy::Value* V = ValueMap.lookup(M);
     if (!V && (M.getDefiningOp<UndefinedOp>() ||
                M.getDefiningOp<SetOp>())) {
@@ -49,7 +49,11 @@ class OpEvalImpl {
     // failure here could mean failure to capture in a closure
     assert(V && "getValue requires a value in the table");
 
-    if (!UnwrapBinding) return V;
+    return V;
+  }
+
+  heavy::Value* getValue(mlir::Value M) {
+    heavy::Value* V = getBindingOrValue(M);
     if (Binding* B = dyn_cast<Binding>(V)) {
       V = B->getValue();
     }
@@ -332,7 +336,7 @@ private:
     FuncOp F = cast<FuncOp>(Op.getOperation()->getPrevNode());
     llvm::SmallVector<heavy::Value*, 8> Captures;
     for (mlir::Value Val : Op.captures()) {
-      Captures.push_back(getValue(Val));
+      Captures.push_back(getBindingOrValue(Val));
     }
       
     heavy::Value* V = Context.CreateLambdaIr(F, Captures);
@@ -371,9 +375,7 @@ private:
   }
 
   BlockItrTy Visit(SetOp Op) {
-    BindingOp BVal = cast<BindingOp>(Op.binding().getDefiningOp());
-    heavy::Binding* B = cast<heavy::Binding>(getValue(BVal,
-                                             /*UnwrapBinding=*/false));
+    heavy::Binding* B = cast<heavy::Binding>(getBindingOrValue(Op.binding()));
     heavy::Value* RHS = getValue(Op.input());
     B->setValue(RHS);
     return next(Op);

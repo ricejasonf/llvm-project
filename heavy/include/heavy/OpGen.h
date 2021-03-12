@@ -102,6 +102,8 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
 public:
   explicit OpGen(heavy::Context& C);
 
+  heavy::Context& getContext() { return Context; }
+
   mlir::ModuleOp getTopLevel();
 
   mlir::Value VisitTopLevel(Value* V) {
@@ -151,6 +153,7 @@ public:
   mlir::Value createTopLevelDefine(Symbol* S, Value* Args, Value* OrigCall);
   mlir::Value createTopLevelDefine(Symbol* S, mlir::Value Init, Module* M);
   mlir::Value createUndefined();
+  mlir::Value createSet(SourceLocation Loc, Value* LHS, Value* RHS);
 
   template <typename T>
   mlir::Value SetError(T Str, Value* V) {
@@ -180,6 +183,7 @@ private:
   }
 
   mlir::Value VisitSymbol(Symbol* S);
+  mlir::Value VisitBinding(Binding* B);
 
   mlir::Value HandleCall(Pair* P);
   void HandleCallArgs(Value *V,
