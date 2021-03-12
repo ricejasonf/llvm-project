@@ -17,6 +17,7 @@
 #include "mlir/IR/Builders.h"
 #include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/Support/Casting.h"
+#include <deque>
 #include <utility>
 
 namespace mlir {
@@ -48,7 +49,7 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
     LambdaScope(OpGen& O, mlir::Operation* Op)
       : O(O)
     {
-      O.LambdaScopes.emplace_back(Op, BindingTable);
+      O.LambdaScopes.emplace_back(Op, O.BindingTable);
     }
 
     ~LambdaScope()
@@ -60,15 +61,17 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   struct LambdaScopeNode {
     mlir::Operation* Op;
     llvm::SmallVector<mlir::Value, 8> Captures;
-    BindingScope BindingScope;
+    BindingScope BindingScope_;
 
     LambdaScopeNode(mlir::Operation* Op,
           BindingScopeTable& Table)
       : Op(Op),
         Captures(),
-        BindingScope(Table)
+        BindingScope_(Table)
     { }
   };
+  using LambdaScopeIterator = typename std::deque<LambdaScopeNode>
+                                ::reverse_iterator;
 
   heavy::Context& Context;
   mlir::OpBuilder Builder;
@@ -135,6 +138,8 @@ public:
   void processBody(SourceLocation Loc, Value* Body);
   void processSequence(SourceLocation Loc, Value* Body);
 
+  mlir::FunctionType createFunctionType(unsigned Arity,
+                                        bool HasRestParam);
   mlir::Value createLambda(Value* Formals, Value* Body,
                            SourceLocation Loc,
                            llvm::StringRef Name = {});
@@ -183,7 +188,11 @@ private:
   mlir::Value VisitPair(Pair* P);
   // TODO mlir::Value VisitVector(Vector* V);
 
-  mlir::Value LocalizeValue(mlir::Value V);
+  mlir::Value LocalizeValue(heavy::Binding* B, mlir::Value V);
+  mlir::Value LocalizeRec(heavy::Binding* B,
+                          mlir::Operation* Op,
+                          mlir::Operation* Owner,
+                          LambdaScopeIterator Itr);
 };
 
 }

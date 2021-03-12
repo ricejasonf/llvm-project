@@ -99,14 +99,9 @@ public:
     return getTrailingObjects<Value*>()[0];
   }
 
-  void setCallee(heavy::Value* X) {
-    if (getArgCount(Op) == 0) return;
-    getTrailingObjects<Value*>()[0] = X;
-  }
-
   llvm::MutableArrayRef<heavy::Value*> getArgs() {
     return llvm::MutableArrayRef<heavy::Value*>(
-        getTrailingObjects<Value*>() + 1, getArgCount(Op) - 1);
+        getTrailingObjects<Value*>(), getArgCount(Op));
   }
 
   // Get the previous stack frame. This assumes that
@@ -175,10 +170,9 @@ public:
     if (!Frame) return nullptr;
 
     if (!Args.empty()) {
-      Frame->setCallee(Args[0]); 
       auto DestArgs = Frame->getArgs();
-      for (unsigned i = 1; i < Args.size(); ++i) {
-        DestArgs[i - 1] = Args[i];
+      for (unsigned i = 0; i < Args.size(); ++i) {
+        DestArgs[i] = Args[i];
       }
     }
 
