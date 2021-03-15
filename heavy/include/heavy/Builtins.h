@@ -37,8 +37,8 @@ namespace heavy { namespace builtin_syntax {
 mlir::Value define(OpGen& OG, Pair* P);
 mlir::Value if_(OpGen& OG, Pair* P);
 mlir::Value lambda(OpGen& OG, Pair* P);
-mlir::Value quasiquote(OpGen& C, Pair* P);
-mlir::Value quote(OpGen& OG, Pair* P);
+mlir::Value quasiquote(OpGen& C, Pair* P); // lib/Quasiquote.cpp
+mlir::Value quote(OpGen& OG, Pair* P);     // lib/Quasiquote.cpp
 mlir::Value set(OpGen& OG, Pair* P);
 
 }}

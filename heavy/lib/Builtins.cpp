@@ -14,23 +14,6 @@
 #include "heavy/OpGen.h"
 #include "llvm/Support/Casting.h"
 
-namespace {
-// GetSingleSyntaxArg
-//              - Given a macro expression (keyword datum)
-//                return the first argument iff there is only
-//                one argument otherwise returns nullptr
-//                (same as `cadr`)
-heavy::Value* GetSingleSyntaxArg(heavy::Pair* P) {
-  // P->Car is the syntactic keyword
-  heavy::Pair* P2 = llvm::dyn_cast<heavy::Pair>(P->Cdr);
-  if (P2 && llvm::isa<heavy::Empty>(P2->Cdr)) {
-    return P2->Car;
-  }
-  return nullptr;
-}
-
-}
-
 namespace heavy { namespace builtin_syntax {
 
 mlir::Value define(OpGen& OG, Pair* P) {
@@ -70,24 +53,6 @@ mlir::Value if_(OpGen& OG, Pair* P) {
   }
   return OG.createIf(P->getSourceLocation(), CondExpr,
                      ThenExpr, ElseExpr);
-}
-
-mlir::Value quote(OpGen& OG, Pair* P) {
-  Value* Arg = GetSingleSyntaxArg(P);
-  if (!Arg) {
-    return OG.SetError("invalid quote syntax", P);
-  }
-
-  return OG.create<LiteralOp>(P->getSourceLocation(), Arg);
-}
-
-mlir::Value quasiquote(OpGen& OG, Pair* P) {
-  llvm_unreachable("TODO migrate Quasiquoter to OpGen");
-#if 0
-  Quasiquoter QQ(C);
-  return QQ.Run(P);
-#endif
-  return {}; // ??
 }
 
 mlir::Value set(OpGen& OG, Pair* P) {
