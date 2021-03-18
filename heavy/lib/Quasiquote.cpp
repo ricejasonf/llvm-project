@@ -15,6 +15,9 @@
 #include "heavy/OpGen.h"
 #include "llvm/Support/Casting.h"
 
+// TODO maybe represent heavy::Value like this:
+//      https://godbolt.org/z/d6GsaY
+
 namespace {
 // GetSingleSyntaxArg
 //              - Given a macro expression (keyword datum)
@@ -33,6 +36,8 @@ heavy::Value* GetSingleSyntaxArg(heavy::Pair* P) {
 }
 
 namespace heavy {
+
+
 
 class Quasiquoter : private ValueVisitor<Quasiquoter, mlir::Value> {
   friend class ValueVisitor<Quasiquoter, Value*>;
@@ -57,7 +62,7 @@ private:
     return OpGen.create<LiteralOp>(V->getSourceLocation(), V);
   }
 
-  mlir::Value createSplice(Value* X, Value* Y) {
+  mlir::Value createSplice(mlir::Value X, mlir::Value Y) {
     llvm_unreachable("TODO");
   }
 
@@ -99,22 +104,16 @@ private:
                                     int Depth) {
     Value* Input = GetSingleSyntaxArg(P);
     if (!Input) return OpGen.SetError("invalid unquote-splicing syntax", P);
-    Value* Result = HandleQQTemplate(Input, Rebuilt, Depth - 1);
+    mlir::Value Result = HandleQQTemplate(Input, Rebuilt, Depth - 1);
     if (!Rebuilt) return OpGen.Visit(P);
 
-    // FIXME logic does not match comment/error message.. which is right?
-    //       (leaning towards message)
-    if (isa<Pair>(Result)) {
-      // It is an error if unquote-splicing does not result in a list
-      return OpGen.SetError("unquote-splicing must evaluate to a list", P);
-    }
-
-    return createSplice(Result, Next);
+    return createSplice(Result, OpGen.Visit(Next));
   }
 
   mlir::Value VisitPair(Pair* P, bool& Rebuilt, int Depth) {
     assert(Depth > 0 && "Depth cannot be zero here.");
-    if (Context.CheckError()) return Context.CreateEmpty();
+    heavy::Context& Context = OpGen.getContext();
+    if (Context.CheckError()) return OpGen.createUndefined();
     if (P->Car->isSymbol("quasiquote")) {
       return HandleQuasiquote(P, Rebuilt, Depth + 1);
     } else if (P->Car->isSymbol("unquote")) {
@@ -132,8 +131,12 @@ private:
       mlir::Value Cdr = Visit(P->Cdr, CdrRebuilt, Depth);
       // Portions that are not rebuilt are always literal
       // '<qq template D>
-      if (!CarRebuilt && CdrRebuilt) Car = createLiteral(Car);
-      if (!CdrRebuilt && CarRebuilt) Cdr = createLiteral(Cdr);
+      //if (!CarRebuilt && CdrRebuilt) Car = createLiteral(Car);
+      //if (!CdrRebuilt && CarRebuilt) Cdr = createLiteral(Cdr);
+      if (!CarRebuilt && CdrRebuilt) 
+        assert(isa<LiteralOp>(Car) && "portions that are not rebuilt are always literal");
+      if (!CdrRebuilt && CarRebuilt) 
+        assert(isa<LiteralOp>(Cdr) && "portions that are not rebuilt are always literal");
       Rebuilt = CarRebuilt || CdrRebuilt;
       if (!Rebuilt) return OpGen.Visit(P);
       SourceLocation Loc = P->getSourceLocation();
