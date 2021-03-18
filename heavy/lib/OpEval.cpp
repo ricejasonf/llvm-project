@@ -247,14 +247,14 @@ private:
     }
 
     switch (Callee->getKind()) {
-      case Value::Kind::Lambda:
+      case ValueKind::Lambda:
         llvm_unreachable("TODO");
         break;
-      case Value::Kind::LambdaIr: {
+      case ValueKind::LambdaIr: {
         LambdaIr* L = cast<LambdaIr>(Callee);
         return CallLambdaIr(Op, L, ArgResults);
       }
-      case Value::Kind::Builtin: {
+      case ValueKind::Builtin: {
         llvm::ArrayRef<heavy::Value*> ArgResultsRef(ArgResults);
         Builtin* B = cast<Builtin>(Callee);
 
