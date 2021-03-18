@@ -41,7 +41,7 @@ public:
   }
 
   bool isUsable() const {
-    return V && V->getKind() != Value::Kind::Undefined;
+    return V && V->getKind() != ValueKind::Undefined;
   }
 
   bool isInvalid() const {

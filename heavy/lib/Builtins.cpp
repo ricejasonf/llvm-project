@@ -123,17 +123,17 @@ heavy::Value* operator_helper(Context& C, Value* XVal, Value *YVal) {
   if (C.CheckError()) return C.CreateUndefined();
   Number* Y = C.CheckKind<Number>(YVal);
   if (C.CheckError()) return C.CreateUndefined();
-  Value::Kind CommonKind = Number::CommonKind(X, Y);
+  ValueKind CommonKind = Number::CommonKind(X, Y);
   Number* Result;
   switch (CommonKind) {
-    case Value::Kind::Float: {
+    case ValueKind::Float: {
       Float* CopyX = C.CreateFloat(cast<Float>(X)->getVal());
       Float* CopyY = C.CreateFloat(cast<Float>(Y)->getVal());
       Op::f(CopyX, CopyY);
       Result = CopyX;
       break;
     }
-    case Value::Kind::Integer: {
+    case ValueKind::Integer: {
       // we can assume they are both integers
       Integer* CopyX = C.CreateInteger(cast<Integer>(X)->getVal());
       Op::f(CopyX, cast<Integer>(Y));
@@ -203,29 +203,29 @@ heavy::Value* eqv(Context& C, ValueRefs Args) {
 
   bool R;
   switch (V1->getKind()) {
-  case Value::Kind::Symbol:
+  case ValueKind::Symbol:
       R = cast<Symbol>(V1)->equals(
           cast<Symbol>(V2));
       break;
     // TODO For primitives this is temporary until
     // they are embedded in the pointers
-  case Value::Kind::Boolean:
+  case ValueKind::Boolean:
       R = cast<Boolean>(V1)->getVal() ==
           cast<Boolean>(V2)->getVal();
       break;
-  case Value::Kind::Char:
+  case ValueKind::Char:
       R = cast<Char>(V1)->getVal() ==
           cast<Char>(V2)->getVal();
       break;
-  case Value::Kind::Integer:
+  case ValueKind::Integer:
       R = cast<Integer>(V1)->getVal() ==
           cast<Integer>(V2)->getVal();
       break;
-  case Value::Kind::Float:
+  case ValueKind::Float:
       R = cast<Float>(V1)->getVal() ==
           cast<Float>(V2)->getVal();
       break;
-  case Value::Kind::Empty:
+  case ValueKind::Empty:
       R = true;
       break;
   default:
