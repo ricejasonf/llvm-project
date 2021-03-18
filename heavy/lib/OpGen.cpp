@@ -390,11 +390,11 @@ mlir::Value OpGen::VisitPair(Pair* P) {
   }
 
   switch (Operator->getKind()) {
-    case Value::Kind::BuiltinSyntax: {
+    case ValueKind::BuiltinSyntax: {
       BuiltinSyntax* BS = cast<BuiltinSyntax>(Operator);
       return BS->Fn(*this, P);
     }
-    case Value::Kind::Syntax:
+    case ValueKind::Syntax:
       llvm_unreachable("TODO");
       return mlir::Value();
     default: {
