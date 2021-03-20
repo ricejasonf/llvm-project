@@ -316,6 +316,7 @@ namespace llvm {
 template <typename T>
 struct isa_impl<T, ::heavy::Value> {
   static inline bool doit(::heavy::Value V) {
+    assert(V && "value cannot be null");
     return T::classof(V);
   }
 };
@@ -396,10 +397,14 @@ struct cast_convert_val<::heavy::Empty, ::heavy::Value,
 };
 
 
+// overloading these gets around annoying
+// const& situations that don't allow
+// non-simplified types
 template <typename T>
 inline auto cast(::heavy::Value V) {
   // gets around annoying const& situations
   // that don't allow non-simplified types
+  assert(isa<T>(V) && "value must be of compatible type");
   return cast_convert_val<T, ::heavy::Value,
                              ::heavy::Value>::doit(V);
 }
@@ -408,7 +413,13 @@ template <typename T>
 inline T* dyn_cast(::heavy::Value V) {
   // gets around annoying const& situations
   // that don't allow non-simplified types
+  assert(V && "value cannot be null");
   return isa<T>(V) ? cast<T>(V) : nullptr;
+}
+
+template <typename T>
+inline T* dyn_cast_or_null(::heavy::Value V) {
+  return (V && isa<T>(V)) ? cast<T>(V) : nullptr;
 }
 
 template <>

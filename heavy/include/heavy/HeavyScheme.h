@@ -203,7 +203,7 @@ public:
 
   StringRef getErrorMessage() {
     assert(Err && "PrintError requires an error be set");
-    if (Error* E = dyn_cast<Error>(Err)) {
+    if (Error* E = dyn_cast_or_null<Error>(Err)) {
       return E->getErrorMessage();
     } else {
       return "Unknown error (invalid error type)";

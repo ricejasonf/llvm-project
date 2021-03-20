@@ -100,7 +100,7 @@ heavy::Value eval(Context& C, ValueRefs Args) {
   unsigned i = 0;
   Value EnvStack = (Len == 2) ? Args[i++] : nullptr;
   Value ExprOrDef = Args[i];
-  if (Environment* E = dyn_cast<Environment>(EnvStack)) {
+  if (Environment* E = dyn_cast_or_null<Environment>(EnvStack)) {
     // nest the Environment in the EnvStack
     EnvStack = C.CreatePair(E);
   }
