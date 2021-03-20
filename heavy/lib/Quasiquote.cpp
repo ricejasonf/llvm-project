@@ -24,7 +24,7 @@ namespace {
 //                return the first argument iff there is only
 //                one argument otherwise returns nullptr
 //                (same as `cadr`)
-heavy::Value* GetSingleSyntaxArg(heavy::Pair* P) {
+heavy::Value GetSingleSyntaxArg(heavy::Pair* P) {
   // P->Car is the syntactic keyword
   heavy::Pair* P2 = llvm::dyn_cast<heavy::Pair>(P->Cdr);
   if (P2 && llvm::isa<heavy::Empty>(P2->Cdr)) {
@@ -37,10 +37,10 @@ heavy::Value* GetSingleSyntaxArg(heavy::Pair* P) {
 
 namespace heavy {
 
-
-
+#if 0 // TODO use the new heavy::Value to allow mixing Operations
+         with AST in results
 class Quasiquoter : private ValueVisitor<Quasiquoter, mlir::Value> {
-  friend class ValueVisitor<Quasiquoter, Value*>;
+  friend class ValueVisitor<Quasiquoter, Value>;
   heavy::OpGen& OpGen;
   // Values captured for hygiene purposes
 public:
@@ -58,7 +58,7 @@ public:
 
 private:
 
-  mlir::Value createLiteral(Value* V) {
+  mlir::Value createLiteral(Value V) {
     return OpGen.create<LiteralOp>(V->getSourceLocation(), V);
   }
 
@@ -66,12 +66,12 @@ private:
     llvm_unreachable("TODO");
   }
 
-  mlir::Value VisitValue(Value* V, bool& Rebuilt, int Depth) {
+  mlir::Value VisitValue(Value V, bool& Rebuilt, int Depth) {
     return OpGen.Visit(V);
   }
 
   // <qq template D>
-  mlir::Value HandleQQTemplate(Value* V, bool& Rebuilt, int Depth) {
+  mlir::Value HandleQQTemplate(Value V, bool& Rebuilt, int Depth) {
     assert(Depth >= 0 && "Depth should not be negative");
     if (Depth < 1) {
       // Unquoting requires parents to be rebuilt
@@ -83,7 +83,7 @@ private:
 
   // <quasiquotation D>
   mlir::Value HandleQuasiquote(Pair* P, bool& Rebuilt, int Depth) {
-    Value* Input = GetSingleSyntaxArg(P);
+    Value Input = GetSingleSyntaxArg(P);
     if (!Input) return OpGen.SetError("invalid quasiquote syntax", P);
     mlir::Value  Result = Visit(Input, Rebuilt, Depth);
     if (!Rebuilt) return createLiteral(Input);
@@ -92,7 +92,7 @@ private:
 
   // <unquotation D>
   mlir::Value HandleUnquote(Pair* P, bool& Rebuilt, int Depth) {
-    Value* Input = GetSingleSyntaxArg(P);
+    Value Input = GetSingleSyntaxArg(P);
     if (!Input) return OpGen.SetError("invalid unquote syntax", P);
 
     mlir::Value Result = HandleQQTemplate(Input, Rebuilt, Depth - 1);
@@ -100,9 +100,9 @@ private:
     return Result;
   }
 
-  mlir::Value HandleUnquoteSplicing(Pair* P, Value* Next, bool& Rebuilt,
+  mlir::Value HandleUnquoteSplicing(Pair* P, Value Next, bool& Rebuilt,
                                     int Depth) {
-    Value* Input = GetSingleSyntaxArg(P);
+    Value Input = GetSingleSyntaxArg(P);
     if (!Input) return OpGen.SetError("invalid unquote-splicing syntax", P);
     mlir::Value Result = HandleQQTemplate(Input, Rebuilt, Depth - 1);
     if (!Rebuilt) return OpGen.Visit(P);
@@ -146,17 +146,22 @@ private:
 
   // TODO VisitVector
 };
+#endif
 
-mlir::Value builtin_syntax::quasiquote(OpGen& OG, Pair* P) {
-  Quasiquoter QQ(OG);
-  return QQ.Run(P);
+}
+namespace heavy { namespace builtin_syntax {
+
+mlir::Value quasiquote(OpGen& OG, Pair* P) {
+  return mlir::Value();
+  //Quasiquoter QQ(OG);
+  //return QQ.Run(P);
 }
 
-mlir::Value builtin_syntax::quote(OpGen& OG, Pair* P) {
-  Value* Arg = GetSingleSyntaxArg(P);
+mlir::Value quote(OpGen& OG, Pair* P) {
+  Value Arg = GetSingleSyntaxArg(P);
   if (!Arg) return OG.SetError("invalid quote syntax", P);
 
   return OG.create<LiteralOp>(P->getSourceLocation(), Arg);
 }
 
-}
+}}

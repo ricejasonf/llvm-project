@@ -65,7 +65,7 @@ mlir::FunctionType OpGen::createFunctionType(unsigned Arity,
   return Builder.getFunctionType(Types, HeavyValueTy);
 }
 
-mlir::Value OpGen::createLambda(Value* Formals, Value* Body,
+mlir::Value OpGen::createLambda(Value Formals, Value Body,
                                 SourceLocation Loc,
                                 llvm::StringRef Name) {
   IsTopLevel = false;
@@ -118,12 +118,12 @@ bool OpGen::isLocalDefineAllowed() {
 }
 
 // processSequence creates a sequence of operations in the current block
-void OpGen::processSequence(SourceLocation Loc, Value* Body) {
+void OpGen::processSequence(SourceLocation Loc, Value Body) {
   if (!isa<Pair>(Body)) {
     SetError(Loc, "sequence must contain an expression", Body);
   }
 
-  Value* Rest = Body;
+  Value Rest = Body;
   {
     TailPosScope TPS(*this);
     IsTailPos = false;
@@ -147,7 +147,7 @@ void OpGen::processSequence(SourceLocation Loc, Value* Body) {
   }
 }
 
-void OpGen::processBody(SourceLocation Loc, Value* Body) {
+void OpGen::processBody(SourceLocation Loc, Value Body) {
   mlir::OpBuilder::InsertionGuard IG(LocalInits);
   LocalInits = Builder;
 
@@ -176,14 +176,14 @@ void OpGen::processBody(SourceLocation Loc, Value* Body) {
     mlir::OpBuilder::InsertionGuard IG2(Builder);
     Builder = LocalInits;
 
-    Value* Env = Context.EnvStack;
+    Value Env = Context.EnvStack;
     while (Pair* EnvPair = dyn_cast<Pair>(Env)) {
       Binding* B = dyn_cast<Binding>(EnvPair->Car);
       // We should eventually hit the EnvFrame that wraps this local scope
       if (!B) break;
       mlir::Value BVal = BindingTable.lookup(B);
       mlir::Value Init = VisitDefineArgs(B->getValue());
-      SourceLocation Loc = B->getValue()->getSourceLocation();
+      SourceLocation Loc = B->getValue().getSourceLocation();
       assert(BVal && "BindingTable should have an entry for local define");
 
       create<SetOp>(Loc, BVal, Init);
@@ -205,8 +205,8 @@ mlir::Value OpGen::createBinding(Binding *B, mlir::Value Init) {
   return BVal;
 }
 
-mlir::Value OpGen::createDefine(Symbol* S, Value* DefineArgs,
-                                           Value* OrigCall) {
+mlir::Value OpGen::createDefine(Symbol* S, Value DefineArgs,
+                                           Value OrigCall) {
   if (isTopLevel()) return createTopLevelDefine(S, DefineArgs, OrigCall);
   if (!isLocalDefineAllowed()) return SetError("unexpected define", OrigCall);
   // create the binding with a lazy init
@@ -223,16 +223,16 @@ mlir::Value OpGen::createDefine(Symbol* S, Value* DefineArgs,
   return BVal;
 }
 
-mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value* DefineArgs,
-                                        Value* OrigCall) {
-  SourceLocation DefineLoc = OrigCall->getSourceLocation();
-  heavy::Value* EnvStack = Context.EnvStack;
+mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
+                                        Value OrigCall) {
+  SourceLocation DefineLoc = OrigCall.getSourceLocation();
+  heavy::Value EnvStack = Context.EnvStack;
 
   // A module at the top of the EnvStack is mutable
   Module* M = nullptr;
-  Value* EnvRest = nullptr;
+  Value EnvRest = nullptr;
   if (isa<Pair>(EnvStack)) {
-    Value* EnvTop = cast<Pair>(EnvStack)->Car;
+    Value EnvTop = cast<Pair>(EnvStack)->Car;
     EnvRest = cast<Pair>(EnvStack)->Cdr;
     M = dyn_cast<Module>(EnvTop);
   }
@@ -270,8 +270,8 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, mlir::Value Init,
   return createBinding(B, Init);
 }
 
-mlir::Value OpGen::createIf(SourceLocation Loc, Value* Cond, Value* Then,
-                            Value* Else) {
+mlir::Value OpGen::createIf(SourceLocation Loc, Value Cond, Value Then,
+                            Value Else) {
   // Cond
   mlir::Value CondResult;
   {
@@ -304,8 +304,8 @@ mlir::Value OpGen::createIf(SourceLocation Loc, Value* Cond, Value* Then,
 }
 
 // LHS can be a symbol or a binding
-mlir::Value OpGen::createSet(SourceLocation Loc, Value* LHS,
-                                                 Value* RHS) {
+mlir::Value OpGen::createSet(SourceLocation Loc, Value LHS,
+                                                 Value RHS) {
   assert((isa<Binding>(LHS) || isa<Symbol>(LHS)) &&
       "expects a Symbol or Binding for LHS");
   mlir::Value BVal = Visit(LHS);
@@ -316,13 +316,13 @@ mlir::Value OpGen::createSet(SourceLocation Loc, Value* LHS,
 // This handles everything after the `define` keyword
 // including terse lambda syntax. This supports lazy
 // visitation of local bindings' initializers.
-mlir::Value OpGen::VisitDefineArgs(Value* Args) {
+mlir::Value OpGen::VisitDefineArgs(Value Args) {
   Pair* P = cast<Pair>(Args);
   if (Pair* LambdaSpec = dyn_cast<Pair>(P->Car)) {
     // we already checked the name
     Symbol* S = cast<Symbol>(LambdaSpec->Car);
-    Value* Formals = LambdaSpec->Cdr;
-    Value* Body = P->Cdr;
+    Value Formals = LambdaSpec->Cdr;
+    Value Body = P->Cdr;
     return createLambda(Formals, Body,
                         S->getSourceLocation(),
                         S->getVal());
@@ -364,7 +364,7 @@ mlir::Value OpGen::HandleCall(Pair* P) {
                          TailPos);
 }
 
-void OpGen::HandleCallArgs(Value *V,
+void OpGen::HandleCallArgs(Value V,
                     llvm::SmallVectorImpl<mlir::Value>& Args) {
   if (isa<Empty>(V)) return;
   if (!isa<Pair>(V)) {
@@ -383,13 +383,13 @@ void OpGen::HandleCallArgs(Value *V,
 }
 
 mlir::Value OpGen::VisitPair(Pair* P) {
-  Value* Operator = P->Car;
+  Value Operator = P->Car;
   // A named operator might point to some kind of syntax transformer
   if (Binding* B = Context.Lookup(Operator)) {
     Operator = B->getValue();
   }
 
-  switch (Operator->getKind()) {
+  switch (Operator.getKind()) {
     case ValueKind::BuiltinSyntax: {
       BuiltinSyntax* BS = cast<BuiltinSyntax>(Operator);
       return BS->Fn(*this, P);
@@ -405,9 +405,9 @@ mlir::Value OpGen::VisitPair(Pair* P) {
 
 #if 0 // TODO VectorOp??
 mlir::Value OpGen::VisitVector(Vector* V) {
-  llvm::ArrayRef<Value*> Xs = V->getElements();
+  llvm::ArrayRef<Value> Xs = V->getElements();
   Vector* New = Context.CreateVector(Xs.size());
-  llvm::MutableArrayRef<Value*> Ys = New->getElements();
+  llvm::MutableArrayRef<Value> Ys = New->getElements();
   for (unsigned i = 0; i < Xs.size(); ++i) {
     Visit(Xs[i]);
     Ys[i] = Visit(Xs[i]);
@@ -465,8 +465,8 @@ mlir::Value OpGen::LocalizeRec(heavy::Binding* B,
   return NewVal;
 }
 
-Value* heavy::eval(Context& C, Value* V, Value* EnvStack) {
-  heavy::Value* Args[2] = {V, EnvStack};
+Value heavy::eval(Context& C, Value V, Value EnvStack) {
+  heavy::Value Args[2] = {V, EnvStack};
   int ArgCount = EnvStack ? 2 : 1;
   return builtin::eval(C, ValueRefs(Args, ArgCount));
 }

@@ -38,14 +38,14 @@ class Value;
 
 struct RedZoneByte { };
 
-class StackFrame final : public llvm::TrailingObjects<StackFrame, Value*,
+class StackFrame final : public llvm::TrailingObjects<StackFrame, Value,
                                                 RedZoneByte> {
-  friend class llvm::TrailingObjects<StackFrame, Value*>;
+  friend class llvm::TrailingObjects<StackFrame, Value>;
 
   mlir::Operation* Op;
   SourceLocation CallLoc;
 
-  size_t numTrailingObjects(OverloadToken<Value*> const) const {
+  size_t numTrailingObjects(OverloadToken<Value> const) const {
     return getArgCount(Op);
   }
 
@@ -61,7 +61,7 @@ public:
   ~StackFrame() {
     // "Zero fill" everything except the red zone bytes
     CallLoc = {};
-    Value** Vs = getTrailingObjects<Value*>();
+    Value* Vs = getTrailingObjects<Value>();
     std::fill(&Vs[0], &Vs[getArgCount(Op)], nullptr);
     Op = nullptr;
   }
@@ -75,7 +75,7 @@ public:
 
   static size_t sizeToAlloc(mlir::Operation* Op) {
     // this could potentially include a "red zone" of trailing bytes
-    return totalSizeToAlloc<Value*, RedZoneByte>(
+    return totalSizeToAlloc<Value, RedZoneByte>(
         getArgCount(Op), HEAVY_STACK_RED_ZONE_SIZE);
   }
 
@@ -94,14 +94,14 @@ public:
 
   // Returns the value for callee or nullptr
   // if the StackFrame is invalid
-  Value* getCallee() const {
+  Value getCallee() const {
     if (getArgCount(Op) == 0) return nullptr;
-    return getTrailingObjects<Value*>()[0];
+    return getTrailingObjects<Value>()[0];
   }
 
-  llvm::MutableArrayRef<heavy::Value*> getArgs() {
-    return llvm::MutableArrayRef<heavy::Value*>(
-        getTrailingObjects<Value*>(), getArgCount(Op));
+  llvm::MutableArrayRef<heavy::Value> getArgs() {
+    return llvm::MutableArrayRef<heavy::Value>(
+        getTrailingObjects<Value>(), getArgCount(Op));
   }
 
   // Get the previous stack frame. This assumes that
@@ -163,7 +163,7 @@ public:
   }
 
   // Args here includes the callee
-  StackFrame* push(mlir::Operation* Op, llvm::ArrayRef<Value*> Args) {
+  StackFrame* push(mlir::Operation* Op, llvm::ArrayRef<Value> Args) {
     assert(StackFrame::getArgCount(Op) == Args.size() &&
         "operation arity mismatch");
     StackFrame* Frame = push(Op);

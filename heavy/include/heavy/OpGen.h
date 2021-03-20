@@ -193,7 +193,7 @@ private:
   mlir::Value VisitBinding(Binding* B);
 
   mlir::Value HandleCall(Pair* P);
-  void HandleCallArgs(Value *V,
+  void HandleCallArgs(Value V,
                       llvm::SmallVectorImpl<mlir::Value>& Args);
 
   mlir::Value VisitPair(Pair* P);

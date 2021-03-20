@@ -211,8 +211,8 @@ public:
   }
 
   Undefined   CreateUndefined() { return {}; }
-  Boolean*    CreateBoolean(bool V) { return new (TrashHeap) Boolean(V); }
-  Char*       CreateChar(char V) { return new (TrashHeap) Char(V); }
+  Bool        CreateBool(bool V) { return V; }
+  Char        CreateChar(uint32_t V) { return V; }
   Int         CreateInt(int32_t x) { return Int(x); }
   Empty       CreateEmpty() { return {}; }
   BigInt*     CreateBigInt(llvm::APInt V);
