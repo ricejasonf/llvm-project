@@ -45,13 +45,13 @@ static cl::opt<ExecutionMode> InputMode(
                         "output mlir code"}),
   cl::init(ExecutionMode::repl));
 
-void ProcessTopLevelExpr(heavy::Context& Context, heavy::Value* Val) {
+void ProcessTopLevelExpr(heavy::Context& Context, heavy::Value Val) {
   switch (InputMode.getValue()) {
   case ExecutionMode::repl:
     Val = heavy::eval(Context, Val);
     LLVM_FALLTHROUGH;
   case ExecutionMode::read:
-    if (!Context.CheckError()) Val->dump();
+    if (!Context.CheckError()) Val.dump();
     break;
   case ExecutionMode::mlir:
     Context.PushTopLevel(Val);

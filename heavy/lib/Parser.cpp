@@ -127,11 +127,11 @@ ValueResult Parser::ParseExpr() {
     return ParseCharConstant();
   case tok::true_: {
     ConsumeToken();
-    return Context.CreateBoolean(true);
+    return Value(Bool(true));
   }
   case tok::false_: {
     ConsumeToken();
-    return Context.CreateBoolean(false);
+    return Value(Bool(false));
   }
   case tok::string_literal:
     return ParseString();
@@ -203,8 +203,8 @@ ValueResult Parser::ParseExprAbbrev(char const* Name) {
   ValueResult Result = ParseExpr();
   if (!Result.isUsable()) return Result;
 
-  Value* S = Context.CreateSymbol(Name, Abbrev.getLocation());
-  Value* P = Context.CreatePair(S, Context.CreatePair(Result.get()));
+  Value S = Context.CreateSymbol(Name, Abbrev.getLocation());
+  Value P = Context.CreatePair(S, Context.CreatePair(Result.get()));
   return P;
 }
 
@@ -229,7 +229,7 @@ ValueResult Parser::ParseList(Token const& StartTok) {
 
   if (Tok.is(tok::r_paren)) {
     ConsumeToken();
-    return Context.CreateEmpty();
+    return Value(Empty{});
   }
 
   ValueResult Car = ParseExpr();
@@ -244,9 +244,10 @@ ValueResult Parser::ParseList(Token const& StartTok) {
 
   if (!Cdr.isUsable()) return Cdr;
 
-  return Context.CreatePairWithSource(Car.get(),
-                                      Cdr.get(),
-                                      CurTok.getLocation());
+  return Value(
+      Context.CreatePairWithSource(Car.get(),
+                                   Cdr.get(),
+                                   CurTok.getLocation()));
 }
 
 // We have a dot while parsing a list,
@@ -267,11 +268,11 @@ ValueResult Parser::ParseDottedCdr(Token const& StartTok) {
 ValueResult Parser::ParseVectorStart() {
   // consume the heavy_vector_lparen
   ConsumeToken();
-  llvm::SmallVector<Value*, 16> Xs;
+  llvm::SmallVector<Value, 16> Xs;
   return ParseVector(Xs);
 }
 
-ValueResult Parser::ParseVector(llvm::SmallVectorImpl<Value*>& Xs) {
+ValueResult Parser::ParseVector(llvm::SmallVectorImpl<Value>& Xs) {
   // discard commented exprs
   while (Tok.is(tok::comment_datum)) {
     ConsumeToken();
@@ -279,7 +280,7 @@ ValueResult Parser::ParseVector(llvm::SmallVectorImpl<Value*>& Xs) {
   }
   if (Tok.is(tok::r_paren)) {
     ConsumeToken();
-    return Context.CreateVector(Xs);
+    return Value(Context.CreateVector(Xs));
   }
   ValueResult Result = ParseExpr();
   if (!Result.isUsable()) return Result;
@@ -295,7 +296,7 @@ ValueResult Parser::ParseCharConstant() {
 ValueResult Parser::ParseNumber() {
   char const* Current = Tok.getLiteralData().begin();
   char const* End     = Tok.getLiteralData().end();
-  int BitWidth = Context.GetIntWidth();
+  int BitWidth = 32; // Int uses int32_t
   llvm::Optional<bool> IsExactOpt;
   llvm::Optional<unsigned> RadixOpt;
   llvm::Optional<llvm::APInt> IntOpt;
@@ -316,7 +317,7 @@ ValueResult Parser::ParseNumber() {
   ConsumeToken();
 
   if (IsExact && IntOpt.hasValue()) {
-    return Context.CreateInteger(IntOpt.getValue());
+    return Value(Int(IntOpt.getValue().getZExtValue()));
   }
 
   llvm::APFloat FloatVal(0.0f);
@@ -332,7 +333,7 @@ ValueResult Parser::ParseNumber() {
       return ValueError();
     }
   }
-  return Context.CreateFloat(FloatVal);
+  return Value(Context.CreateFloat(FloatVal));
 }
 
 ValueResult Parser::ParseString() {
@@ -368,14 +369,14 @@ ValueResult Parser::ParseString() {
     LiteralResult.push_back(c);
   }
   ConsumeToken();
-  return Context.CreateString(StringRef(LiteralResult));
+  return Value(Context.CreateString(StringRef(LiteralResult)));
 }
 
 ValueResult Parser::ParseSymbol() {
   StringRef Str = Tok.getLiteralData();
   SourceLocation Loc = Tok.getLocation();
   ConsumeToken();
-  return Context.CreateSymbol(Str, Loc);
+  return Value(Context.CreateSymbol(Str, Loc));
 }
 
 ValueResult Parser::ParseTypename() {
