@@ -24,15 +24,15 @@ def HeavyDialect : Dialect {
 def HeavyLambda   : OpaqueType<"heavy", "HeavyLambda",
                                "Same as heavy::Lambda*">;
 def HeavyRest     : OpaqueType<"heavy", "HeavyRest",
-                               "Same as heavy::Value* but "
+                               "Same as heavy::Value but "
                                "denotes a rest parameter">;
 def HeavyValue    : OpaqueType<"heavy", "HeavyValue",
-                               "Same as heavy::Value*">;
+                               "Same as heavy::Value">;
 
 def HeavyValueAttr : Attr<CPred<"true">,
                           "Any Attribute convertible to heavy::Value"> {
   let storageType = "::mlir::heavy_mlir::HeavyValueAttr";
-  let returnType = "::heavy::Value *";
+  let returnType = "::heavy::Value";
 }
 
 class HeavyOp<string mnemonic, list<OpTrait> traits = []> :
@@ -168,13 +168,13 @@ def heavy_LiteralOp : HeavyOp<"literal", [NoSideEffect]> {
     known statically and should be immutable.
     For starters this should simply lower to calling the corresponding
     factory function to dynamically allocate the object and return a
-    run-time heavy::Value*.
+    run-time heavy::Value.
   }];
 
   let arguments = (ins HeavyValueAttr:$input);
   let results   = (outs HeavyValue:$result);
   let builders = [
-    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, ::heavy::Value*">
+    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, ::heavy::Value">
   ];
 }
 
