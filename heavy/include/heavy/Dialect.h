@@ -13,6 +13,7 @@
 #ifndef HEAVY_DIALECT_H
 #define HEAVY_DIALECT_H
 
+#include "heavy/Value.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/OpDefinition.h"
@@ -25,13 +26,7 @@
   mlir::Attribute::Kind::FIRST_PRIVATE_EXPERIMENTAL_0_ATTR
 
 namespace heavy {
-class Context;
-class Value;
-using ValueRefs = llvm::ArrayRef<heavy::Value*>;
-using ValueFn = heavy::Value* (*)(Context&, ValueRefs);
 using mlir::FuncOp;
-
-class Builtin;
 }
 
 namespace mlir {
@@ -92,19 +87,19 @@ struct HeavyLambda : public mlir::Type::TypeBase<
 };
 
 struct HeavyValueAttrStorage : public mlir::AttributeStorage {
-  heavy::Value* Val;
+  heavy::Value Val;
 
-  HeavyValueAttrStorage(heavy::Value* V)
+  HeavyValueAttrStorage(heavy::Value V)
     : Val(V)
   { }
 
-  using KeyTy = heavy::Value*;
+  using KeyTy = heavy::Value;
   bool operator==(KeyTy const& Key) const {
     return Key == Val;
   }
 
   static HeavyValueAttrStorage* construct(
-      mlir::AttributeStorageAllocator& Allocator, heavy::Value* V) {
+      mlir::AttributeStorageAllocator& Allocator, heavy::Value V) {
     return new (Allocator.allocate<HeavyValueAttrStorage>())
       HeavyValueAttrStorage(V);
   }
@@ -117,13 +112,13 @@ class HeavyValueAttr : public mlir::Attribute::AttrBase<
   using Base::Base;
 
 public:
-  heavy::Value* getValue() const;
+  heavy::Value getValue() const;
 
   static bool kindof(unsigned K) {
     return K == HEAVY_VALUE_KIND;
   }
 
-  static HeavyValueAttr get(MLIRContext* C, heavy::Value* V) {
+  static HeavyValueAttr get(MLIRContext* C, heavy::Value V) {
     return Base::get(C, HEAVY_VALUE_KIND, V);
   }
 };
