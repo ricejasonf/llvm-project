@@ -28,6 +28,9 @@ namespace mlir {
 
 namespace heavy {
 
+// TODO The visitor functions should return
+//      mlir:Operation* instead of mlir::Value
+//      since there can be multiple results.
 class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   friend class ValueVisitor<OpGen, mlir::Value>;
   using BindingScopeTable = llvm::ScopedHashTable<
@@ -106,7 +109,7 @@ public:
 
   mlir::ModuleOp getTopLevel();
 
-  mlir::Value VisitTopLevel(Value* V) {
+  mlir::Value VisitTopLevel(Value V) {
     // there should be an insertion point already setup
     // for the module init function
     IsTopLevel = true;
@@ -137,32 +140,32 @@ public:
     return create<Op>(Builder, Loc, std::forward<Args>(args)...);
   }
 
-  void processBody(SourceLocation Loc, Value* Body);
-  void processSequence(SourceLocation Loc, Value* Body);
+  void processBody(SourceLocation Loc, Value Body);
+  void processSequence(SourceLocation Loc, Value Body);
 
   mlir::FunctionType createFunctionType(unsigned Arity,
                                         bool HasRestParam);
-  mlir::Value createLambda(Value* Formals, Value* Body,
+  mlir::Value createLambda(Value Formals, Value Body,
                            SourceLocation Loc,
                            llvm::StringRef Name = {});
 
   mlir::Value createBinding(Binding *B, mlir::Value Init);
-  mlir::Value createDefine(Symbol* S, Value *Args, Value* OrigCall);
-  mlir::Value createIf(SourceLocation Loc, Value* Cond, Value* Then,
-                       Value* Else);
-  mlir::Value createTopLevelDefine(Symbol* S, Value* Args, Value* OrigCall);
+  mlir::Value createDefine(Symbol* S, Value Args, Value OrigCall);
+  mlir::Value createIf(SourceLocation Loc, Value Cond, Value Then,
+                       Value Else);
+  mlir::Value createTopLevelDefine(Symbol* S, Value Args, Value OrigCall);
   mlir::Value createTopLevelDefine(Symbol* S, mlir::Value Init, Module* M);
   mlir::Value createUndefined();
-  mlir::Value createSet(SourceLocation Loc, Value* LHS, Value* RHS);
+  mlir::Value createSet(SourceLocation Loc, Value LHS, Value RHS);
 
   template <typename T>
-  mlir::Value SetError(T Str, Value* V) {
+  mlir::Value SetError(T Str, Value V) {
     Context.SetError(Str, V);
     return Error();
   }
 
   template <typename T>
-  mlir::Value SetError(SourceLocation Loc, T Str, Value* V) {
+  mlir::Value SetError(SourceLocation Loc, T Str, Value V) {
     Context.SetError(Loc, Str, V);
     return Error();
   }
@@ -172,14 +175,18 @@ public:
   }
 
 private:
-  mlir::Value VisitDefineArgs(Value* Args);
+  mlir::Value VisitDefineArgs(Value Args);
 
-  mlir::Value VisitValue(Value* V) {
-    return create<LiteralOp>(V->getSourceLocation(), V);
+  mlir::Value VisitValue(Value V) {
+    return create<LiteralOp>(V.getSourceLocation(), V);
   }
 
-  mlir::Value VisitBuiltin(Builtin* V) {
-    return create<BuiltinOp>(V->getSourceLocation(), V);
+  mlir::Value VisitOperation(mlir::Operation* Op) {
+    return Op->getResult(0);
+  }
+
+  mlir::Value VisitBuiltin(Builtin* B) {
+    return create<BuiltinOp>(B->getSourceLocation(), B);
   }
 
   mlir::Value VisitSymbol(Symbol* S);

@@ -32,7 +32,7 @@ mlir::Value define(OpGen& OG, Pair* P) {
 
 mlir::Value lambda(OpGen& OG, Pair* P) {
   Pair* P2 = dyn_cast<Pair>(P->Cdr);
-  Value* Formals = P2->Car;
+  Value Formals = P2->Car;
   Pair* Body = dyn_cast<Pair>(P2->Cdr);
 
   return OG.createLambda(Formals, Body, P->getSourceLocation());
@@ -41,13 +41,13 @@ mlir::Value lambda(OpGen& OG, Pair* P) {
 mlir::Value if_(OpGen& OG, Pair* P) {
   Pair* P2 = dyn_cast<Pair>(P->Cdr);
   if (!P2) return OG.SetError("invalid if syntax", P);
-  Value* CondExpr = P2->Car;
+  Value CondExpr = P2->Car;
   P2 = dyn_cast<Pair>(P2->Cdr);
   if (!P2) return OG.SetError("invalid if syntax", P);
-  Value* ThenExpr = P2->Car;
+  Value ThenExpr = P2->Car;
   P2 = dyn_cast<Pair>(P2->Cdr);
   if (!P2) return OG.SetError("invalid if syntax", P);
-  Value* ElseExpr = P2->Car;
+  Value ElseExpr = P2->Car;
   if (!isa<Empty>(P2->Cdr)) {
     return OG.SetError("invalid if syntax", P);
   }
@@ -62,7 +62,7 @@ mlir::Value set(OpGen& OG, Pair* P) {
   if (!S) return OG.SetError("expecting symbol", P2);
   P2 = dyn_cast<Pair>(P2->Cdr);
   if (!P2) return OG.SetError("invalid set syntax", P2);
-  heavy::Value* Expr = P2->Car;
+  heavy::Value Expr = P2->Car;
   if (!isa<Empty>(P2->Cdr)) return OG.SetError("invalid set syntax", P2);
   return OG.createSet(P->getSourceLocation(), S, Expr);
 }
@@ -74,19 +74,19 @@ namespace heavy {
 struct NumberOp {
   // These operations always mutate the first operand
   struct Add {
-    static void f(Integer* X, Integer* Y) { X->Val += Y->Val; }
+    static Int f(Int X, Int Y) { return X + Y; }
     static void f(Float* X, Float *Y) { X->Val = X->Val + Y->Val; }
   };
   struct Sub {
-    static void f(Integer* X, Integer* Y) { X->Val -= Y->Val; }
+    static Int f(Int X, Int Y) { return X - Y; }
     static void f(Float* X, Float *Y) { X->Val = X->Val - Y->Val; }
   };
   struct Mul {
-    static void f(Integer* X, Integer* Y) { X->Val *= Y->Val; }
+    static Int f(Int X, Int Y) { return X * Y; }
     static void f(Float* X, Float *Y) { X->Val = X->Val * Y->Val; }
   };
   struct Div {
-    static void f(Integer* X, Integer* Y) { X-> Val = X->Val.sdiv(Y->Val); }
+    static Int f(Int X, Int Y) { return X / Y; }
     static void f(Float* X, Float *Y) { X->Val = X->Val / Y->Val; }
   };
 };
@@ -94,13 +94,13 @@ struct NumberOp {
 } // end namespace heavy
 
 namespace heavy { namespace builtin {
-heavy::Value* eval(Context& C, ValueRefs Args) {
+heavy::Value eval(Context& C, ValueRefs Args) {
   unsigned Len = Args.size();
   assert((Len == 1 || Len == 2) && "Invalid arity to builtin `eval`");
   unsigned i = 0;
-  Value* EnvStack = (Len == 2) ? Args[i++] : nullptr;
-  Value* ExprOrDef = Args[i];
-  if (Environment* E = dyn_cast_or_null<Environment>(EnvStack)) {
+  Value EnvStack = (Len == 2) ? Args[i++] : nullptr;
+  Value ExprOrDef = Args[i];
+  if (Environment* E = dyn_cast<Environment>(EnvStack)) {
     // nest the Environment in the EnvStack
     EnvStack = C.CreatePair(E);
   }
@@ -118,61 +118,51 @@ heavy::Value* eval(Context& C, ValueRefs Args) {
 }
 
 template <typename Op>
-heavy::Value* operator_helper(Context& C, Value* XVal, Value *YVal) {
-  Number* X = C.CheckKind<Number>(XVal);
-  if (C.CheckError()) return C.CreateUndefined();
-  Number* Y = C.CheckKind<Number>(YVal);
-  if (C.CheckError()) return C.CreateUndefined();
+heavy::Value operator_helper(Context& C, Value X, Value Y) {
+  if (!X.isNumber()) return C.SetInvalidKind(X);
+  if (!Y.isNumber()) return C.SetInvalidKind(Y);
   ValueKind CommonKind = Number::CommonKind(X, Y);
-  Number* Result;
   switch (CommonKind) {
     case ValueKind::Float: {
-      Float* CopyX = C.CreateFloat(cast<Float>(X)->getVal());
-      Float* CopyY = C.CreateFloat(cast<Float>(Y)->getVal());
-      Op::f(CopyX, CopyY);
-      Result = CopyX;
-      break;
+      llvm_unreachable("TODO casting to float");
+      return nullptr;
     }
-    case ValueKind::Integer: {
-      // we can assume they are both integers
-      Integer* CopyX = C.CreateInteger(cast<Integer>(X)->getVal());
-      Op::f(CopyX, cast<Integer>(Y));
-      Result = CopyX;
-      break;
+    case ValueKind::Int: {
+      // we can assume they are both Int
+      return Op::f(cast<Int>(X), cast<Int>(Y));
     }
     default:
-      llvm_unreachable("Invalid arithmetic type");
+      llvm_unreachable("invalid arithmetic type");
   }
-  return Result;
 }
 
-heavy::Value* operator_add(Context& C, ValueRefs Args) {
-  Value* Temp = Args[0];
-  for (heavy::Value* X : Args.drop_front()) {
+heavy::Value operator_add(Context& C, ValueRefs Args) {
+  Value Temp = Args[0];
+  for (heavy::Value X : Args.drop_front()) {
     Temp = operator_helper<NumberOp::Add>(C, Temp, X);
   }
   return Temp;
 }
 
-heavy::Value* operator_mul(Context&C, ValueRefs Args) {
-  Value* Temp = Args[0];
-  for (heavy::Value* X : Args.drop_front()) {
+heavy::Value operator_mul(Context&C, ValueRefs Args) {
+  Value Temp = Args[0];
+  for (heavy::Value X : Args.drop_front()) {
     Temp = operator_helper<NumberOp::Mul>(C, Temp, X);
   }
   return Temp;
 }
 
-heavy::Value* operator_sub(Context&C, ValueRefs Args) {
-  Value* Temp = Args[0];
-  for (heavy::Value* X : Args.drop_front()) {
+heavy::Value operator_sub(Context&C, ValueRefs Args) {
+  Value Temp = Args[0];
+  for (heavy::Value X : Args.drop_front()) {
     Temp = operator_helper<NumberOp::Sub>(C, Temp, X);
   }
   return Temp;
 }
 
-heavy::Value* operator_div(Context& C, ValueRefs Args) {
-  Value* Temp = Args[0];
-  for (heavy::Value* X : Args.drop_front()) {
+heavy::Value operator_div(Context& C, ValueRefs Args) {
+  Value Temp = Args[0];
+  for (heavy::Value X : Args.drop_front()) {
     if (Number::isExactZero(X)) {
       C.SetError("divide by exact zero", X);
       return X;
@@ -182,27 +172,27 @@ heavy::Value* operator_div(Context& C, ValueRefs Args) {
   return Temp;
 }
 
-heavy::Value* operator_gt(Context& C, ValueRefs Args) {
+heavy::Value operator_gt(Context& C, ValueRefs Args) {
   llvm_unreachable("TODO");
   return nullptr;
 }
 
-heavy::Value* operator_lt(Context& C, ValueRefs Args) {
+heavy::Value operator_lt(Context& C, ValueRefs Args) {
   llvm_unreachable("TODO");
   return nullptr;
 }
 
-heavy::Value* eqv(Context& C, ValueRefs Args) {
+heavy::Value eqv(Context& C, ValueRefs Args) {
   if (Args.size() != 2) return C.SetError("invalid arity");
-  Value* V1 = Args[0];
-  Value* V2 = Args[1];
+  Value V1 = Args[0];
+  Value V2 = Args[1];
   if (V1 == V2) return C.CreateBoolean(true);
-  if (V1->getKind() != V2->getKind()) {
+  if (V1.getKind() != V2.getKind()) {
     return C.CreateBoolean(false);
   }
 
   bool R;
-  switch (V1->getKind()) {
+  switch (V1.getKind()) {
   case ValueKind::Symbol:
       R = cast<Symbol>(V1)->equals(
           cast<Symbol>(V2));
@@ -217,9 +207,8 @@ heavy::Value* eqv(Context& C, ValueRefs Args) {
       R = cast<Char>(V1)->getVal() ==
           cast<Char>(V2)->getVal();
       break;
-  case ValueKind::Integer:
-      R = cast<Integer>(V1)->getVal() ==
-          cast<Integer>(V2)->getVal();
+  case ValueKind::Int:
+      R = cast<Int>(V1) == cast<Int>(V2);
       break;
   case ValueKind::Float:
       R = cast<Float>(V1)->getVal() ==
@@ -234,16 +223,16 @@ heavy::Value* eqv(Context& C, ValueRefs Args) {
   return C.CreateBoolean(R);
 }
 
-heavy::Value* list(Context& C, ValueRefs Args) {
+heavy::Value list(Context& C, ValueRefs Args) {
   // Returns a *newly allocated* list of its arguments.
-  heavy::Value* List = C.CreateEmpty();
-  for (heavy::Value* Arg : Args) {
+  heavy::Value List = C.CreateEmpty();
+  for (heavy::Value Arg : Args) {
     List = C.CreatePair(Arg, List);
   }
   return List;
 }
 
-heavy::Value* append(Context& C, ValueRefs Args) {
+heavy::Value append(Context& C, ValueRefs Args) {
   llvm_unreachable("TODO append");
 }
 

@@ -14,15 +14,19 @@
 #define LLVM_HEAVY_VALUE_H
 
 #include "heavy/Source.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/APInt.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/Function.h"
 #include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/APInt.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/PointerEmbeddedInt.h"
 #include "llvm/ADT/PointerSumType.h"
-#include "llvm/Support/PointerLikeTypeTraits.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/bit.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/PointerLikeTypeTraits.h"
 #include "llvm/Support/TrailingObjects.h"
 #include <cassert>
 #include <cstddef>
@@ -30,41 +34,59 @@
 #include <type_traits>
 #include <utility>
 
+namespace mlir {
+  class Value;
+  class Operation;
+}
 
 namespace heavy {
-class Context;
+using llvm::cast;
+using llvm::cast_or_null;
+using llvm::dyn_cast;
+using llvm::dyn_cast_or_null;
+using llvm::isa;
+using mlir::Operation;
+using mlir::FuncOp;
 
-// Value - A result of evaluation.
-//         The type is deliberately left incomplete
-//         so we can pass around Value* as an invalid
-//         pointer.
+// Value - A result of evaluation. This derives from
+//         an llvm::PointerSumType to point to values
+//         on the heap as well as store small values
+//         like integers in an object the size of a pointer.
 class Value;
 
-// ValuePtr - An instance of PointerSumType for holding
-//            ValueBase*, int, or other small stuff in
-//            a pointer sized object
-class ValuePtr;
+// other forward decls
+class OpGen;
+class Context;
+class Pair;
+class Binding;
+class Symbol;
+using ValueRefs = llvm::ArrayRef<heavy::Value>;
+using ValueFn   = heavy::Value (*)(Context&, ValueRefs);
+// TODO consider having this return an Operation*
+using SyntaxFn  = mlir::Value (*)(OpGen&, Pair*);
 
 enum class ValueKind {
   Undefined = 0,
+  BigInt,
   Binding,
   Boolean,
   Builtin,
   BuiltinSyntax,
   Char,
   Empty,
-  Error,
-  Environment,
   EnvFrame,
+  Environment,
+  Error,
   Exception,
   Float,
   ForwardRef,
-  Integer,
-  Module,
-  Pair,
-  PairWithSource,
+  Int,
   Lambda,
   LambdaIr,
+  Module,
+  Operation,
+  Pair,
+  PairWithSource,
   Quote,
   String,
   Symbol,
@@ -72,10 +94,8 @@ enum class ValueKind {
   Vector,
 };
 
-class ValueBase {
-public:
-
-private:
+class alignas(void*) ValueBase {
+  friend class Context;
   ValueKind VKind;
   bool IsMutable = false;
 
@@ -87,22 +107,28 @@ protected:
 public:
   bool isMutable() const { return IsMutable; }
   ValueKind getKind() const { return VKind; }
-
+  SourceLocation getSourceLocation();
   void dump();
 };
 
-// Value types that will be members of ValuePtr
+// Value types that will be members of Value
 struct Undefined {
-  static bool classof(ValuePtr);
+  static bool classof(Value);
 };
 
 struct Empty {
-  static bool classof(ValuePtr);
+  static bool classof(Value);
 };
 
 struct Int : llvm::PointerEmbeddedInt<int32_t> {
   using Base = llvm::PointerEmbeddedInt<int32_t>;
-  static bool classof(ValuePtr);
+  using Value = heavy::Value;
+  using Base::PointerEmbeddedInt;
+
+  // why doesn't the above using-declaration work for this
+  Int(Base B) : Base(B) { }
+
+  static bool classof(Value);
 };
 
 }
@@ -140,11 +166,12 @@ struct PointerLikeTypeTraits<heavy::Int>
 namespace heavy {
 
 struct ValueSumType {
+  // TODO add Char to this list
   enum SumKind {
     ValueBase = 0,
-    Undefined,
-    Empty,
     Int,
+    Empty,
+    Undefined,
     Operation,
   };
 
@@ -152,49 +179,163 @@ struct ValueSumType {
     llvm::PointerSumTypeMember<ValueBase,  heavy::ValueBase*>,
     llvm::PointerSumTypeMember<Int,        heavy::Int>,
     llvm::PointerSumTypeMember<Empty,      heavy::Empty>,
-    llvm::PointerSumTypeMember<Undefined,  heavy::Undefined>>;
-    //llvm::PointerSumTypeMember<Operation,  mlir::Operation*>>;
+    llvm::PointerSumTypeMember<Undefined,  heavy::Undefined>,
+    llvm::PointerSumTypeMember<Operation,  mlir::Operation*>>;
 };
 
 using ValuePtrBase = typename ValueSumType::type;
 
-struct ValuePtr : ValuePtrBase {
-  /* implicit */
-  ValuePtr(Value* V)
-    : ValuePtrBase(reinterpret_cast<ValuePtrBase>(V))
+class Value : public ValuePtrBase {
+public:
+  Value() = default;
+  Value(ValueBase* V)
+    : ValuePtrBase(create<ValueSumType::ValueBase>(V))
   { }
 
-  operator Value*() const {
-    return reinterpret_cast<Value*>(this);
-  }
+  Value(std::nullptr_t)
+    : ValuePtrBase(create<ValueSumType::ValueBase>(nullptr))
+  { }
 
-  ValueKind getKind() {
+  Value(Undefined)
+    : ValuePtrBase(create<ValueSumType::Undefined>({}))
+  { }
+
+  Value(Empty)
+    : ValuePtrBase(create<ValueSumType::Undefined>({}))
+  { }
+
+  Value(Int I)
+    : ValuePtrBase(create<ValueSumType::Int>(I))
+  { }
+
+  Value(mlir::Operation* Op)
+    : ValuePtrBase(create<ValueSumType::Operation>(Op))
+  { }
+
+  ValueKind getKind() const {
     switch (getTag()) {
     case ValueSumType::ValueBase:
-      return get<ValueSumType::Value>()->getKind();
-    case ValueSumType::Undefined:
-      return ValueKind::Undefined;
-    case ValueSumType::Empty:
-      return ValueKind::Empty;
+      return get<ValueSumType::ValueBase>()->getKind();
     case ValueSumType::Int:
       return ValueKind::Int;
+    case ValueSumType::Empty:
+      return ValueKind::Empty;
+    case ValueSumType::Undefined:
+      return ValueKind::Undefined;
     case ValueSumType::Operation:
       return ValueKind::Operation;
     }
+    llvm_unreachable("cannot get here");
   }
+
+  bool isNumber() {
+    return getTag() == ValueSumType::Int ||
+           getKind() == ValueKind::Float;
+  }
+
+  SourceLocation getSourceLocation() {
+    if (is<ValueSumType::ValueBase>()) {
+      return get<ValueSumType::ValueBase>()
+        ->getSourceLocation();
+    }
+    return SourceLocation();
+  }
+
+  void dump();
 };
 
-inline static bool Undefined::classof(ValuePtr V) {
+inline bool Undefined::classof(Value V) {
   return V.getTag() == ValueSumType::Undefined;
 }
 
-inline static bool Empty::classof(ValuePtr V) {
+inline bool Empty::classof(Value V) {
   return V.getTag() == ValueSumType::Empty;
 }
 
-inline static bool Int::classof(ValuePtr V) {
+inline bool Int::classof(Value V) {
   return V.getTag() == ValueSumType::Int;
 }
+
+}
+
+namespace llvm {
+template <typename T>
+struct isa_impl<T, ::heavy::Value> {
+  static inline bool doit(::heavy::Value V) {
+    return T::classof(V);
+  }
+};
+
+template <>
+struct isa_impl<::mlir::Operation, ::heavy::Value> {
+  static inline bool doit(::heavy::Value V) {
+    return V.is<::heavy::ValueSumType::Operation>();
+  }
+};
+
+template <typename T>
+struct cast_retty_impl<T, ::heavy::Value> {
+  using ret_type = std::conditional_t<
+    std::is_base_of<::heavy::ValueBase, T>::value, T*, T>;
+};
+
+template <>
+struct cast_retty_impl<::mlir::Operation, ::heavy::Value> {
+  using ret_type = ::mlir::Operation*;
+};
+
+template <typename T>
+struct cast_convert_val<T, ::heavy::Value,
+                           ::heavy::Value> {
+  static T* doit(::heavy::Value V) {
+    static_assert(std::is_base_of<::heavy::ValueBase, T>::value,
+      "should be converting to an instance of ValueBase here");
+    return static_cast<T*>(V.get<heavy::ValueSumType::ValueBase>());
+  }
+};
+
+template <>
+struct cast_convert_val<mlir::Operation, ::heavy::Value,
+                                      ::heavy::Value> {
+  static mlir::Operation* doit(::heavy::Value V) {
+    return V.get<heavy::ValueSumType::Operation>();
+  }
+};
+
+template <>
+struct cast_convert_val<::heavy::Int, ::heavy::Value,
+                                      ::heavy::Value> {
+  static auto doit(::heavy::Value V) {
+    return V.get<heavy::ValueSumType::Int>();
+  }
+};
+
+template <>
+struct cast_convert_val<::heavy::Undefined, ::heavy::Value,
+                                            ::heavy::Value> {
+  static auto doit(::heavy::Value V) {
+    return ::heavy::Undefined{};
+  }
+};
+template <>
+struct cast_convert_val<::heavy::Empty, ::heavy::Value,
+                                        ::heavy::Value> {
+  static auto doit(::heavy::Value V) {
+    return ::heavy::Empty{};
+  }
+};
+
+template <>
+struct DenseMapInfo<::heavy::Value>
+  : DenseMapInfo<::heavy::ValuePtrBase> {
+  // Makes heavy value behave the same as PointerSumType
+};
+}
+
+namespace heavy {
+
+template <typename To>
+using cast_ty = typename llvm::cast_retty<To, Value>::ret_type;
 
 // ValueWithSource
 //  - A base class to supplement a Value with
@@ -216,11 +357,11 @@ public:
 
 class Error: public ValueBase,
              public ValueWithSource {
-  Value* Message;
-  Value* Irritants;
+  Value Message;
+  Value Irritants;
 public:
 
-  Error(SourceLocation L, Value* M, Value* I)
+  Error(SourceLocation L, Value M, Value I)
     : ValueBase(ValueKind::Error)
     , ValueWithSource(L)
     , Message(M)
@@ -229,7 +370,7 @@ public:
 
   llvm::StringRef getErrorMessage();
 
-  static bool classof(ValuePtr V) {
+  static bool classof(Value V) {
     return V.getKind() == ValueKind::Error;
   }
 };
@@ -244,16 +385,16 @@ public:
 class Environment : public ValueBase {
   friend class Context;
 
-  Value* EnvStack;
+  Value EnvStack;
 
 public:
-  Environment(Value* Stack)
-    : ValueBase(Kind::Environment)
+  Environment(Value Stack)
+    : ValueBase(ValueKind::Environment)
     , EnvStack(Stack)
   { }
 
   //Binding* AddDefinition(Symbol* Name, ...
-  static bool classof(ValuePtr V) {
+  static bool classof(Value V) {
     return V.getKind() == ValueKind::Environment;
   }
 };
@@ -297,20 +438,20 @@ public:
   // Returns nullptr if not found
   Binding* Lookup(Symbol* Name) const;
 
-  static bool classof(ValuePtr V) {
+  static bool classof(Value V) {
     return V.getKind() == ValueKind::EnvFrame;
   }
 };
 
 class Exception: public ValueBase {
 public:
-  Value* Val;
-  Exception(Value* Val)
-    : ValueBase(Kind::Exception)
+  Value Val;
+  Exception(Value Val)
+    : ValueBase(ValueKind::Exception)
     , Val(Val)
   { }
 
-  static bool classof(ValuePtr V) {
+  static bool classof(Value V) {
     return V.getKind() == ValueKind::Exception;
   }
 };
@@ -319,31 +460,33 @@ class Boolean : public ValueBase {
   bool Val;
 public:
   Boolean(bool V)
-    : ValueBase(Kind::Boolean)
+    : ValueBase(ValueKind::Boolean)
     , Val(V)
   { }
 
   auto getVal() { return Val; }
-  static bool classof(ValuePtr V) {
+  static bool classof(Value V) {
     return V.getKind() == ValueKind::Boolean;
   }
 };
 
 // Base class for Numeric types (other than Int)
 class Float;
+// TODO Deprecate Number and break out the
+//      static function predicates
 class Number : public ValueBase {
 protected:
-  Number(Kind K)
+  Number(ValueKind K)
     : ValueBase(K)
   { }
 
 public:
-  static bool classof(ValuePtr V) {
+  static bool classof(Value V) {
     return V.getKind() == ValueKind::BigInt ||
            V.getKind() == ValueKind::Float;
   }
 
-  static bool isExact(ValuePtr V) {
+  static bool isExact(Value V) {
     switch(V.getKind()) {
     case ValueKind::BigInt:
     case ValueKind::Int:
@@ -353,8 +496,8 @@ public:
     }
   }
 
-  static bool isExactZero(heavy::Value*);
-  static ValueKind CommonKind(Value* X, Value* Y);
+  static bool isExactZero(heavy::Value);
+  static ValueKind CommonKind(Value X, Value Y);
 };
 
 // BigInt currently assumes 64 bits
@@ -365,34 +508,34 @@ class BigInt : public Number {
 
 public:
   BigInt(llvm::APInt V)
-    : Number(Kind::BigInt)
+    : Number(ValueKind::BigInt)
     , Val(V)
   { }
 
   auto getVal() { return Val; }
 
-  static bool classof(ValuePtr V) {
+  static bool classof(Value V) {
     return V.getKind() == ValueKind::BigInt;
   }
 };
 
-class Float : public Number {
+class Float : public ValueBase {
   friend class NumberOp;
   llvm::APFloat Val;
 
 public:
   Float(llvm::APFloat V)
-    : Number(Kind::Float)
+    : ValueBase(ValueKind::Float)
     , Val(V)
   { }
 
   auto getVal() { return Val; }
-  static bool classof(ValuePtr V) {
+  static bool classof(Value V) {
     return V.getKind() == ValueKind::Float;
   }
 };
 
-inline ValueKind Number::CommonKind(ValuePtr X, ValuePtr Y) {
+inline ValueKind Number::CommonKind(Value X, Value Y) {
   ValueKind XK = X.getKind();
   ValueKind YK = Y.getKind();
   if (XK == ValueKind::Float ||
@@ -408,7 +551,7 @@ inline ValueKind Number::CommonKind(ValuePtr X, ValuePtr Y) {
   return ValueKind::Int;
 }
 
-inline bool Number::isExactZero(Value* V) {
+inline bool Number::isExactZero(Value V) {
   if (!Number::isExact(V)) return false;
   if (BigInt* I = dyn_cast<BigInt>(V)) {
     I->Val == 0;
@@ -416,18 +559,18 @@ inline bool Number::isExactZero(Value* V) {
   return cast<Int>(V) == 0;
 }
 
-// TODO maybe Char could fit in ValuePtr?
+// TODO maybe Char could fit in Value?
 class Char : public ValueBase {
   uint32_t Val;
 
 public:
   Char(char V)
-    : ValueBase(Kind::Char)
+    : ValueBase(ValueKind::Char)
     , Val(V)
   { }
 
   auto getVal() { return Val; }
-  static bool classof(ValuePtr V) {
+  static bool classof(Value V) {
     return V.getKind() == ValueKind::Char;
   }
 };
@@ -438,7 +581,7 @@ class Symbol : public ValueBase,
 
 public:
   Symbol(llvm::StringRef V, SourceLocation L = SourceLocation())
-    : ValueBase(Kind::Symbol)
+    : ValueBase(ValueKind::Symbol)
     , ValueWithSource(L)
     , Val(V)
   { }
@@ -446,7 +589,7 @@ public:
   using ValueWithSource::getSourceLocation;
 
   llvm::StringRef getVal() { return Val; }
-  static bool classof(ValuePtr V) {
+  static bool classof(Value V) {
     return V.getKind() == ValueKind::Symbol;
   }
 
@@ -469,7 +612,7 @@ class String final
 
 public:
   String(llvm::StringRef S)
-    : ValueBase(Kind::String),
+    : ValueBase(ValueKind::String),
       Len(S.size())
   {
     std::memcpy(getTrailingObjects<char>(), S.data(), S.size());
@@ -477,7 +620,7 @@ public:
 
   template <typename ...StringRefs>
   String(unsigned TotalLen, StringRefs ...Ss)
-    : ValueBase(Kind::String),
+    : ValueBase(ValueKind::String),
       Len(TotalLen)
   {
     std::array<llvm::StringRef, sizeof...(Ss)> Arr = {Ss...};
@@ -496,29 +639,29 @@ public:
     return llvm::StringRef(getTrailingObjects<char>(), Len);
   }
 
-  static bool classof(ValuePtr V) {
+  static bool classof(Value V) {
     return V.getKind() == ValueKind::String;
   }
 };
 
 class Pair : public ValueBase {
 public:
-  Value* Car;
-  Value* Cdr;
+  Value Car;
+  Value Cdr;
 
-  Pair(Value* First, Value* Second)
-    : ValueBase(Kind::Pair)
+  Pair(Value First, Value Second)
+    : ValueBase(ValueKind::Pair)
     , Car(First)
     , Cdr(Second)
   { }
 
-  Pair(Kind K, Value* First, Value* Second)
+  Pair(ValueKind K, Value First, Value Second)
     : ValueBase(K)
     , Car(First)
     , Cdr(Second)
   { }
 
-  static bool classof(ValuePtr V) {
+  static bool classof(Value V) {
     return V.getKind() == ValueKind::Pair ||
            V.getKind() == ValueKind::PairWithSource;
   }
@@ -528,19 +671,19 @@ class PairWithSource : public Pair,
                        public ValueWithSource {
 
 public:
-  PairWithSource(Value* First, Value* Second, SourceLocation L)
-    : Pair(Kind::PairWithSource, First, Second)
+  PairWithSource(Value First, Value Second, SourceLocation L)
+    : Pair(ValueKind::PairWithSource, First, Second)
     , ValueWithSource(L)
   { }
 
   // returns the character that opens the pair
-  // ( | { | [
+  // ( | \{ | [
   char getBraceType() {
     // TODO
     return '(';
   }
 
-  static bool classof(ValuePtr V) {
+  static bool classof(Value V) {
     return V.getKind() == ValueKind::PairWithSource;
   }
 };
@@ -550,11 +693,11 @@ public:
   ValueFn Fn;
 
   Builtin(ValueFn F)
-    : ValueBase(Kind::Builtin)
+    : ValueBase(ValueKind::Builtin)
     , Fn(F)
   { }
 
-  static bool classof(ValuePtr V) {
+  static bool classof(Value V) {
     return V.getKind() == ValueKind::Builtin;
   }
 };
@@ -564,49 +707,49 @@ public:
   SyntaxFn Fn;
 
   BuiltinSyntax(SyntaxFn F)
-    : ValueBase(Kind::BuiltinSyntax)
+    : ValueBase(ValueKind::BuiltinSyntax)
     , Fn(F)
   { }
 
-  static bool classof(ValuePtr V) {
+  static bool classof(Value V) {
     return V.getKind() == ValueKind::BuiltinSyntax;
   }
 };
 
 class Lambda final
   : public ValueBase,
-    private llvm::TrailingObjects<Lambda, Value*> {
+    private llvm::TrailingObjects<Lambda, Value> {
 
-  friend class llvm::TrailingObjects<Lambda, Value*>;
+  friend class llvm::TrailingObjects<Lambda, Value>;
 
   ValueFn Fn;
   unsigned NumCaptures: 8;
 
-  size_t numTrailingObjects(OverloadToken<Value*> const) const {
+  size_t numTrailingObjects(OverloadToken<Value> const) const {
     return NumCaptures;
   }
 
 public:
   Lambda(ValueFn Fn, unsigned NumCaptures)
-    : ValueBase(Kind::Lambda)
+    : ValueBase(ValueKind::Lambda)
     , Fn(Fn)
     , NumCaptures(NumCaptures)
   { }
 
-  static bool classof(ValuePtr V) {
+  static bool classof(Value V) {
     return V.getKind() == ValueKind::Lambda;
   }
 
   ValueFn getFn() const { return Fn; }
 
-  llvm::ArrayRef<Value*> getCaptures() const {
-    return llvm::ArrayRef<Value*>(
-        getTrailingObjects<Value*>(), NumCaptures);
+  llvm::ArrayRef<Value> getCaptures() const {
+    return llvm::ArrayRef<Value>(
+        getTrailingObjects<Value>(), NumCaptures);
   }
 
-  llvm::MutableArrayRef<Value*> getCaptures() {
-    return llvm::MutableArrayRef<Value*>(
-        getTrailingObjects<Value*>(), NumCaptures);
+  llvm::MutableArrayRef<Value> getCaptures() {
+    return llvm::MutableArrayRef<Value>(
+        getTrailingObjects<Value>(), NumCaptures);
   }
 };
 
@@ -614,25 +757,25 @@ public:
 // for use with the tree walking evaluator (OpEval)
 class LambdaIr final
   : public ValueBase,
-    private llvm::TrailingObjects<LambdaIr, Value*> {
+    private llvm::TrailingObjects<LambdaIr, Value> {
 
-  friend class llvm::TrailingObjects<LambdaIr, Value*>;
+  friend class llvm::TrailingObjects<LambdaIr, Value>;
 
   FuncOp Op;
   unsigned NumCaptures: 8;
 
-  size_t numTrailingObjects(OverloadToken<Value*> const) const {
+  size_t numTrailingObjects(OverloadToken<Value> const) const {
     return NumCaptures;
   }
 
 public:
   LambdaIr(FuncOp Op, unsigned NumCaptures)
-    : ValueBase(Kind::LambdaIr)
+    : ValueBase(ValueKind::LambdaIr)
     , Op(Op)
     , NumCaptures(NumCaptures)
   { }
 
-  static bool classof(ValuePtr V) {
+  static bool classof(Value V) {
     return V.getKind() == ValueKind::LambdaIr;
   }
 
@@ -641,30 +784,30 @@ public:
     return Op.getBody().front();
   }
 
-  llvm::ArrayRef<Value*> getCaptures() const {
-    return llvm::ArrayRef<Value*>(
-        getTrailingObjects<Value*>(), NumCaptures);
+  llvm::ArrayRef<Value> getCaptures() const {
+    return llvm::ArrayRef<Value>(
+        getTrailingObjects<Value>(), NumCaptures);
   }
 
-  llvm::MutableArrayRef<Value*> getCaptures() {
-    return llvm::MutableArrayRef<Value*>(
-        getTrailingObjects<Value*>(), NumCaptures);
+  llvm::MutableArrayRef<Value> getCaptures() {
+    return llvm::MutableArrayRef<Value>(
+        getTrailingObjects<Value>(), NumCaptures);
   }
 
   static size_t sizeToAlloc(unsigned Length) {
-    return totalSizeToAlloc<Value*>(Length);
+    return totalSizeToAlloc<Value>(Length);
   }
 };
 
 class Quote : public ValueBase {
 public:
-  Value* Val;
-  Quote(Value* V)
-    : ValueBase(Kind::Quote)
+  Value Val;
+  Quote(Value V)
+    : ValueBase(ValueKind::Quote)
     , Val(V)
   { }
 
-  static bool classof(ValuePtr V) {
+  static bool classof(Value V) {
     return V.getKind() == ValueKind::Quote;
   }
 };
@@ -672,58 +815,58 @@ public:
 class Syntax : public ValueBase {
 public:
   // TODO ???
-  Value* Transformer;
-  static bool classof(ValuePtr V) {
+  Value Transformer;
+  static bool classof(Value V) {
     return V.getKind() == ValueKind::Syntax;
   }
 };
 
 class Vector final
   : public ValueBase,
-    private llvm::TrailingObjects<Vector, Value*> {
+    private llvm::TrailingObjects<Vector, Value> {
 
   friend class Context;
-  friend class llvm::TrailingObjects<Vector, Value*>;
+  friend class llvm::TrailingObjects<Vector, Value>;
 
   unsigned Len = 0;
-  size_t numTrailingObjects(OverloadToken<Value*> const) const {
+  size_t numTrailingObjects(OverloadToken<Value> const) const {
     return Len;
   }
 
-  Vector(llvm::ArrayRef<Value*> Vs)
-    : ValueBase(Kind::Vector),
+  Vector(llvm::ArrayRef<Value> Vs)
+    : ValueBase(ValueKind::Vector),
       Len(Vs.size())
   {
-    std::memcpy(getTrailingObjects<Value*>(), Vs.data(),
-                Len * sizeof(Value*));
+    std::memcpy(getTrailingObjects<Value>(), Vs.data(),
+                Len * sizeof(Value));
   }
 
-  Vector(Value* V, unsigned N)
-    : ValueBase(Kind::Vector),
+  Vector(Value V, unsigned N)
+    : ValueBase(ValueKind::Vector),
       Len(N)
   {
-    Value** Xs = getTrailingObjects<Value*>();
+    Value* Xs = getTrailingObjects<Value>();
     for (unsigned i = 0; i < Len; ++i) {
       Xs[i] = V;
     }
   }
 
 public:
-  llvm::ArrayRef<Value*> getElements() const {
-    return llvm::ArrayRef<Value*>(
-        getTrailingObjects<Value*>(), Len);
+  llvm::ArrayRef<Value> getElements() const {
+    return llvm::ArrayRef<Value>(
+        getTrailingObjects<Value>(), Len);
   }
 
-  llvm::MutableArrayRef<Value*> getElements() {
-    return llvm::MutableArrayRef<Value*>(
-        getTrailingObjects<Value*>(), Len);
+  llvm::MutableArrayRef<Value> getElements() {
+    return llvm::MutableArrayRef<Value>(
+        getTrailingObjects<Value>(), Len);
   }
-  static bool classof(ValuePtr V) {
+  static bool classof(Value V) {
     return V.getKind() == ValueKind::Vector;
   }
 
   static size_t sizeToAlloc(unsigned Length) {
-    return totalSizeToAlloc<Value*>(Length);
+    return totalSizeToAlloc<Value>(Length);
   }
 
 };
@@ -731,12 +874,12 @@ public:
 class Binding : public ValueBase {
   friend class Context;
   Symbol* Name;
-  Value* Val;
+  Value Val;
 
 public:
 
-  Binding(Symbol* N, Value* V)
-    : ValueBase(Kind::Binding)
+  Binding(Symbol* N, Value V)
+    : ValueBase(ValueKind::Binding)
     , Name(N)
     , Val(V)
   { }
@@ -745,43 +888,43 @@ public:
     return Name;
   }
 
-  Value* getValue() {
+  Value getValue() {
     return Val;
   }
 
-  void setValue(Value* V) {
+  void setValue(Value V) {
     assert(!isa<Binding>(V) && "bindings may not nest bindings");
     Val = V;
   }
 
-  Value* Lookup(Symbol* S) {
-    if (Name->equals(S)) return this;
+  Value Lookup(Symbol* S) {
+    if (Name->equals(S)) return Value(this);
     return nullptr;
   }
 
-  bool isSyntactic() const {
-    return Val->getKind() == ValueKind::Syntax ||
-           Val->getKind() == ValueKind::BuiltinSyntax;
+  bool isSyntactic() {
+    return Val.getKind() == ValueKind::Syntax ||
+           Val.getKind() == ValueKind::BuiltinSyntax;
   }
 
 
-  static bool classof(ValuePtr V) {
+  static bool classof(Value V) {
     return V.getKind() == ValueKind::Binding;
   }
 };
 
 class Module : public ValueBase {
   friend class Context;
-  using MapTy = llvm::StringMap<Binding*, AllocatorTy&>;
+  using MapTy = llvm::StringMap<Binding*>;
   // TODO An IdentifierTable would probably be
   //      better than using the strings themselves
   //      as keys.
   MapTy Map;
 
 public:
-  Module(AllocatorTy& A)
-    : ValueBase(Kind::Module)
-    , Map(A)
+  Module()
+    : ValueBase(ValueKind::Module)
+    , Map()
   { }
 
   Binding* Insert(Binding* B) {
@@ -799,7 +942,7 @@ public:
     return Lookup(Name->getVal());
   }
 
-  static bool classof(ValuePtr V) {
+  static bool classof(Value V) {
     return V.getKind() == ValueKind::Module;
   }
 
@@ -833,36 +976,37 @@ public:
 // ForwardRef - used for garbage collection
 class ForwardRef : public ValueBase {
 public:
-  Value* Val;
+  Value Val;
 
-  ForwardRef(Value* V)
-    : ValueBase(Kind::ForwardRef)
+  ForwardRef(Value V)
+    : ValueBase(ValueKind::ForwardRef)
   { }
 
-  static bool classof(ValuePtr V) {
+  static bool classof(Value V) {
     return V.getKind() == ValueKind::ForwardRef;
   }
 };
 
 // isSymbol - For matching symbols in syntax builtins
-inline bool isSymbol(ValuePtr V , llvm::StringRef Str) {
+inline bool isSymbol(Value V , llvm::StringRef Str) {
   if (Symbol* S = dyn_cast<Symbol>(V)) {
     return S->equals(Str);
   }
   return false;
 }
 
-inline SourceLocation getSourceLocation(ValuePtr V) {
+inline SourceLocation ValueBase::getSourceLocation() {
+  Value Self(this);
   ValueWithSource* VS = nullptr;
-  switch (V.getKind()) {
-  case Kind::Error:
-    VS = cast<Error>(this);
+  switch (getKind()) {
+  case ValueKind::Error:
+    VS = cast<Error>(Self);
     break;
-  case Kind::Symbol:
-    VS = cast<Symbol>(this);
+  case ValueKind::Symbol:
+    VS = cast<Symbol>(Self);
     break;
-  case Kind::PairWithSource:
-    VS = cast<PairWithSource>(this);
+  case ValueKind::PairWithSource:
+    VS = cast<PairWithSource>(Self);
     break;
   default:
     return SourceLocation();
@@ -890,11 +1034,11 @@ inline Binding* EnvFrame::Lookup(Symbol* Name) const {
 template <typename Derived, typename RetTy = void>
 class ValueVisitor {
 #define DISPATCH(NAME) \
-  return getDerived().Visit ## NAME(static_cast<NAME*>(V), \
+  return getDerived().Visit ## NAME(cast<NAME>(V), \
                                     std::forward<Args>(args)...)
 #define VISIT_FN(NAME) \
-  template <typename T, typename ...Args> \
-  RetTy Visit ## NAME(T* V, Args&& ...args) { \
+  template <typename ...Args> \
+  RetTy Visit ## NAME(cast_ty<NAME> V, Args&& ...args) { \
     return getDerived().VisitValue(V, std::forward<Args>(args)...); }
 
   Derived& getDerived() { return static_cast<Derived&>(*this); }
@@ -905,29 +1049,33 @@ protected:
   // concrete visitors
   template <typename T>
   RetTy VisitValue(T* V) = delete;
+  template <typename T>
+  RetTy VisitValue(T V) = delete;
 
   // The default implementations for visiting
   // nodes is to call Derived::VisitValue
 
   VISIT_FN(Undefined)
+  VISIT_FN(BigInt)
   VISIT_FN(Binding)
   VISIT_FN(Boolean)
   VISIT_FN(Builtin)
   VISIT_FN(BuiltinSyntax)
   VISIT_FN(Char)
   VISIT_FN(Empty)
-  VISIT_FN(Error)
-  VISIT_FN(Environment)
   VISIT_FN(EnvFrame)
+  VISIT_FN(Environment)
+  VISIT_FN(Error)
   VISIT_FN(Exception)
   VISIT_FN(Float)
   VISIT_FN(ForwardRef)
-  VISIT_FN(Integer)
-  VISIT_FN(Module)
-  VISIT_FN(Pair)
-  // VISIT_FN(PairWithSource) **PairWithSource Implemented below**
+  VISIT_FN(Int)
   VISIT_FN(Lambda)
   VISIT_FN(LambdaIr)
+  VISIT_FN(Module)
+  VISIT_FN(Operation)
+  VISIT_FN(Pair)
+  // VISIT_FN(PairWithSource) **PairWithSource Implemented below**
   VISIT_FN(Quote)
   VISIT_FN(String)
   VISIT_FN(Symbol)
@@ -941,27 +1089,29 @@ protected:
 
 public:
   template <typename ...Args>
-  RetTy Visit(ValuePtr V, Args&& ...args) {
+  RetTy Visit(Value V, Args&& ...args) {
     switch (V.getKind()) {
     case ValueKind::Undefined:      DISPATCH(Undefined);
+    case ValueKind::BigInt:         DISPATCH(BigInt);
     case ValueKind::Binding:        DISPATCH(Binding);
     case ValueKind::Boolean:        DISPATCH(Boolean);
     case ValueKind::Builtin:        DISPATCH(Builtin);
     case ValueKind::BuiltinSyntax:  DISPATCH(BuiltinSyntax);
     case ValueKind::Char:           DISPATCH(Char);
     case ValueKind::Empty:          DISPATCH(Empty);
-    case ValueKind::Error:          DISPATCH(Error);
-    case ValueKind::Environment:    DISPATCH(Environment);
     case ValueKind::EnvFrame:       DISPATCH(EnvFrame);
+    case ValueKind::Environment:    DISPATCH(Environment);
+    case ValueKind::Error:          DISPATCH(Error);
     case ValueKind::Exception:      DISPATCH(Exception);
     case ValueKind::Float:          DISPATCH(Float);
     case ValueKind::ForwardRef:     DISPATCH(ForwardRef);
-    case ValueKind::Integer:        DISPATCH(Integer);
-    case ValueKind::Module:         DISPATCH(Module);
-    case ValueKind::Pair:           DISPATCH(Pair);
-    case ValueKind::PairWithSource: DISPATCH(PairWithSource);
+    case ValueKind::Int:            DISPATCH(Int);
     case ValueKind::Lambda:         DISPATCH(Lambda);
     case ValueKind::LambdaIr:       DISPATCH(LambdaIr);
+    case ValueKind::Module:         DISPATCH(Module);
+    case ValueKind::Operation:      DISPATCH(Operation);
+    case ValueKind::Pair:           DISPATCH(Pair);
+    case ValueKind::PairWithSource: DISPATCH(PairWithSource);
     case ValueKind::Quote:          DISPATCH(Quote);
     case ValueKind::String:         DISPATCH(String);
     case ValueKind::Symbol:         DISPATCH(Symbol);
@@ -981,24 +1131,26 @@ public:
 inline llvm::StringRef getKindName(heavy::ValueKind Kind) {
   switch (Kind) {
   GET_KIND_NAME_CASE(Undefined)
+  GET_KIND_NAME_CASE(BigInt)
   GET_KIND_NAME_CASE(Binding)
   GET_KIND_NAME_CASE(Boolean)
   GET_KIND_NAME_CASE(Builtin)
   GET_KIND_NAME_CASE(BuiltinSyntax)
   GET_KIND_NAME_CASE(Char)
   GET_KIND_NAME_CASE(Empty)
-  GET_KIND_NAME_CASE(Error)
-  GET_KIND_NAME_CASE(Environment)
   GET_KIND_NAME_CASE(EnvFrame)
+  GET_KIND_NAME_CASE(Environment)
+  GET_KIND_NAME_CASE(Error)
   GET_KIND_NAME_CASE(Exception)
   GET_KIND_NAME_CASE(Float)
   GET_KIND_NAME_CASE(ForwardRef)
-  GET_KIND_NAME_CASE(Integer)
-  GET_KIND_NAME_CASE(Module)
-  GET_KIND_NAME_CASE(Pair)
-  GET_KIND_NAME_CASE(PairWithSource)
+  GET_KIND_NAME_CASE(Int)
   GET_KIND_NAME_CASE(Lambda)
   GET_KIND_NAME_CASE(LambdaIr)
+  GET_KIND_NAME_CASE(Module)
+  GET_KIND_NAME_CASE(Operation)
+  GET_KIND_NAME_CASE(Pair)
+  GET_KIND_NAME_CASE(PairWithSource)
   GET_KIND_NAME_CASE(Quote)
   GET_KIND_NAME_CASE(String)
   GET_KIND_NAME_CASE(Symbol)
@@ -1010,10 +1162,6 @@ inline llvm::StringRef getKindName(heavy::ValueKind Kind) {
 }
 #undef GET_KIND_NAME_CASE
 
-}
-
-namespace llvm {
-  // TODO implement isa_impl for heavy::Value* and Operation
 }
 
 #endif
