@@ -28,7 +28,7 @@ class Value;
 class OpGen;
 class OpEval;
 class Pair;
-using ValueRefs = llvm::ArrayRef<heavy::Value*>;
+using ValueRefs = llvm::ArrayRef<heavy::Value>;
 
 }
 
@@ -45,17 +45,17 @@ mlir::Value set(OpGen& OG, Pair* P);
 
 namespace heavy { namespace builtin {
 
-heavy::Value* eval(Context& C, ValueRefs Args);
-heavy::Value* operator_add(Context& C, ValueRefs Args);
-heavy::Value* operator_mul(Context&C, ValueRefs Args);
-heavy::Value* operator_sub(Context&C, ValueRefs Args);
-heavy::Value* operator_div(Context& C, ValueRefs Args);
-heavy::Value* operator_gt(Context& C, ValueRefs Args);
-heavy::Value* operator_lt(Context& C, ValueRefs Args);
-heavy::Value* eq(Context& C, ValueRefs Args);
-heavy::Value* eqv(Context& C, ValueRefs Args);
-heavy::Value* list(Context& C, ValueRefs Args);
-heavy::Value* append(Context& C, ValueRefs Args);
+heavy::Value eval(Context& C, ValueRefs Args);
+heavy::Value operator_add(Context& C, ValueRefs Args);
+heavy::Value operator_mul(Context&C, ValueRefs Args);
+heavy::Value operator_sub(Context&C, ValueRefs Args);
+heavy::Value operator_div(Context& C, ValueRefs Args);
+heavy::Value operator_gt(Context& C, ValueRefs Args);
+heavy::Value operator_lt(Context& C, ValueRefs Args);
+heavy::Value eq(Context& C, ValueRefs Args);
+heavy::Value eqv(Context& C, ValueRefs Args);
+heavy::Value list(Context& C, ValueRefs Args);
+heavy::Value append(Context& C, ValueRefs Args);
 
 }}
 

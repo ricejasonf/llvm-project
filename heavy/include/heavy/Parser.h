@@ -22,26 +22,26 @@ namespace heavy {
 
 // TODO Rename to ParseResult
 class ValueResult {
-  Value* V = nullptr;
+  Value V = nullptr;
 
 public:
   ValueResult() = default;
-  ValueResult(Value* V)
+  ValueResult(Value V)
     : V(V)
   { }
 
-  Value* get() { return V; }
+  Value get() { return V; }
 
   // Unset means that parsing of the buffer is complete
   // This happens at EOF or the end of an embedded snippet
   // (ie heavy_scheme { ... })
   //                        ^
   bool isUnset() const {
-    return V == nullptr;
+    return !V;
   }
 
   bool isUsable() const {
-    return V && V->getKind() != ValueKind::Undefined;
+    return V && V.getKind() != ValueKind::Undefined;
   }
 
   bool isInvalid() const {
@@ -75,7 +75,7 @@ class Parser {
   ValueResult ParseSymbol();
   ValueResult ParseTypename();
   ValueResult ParseVectorStart();
-  ValueResult ParseVector(llvm::SmallVectorImpl<Value*>& Xs);
+  ValueResult ParseVector(llvm::SmallVectorImpl<Value>& Xs);
 
   ValueResult ParseDottedCdr(Token const& StartTok);
   ValueResult ParseSpecialEscapeSequence();

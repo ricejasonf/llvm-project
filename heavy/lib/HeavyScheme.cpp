@@ -35,6 +35,11 @@ void ValueBase::dump() {
   llvm::errs() << '\n';
 }
 
+void Value::dump() {
+  write(llvm::errs(), *this);
+  llvm::errs() << '\n';
+}
+
 // FIXME not sure if CreateEmbedded is even useful anymore
 //       originally we were setting the IntWidth
 std::unique_ptr<Context> Context::CreateEmbedded() {
@@ -105,16 +110,12 @@ String* Context::CreateString(StringRef S1,
   return CreateStringHelper(TrashHeap, S1, S2, S3);
 }
 
-Integer* Context::CreateInteger(llvm::APInt Val) {
-  return new (TrashHeap) Integer(Val);
-}
-
 Float* Context::CreateFloat(llvm::APFloat Val) {
   return new (TrashHeap) Float(Val);
 }
 
-Vector* Context::CreateVector(ArrayRef<Value*> Xs) {
-  // Copy the list of Value* to our heap
+Vector* Context::CreateVector(ArrayRef<Value> Xs) {
+  // Copy the list of Value to our heap
   size_t size = Vector::sizeToAlloc(Xs.size());
   void* Mem = TrashHeap.Allocate(size, alignof(Vector));
   return new (Mem) Vector(Xs);
@@ -127,17 +128,17 @@ Vector* Context::CreateVector(unsigned N) {
 }
 
 Lambda* Context::CreateLambda(heavy::ValueFn Fn,
-                              llvm::ArrayRef<heavy::Value*> Captures) {
+                              llvm::ArrayRef<heavy::Value> Captures) {
   return new (TrashHeap) Lambda(Fn, /*NumCaptures=*/0);
 }
 
 LambdaIr* Context::CreateLambdaIr(FuncOp Op,
-                              llvm::ArrayRef<heavy::Value*> Captures) {
+                              llvm::ArrayRef<heavy::Value> Captures) {
   size_t size = LambdaIr::sizeToAlloc(Captures.size());
   void* Mem = TrashHeap.Allocate(size, alignof(LambdaIr));
   LambdaIr* New = new (Mem) LambdaIr(Op, Captures.size());
   auto CapturesItr = Captures.begin();
-  for (heavy::Value*& V : New->getCaptures()) {
+  for (heavy::Value& V : New->getCaptures()) {
     V = *CapturesItr;
     ++CapturesItr;
   }
@@ -145,7 +146,7 @@ LambdaIr* Context::CreateLambdaIr(FuncOp Op,
   return New;
 }
 
-EnvFrame* Context::PushLambdaFormals(Value* Formals,
+EnvFrame* Context::PushLambdaFormals(Value Formals,
                                      bool& HasRestParam) {
   llvm::SmallVector<Symbol*, 8> Names;
   HasRestParam = false;
@@ -174,7 +175,7 @@ void Context::PopEnvFrame() {
   // We want to remove the current local scope
   // and assert that we aren't popping anything else
   // Walk through the local bindings
-  Value* Env = EnvStack;
+  Value Env = EnvStack;
   Pair* EnvPair;
   while ((EnvPair = dyn_cast<Pair>(Env))) {
     if (!isa<Binding>(EnvPair->Car)) break;
@@ -204,10 +205,10 @@ EnvFrame* Context::CreateEnvFrame(llvm::ArrayRef<Symbol*> Names) {
 
 
 // CheckLambdaFormals - Returns true on error
-bool Context::CheckLambdaFormals(Value* Formals,
+bool Context::CheckLambdaFormals(Value Formals,
                                llvm::SmallVectorImpl<Symbol*>& Names,
                                bool& HasRestParam) {
-  Value* V = Formals;
+  Value V = Formals;
   if (isa<Empty>(V)) return false;
   if (isa<Symbol>(V)) {
     // If the formals are just a Symbol
@@ -232,7 +233,7 @@ bool Context::CheckLambdaFormals(Value* Formals,
 
 Procedure* Context::CreateProcedure(Pair* P) {
   int Arity = 0;
-  Value* Formals = P->Car;
+  Value Formals = P->Car;
   BindingRegion* Region = CreateRegion();
   ProcessFormals(Formals, Region, Arity);
 
@@ -243,14 +244,14 @@ Procedure* Context::CreateProcedure(Pair* P) {
 
 // NextStack supports tail recursion with nested Environments
 // The Stack may be an improper list ending with an Environment
-Binding* Context::Lookup(Symbol* Name, Value* Stack, Value* NextStack) {
+Binding* Context::Lookup(Symbol* Name, Value Stack, Value NextStack) {
   if (isa<Empty>(Stack) && !NextStack) return nullptr;
   if (isa<Empty>(Stack)) Stack = NextStack;
   if (isa<Environment>(Stack)) Stack = cast<Environment>(Stack)->EnvStack;
-  Value* Result = nullptr;
-  Value* V    = cast<Pair>(Stack)->Car;
-  Value* Next = cast<Pair>(Stack)->Cdr;
-  switch (V->getKind()) {
+  Value Result = nullptr;
+  Value V    = cast<Pair>(Stack)->Car;
+  Value Next = cast<Pair>(Stack)->Cdr;
+  switch (V.getKind()) {
     case ValueKind::Binding:
       Result = cast<Binding>(V)->Lookup(Name);
       break;
@@ -275,12 +276,12 @@ Binding* Context::Lookup(Symbol* Name, Value* Stack, Value* NextStack) {
 }
 
 // Returns Binding or Undefined on error
-Value* Context::CreateGlobal(Symbol* S, Value *V, Value* OrigCall) {
+Value Context::CreateGlobal(Symbol* S, Value V, Value OrigCall) {
   // A module at the top of the EnvStack is mutable
   Module* M = nullptr;
-  Value* EnvRest = nullptr;
+  Value EnvRest = nullptr;
   if (isa<Pair>(EnvStack)) {
-    Value* EnvTop  = cast<Pair>(EnvStack)->Car;
+    Value EnvTop  = cast<Pair>(EnvStack)->Car;
     EnvRest = cast<Pair>(EnvStack)->Cdr;
     M = dyn_cast<Module>(EnvTop);
   }
@@ -318,7 +319,7 @@ void Context::dumpModuleOp() {
   OpGen->getTopLevel().dump();
 }
 
-void Context::PushTopLevel(heavy::Value* V) {
+void Context::PushTopLevel(heavy::Value V) {
   OpGen->VisitTopLevel(V);
 }
 
@@ -346,24 +347,24 @@ private:
     }
   }
 
-  void VisitValue(Value* V) {
+  void VisitValue(Value V) {
     OS << "<Value of Kind:"
-       << V->getKindName()
+       << getKindName(V.getKind())
        << ">";
   }
 
-  void VisitBoolean(Boolean* V) {
-    if (V->getVal())
+  void VisitBool(Bool V) {
+    if (V)
       OS << "#t";
     else
       OS << "#f";
   }
 
-  void VisitEmpty(Empty*) {
+  void VisitEmpty(Empty) {
     OS << "()";
   }
 
-  void VisitInteger(Integer* V) { OS << V->getVal(); }
+  void VisitInt(Int V) { OS << int32_t{V}; }
   void VisitFloat(Float* V) {
     llvm::SmallVector<char, 16> Buffer;
     V->getVal().toString(Buffer);
@@ -376,7 +377,7 @@ private:
     ++IndentationLevel;
     OS << '(';
     Visit(P->Car);
-    Value* Cdr = P->Cdr;
+    Value Cdr = P->Cdr;
     while (isa<Pair>(Cdr)) {
       OS << ' ';
       //PrintFormattedWhitespace();
@@ -401,11 +402,11 @@ private:
 
   void VisitVector(Vector* Vec) {
     OS << "#(";
-    ArrayRef<Value*> Xs = Vec->getElements();
+    ArrayRef<Value> Xs = Vec->getElements();
     if (!Xs.empty()) {
       Visit(Xs[0]);
       Xs = Xs.drop_front(1);
-      for (Value* X : Xs) {
+      for (Value X : Xs) {
         OS << ' ';
         Visit(X);
       }
@@ -443,7 +444,7 @@ private:
 } // end anon namespace
 
 namespace heavy {
-void write(llvm::raw_ostream& OS, Value* V) {
+void write(llvm::raw_ostream& OS, Value V) {
   Writer W(OS);
   return W.Visit(V);
 }

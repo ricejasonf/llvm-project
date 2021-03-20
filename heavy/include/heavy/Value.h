@@ -69,7 +69,7 @@ enum class ValueKind {
   Undefined = 0,
   BigInt,
   Binding,
-  Boolean,
+  Bool,
   Builtin,
   BuiltinSyntax,
   Char,
@@ -131,6 +131,26 @@ struct Int : llvm::PointerEmbeddedInt<int32_t> {
   static bool classof(Value);
 };
 
+struct Bool : llvm::PointerEmbeddedInt<bool> {
+  using Base = llvm::PointerEmbeddedInt<bool>;
+  using Value = heavy::Value;
+  using Base::PointerEmbeddedInt;
+
+  Bool(Base B) : Base(B) { }
+
+  static bool classof(Value);
+};
+
+struct Char : llvm::PointerEmbeddedInt<uint32_t> {
+  using Base = llvm::PointerEmbeddedInt<uint32_t>;
+  using Value = heavy::Value;
+  using Base::PointerEmbeddedInt;
+
+  Char(Base B) : Base(B) { }
+
+  static bool classof(Value);
+};
+
 }
 
 namespace heavy { namespace detail {
@@ -161,6 +181,16 @@ template <>
 struct PointerLikeTypeTraits<heavy::Int>
   : PointerLikeTypeTraits<heavy::Int::Base>
 { };
+
+template <>
+struct PointerLikeTypeTraits<heavy::Bool>
+  : PointerLikeTypeTraits<heavy::Bool::Base>
+{ };
+
+template <>
+struct PointerLikeTypeTraits<heavy::Char>
+  : PointerLikeTypeTraits<heavy::Char::Base>
+{ };
 }
 
 namespace heavy {
@@ -170,6 +200,8 @@ struct ValueSumType {
   enum SumKind {
     ValueBase = 0,
     Int,
+    Bool,
+    Char,
     Empty,
     Undefined,
     Operation,
@@ -178,6 +210,8 @@ struct ValueSumType {
   using type = llvm::PointerSumType<SumKind,
     llvm::PointerSumTypeMember<ValueBase,  heavy::ValueBase*>,
     llvm::PointerSumTypeMember<Int,        heavy::Int>,
+    llvm::PointerSumTypeMember<Bool,    heavy::Bool>,
+    llvm::PointerSumTypeMember<Char,       heavy::Char>,
     llvm::PointerSumTypeMember<Empty,      heavy::Empty>,
     llvm::PointerSumTypeMember<Undefined,  heavy::Undefined>,
     llvm::PointerSumTypeMember<Operation,  mlir::Operation*>>;
@@ -208,6 +242,14 @@ public:
     : ValuePtrBase(create<ValueSumType::Int>(I))
   { }
 
+  Value(Bool B)
+    : ValuePtrBase(create<ValueSumType::Bool>(B))
+  { }
+
+  Value(Char C)
+    : ValuePtrBase(create<ValueSumType::Char>(C))
+  { }
+
   Value(mlir::Operation* Op)
     : ValuePtrBase(create<ValueSumType::Operation>(Op))
   { }
@@ -218,6 +260,10 @@ public:
       return get<ValueSumType::ValueBase>()->getKind();
     case ValueSumType::Int:
       return ValueKind::Int;
+    case ValueSumType::Bool:
+      return ValueKind::Bool;
+    case ValueSumType::Char:
+      return ValueKind::Char;
     case ValueSumType::Empty:
       return ValueKind::Empty;
     case ValueSumType::Undefined:
@@ -254,6 +300,14 @@ inline bool Empty::classof(Value V) {
 
 inline bool Int::classof(Value V) {
   return V.getTag() == ValueSumType::Int;
+}
+
+inline bool Bool::classof(Value V) {
+  return V.getTag() == ValueSumType::Bool;
+}
+
+inline bool Char::classof(Value V) {
+  return V.getTag() == ValueSumType::Char;
 }
 
 }
@@ -296,7 +350,7 @@ struct cast_convert_val<T, ::heavy::Value,
 
 template <>
 struct cast_convert_val<mlir::Operation, ::heavy::Value,
-                                      ::heavy::Value> {
+                                         ::heavy::Value> {
   static mlir::Operation* doit(::heavy::Value V) {
     return V.get<heavy::ValueSumType::Operation>();
   }
@@ -307,6 +361,22 @@ struct cast_convert_val<::heavy::Int, ::heavy::Value,
                                       ::heavy::Value> {
   static auto doit(::heavy::Value V) {
     return V.get<heavy::ValueSumType::Int>();
+  }
+};
+
+template <>
+struct cast_convert_val<::heavy::Char, ::heavy::Value,
+                                      ::heavy::Value> {
+  static auto doit(::heavy::Value V) {
+    return V.get<heavy::ValueSumType::Char>();
+  }
+};
+
+template <>
+struct cast_convert_val<::heavy::Bool, ::heavy::Value,
+                                       ::heavy::Value> {
+  static auto doit(::heavy::Value V) {
+    return V.get<heavy::ValueSumType::Bool>();
   }
 };
 
@@ -324,6 +394,22 @@ struct cast_convert_val<::heavy::Empty, ::heavy::Value,
     return ::heavy::Empty{};
   }
 };
+
+
+template <typename T>
+inline auto cast(::heavy::Value V) {
+  // gets around annoying const& situations
+  // that don't allow non-simplified types
+  return cast_convert_val<T, ::heavy::Value,
+                             ::heavy::Value>::doit(V);
+}
+
+template <typename T>
+inline T* dyn_cast(::heavy::Value V) {
+  // gets around annoying const& situations
+  // that don't allow non-simplified types
+  return isa<T>(V) ? cast<T>(V) : nullptr;
+}
 
 template <>
 struct DenseMapInfo<::heavy::Value>
@@ -456,20 +542,6 @@ public:
   }
 };
 
-class Boolean : public ValueBase {
-  bool Val;
-public:
-  Boolean(bool V)
-    : ValueBase(ValueKind::Boolean)
-    , Val(V)
-  { }
-
-  auto getVal() { return Val; }
-  static bool classof(Value V) {
-    return V.getKind() == ValueKind::Boolean;
-  }
-};
-
 // Base class for Numeric types (other than Int)
 class Float;
 // TODO Deprecate Number and break out the
@@ -558,22 +630,6 @@ inline bool Number::isExactZero(Value V) {
   }
   return cast<Int>(V) == 0;
 }
-
-// TODO maybe Char could fit in Value?
-class Char : public ValueBase {
-  uint32_t Val;
-
-public:
-  Char(char V)
-    : ValueBase(ValueKind::Char)
-    , Val(V)
-  { }
-
-  auto getVal() { return Val; }
-  static bool classof(Value V) {
-    return V.getKind() == ValueKind::Char;
-  }
-};
 
 class Symbol : public ValueBase,
                public ValueWithSource {
@@ -1058,7 +1114,7 @@ protected:
   VISIT_FN(Undefined)
   VISIT_FN(BigInt)
   VISIT_FN(Binding)
-  VISIT_FN(Boolean)
+  VISIT_FN(Bool)
   VISIT_FN(Builtin)
   VISIT_FN(BuiltinSyntax)
   VISIT_FN(Char)
@@ -1094,7 +1150,7 @@ public:
     case ValueKind::Undefined:      DISPATCH(Undefined);
     case ValueKind::BigInt:         DISPATCH(BigInt);
     case ValueKind::Binding:        DISPATCH(Binding);
-    case ValueKind::Boolean:        DISPATCH(Boolean);
+    case ValueKind::Bool:        DISPATCH(Bool);
     case ValueKind::Builtin:        DISPATCH(Builtin);
     case ValueKind::BuiltinSyntax:  DISPATCH(BuiltinSyntax);
     case ValueKind::Char:           DISPATCH(Char);
@@ -1133,7 +1189,7 @@ inline llvm::StringRef getKindName(heavy::ValueKind Kind) {
   GET_KIND_NAME_CASE(Undefined)
   GET_KIND_NAME_CASE(BigInt)
   GET_KIND_NAME_CASE(Binding)
-  GET_KIND_NAME_CASE(Boolean)
+  GET_KIND_NAME_CASE(Bool)
   GET_KIND_NAME_CASE(Builtin)
   GET_KIND_NAME_CASE(BuiltinSyntax)
   GET_KIND_NAME_CASE(Char)

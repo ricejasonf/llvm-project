@@ -25,7 +25,7 @@ namespace heavy {
 
 class OpEvalImpl {
   using BlockItrTy = mlir::Block::iterator;
-  using ValueMapTy = llvm::ScopedHashTable<mlir::Value, heavy::Value*>;
+  using ValueMapTy = llvm::ScopedHashTable<mlir::Value, heavy::Value>;
   using ValueMapScope = typename ValueMapTy::ScopeTy;
 
   heavy::Context& Context;
@@ -33,14 +33,14 @@ class OpEvalImpl {
   ValueMapTy ValueMap;
   std::stack<ValueMapScope> ValueMapScopes;
 
-  void setValue(mlir::Value M, heavy::Value* H) {
+  void setValue(mlir::Value M, heavy::Value H) {
     assert(M && "must be set to a valid value");
     assert(H && "must be set to a valid value");
     ValueMap.insert(M, H);
   }
 
-  heavy::Value* getBindingOrValue(mlir::Value M) {
-    heavy::Value* V = ValueMap.lookup(M);
+  heavy::Value getBindingOrValue(mlir::Value M) {
+    heavy::Value V = ValueMap.lookup(M);
     if (!V && (M.getDefiningOp<UndefinedOp>() ||
                M.getDefiningOp<SetOp>())) {
       return Context.CreateUndefined();
@@ -52,8 +52,8 @@ class OpEvalImpl {
     return V;
   }
 
-  heavy::Value* getValue(mlir::Value M) {
-    heavy::Value* V = getBindingOrValue(M);
+  heavy::Value getValue(mlir::Value M) {
+    heavy::Value V = getBindingOrValue(M);
     if (Binding* B = dyn_cast<Binding>(V)) {
       V = B->getValue();
     }
@@ -85,7 +85,7 @@ public:
   // Evaluate expressions inserted at the top level.
   // Subsequent calls resume from the last expression evaluated
   // to allow REPL like behaviour
-  heavy::Value* Run() {
+  heavy::Value Run() {
     mlir::ModuleOp TopLevel = Context.OpGen->getTopLevel();
     BlockItrTy End(TopLevel.getBody()->getTerminator());
 
@@ -110,7 +110,7 @@ public:
   }
 
 private:
-  heavy::StackFrame* push_frame(mlir::Operation* Op, llvm::ArrayRef<heavy::Value*> Args) {
+  heavy::StackFrame* push_frame(mlir::Operation* Op, llvm::ArrayRef<heavy::Value> Args) {
       // llvm::errs() << "push_frame: "; Op->dump();
     assert(Op && "stack frame op must be a valid op");
     ValueMapScopes.emplace(ValueMap);
@@ -138,7 +138,7 @@ private:
   }
 
   template <typename T>
-  BlockItrTy SetError(SourceLocation Loc, T Str, Value* V) {
+  BlockItrTy SetError(SourceLocation Loc, T Str, Value V) {
     Context.SetError(Loc, Str, V);
 
     // TODO unwinding stuff
@@ -150,12 +150,12 @@ private:
   }
 
 #if 0
-  heavy::Value* Visit(mlir::Value MVal) {
+  heavy::Value Visit(mlir::Value MVal) {
     if (MVal.isa<mlir::OpResult>()) {
       return Visit(MVal.getDefiningOp());
     } else {
       // BlockArgument
-      heavy::Value* V = getValue(MVal);
+      heavy::Value V = getValue(MVal);
       return V;
     }
   }
@@ -197,7 +197,7 @@ private:
   }
 
   BlockItrTy CallLambdaIr(heavy::ApplyOp ApplyOp, heavy::LambdaIr* L,
-                          llvm::ArrayRef<heavy::Value*> Args) {
+                          llvm::ArrayRef<heavy::Value> Args) {
     heavy::SourceLocation CallLoc = getSourceLocation(ApplyOp.getLoc());
     heavy::FuncOp F = L->getOp();
 
@@ -223,7 +223,7 @@ private:
   }
 
   void LoadArgResults(ApplyOp Op,
-                      llvm::SmallVectorImpl<heavy::Value*>& ArgResults) {
+                      llvm::SmallVectorImpl<heavy::Value>& ArgResults) {
     auto Args = Op.args();
     ArgResults.clear();
     ArgResults.resize(Args.size() + 1);
@@ -235,9 +235,9 @@ private:
 
   BlockItrTy Visit(ApplyOp Op) {
     heavy::SourceLocation CallLoc = getSourceLocation(Op.getLoc());
-    llvm::SmallVector<heavy::Value*, 8> ArgResults;
+    llvm::SmallVector<heavy::Value, 8> ArgResults;
     LoadArgResults(Op, ArgResults);
-    heavy::Value* Callee = ArgResults[0];
+    heavy::Value Callee = ArgResults[0];
 
     // Now that we have ArgResults, we can pop the call frame
     // before any tail call
@@ -246,7 +246,7 @@ private:
       pop_tail_calls();
     }
 
-    switch (Callee->getKind()) {
+    switch (Callee.getKind()) {
       case ValueKind::Lambda:
         llvm_unreachable("TODO");
         break;
@@ -255,10 +255,10 @@ private:
         return CallLambdaIr(Op, L, ArgResults);
       }
       case ValueKind::Builtin: {
-        llvm::ArrayRef<heavy::Value*> ArgResultsRef(ArgResults);
+        llvm::ArrayRef<heavy::Value> ArgResultsRef(ArgResults);
         Builtin* B = cast<Builtin>(Callee);
 
-        heavy::Value* Result = B->Fn(Context,
+        heavy::Value Result = B->Fn(Context,
                                      ArgResultsRef.drop_front());
         if (isa<Error>(Result)) return BlockItrTy();
         setValue(Op.result(), Result);
@@ -267,7 +267,7 @@ private:
       default: {
         String* Msg = Context.CreateString(
           "invalid operator for call expression: ",
-          Callee->getKindName()
+          getKindName(Callee.getKind())
         );
         return SetError(CallLoc, Msg, Callee);
       }
@@ -276,14 +276,14 @@ private:
 
   BlockItrTy Visit(BindingOp Op) {
     // create a Binding
-    heavy::Value* V = getValue(Op.input());
+    heavy::Value V = getValue(Op.input());
     heavy::Binding* B = Context.CreateBinding(V);
     setValue(Op.result(), B);
     return next(Op);
   }
 
   BlockItrTy Visit(BuiltinOp Op) {
-    heavy::Value* V = Op.builtinFn(); 
+    heavy::Value V = Op.builtinFn(); 
     setValue(Op.result(), V);
     return next(Op);
   }
@@ -293,7 +293,7 @@ private:
     // Get the op after the one in the current frame
     // and then pop the frame
     auto ContArgs = Op.args();
-    llvm::SmallVector<heavy::Value*, 1> ContValues(ContArgs.size(),
+    llvm::SmallVector<heavy::Value, 1> ContValues(ContArgs.size(),
                                                    nullptr);
     for (unsigned i = 0; i < ContArgs.size(); ++i) {
       ContValues[i] = getValue(ContArgs[i]); 
@@ -321,9 +321,9 @@ private:
   }
 
   BlockItrTy Visit(IfOp Op) {
-    auto* Input = dyn_cast<heavy::Boolean>(getValue(Op.input()));
+    Value Input = getValue(Op.input());
     // only explicit boolean false is considered false
-    bool CondResult = !Input || Input->getVal();
+    bool CondResult = !isa<Bool>(Input) || !cast<Bool>(Input);
     push_frame(Op, llvm::None);
     return CondResult ? Op.thenRegion().front().begin() :
                         Op.elseRegion().front().begin();
@@ -334,19 +334,19 @@ private:
     // but here we just assume the FuncOp precedes the LambdaOp
     // since they are always generated that way in OpGen
     FuncOp F = cast<FuncOp>(Op.getOperation()->getPrevNode());
-    llvm::SmallVector<heavy::Value*, 8> Captures;
+    llvm::SmallVector<heavy::Value, 8> Captures;
     for (mlir::Value Val : Op.captures()) {
       Captures.push_back(getBindingOrValue(Val));
     }
       
-    heavy::Value* V = Context.CreateLambdaIr(F, Captures);
+    heavy::Value V = Context.CreateLambdaIr(F, Captures);
     setValue(Op.result(), V);
     return next(Op);
   }
 
   BlockItrTy Visit(LiteralOp Op) {
     // Map the IR value node to the run-time value
-    heavy::Value* V = Op.input(); 
+    heavy::Value V = Op.input(); 
     setValue(Op.result(), V);
     return next(Op);
   }
@@ -355,8 +355,8 @@ private:
     // get the Lambda object and get its
     // closure value and set it to the value
     uint32_t Index = Op.index().getZExtValue();
-    heavy::Value* Closure = getValue(Op.closure());
-    heavy::Value* V = nullptr;
+    heavy::Value Closure = getValue(Op.closure());
+    heavy::Value V = nullptr;
     if (auto* C = dyn_cast<LambdaIr>(Closure)) {
       V = C->getCaptures()[Index];
     }
@@ -376,7 +376,7 @@ private:
 
   BlockItrTy Visit(SetOp Op) {
     heavy::Binding* B = cast<heavy::Binding>(getBindingOrValue(Op.binding()));
-    heavy::Value* RHS = getValue(Op.input());
+    heavy::Value RHS = getValue(Op.input());
     B->setValue(RHS);
     return next(Op);
   }
@@ -422,7 +422,7 @@ private:
 #endif
 };
 
-heavy::Value* opEval(OpEval& E) {
+heavy::Value opEval(OpEval& E) {
   return E.Impl->Run();
 }
 
