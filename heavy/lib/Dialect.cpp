@@ -35,7 +35,7 @@ void Dialect::printAttribute(
                         mlir::Attribute Attr,
                         mlir::DialectAsmPrinter& P) const {
   // All attributes are HeavyValueAttr
-  heavy::Value* V = Attr.cast<HeavyValueAttr>().getValue();
+  heavy::Value V = Attr.cast<HeavyValueAttr>().getValue();
   heavy::write(P.getStream(), V);
 }
 void Dialect::printType(mlir::Type Type,
@@ -44,7 +44,7 @@ void Dialect::printType(mlir::Type Type,
   P.getStream() << "HeavyValue";
 }
 
-heavy::Value* HeavyValueAttr::getValue() const {
+heavy::Value HeavyValueAttr::getValue() const {
   return getImpl()->Val;
 }
 
@@ -84,8 +84,8 @@ void LambdaOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
 }
 
 void LiteralOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
-                      heavy::Value* V) {
-  // create a HeavyValueAttr from heavy::Value*
+                      heavy::Value V) {
+  // create a HeavyValueAttr from heavy::Value
   LiteralOp::build(B, OpState, B.getType<HeavyValue>(),
                    HeavyValueAttr::get(B.getContext(), V));
 }
