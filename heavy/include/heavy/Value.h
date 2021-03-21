@@ -219,7 +219,7 @@ struct ValueSumType {
 
 using ValuePtrBase = typename ValueSumType::type;
 
-class Value : public ValuePtrBase {
+class Value : ValuePtrBase {
 public:
   Value() = default;
   Value(ValueBase* V)
@@ -232,27 +232,65 @@ public:
 
   Value(Undefined)
     : ValuePtrBase(create<ValueSumType::Undefined>({}))
-  { }
+  { 
+    assert(*this);
+  }
 
   Value(Empty)
-    : ValuePtrBase(create<ValueSumType::Undefined>({}))
-  { }
+    : ValuePtrBase(create<ValueSumType::Empty>({}))
+  { 
+    assert(*this);
+  }
 
   Value(Int I)
     : ValuePtrBase(create<ValueSumType::Int>(I))
-  { }
+  { 
+    assert(*this);
+  }
 
   Value(Bool B)
     : ValuePtrBase(create<ValueSumType::Bool>(B))
-  { }
+  { 
+    assert(*this);
+  }
 
   Value(Char C)
     : ValuePtrBase(create<ValueSumType::Char>(C))
-  { }
+  { 
+    assert(*this);
+  }
 
   Value(mlir::Operation* Op)
     : ValuePtrBase(create<ValueSumType::Operation>(Op))
   { }
+
+  using ValuePtrBase::getTag;
+  using ValuePtrBase::is;
+  using ValuePtrBase::get;
+  using ValuePtrBase::getOpaqueValue;
+
+  bool operator==(Value V) const {
+    return getOpaqueValue() == V.getOpaqueValue();
+  }
+  bool operator!=(Value V) const {
+    return getOpaqueValue() != V.getOpaqueValue();
+  }
+
+
+  // We want this to behave like a pointer so that embedded
+  // values are considered true.
+  explicit operator bool() const {
+    switch (getTag()) {
+      case ValueSumType::Int:
+      case ValueSumType::Bool:
+      case ValueSumType::Char:
+      case ValueSumType::Empty:
+      case ValueSumType::Undefined:
+        return true;
+      default:
+        return ValuePtrBase::operator bool();
+    }
+  }
 
   ValueKind getKind() const {
     switch (getTag()) {
@@ -426,7 +464,16 @@ template <>
 struct DenseMapInfo<::heavy::Value>
   : DenseMapInfo<::heavy::ValuePtrBase> {
   // Makes heavy value behave the same as PointerSumType
+  static unsigned getHashValue(::heavy::Value Arg) {
+    uintptr_t OpaqueValue = Arg.getOpaqueValue();
+    return DenseMapInfo<uintptr_t>::getHashValue(OpaqueValue);
+  }
+
+  static bool isEqual(::heavy::Value LHS, ::heavy::Value RHS) {
+    return LHS == RHS;
+  }
 };
+
 }
 
 namespace heavy {
