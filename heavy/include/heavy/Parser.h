@@ -32,20 +32,8 @@ public:
 
   Value get() { return V; }
 
-  // Unset means that parsing of the buffer is complete
-  // This happens at EOF or the end of an embedded snippet
-  // (ie heavy_scheme { ... })
-  //                        ^
-  bool isUnset() const {
-    return !V;
-  }
-
-  bool isUsable() const {
+  bool isUsable() {
     return V && V.getKind() != ValueKind::Undefined;
-  }
-
-  bool isInvalid() const {
-    return V && !isUsable();
   }
 };
 
