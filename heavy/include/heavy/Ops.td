@@ -100,6 +100,20 @@ def heavy_BuiltinOp : HeavyOp<"builtin"> {
   ];
 }
 
+def heavy_ConsOp : HeavyOp<"cons"> {
+  let summary = "cons";
+  let description = [{
+    ConsOp constructs a pair from two values. That's it.
+  }];
+
+  let arguments = (ins HeavyValue:$a, HeavyValue:$b);
+  let results   = (outs HeavyValue:$result);
+  let builders = [
+    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, "
+              "::mlir::Value A, ::mlir::Value B">
+  ];
+}
+
 def heavy_ContOp : HeavyOp<"cont", [ReturnLike, Terminator]> {
   let summary = "cont";
   let description = [{
@@ -219,8 +233,24 @@ def heavy_SetOp : HeavyOp<"set"> {
   let arguments = (ins HeavyValue:$binding, HeavyValue:$input);
   let results   = (outs HeavyValue:$result);
   let builders = [
-    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&,"
+    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, "
               "::mlir::Value binding, ::mlir::Value input">
+  ];
+}
+
+def heavy_SpliceOp : HeavyOp<"splice"> {
+  let summary = "splice";
+  let description = [{
+    SpliceOp splices two lists or vectors. The result type
+    should be the same as second operand.
+    TODO Vectors and types are not supported yet.
+  }];
+
+  let arguments = (ins HeavyValue:$a, HeavyValue:$b);
+  let results   = (outs HeavyValue:$result);
+  let builders = [
+    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, "
+              "::mlir::Value A, ::mlir::Value B">
   ];
 }
 

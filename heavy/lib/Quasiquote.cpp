@@ -37,12 +37,10 @@ heavy::Value GetSingleSyntaxArg(heavy::Pair* P) {
 
 namespace heavy {
 
-#if 0 // TODO use the new heavy::Value to allow mixing Operations
-         with AST in results
-class Quasiquoter : private ValueVisitor<Quasiquoter, mlir::Value> {
+class Quasiquoter : private ValueVisitor<Quasiquoter, heavy::Value> {
   friend class ValueVisitor<Quasiquoter, Value>;
   heavy::OpGen& OpGen;
-  // Values captured for hygiene purposes
+
 public:
 
   Quasiquoter(heavy::OpGen& OG)
@@ -50,7 +48,7 @@ public:
   { }
 
   // <quasiquotation>
-  mlir::Value Run(Pair* P) {
+  heavy::Value Run(Pair* P) {
     bool Rebuilt = false;
     // <quasiquotation 1>
     return HandleQuasiquote(P, Rebuilt, /*Depth=*/1);
@@ -58,68 +56,85 @@ public:
 
 private:
 
-  mlir::Value createLiteral(Value V) {
-    return OpGen.create<LiteralOp>(V->getSourceLocation(), V);
+  heavy::Value setError(llvm::StringRef S, heavy::Value V) {
+    return OpGen.getContext().SetError(S, V);
   }
 
-  mlir::Value createSplice(mlir::Value X, mlir::Value Y) {
-    llvm_unreachable("TODO");
+  heavy::LiteralOp createLiteralOp(Value V) {
+    return OpGen.create<LiteralOp>(V.getSourceLocation(), V);
   }
 
-  mlir::Value VisitValue(Value V, bool& Rebuilt, int Depth) {
-    return OpGen.Visit(V);
+  heavy::Value createLiteral(Value V) {
+    // OpGen does not support a LiteralOp of () at the end of
+    // a list when it looks at syntax/call expressions. It is
+    // extraneous to make an operation wrapper for it anyways.
+    if (isa<Empty>(V)) return V;
+    return createLiteralOp(V).getOperation();
+  }
+
+  mlir::Operation* createSplice(heavy::Value X, heavy::Value Y) {
+    mlir::Operation* OpX = dyn_cast<Operation>(X);
+    mlir::Operation* OpY = dyn_cast<Operation>(Y);
+    if (!OpX) OpX = createLiteralOp(X);
+    if (!OpY) OpY = createLiteralOp(Y);
+    llvm_unreachable("TODO Implement SpliceOp");
+    //return OpGen.create<SpliceOp>(OpX, OpY);
+  }
+
+  heavy::Value VisitValue(Value V, bool& Rebuilt, int Depth) {
+    return V;
   }
 
   // <qq template D>
-  mlir::Value HandleQQTemplate(Value V, bool& Rebuilt, int Depth) {
+  heavy::Value HandleQQTemplate(Value V, bool& Rebuilt, int Depth) {
     assert(Depth >= 0 && "Depth should not be negative");
     if (Depth < 1) {
       // Unquoting requires parents to be rebuilt
       Rebuilt = true;
-      return OpGen.Visit(V);
+      return V;
     }
     return Visit(V, Rebuilt, Depth);
   }
 
   // <quasiquotation D>
-  mlir::Value HandleQuasiquote(Pair* P, bool& Rebuilt, int Depth) {
+  heavy::Value HandleQuasiquote(Pair* P, bool& Rebuilt, int Depth) {
     Value Input = GetSingleSyntaxArg(P);
-    if (!Input) return OpGen.SetError("invalid quasiquote syntax", P);
-    mlir::Value  Result = Visit(Input, Rebuilt, Depth);
+    if (!Input) return setError("invalid quasiquote syntax", P);
+    heavy::Value Result = Visit(Input, Rebuilt, Depth);
     if (!Rebuilt) return createLiteral(Input);
     return Result;
   }
 
   // <unquotation D>
-  mlir::Value HandleUnquote(Pair* P, bool& Rebuilt, int Depth) {
+  heavy::Value HandleUnquote(Pair* P, bool& Rebuilt, int Depth) {
     Value Input = GetSingleSyntaxArg(P);
-    if (!Input) return OpGen.SetError("invalid unquote syntax", P);
+    if (!Input) return setError("invalid unquote syntax", P);
 
-    mlir::Value Result = HandleQQTemplate(Input, Rebuilt, Depth - 1);
-    if (!Rebuilt) return OpGen.Visit(P);
+    heavy::Value Result = HandleQQTemplate(Input, Rebuilt, Depth - 1);
+    if (!Rebuilt) return P;
     return Result;
   }
 
-  mlir::Value HandleUnquoteSplicing(Pair* P, Value Next, bool& Rebuilt,
+  heavy::Value HandleUnquoteSplicing(Pair* P, Value Next, bool& Rebuilt,
                                     int Depth) {
     Value Input = GetSingleSyntaxArg(P);
-    if (!Input) return OpGen.SetError("invalid unquote-splicing syntax", P);
-    mlir::Value Result = HandleQQTemplate(Input, Rebuilt, Depth - 1);
-    if (!Rebuilt) return OpGen.Visit(P);
+    if (!Input) return setError("invalid unquote-splicing syntax", P);
+    heavy::Value Result = HandleQQTemplate(Input, Rebuilt, Depth - 1);
+    if (!Rebuilt) return P;
 
-    return createSplice(Result, OpGen.Visit(Next));
+    return createSplice(Result, Visit(Next, Rebuilt, Depth));
   }
 
-  mlir::Value VisitPair(Pair* P, bool& Rebuilt, int Depth) {
+  heavy::Value VisitPair(Pair* P, bool& Rebuilt, int Depth) {
     assert(Depth > 0 && "Depth cannot be zero here.");
     heavy::Context& Context = OpGen.getContext();
-    if (Context.CheckError()) return OpGen.createUndefined();
-    if (P->Car->isSymbol("quasiquote")) {
+    if (Context.CheckError()) return Undefined{};
+    if (isSymbol(P->Car, "quasiquote")) {
       return HandleQuasiquote(P, Rebuilt, Depth + 1);
-    } else if (P->Car->isSymbol("unquote")) {
+    } else if (isSymbol(P->Car, "unquote")) {
       return HandleUnquote(P, Rebuilt, Depth);
     } else if (isa<Pair>(P->Car) &&
-               cast<Pair>(P->Car)->Car->isSymbol("unquote-splicing")) {
+               isSymbol(cast<Pair>(P->Car)->Car, "unquote-splicing")) {
       Pair* P2 = cast<Pair>(P->Car);
       return HandleUnquoteSplicing(P2, P->Cdr, Rebuilt, Depth);
     } else {
@@ -127,34 +142,46 @@ private:
       // <list qq template D>
       bool CarRebuilt = false;
       bool CdrRebuilt = false;
-      mlir::Value Car = Visit(P->Car, CarRebuilt, Depth);
-      mlir::Value Cdr = Visit(P->Cdr, CdrRebuilt, Depth);
+      heavy::Value Car = Visit(P->Car, CarRebuilt, Depth);
+      heavy::Value Cdr = Visit(P->Cdr, CdrRebuilt, Depth);
+
+      Rebuilt = CarRebuilt || CdrRebuilt;
+      if (!Rebuilt) return P;
+
+      mlir::Value CarVal;
+      mlir::Value CdrVal;
+
       // Portions that are not rebuilt are always literal
       // '<qq template D>
-      //if (!CarRebuilt && CdrRebuilt) Car = createLiteral(Car);
-      //if (!CdrRebuilt && CarRebuilt) Cdr = createLiteral(Cdr);
-      if (!CarRebuilt && CdrRebuilt) 
-        assert(isa<LiteralOp>(Car) && "portions that are not rebuilt are always literal");
-      if (!CdrRebuilt && CarRebuilt) 
-        assert(isa<LiteralOp>(Cdr) && "portions that are not rebuilt are always literal");
-      Rebuilt = CarRebuilt || CdrRebuilt;
-      if (!Rebuilt) return OpGen.Visit(P);
+      if (!CarRebuilt && CdrRebuilt) {
+        CarVal = createLiteralOp(Car);
+        CdrVal = OpGen.Visit(Cdr);
+      } else if (!CdrRebuilt && CarRebuilt) {
+        CarVal = OpGen.Visit(Car);
+        CdrVal = createLiteralOp(Cdr);
+      } else {
+        CarVal = OpGen.Visit(Car);
+        CdrVal = OpGen.Visit(Cdr);
+      }
+
       SourceLocation Loc = P->getSourceLocation();
-      return OpGen.Visit(Context.CreatePairWithSource(Car, Cdr, Loc);
+      return OpGen.create<ConsOp>(Loc, CarVal, CdrVal)
+        .getOperation();
     }
   }
 
   // TODO VisitVector
 };
-#endif
 
 }
+
 namespace heavy { namespace builtin_syntax {
 
 mlir::Value quasiquote(OpGen& OG, Pair* P) {
-  return mlir::Value();
-  //Quasiquoter QQ(OG);
-  //return QQ.Run(P);
+  Quasiquoter QQ(OG);
+  // The result is a hybrid of AST/Ops
+  heavy::Value Result = QQ.Run(P);
+  return OG.Visit(Result);
 }
 
 mlir::Value quote(OpGen& OG, Pair* P) {
