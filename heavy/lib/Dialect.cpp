@@ -69,6 +69,13 @@ void BuiltinOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
       HeavyValueAttr::get(B.getContext(), Builtin));
 }
 
+void ConsOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                   mlir::Value X, mlir::Value Y) {
+  mlir::Type HeavyValueTy = B.getType<HeavyValue>();
+  // TODO return type should be Pair
+  ConsOp::build(B, OpState, HeavyValueTy, X, Y);
+}
+
 void IfOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                  mlir::Value Input) {
   IfOp::build(B, OpState, B.getType<HeavyValue>(), Input);
@@ -107,6 +114,13 @@ void SetOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                      mlir::Value Binding, mlir::Value Input) {
   SetOp::build(B, OpState, B.getType<HeavyValue>(), Binding, Input);
 }
+
+void SpliceOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                   mlir::Value X, mlir::Value Y) {
+  mlir::Type HeavyValueTy = B.getType<HeavyValue>();
+  SpliceOp::build(B, OpState, HeavyValueTy, X, Y);
+}
+
 
 void UndefinedOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState) {
   UndefinedOp::build(B, OpState, B.getType<HeavyValue>());
