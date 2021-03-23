@@ -171,6 +171,7 @@ private:
     else if (isa<LoadGlobalOp>(Op))   return Visit(cast<LoadGlobalOp>(Op));
     else if (isa<LambdaOp>(Op))       return Visit(cast<LambdaOp>(Op));
     else if (isa<IfOp>(Op))           return Visit(cast<IfOp>(Op));
+    else if (isa<ConsOp>(Op))         return Visit(cast<ConsOp>(Op));
     else if (isa<SetOp>(Op))          return Visit(cast<SetOp>(Op));
     else if (isa<FuncOp>(Op))         return next(Op); // skip functions
     else if (UndefinedOp UndefOp = dyn_cast<UndefinedOp>(Op))  {
@@ -288,6 +289,14 @@ private:
     return next(Op);
   }
 
+  BlockItrTy Visit(ConsOp Op) {
+    heavy::Value A = getValue(Op.a());
+    heavy::Value B = getValue(Op.b());
+    heavy::Pair* V = Context.CreatePair(A, B);
+    setValue(Op.result(), V);
+    return next(Op);
+  }
+
   BlockItrTy Visit(ContOp Op) {
     // This is the end of the road for the current block.
     // Get the op after the one in the current frame
@@ -381,45 +390,9 @@ private:
     return next(Op);
   }
 
-#if 0 // hopefully won't need this GetTail stuff anymore
-  mlir::Operation* GetTail(mlir::Block& Body) {
-    assert(!Body.empty() && "body must have at least one operation");
-    auto TailItr = --Body.end();
-    // For cases where the ContOp takes a single result
-    // (that isn't one of bindings)
-    // return that Operation as the tail
-    ContOp C = dyn_cast<ContOp>(&*TailItr);
-    if (!C || C.args().size() > 1) return &*TailItr;
-
-    mlir::Operation* D = C.args().front().getDefiningOp();
-    return isa<BindingOp>(D) ? C : D;
+  BlockItrTy Visit(SpliceOp Op) {
+    llvm_unreachable("TODO SpliceOp");
   }
-
-  mlir::Operation* VisitBodyUntilTail(mlir::Block& Body) {
-    assert(!Body.empty() && "body must have at least one operation");
-    mlir::Operation* Tail = GetTail(Body);
-    auto TailItr = mlir::Block::iterator(*Tail);
-    for (auto itr = Body.begin(); itr != TailItr; ++itr) {
-      Visit(&*itr);
-    }
-    return VisitUntilTail(Tail);
-  }
-
-  mlir::Operation* VisitUntilTail(mlir::Operation* Op) {
-    // TODO operations like IfOp may contain tail calls
-    return Op;
-  }
-#endif
-
-#if 0
-  // TODO 
-  // Visit operations having tail positions within them
-  // IfOp, CondOp, SequenceOp
-        
-  mlir::Operation* VisitUntilTail(IfOp Op) {
-    // TODO
-  }
-#endif
 };
 
 heavy::Value opEval(OpEval& E) {
