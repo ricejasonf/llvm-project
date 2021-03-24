@@ -49,9 +49,11 @@ public:
 
   // <quasiquotation>
   heavy::Value Run(Pair* P) {
+    Value Input = GetSingleSyntaxArg(P);
+    if (!Input) return setError("invalid quasiquote syntax", P);
     bool Rebuilt = false;
     // <quasiquotation 1>
-    return HandleQuasiquote(P, Rebuilt, /*Depth=*/1);
+    return Visit(Input, Rebuilt, /*Depth=*/1);
   }
 
 private:
@@ -70,6 +72,13 @@ private:
     // extraneous to make an operation wrapper for it anyways.
     if (isa<Empty>(V)) return V;
     return createLiteralOp(V).getOperation();
+  }
+
+  mlir::Operation* createList(SourceLocation Loc, mlir::Value X,
+                              mlir::Value Y) {
+    mlir::Value Empty = createLiteralOp(heavy::Empty{});
+    return OpGen.create<ConsOp>(Loc, X,
+        OpGen.create<ConsOp>(Loc, Y, Empty));
   }
 
   mlir::Operation* createSplice(heavy::Value X, heavy::Value Y) {
@@ -98,11 +107,15 @@ private:
 
   // <quasiquotation D>
   heavy::Value HandleQuasiquote(Pair* P, bool& Rebuilt, int Depth) {
+    assert(Depth > 1 && "should be nested depth here");
     Value Input = GetSingleSyntaxArg(P);
     if (!Input) return setError("invalid quasiquote syntax", P);
     heavy::Value Result = Visit(Input, Rebuilt, Depth);
-    if (!Rebuilt) return createLiteral(Input);
-    return Result;
+    if (!Rebuilt) return P;
+    mlir::Operation* Op = dyn_cast<Operation>(Result);
+    if (!Op) Op = createLiteralOp(Result);
+    auto Loc = P->getSourceLocation();
+    return createList(Loc, createLiteralOp(P->Car), Op->getResult(0));
   }
 
   // <unquotation D>
@@ -112,7 +125,12 @@ private:
 
     heavy::Value Result = HandleQQTemplate(Input, Rebuilt, Depth - 1);
     if (!Rebuilt) return P;
-    return Result;
+
+    // TODO I think we need to (cons x, (cons y, ())
+    if (Depth == 1) return Result;
+    return createList(P->getSourceLocation(),
+                      createLiteralOp(P->Car),
+                      OpGen.Visit(Result));
   }
 
   heavy::Value HandleUnquoteSplicing(Pair* P, Value Next, bool& Rebuilt,
@@ -121,8 +139,12 @@ private:
     if (!Input) return setError("invalid unquote-splicing syntax", P);
     heavy::Value Result = HandleQQTemplate(Input, Rebuilt, Depth - 1);
     if (!Rebuilt) return P;
-
-    return createSplice(Result, Visit(Next, Rebuilt, Depth));
+    
+    heavy::Value NextResult = Visit(Next, Rebuilt, Depth);
+    mlir::Operation *Spliced = createSplice(Result, NextResult);
+    if (Depth == 1) return Spliced;
+    auto Loc = P->getSourceLocation();
+    return createList(Loc, createLiteralOp(P->Car), Spliced->getResult(0));
   }
 
   heavy::Value VisitPair(Pair* P, bool& Rebuilt, int Depth) {
