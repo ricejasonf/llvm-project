@@ -317,6 +317,14 @@ public:
            getKind() == ValueKind::Float;
   }
 
+  bool isTrue() {
+    // returns true for everything except
+    // explicit #f (per r7rS)
+    if (is<ValueSumType::Bool>())
+     return get<ValueSumType::Bool>();
+    return true;
+  }
+
   SourceLocation getSourceLocation() {
     if (is<ValueSumType::ValueBase>()) {
       return get<ValueSumType::ValueBase>()
