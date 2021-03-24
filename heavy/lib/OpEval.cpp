@@ -331,11 +331,9 @@ private:
 
   BlockItrTy Visit(IfOp Op) {
     Value Input = getValue(Op.input());
-    // only explicit boolean false is considered false
-    bool CondResult = !isa<Bool>(Input) || !cast<Bool>(Input);
     push_frame(Op, llvm::None);
-    return CondResult ? Op.thenRegion().front().begin() :
-                        Op.elseRegion().front().begin();
+    return Input.isTrue() ? Op.thenRegion().front().begin() :
+                            Op.elseRegion().front().begin();
   }
 
   BlockItrTy Visit(LambdaOp Op) {
