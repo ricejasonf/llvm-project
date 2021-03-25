@@ -248,7 +248,7 @@ private:
 
     // Now that we have ArgResults, we can pop the call frame
     // before any tail call
-    // (we want keep the original call that is not in tail position)
+    // (keep the original call that is not in tail position)
     if (Op.isTailPos()) {
       pop_tail_calls();
     }
@@ -305,39 +305,47 @@ private:
 
   BlockItrTy Visit(ContOp Op) {
     // This is the end of the road for the current block.
-    // Get the op after the one in the current frame
-    // and then pop the frame
+    // For functions the continuation is dynamic and we
+    // must use the current stack frame to find the next
+    // operation. For all others the continuation is fixed.
     auto ContArgs = Op.args();
     llvm::SmallVector<heavy::Value, 1> ContValues(ContArgs.size(),
-                                                   nullptr);
+                                                  nullptr);
     for (unsigned i = 0; i < ContArgs.size(); ++i) {
       ContValues[i] = getValue(ContArgs[i]); 
     }
 
+    mlir::Operation* Parent = Op.getParentOp();
     mlir::Operation* Caller = getCurrentFrame().getOp();
     assert(Caller && "heavy.cont op must return to a valid stack frame");
+
+    if (Parent != Caller) {
+      // The continuation is on the stack frame
+      // If this isn't receiving a tail call
+      // then pop the frame (for tail calls this was done earlier)
+      ApplyOp AppOp = ContArgs[0].getDefiningOp<ApplyOp>();
+      if (!AppOp || AppOp.isTailPos()) {
+        pop_frame();
+      }
+    } else {
+      Caller = Parent;
+    }
+
     auto Results = Caller->getResults();
     assert((Results.empty() ||
            Results.size() == ContArgs.size()) &&
         "continuation arity must match");
-
-    // if this isn't receiving a tail call
-    // then pop the frame
-    ApplyOp AppOp = ContArgs[0].getDefiningOp<ApplyOp>();
-    if (!AppOp || AppOp.isTailPos()) {
-      pop_frame();
-    }
 
     for (unsigned i = 0; i < Results.size(); ++i) {
       setValue(Results[i], ContValues[i]); 
     }
 
     return next(Caller);
+
   }
 
   BlockItrTy Visit(IfOp Op) {
     Value Input = getValue(Op.input());
-    if (!push_frame(Op, llvm::None)) return BlockItrTy();
     return Input.isTrue() ? Op.thenRegion().front().begin() :
                             Op.elseRegion().front().begin();
   }
