@@ -82,6 +82,12 @@ public:
     ValueMapScopes.emplace(ValueMap);
   }
 
+  ~OpEvalImpl() {
+    // pop the scopes in order
+    while (!ValueMapScopes.empty())
+      ValueMapScopes.pop();
+  }
+
   // Evaluate expressions inserted at the top level.
   // Subsequent calls resume from the last expression evaluated
   // to allow REPL like behaviour
@@ -331,7 +337,7 @@ private:
 
   BlockItrTy Visit(IfOp Op) {
     Value Input = getValue(Op.input());
-    push_frame(Op, llvm::None);
+    if (!push_frame(Op, llvm::None)) return BlockItrTy();
     return Input.isTrue() ? Op.thenRegion().front().begin() :
                             Op.elseRegion().front().begin();
   }

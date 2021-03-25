@@ -152,7 +152,7 @@ public:
 
     char* CurPtr = reinterpret_cast<char*>(Top);
     char* NewPtr = CurPtr - ByteLen;
-    if (CurPtr <= NewPtr) {
+    if (NewPtr < &Storage.front()) {
       EmitStackSpaceError();
       return nullptr;
     }
