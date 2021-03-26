@@ -15,9 +15,6 @@
 #include "heavy/OpGen.h"
 #include "llvm/Support/Casting.h"
 
-// TODO maybe represent heavy::Value like this:
-//      https://godbolt.org/z/d6GsaY
-
 namespace {
 // GetSingleSyntaxArg
 //              - Given a macro expression (keyword datum)
@@ -48,12 +45,15 @@ public:
   { }
 
   // <quasiquotation>
-  heavy::Value Run(Pair* P) {
-    Value Input = GetSingleSyntaxArg(P);
-    if (!Input) return setError("invalid quasiquote syntax", P);
+  mlir::Value Run(heavy::Value Input) {
     bool Rebuilt = false;
     // <quasiquotation 1>
-    return Visit(Input, Rebuilt, /*Depth=*/1);
+    heavy::Value Result = Visit(Input, Rebuilt, /*Depth=*/1);
+
+    if (mlir::Operation* Op = dyn_cast<Operation>(Result)) {
+      return Op->getResult(0);
+    }
+    return createLiteralOp(Result);
   }
 
 private:
@@ -81,13 +81,14 @@ private:
         OpGen.create<ConsOp>(Loc, Y, Empty));
   }
 
-  mlir::Operation* createSplice(heavy::Value X, heavy::Value Y) {
+  mlir::Operation* createSplice(SourceLocation Loc, heavy::Value X,
+                                heavy::Value Y) {
     mlir::Operation* OpX = dyn_cast<Operation>(X);
     mlir::Operation* OpY = dyn_cast<Operation>(Y);
     if (!OpX) OpX = createLiteralOp(X);
     if (!OpY) OpY = createLiteralOp(Y);
-    llvm_unreachable("TODO Implement SpliceOp");
-    //return OpGen.create<SpliceOp>(OpX, OpY);
+    return OpGen.create<SpliceOp>(Loc, OpX->getResult(0),
+                                       OpY->getResult(0));
   }
 
   heavy::Value VisitValue(Value V, bool& Rebuilt, int Depth) {
@@ -100,7 +101,8 @@ private:
     if (Depth < 1) {
       // Unquoting requires parents to be rebuilt
       Rebuilt = true;
-      return V;
+      // Note that OpGen.Visit is idempotent for operations
+      return OpGen.Visit(V).getDefiningOp();
     }
     return Visit(V, Rebuilt, Depth);
   }
@@ -126,7 +128,6 @@ private:
     heavy::Value Result = HandleQQTemplate(Input, Rebuilt, Depth - 1);
     if (!Rebuilt) return P;
 
-    // TODO I think we need to (cons x, (cons y, ())
     if (Depth == 1) return Result;
     return createList(P->getSourceLocation(),
                       createLiteralOp(P->Car),
@@ -140,10 +141,11 @@ private:
     heavy::Value Result = HandleQQTemplate(Input, Rebuilt, Depth - 1);
     if (!Rebuilt) return P;
     
-    heavy::Value NextResult = Visit(Next, Rebuilt, Depth);
-    mlir::Operation *Spliced = createSplice(Result, NextResult);
-    if (Depth == 1) return Spliced;
     auto Loc = P->getSourceLocation();
+    bool NextRebuilt = false;
+    heavy::Value NextResult = Visit(Next, NextRebuilt, Depth);
+    mlir::Operation *Spliced = createSplice(Loc, Result, NextResult);
+    if (Depth == 1) return Spliced;
     return createList(Loc, createLiteralOp(P->Car), Spliced->getResult(0));
   }
 
@@ -200,10 +202,11 @@ private:
 namespace heavy { namespace builtin_syntax {
 
 mlir::Value quasiquote(OpGen& OG, Pair* P) {
+  Value Input = GetSingleSyntaxArg(P);
+  if (!Input) OG.SetError("invalid quasiquote syntax", P);
   Quasiquoter QQ(OG);
   // The result is a hybrid of AST/Ops
-  heavy::Value Result = QQ.Run(P);
-  return OG.Visit(Result);
+  return QQ.Run(Input);
 }
 
 mlir::Value quote(OpGen& OG, Pair* P) {
