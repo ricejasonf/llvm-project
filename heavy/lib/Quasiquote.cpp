@@ -74,11 +74,26 @@ private:
     return createLiteralOp(V).getOperation();
   }
 
-  mlir::Operation* createList(SourceLocation Loc, mlir::Value X,
-                              mlir::Value Y) {
+  mlir::Operation* createList(SourceLocation Loc, heavy::Value X,
+                              heavy::Value Y) {
+    mlir::Operation* OpX = dyn_cast<Operation>(X);
+    mlir::Operation* OpY = dyn_cast<Operation>(Y);
+    if (!OpX) OpX = createLiteralOp(X);
+    if (!OpY) OpY = createLiteralOp(Y);
+
     mlir::Value Empty = createLiteralOp(heavy::Empty{});
-    return OpGen.create<ConsOp>(Loc, X,
-        OpGen.create<ConsOp>(Loc, Y, Empty));
+    return OpGen.create<ConsOp>(Loc, OpX->getResult(0),
+        OpGen.create<ConsOp>(Loc, OpY->getResult(0), Empty));
+  }
+
+  mlir::Operation* createCons(SourceLocation Loc, heavy::Value X,
+                                                  heavy::Value Y) {
+    mlir::Operation* OpX = dyn_cast<Operation>(X);
+    mlir::Operation* OpY = dyn_cast<Operation>(Y);
+    if (!OpX) OpX = createLiteralOp(X);
+    if (!OpY) OpY = createLiteralOp(Y);
+    return OpGen.create<ConsOp>(Loc, OpX->getResult(0),
+                                     OpY->getResult(0));
   }
 
   mlir::Operation* createSplice(SourceLocation Loc, heavy::Value X,
@@ -117,7 +132,7 @@ private:
     mlir::Operation* Op = dyn_cast<Operation>(Result);
     if (!Op) Op = createLiteralOp(Result);
     auto Loc = P->getSourceLocation();
-    return createList(Loc, createLiteralOp(P->Car), Op->getResult(0));
+    return createList(Loc, P->Car, Op);
   }
 
   // <unquotation D>
@@ -130,25 +145,69 @@ private:
 
     if (Depth == 1) return Result;
     return createList(P->getSourceLocation(),
-                      createLiteralOp(P->Car),
-                      OpGen.Visit(Result));
+                      P->Car,
+                      Result);
   }
 
-  heavy::Value HandleUnquoteSplicing(Pair* P, Value Next, bool& Rebuilt,
-                                    int Depth) {
+  heavy::Value HandleUnquoteSplicing(Pair* Parent, Pair* P, Value Next,
+                                     bool& Rebuilt, int Depth) {
     Value Input = GetSingleSyntaxArg(P);
     if (!Input) return setError("invalid unquote-splicing syntax", P);
     heavy::Value Result = HandleQQTemplate(Input, Rebuilt, Depth - 1);
-    if (!Rebuilt) return P;
-    
-    auto Loc = P->getSourceLocation();
     bool NextRebuilt = false;
     heavy::Value NextResult = Visit(Next, NextRebuilt, Depth);
+
+    // if nothing changed we're done
+    if (!Rebuilt && !NextRebuilt) return Parent; 
+
+    // if the unquote-splicing syntax is literal then cons it
+    // with the NextResult
+    auto Loc = P->getSourceLocation();
+    if (Depth > 1) return createCons(Loc,
+                                     createList(Loc, P->Car, Result),
+                                     NextResult);
+    
     mlir::Operation *Spliced = createSplice(Loc, Result, NextResult);
-    if (Depth == 1) return Spliced;
-    return createList(Loc, createLiteralOp(P->Car), Spliced->getResult(0));
+    return Spliced;
   }
 
+  // (<qq template D>*) |
+  // (<qq template D>+ . <qq template D>)
+  // where D > 0
+  heavy::Value HandlePair(Pair* P, bool& Rebuilt, int Depth) {
+    assert(Depth > 0 && "Depth cannot be zero here.");
+
+    bool CarRebuilt = false;
+    bool CdrRebuilt = false;
+    heavy::Value Car = Visit(P->Car, CarRebuilt, Depth);
+    heavy::Value Cdr = Visit(P->Cdr, CdrRebuilt, Depth);
+
+    Rebuilt = CarRebuilt || CdrRebuilt;
+    if (!Rebuilt) return P;
+
+    mlir::Value CarVal;
+    mlir::Value CdrVal;
+
+#if 0
+    // Portions that are not rebuilt are always literal
+    // '<qq template D>
+    if (!CarRebuilt && CdrRebuilt) {
+      CarVal = createLiteralOp(Car);
+      CdrVal = OpGen.Visit(Cdr);
+    } else if (!CdrRebuilt && CarRebuilt) {
+      CarVal = OpGen.Visit(Car);
+      CdrVal = createLiteralOp(Cdr);
+    } else {
+      CarVal = OpGen.Visit(Car);
+      CdrVal = OpGen.Visit(Cdr);
+    }
+#endif
+
+    SourceLocation Loc = P->getSourceLocation();
+    return createCons(Loc, Car, Cdr);
+  }
+
+  // <list qq template D> | <unquotation>
   heavy::Value VisitPair(Pair* P, bool& Rebuilt, int Depth) {
     assert(Depth > 0 && "Depth cannot be zero here.");
     heavy::Context& Context = OpGen.getContext();
@@ -160,37 +219,9 @@ private:
     } else if (isa<Pair>(P->Car) &&
                isSymbol(cast<Pair>(P->Car)->Car, "unquote-splicing")) {
       Pair* P2 = cast<Pair>(P->Car);
-      return HandleUnquoteSplicing(P2, P->Cdr, Rebuilt, Depth);
+      return HandleUnquoteSplicing(P, P2, P->Cdr, Rebuilt, Depth);
     } else {
-      // Just a regular old pair
-      // <list qq template D>
-      bool CarRebuilt = false;
-      bool CdrRebuilt = false;
-      heavy::Value Car = Visit(P->Car, CarRebuilt, Depth);
-      heavy::Value Cdr = Visit(P->Cdr, CdrRebuilt, Depth);
-
-      Rebuilt = CarRebuilt || CdrRebuilt;
-      if (!Rebuilt) return P;
-
-      mlir::Value CarVal;
-      mlir::Value CdrVal;
-
-      // Portions that are not rebuilt are always literal
-      // '<qq template D>
-      if (!CarRebuilt && CdrRebuilt) {
-        CarVal = createLiteralOp(Car);
-        CdrVal = OpGen.Visit(Cdr);
-      } else if (!CdrRebuilt && CarRebuilt) {
-        CarVal = OpGen.Visit(Car);
-        CdrVal = createLiteralOp(Cdr);
-      } else {
-        CarVal = OpGen.Visit(Car);
-        CdrVal = OpGen.Visit(Cdr);
-      }
-
-      SourceLocation Loc = P->getSourceLocation();
-      return OpGen.create<ConsOp>(Loc, CarVal, CdrVal)
-        .getOperation();
+      return HandlePair(P, Rebuilt, Depth);
     }
   }
 
