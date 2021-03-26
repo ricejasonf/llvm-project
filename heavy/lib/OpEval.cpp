@@ -63,7 +63,7 @@ class OpEvalImpl {
   heavy::StackFrame& getCurrentFrame() {
     return *Context.EvalStack.top();
   }
-  
+
   static heavy::SourceLocation getSourceLocation(mlir::Location Loc) {
     if (!Loc.isa<mlir::OpaqueLoc>()) return {};
     return heavy::SourceLocation(
@@ -178,6 +178,7 @@ private:
     else if (isa<LambdaOp>(Op))       return Visit(cast<LambdaOp>(Op));
     else if (isa<IfOp>(Op))           return Visit(cast<IfOp>(Op));
     else if (isa<ConsOp>(Op))         return Visit(cast<ConsOp>(Op));
+    else if (isa<SpliceOp>(Op))       return Visit(cast<SpliceOp>(Op));
     else if (isa<SetOp>(Op))          return Visit(cast<SetOp>(Op));
     else if (isa<FuncOp>(Op))         return next(Op); // skip functions
     else if (UndefinedOp UndefOp = dyn_cast<UndefinedOp>(Op))  {
@@ -290,7 +291,7 @@ private:
   }
 
   BlockItrTy Visit(BuiltinOp Op) {
-    heavy::Value V = Op.builtinFn(); 
+    heavy::Value V = Op.builtinFn();
     setValue(Op.result(), V);
     return next(Op);
   }
@@ -312,7 +313,7 @@ private:
     llvm::SmallVector<heavy::Value, 1> ContValues(ContArgs.size(),
                                                   nullptr);
     for (unsigned i = 0; i < ContArgs.size(); ++i) {
-      ContValues[i] = getValue(ContArgs[i]); 
+      ContValues[i] = getValue(ContArgs[i]);
     }
 
     mlir::Operation* Parent = Op.getParentOp();
@@ -337,7 +338,7 @@ private:
         "continuation arity must match");
 
     for (unsigned i = 0; i < Results.size(); ++i) {
-      setValue(Results[i], ContValues[i]); 
+      setValue(Results[i], ContValues[i]);
     }
 
     return next(Caller);
@@ -359,7 +360,7 @@ private:
     for (mlir::Value Val : Op.captures()) {
       Captures.push_back(getBindingOrValue(Val));
     }
-      
+
     heavy::Value V = Context.CreateLambdaIr(F, Captures);
     setValue(Op.result(), V);
     return next(Op);
@@ -367,7 +368,7 @@ private:
 
   BlockItrTy Visit(LiteralOp Op) {
     // Map the IR value node to the run-time value
-    heavy::Value V = Op.input(); 
+    heavy::Value V = Op.input();
     setValue(Op.result(), V);
     return next(Op);
   }
@@ -403,7 +404,41 @@ private:
   }
 
   BlockItrTy Visit(SpliceOp Op) {
-    llvm_unreachable("TODO SpliceOp");
+    heavy::SourceLocation Loc = getSourceLocation(Op.getLoc());
+    heavy::Value LHS = getValue(Op.a());
+    heavy::Value RHS = getValue(Op.b());
+
+    // must both be lists
+    if (!isa<heavy::Pair>(LHS) && !isa<heavy::Empty>(LHS)) {
+      return SetError(Loc, "splicing operand expected list", LHS);
+    }
+    if (!isa<heavy::Pair>(RHS) && !isa<heavy::Empty>(RHS)) {
+      return SetError(Loc, "splicing operand expected list", RHS);
+    }
+
+    // A new list must be created
+    // Dummy is the start point that is not part of the result
+    // as it is not on the heap
+    heavy::Pair Dummy = heavy::Pair(nullptr, nullptr);
+    heavy::Pair* Dest = &Dummy;
+    heavy::Value Temp = LHS;
+
+    while (Pair* Cur = dyn_cast<heavy::Pair>(Temp)) {
+      heavy::Pair* New = Context.CreatePair(Cur->Car);
+      Dest->Cdr = New;
+      Dest = New;
+      Temp = Cur->Cdr;
+    }
+    Temp = RHS;
+    while (Pair* Cur = dyn_cast<heavy::Pair>(Temp)) {
+      heavy::Pair* New = Context.CreatePair(Cur->Car);
+      Dest->Cdr = New;
+      Dest = New;
+      Temp = Cur->Cdr;
+    }
+    heavy::Value Result = Dummy.Cdr ? Dummy.Cdr : Empty{};
+    setValue(Op, Result);
+    return next(Op);
   }
 };
 
