@@ -123,7 +123,7 @@ void Lexer::Lex(Token& Tok) {
     Kind = tok::quasiquote;
     break;
   case ',': {
-    if (*(CurPtr + 1) == '@') {
+    if (*(CurPtr) == '@') {
       Kind = tok::unquote_splicing;
       ++CurPtr;
     } else {
