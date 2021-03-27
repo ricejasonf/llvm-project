@@ -102,7 +102,11 @@ mlir::Value OpGen::createLambda(Value Formals, Value Body,
       createBinding(B, Arg);
     }
 
-    processBody(Loc, Body);
+    mlir::Value BodyVal = createBody(Loc, Body);
+
+    // Create terminator
+    Builder.create<ContOp>(BodyVal.getLoc(), BodyVal);
+
     Context.PopEnvFrame();
   }
 
@@ -118,7 +122,7 @@ bool OpGen::isLocalDefineAllowed() {
 }
 
 // processSequence creates a sequence of operations in the current block
-void OpGen::processSequence(SourceLocation Loc, Value Body) {
+mlir::Value OpGen::createSequence(SourceLocation Loc, Value Body) {
   if (!isa<Pair>(Body)) {
     SetError(Loc, "sequence must contain an expression", Body);
   }
@@ -138,16 +142,10 @@ void OpGen::processSequence(SourceLocation Loc, Value Body) {
     }
   }
   // This could be in tail position
-  mlir::Value LastVal = Visit(Rest);
-
-  // Create terminator if needed
-  mlir::Operation* LastOp = LastVal.getDefiningOp();
-  if (!LastOp || !LastOp->hasTrait<mlir::OpTrait::IsTerminator>()) {
-    Builder.create<ContOp>(LastVal.getLoc(), LastVal);
-  }
+  return Visit(Rest);
 }
 
-void OpGen::processBody(SourceLocation Loc, Value Body) {
+mlir::Value OpGen::createBody(SourceLocation Loc, Value Body) {
   mlir::OpBuilder::InsertionGuard IG(LocalInits);
   LocalInits = Builder;
 
@@ -155,7 +153,7 @@ void OpGen::processBody(SourceLocation Loc, Value Body) {
   // insertion point
 
   IsTopLevel = false;
-  processSequence(Loc, Body);
+  mlir::Value Result = createSequence(Loc, Body);
 
   // The BindingOps for the local defines have
   // been inserted by the `define` syntax. They are
@@ -191,6 +189,8 @@ void OpGen::processBody(SourceLocation Loc, Value Body) {
     }
     // Builder is restored to the end of the body block
   }
+
+  return Result;
 }
 
 mlir::Value OpGen::createBinding(Binding *B, mlir::Value Init) {
