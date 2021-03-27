@@ -140,8 +140,8 @@ public:
     return create<Op>(Builder, Loc, std::forward<Args>(args)...);
   }
 
-  void processBody(SourceLocation Loc, Value Body);
-  void processSequence(SourceLocation Loc, Value Body);
+  mlir::Value createBody(SourceLocation Loc, Value Body);
+  mlir::Value createSequence(SourceLocation Loc, Value Body);
 
   mlir::FunctionType createFunctionType(unsigned Arity,
                                         bool HasRestParam);
