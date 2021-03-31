@@ -182,43 +182,18 @@ heavy::Value operator_lt(Context& C, ValueRefs Args) {
   return nullptr;
 }
 
+heavy::Value equal(Context& C, ValueRefs Args) {
+  if (Args.size() != 2) return C.SetError("invalid arity");
+  Value V1 = Args[0];
+  Value V2 = Args[1];
+  return Bool(::heavy::equal(V1, V2));
+}
+
 heavy::Value eqv(Context& C, ValueRefs Args) {
   if (Args.size() != 2) return C.SetError("invalid arity");
   Value V1 = Args[0];
   Value V2 = Args[1];
-  if (V1 == V2) return C.CreateBool(true);
-  if (V1.getKind() != V2.getKind()) {
-    return C.CreateBool(false);
-  }
-
-  bool R;
-  switch (V1.getKind()) {
-  case ValueKind::Symbol:
-      R = cast<Symbol>(V1)->equals(
-          cast<Symbol>(V2));
-      break;
-    // TODO For primitives this is temporary until
-    // they are embedded in the pointers
-  case ValueKind::Bool:
-      R = cast<Bool>(V1) == cast<Bool>(V2);
-      break;
-  case ValueKind::Char:
-      R = cast<Char>(V1) == cast<Char>(V2);
-      break;
-  case ValueKind::Int:
-      R = cast<Int>(V1) == cast<Int>(V2);
-      break;
-  case ValueKind::Float:
-      R = cast<Float>(V1)->getVal() ==
-          cast<Float>(V2)->getVal();
-      break;
-  case ValueKind::Empty:
-      R = true;
-      break;
-  default:
-      R = false;
-  }
-  return C.CreateBool(R);
+  return Bool(::heavy::eqv(V1, V2));
 }
 
 heavy::Value list(Context& C, ValueRefs Args) {
