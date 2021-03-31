@@ -73,8 +73,9 @@ Context::Context()
   AddBuiltin("/",                 builtin::operator_div);
   AddBuiltin("list",              builtin::list);
   AddBuiltin("append",            builtin::append);
-  AddBuiltin("eqv?",              builtin::eqv);
   AddBuiltin("eq?",               builtin::eqv);
+  AddBuiltin("equal?",            builtin::equal);
+  AddBuiltin("eqv?",              builtin::eqv);
 }
 
 Context::~Context() = default;
@@ -447,6 +448,48 @@ namespace heavy {
 void write(llvm::raw_ostream& OS, Value V) {
   Writer W(OS);
   return W.Visit(V);
+}
+
+// this handles non-immediate values
+// and assumes the values have the same kind
+bool equal_slow(Value V1, Value V2) {
+  assert(V1.getKind() == V2.getKind() &&
+      "inputs are expected to have same kind");
+
+  switch (V1.getKind()) {
+  case ValueKind::String:
+    return cast<String>(V1)->equals(cast<String>(V2));
+  case ValueKind::Pair:
+  case ValueKind::PairWithSource: {
+    Pair* P1 = cast<Pair>(V1);
+    Pair* P2 = cast<Pair>(V2);
+    // FIXME this does not handle cyclic refs
+    return equal(P1->Car, P2->Car) &&
+           equal(P1->Cdr, P2->Cdr);
+  }
+  case ValueKind::Vector:
+    llvm_unreachable("TODO");
+    return false;
+  default:
+      return eqv(V1, V2);
+  }
+}
+
+// this handles non-immediate values
+// and assumes the values have the same kind
+bool eqv_slow(Value V1, Value V2) {
+  assert(V1.getKind() == V2.getKind() &&
+      "inputs are expected to have same kind");
+  switch (V1.getKind()) {
+  case ValueKind::Symbol:
+    return cast<Symbol>(V1)->equals(
+              cast<Symbol>(V2));
+  case ValueKind::Float:
+    return cast<Float>(V1)->getVal() ==
+              cast<Float>(V2)->getVal();
+  default:
+      return false;
+  }
 }
 
 } // end namespace heavy
