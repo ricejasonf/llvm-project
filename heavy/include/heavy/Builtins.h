@@ -53,6 +53,7 @@ heavy::Value operator_div(Context& C, ValueRefs Args);
 heavy::Value operator_gt(Context& C, ValueRefs Args);
 heavy::Value operator_lt(Context& C, ValueRefs Args);
 heavy::Value eq(Context& C, ValueRefs Args);
+heavy::Value equal(Context& C, ValueRefs Args);
 heavy::Value eqv(Context& C, ValueRefs Args);
 heavy::Value list(Context& C, ValueRefs Args);
 heavy::Value append(Context& C, ValueRefs Args);

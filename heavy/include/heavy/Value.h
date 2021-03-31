@@ -761,6 +761,10 @@ public:
     return llvm::StringRef(getTrailingObjects<char>(), Len);
   }
 
+  bool equals(String* S) const {
+    return getView().equals(S->getView());
+  }
+
   static bool classof(Value V) {
     return V.getKind() == ValueKind::String;
   }
@@ -1283,6 +1287,23 @@ inline llvm::StringRef getKindName(heavy::ValueKind Kind) {
   }
 }
 #undef GET_KIND_NAME_CASE
+
+// implemented in HeavyScheme.cpp
+bool equal_slow(Value V1, Value V2);
+bool eqv_slow(Value V1, Value V2);
+
+inline bool eqv(Value V1, Value V2) {
+  if (V1 == V2) return true;
+  if (V1.getKind() != V2.getKind()) return false;
+  return eqv_slow(V1, V2);
+}
+
+inline bool equal(Value V1, Value V2) {
+  if (V1 == V2) return true;
+  if (V1.getKind() != V2.getKind()) return false;
+  return equal_slow(V1, V2);
+}
+
 
 }
 
