@@ -158,6 +158,11 @@ public:
   mlir::Value createUndefined();
   mlir::Value createSet(SourceLocation Loc, Value LHS, Value RHS);
 
+  mlir::Value createEqual(Value V1, Value V2); // equal? for pattern matching
+  mlir::Value createLiteral(Value V) {
+    return create<LiteralOp>(V.getSourceLocation(), V);
+  }
+
   template <typename T>
   mlir::Value SetError(T Str, Value V) {
     Context.SetError(Str, V);
@@ -178,7 +183,7 @@ private:
   mlir::Value VisitDefineArgs(Value Args);
 
   mlir::Value VisitValue(Value V) {
-    return create<LiteralOp>(V.getSourceLocation(), V);
+    return createLiteral(V);
   }
 
   mlir::Value VisitOperation(mlir::Operation* Op) {

@@ -938,10 +938,23 @@ public:
   }
 };
 
+// Syntax - A function that represents `syntax-rules` pattern matching
+//          and template substitution.
+//
+//          TODO
+//          Generate a function to find a pattern match AND
+//          perform template substitution with pattern variables and everything.
+//          This would eliminate the need to store the patterns and perhaps
+//          there is a chance to optimize nested syntax calls.
 class Syntax : public ValueBase {
+
+  mlir::Operation* Op;
+
 public:
-  // TODO ???
-  Value Transformer;
+  Syntax(mlir::Operation* Op)
+    : ValueBase(ValueKind::Syntax),
+      Op(Op)
+  { }
   static bool classof(Value V) {
     return V.getKind() == ValueKind::Syntax;
   }
@@ -1014,7 +1027,12 @@ public:
     return Name;
   }
 
+  bool isNull() { return bool(Val); }
+
   Value getValue() {
+    // A binding with a null value is used to represent
+    // unbound symbols (particularly in pattern matching)
+    assert(Val && "binding value should not be null");
     return Val;
   }
 
@@ -1024,6 +1042,7 @@ public:
   }
 
   Value Lookup(Symbol* S) {
+    assert(Val && "null binding should not be a part of lookup");
     if (Name->equals(S)) return Value(this);
     return nullptr;
   }
