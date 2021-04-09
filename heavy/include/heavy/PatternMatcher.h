@@ -32,39 +32,49 @@ TemplateElement
 
 #endif
 
-class PatternMatcher : ValueVisitor<PatternMatcher, Value> {
-  using KeywordRange = llvm::ArrayRef<Symbol*>;
+// PatternMatcher
+//    - Detects if a pattern matches an input while generating a table
+//      for pattern variables.
+//    - Generates code to match pattern and bind pattern variables
+//      See R7RS 4.3.2 Pattern Language.
+class PatternMatcher : ValueVisitor<PatternMatcher, mlir::Value> {
+public:
+  using KeywordsTy = llvm::ArrayRef<std::pair<Symbol*, Binding*>>>;
+private:
 
   Symbol* Ellipsis;
-  llvm::ArrayRef<Symbol*> Keywords;
+  Value Keywords; // literal identifiers (list)
+  // PatternVars - maps symbols to input nodes
+  llvm::StringMap<Value> PatternVars;
 
   // P - the pattern node
   // E - the input to match
 
 public:
   PatternMatcher(Symbol* Ellipsis,
-                 llvm::ArrayRef<Symbol*> Ks)
+                 Value Ks)
     : Ellipsis(Ellipsis),
       Keywords(Ks)
   { }
 
   // returns true if insertion was successful
-  bool bindPatternVar(Symbol* S, Value E) {
-    if (PatternVars.lookup(S, E)) {
-      // TODO set error cuz pattern variable was used twice
-      return false;
-    }
-    PatternVars.insert(S, E);
-    return true;
+  mlir::Value bindPatternVar(Symbol* S, mlir::Value E) {
+    bool Inserted;
+    std::tie(std::ignore, Inserted) = PatternVars.insert({S->getView(), E})
+    if (Inserted) return true;
+
+    // TODO set error cuz pattern variable was used twice
+    llvm_unreachable("TODO");
+    return false;
   }
 
-  bool VisitValue(Value P, Value E) {
+  mlir::Value VisitValue(Value P, mlir::Value E) {
     // TODO set error invalid pattern node
     llvm_unreachable("TODO");
     return false;
   }
 
-  bool VisitPair(Pair* P, Value E) {
+  mlir::Value VisitPair(Pair* P, mlir::Value E) {
     // (<pattern>*)
     // (<pattern>* <pattern> <ellipsis> <pattern>*)
     if (!isa<Pair>(E)) {
@@ -78,11 +88,9 @@ public:
     // FIXME we need to allow improper lists
     while (Pair* P = dyn_cast<Pair>(P->Cdr)) {
       if (isSymbol(P->Car, Ellipsis)) {
-        // TODO
-        // not counting the ellipsis itself,
-        // we need to walk the list to get where
-        // we start matching the rest of the P
-        // list against the corresponding nodes in E
+        // match the previous pattern until
+        // we get a mismatch and then continue on to
+        // the next pattern
       }
       Result = Visit(P->Car, EP->Car);
       if (!Result) return false;
@@ -90,11 +98,15 @@ public:
     return true;
   }
 
-  bool VisitSymbol(Symbol* P, Value E) {
+  mlir::Value VisitSymbol(Symbol* P, mlir::Value E) {
     // <pattern identifier> (literal identifier)
     // This is just a linear check against the string ref
     // as we don't have a fancy identifier table yet
     for (Symbol* S : Keywords) {
+      // TODO we must perform a lookup to see that
+      //      the lookup result is the same
+      //      (the same lexical binding or not bound)
+      //      Keywords must also store the Binding* result
       if (P->equals(S)) return true;
     }
     // <underscore>
@@ -104,31 +116,31 @@ public:
     // <ellipsis>
     if (P->equals(Ellipsis)) {
       llvm_unreachable("TODO");
-      // this is an  error as <ellipsis> is not
+      // this is an error as <ellipsis> is not
       // a valid pattern by itself
     }
     // everything else is a pattern variable
     return bindPatternVar(P, E);
   }
 
-  bool VisitString(String* P, Value E) {
+  mlir::Value VisitString(String* P, mlir::Value E) {
     // <pattern datum> -> <string>
-    return equal(P, E);
+    return createEqual(createLiteral(P), E);
   }
 
-  bool VisitBool(Bool P, Value E) {
+  mlir::Value VisitBool(Bool P, mlir::Value E) {
     // <pattern datum> -> <boolean>
-    return equal(P, E);
+    return createEqual(createLiteral(P), E);
   }
 
-  bool VisitInt(Int P, Value E) {
+  mlir::Value VisitInt(Int P, mlir::Value E) {
     // <pattern datum> -> <number>
-    return equal(P, E);
+    return createEqual(createLiteral(P), E);
   }
 
-  bool VisitFloat(Float* P, Value E) {
+  mlir::Value VisitFloat(Float* P, mlir::Value E) {
     // <pattern datum> -> <number>
-    return equal(P, E);
+    return createEqual(createLiteral(P), E);
   }
 };
 
