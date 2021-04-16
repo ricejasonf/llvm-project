@@ -10,7 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "heavy/HeavyScheme.h"
+#include "heavy/Context.h"
 #include "heavy/Lexer.h"
 #include "heavy/Parser.h"
 #include "llvm/ADT/APFloat.h"

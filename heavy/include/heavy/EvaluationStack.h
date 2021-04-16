@@ -13,7 +13,9 @@
 #ifndef LLVM_HEAVY_EVALUATION_STACK_H
 #define LLVM_HEAVY_EVALUATION_STACK_H
 
+#include "heavy/Dialect.h"
 #include "heavy/Source.h"
+#include "heavy/Value.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/Casting.h"
@@ -34,7 +36,6 @@
 namespace heavy {
 
 class Context;
-class Value;
 
 struct RedZoneByte { };
 

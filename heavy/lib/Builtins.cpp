@@ -10,7 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "heavy/HeavyScheme.h"
+#include "heavy/Context.h"
 #include "heavy/OpGen.h"
 #include "llvm/Support/Casting.h"
 
