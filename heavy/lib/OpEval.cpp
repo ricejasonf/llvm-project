@@ -13,7 +13,7 @@
 #ifndef LLVM_HEAVY_OP_EVAL_H
 #define LLVM_HEAVY_OP_EVAL_H
 
-#include "heavy/HeavyScheme.h"
+#include "heavy/Context.h"
 #include "heavy/OpGen.h"
 #include "mlir/IR/Module.h"
 #include "llvm/ADT/DenseMap.h"

@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "heavy/Dialect.h"
-#include "heavy/HeavyScheme.h"
+#include "heavy/Context.h"
 
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
