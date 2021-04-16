@@ -6,7 +6,7 @@
 //
 //===--------------------------------------------------------------------------===//
 
-#include "heavy/HeavyScheme.h"
+#include "heavy/Context.h"
 #include "llvm/Support/Casting.h"
 
 #include <gtest/gtest.h>

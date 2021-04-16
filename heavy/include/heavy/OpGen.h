@@ -13,7 +13,7 @@
 #ifndef LLVM_HEAVY_OP_GEN_H
 #define LLVM_HEAVY_OP_GEN_H
 
-#include "heavy/HeavyScheme.h"
+#include "heavy/Context.h"
 #include "mlir/IR/Builders.h"
 #include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/Support/Casting.h"

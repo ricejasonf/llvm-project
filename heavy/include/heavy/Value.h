@@ -1307,7 +1307,7 @@ inline llvm::StringRef getKindName(heavy::ValueKind Kind) {
 }
 #undef GET_KIND_NAME_CASE
 
-// implemented in HeavyScheme.cpp
+// implemented in Context.cpp
 bool equal_slow(Value V1, Value V2);
 bool eqv_slow(Value V1, Value V2);
 
