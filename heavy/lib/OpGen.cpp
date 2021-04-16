@@ -12,7 +12,7 @@
 
 #include "heavy/Builtins.h"
 #include "heavy/Dialect.h"
-#include "heavy/HeavyScheme.h"
+#include "heavy/Context.h"
 #include "heavy/OpGen.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Module.h"

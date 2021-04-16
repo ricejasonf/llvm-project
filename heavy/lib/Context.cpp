@@ -1,4 +1,4 @@
-//===--- HeavyScheme.cpp - HeavyScheme AST Node Implementation --------------------===//
+//===--- Context.cpp - HeavyScheme Context Implementation -----------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,13 +6,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implementations for HeavyScheme AST and Context classes.
+// Implementations for heavy scheme Context.
 //
 //===----------------------------------------------------------------------===//
 
 #include "heavy/Builtins.h"
 #include "heavy/Dialect.h"
-#include "heavy/HeavyScheme.h"
+#include "heavy/Context.h"
 #include "heavy/OpGen.h"
 #include "heavy/Source.h"
 #include "heavy/Value.h"

@@ -13,7 +13,7 @@
 #ifndef LLVM_HEAVY_PARSER_H
 #define LLVM_HEAVY_PARSER_H
 
-#include "heavy/HeavyScheme.h"
+#include "heavy/Context.h"
 #include "heavy/Lexer.h"
 #include "llvm/ADT/SmallVector.h"
 #include <string>

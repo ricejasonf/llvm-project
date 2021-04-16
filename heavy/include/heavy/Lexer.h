@@ -17,6 +17,10 @@
 #include <cassert>
 #include <cstdint>
 
+namespace clang {
+  class SourceLocation;
+}
+
 namespace heavy {
 
 enum class TokenKind {
@@ -77,12 +81,11 @@ protected:
   { }
 public:
 
-  // FIXME we aren't using clang SourceLocation
-  void Init(SourceLocation Loc,
+  void Init(clang::SourceLocation const&,
             const char* BS,
             const char* BE,
             const char* BP) {
-    FileLoc = Loc;
+    FileLoc = heavy::SourceLocation();
     BufferStart = BS;
     BufferEnd = BE;
     BufferPtr = BP;
