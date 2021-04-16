@@ -1,4 +1,4 @@
-//===- HeavyScheme.h - Classes for representing declarations ----*- C++ -*-===//
+//===--- Context.h - Classes for representing declarations ----*- C++ -*---===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,19 +6,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//  This file defines HeavyScheme decalarations for values and evaluation.
+//  This file defines heavy::Context.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_HEAVY_HEAVY_SCHEME_H
-#define LLVM_HEAVY_HEAVY_SCHEME_H
+#ifndef LLVM_HEAVY_CONTEXT_H
+#define LLVM_HEAVY_CONTEXT_H
 
 #include "heavy/Dialect.h"
 #include "heavy/EvaluationStack.h"
 #include "heavy/Source.h"
 #include "heavy/Value.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/Value.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/APFloat.h"
