@@ -22,6 +22,7 @@
 #include "clang/Sema/SemaObjC.h"
 #include "clang/Sema/SemaOpenMP.h"
 #include "llvm/ADT/STLForwardCompat.h"
+#include "heavy/HeavyScheme.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Frontend/OpenMP/OMPContext.h"
 #include "llvm/Support/SaveAndRestore.h"
@@ -162,10 +163,6 @@ enum class CXX11AttributeKind {
   /// is ill-formed by C++11 [dcl.attr.grammar]p6.
   InvalidAttributeSpecifier
 };
-
-namespace heavy {
-  class Context;
-} // namespace heavy
 
 /// Parser - This implements a parser for the C family of languages.  After
 /// parsing units of the grammar, productions are invoked to handle whatever has

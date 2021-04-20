@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.4.3)
 
 include(AddLLVM)
 
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 set(MLIR_TABLEGEN_EXE $<TARGET_FILE:mlir-tblgen>)
 
 if(POLICY CMP0075)
@@ -9,6 +10,7 @@ if(POLICY CMP0075)
 endif()
 
 set(HEAVY_LIB ${CMAKE_CURRENT_SOURCE_DIR}/lib)
+set(HEAVY_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
 set(HEAVY_GEN_INC ${CMAKE_BINARY_DIR}/tools/heavy/include)
 set(CLANG_LIB ../clang/lib)
 include_directories(BEFORE
