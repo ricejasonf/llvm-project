@@ -73,6 +73,7 @@ protected:
   char const* BufferEnd   = nullptr;
   char const* BufferPtr   = nullptr;
 
+  EmbeddedLexer() = default;
   EmbeddedLexer(SourceLocation FileLoc, llvm::StringRef FileBuffer,
                 char const* BufferPos)
     : FileLoc(FileLoc),

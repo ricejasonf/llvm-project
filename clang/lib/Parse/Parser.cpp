@@ -11,7 +11,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Parse/Parser.h"
-#include "clang/Parse/ParserHeavyScheme.h"
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclTemplate.h"
