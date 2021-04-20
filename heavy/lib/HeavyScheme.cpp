@@ -23,11 +23,15 @@ HeavyScheme::HeavyScheme(std::unique_ptr<heavy::Context> C)
     SourceManagerPtr(std::make_unique<heavy::SourceManager>())
 { }
 
-HeavyScheme::HeavyScheme()
-  : HeavyScheme(std::make_unique<heavy::Context>())
-{ }
-
+HeavyScheme::HeavyScheme() = default;
 HeavyScheme::~HeavyScheme() = default;
+
+void HeavyScheme::init() {
+  if (!ContextPtr) {
+    ContextPtr = std::make_unique<heavy::Context>();
+    SourceManagerPtr = std::make_unique<heavy::SourceManager>();
+  }
+}
 
 heavy::Lexer HeavyScheme::createEmbeddedLexer(uintptr_t ExternalRawLoc,
                                               char const* BufferStart,
@@ -42,7 +46,7 @@ heavy::Lexer HeavyScheme::createEmbeddedLexer(uintptr_t ExternalRawLoc,
 }
 
 void HeavyScheme::LoadEmbeddedEnv(void* Handle,
-                     llvm::function_ref<void(void*)> LoadParent) {
+          llvm::function_ref<void(HeavyScheme&, void*)> LoadParent) {
   auto& Context = getContext();
   auto itr = Context.EmbeddedEnvs.find(Handle);
   if (itr != Context.EmbeddedEnvs.end()) {
@@ -50,7 +54,7 @@ void HeavyScheme::LoadEmbeddedEnv(void* Handle,
     return;
   }
 
-  LoadParent(Handle);
+  LoadParent(*this, Handle);
   Value Env = Context.EnvStack;
   Env = Context.CreatePair(Context.CreateModule(), Env);
   Context.EmbeddedEnvs[Handle] = Env;
