@@ -69,28 +69,21 @@ struct Token {
 class EmbeddedLexer {
 protected:
   SourceLocation FileLoc;
-  const char* BufferStart = nullptr;
-  const char* BufferEnd = nullptr;
-  const char* BufferPtr = nullptr;
+  char const* BufferStart = nullptr;
+  char const* BufferEnd   = nullptr;
+  char const* BufferPtr   = nullptr;
 
-  EmbeddedLexer(SourceLocation Loc, llvm::StringRef FileBuffer)
-    : FileLoc(Loc),
+  EmbeddedLexer(SourceLocation FileLoc, llvm::StringRef FileBuffer,
+                char const* BufferPos)
+    : FileLoc(FileLoc),
       BufferStart(FileBuffer.begin()),
       BufferEnd(FileBuffer.end()),
-      BufferPtr(BufferStart)
-  { }
-public:
-
-  void Init(clang::SourceLocation const&,
-            const char* BS,
-            const char* BE,
-            const char* BP) {
-    FileLoc = heavy::SourceLocation();
-    BufferStart = BS;
-    BufferEnd = BE;
-    BufferPtr = BP;
+      BufferPtr(BufferPos)
+  { 
+    assert((BufferPtr >= BufferStart && BufferPtr < BufferEnd) &&
+        "BufferPtr must be in range");
   }
-
+public:
   unsigned GetByteOffset() {
     if (BufferPtr > BufferEnd)
       return BufferEnd - BufferStart;
@@ -158,8 +151,12 @@ class Lexer : public EmbeddedLexer {
 public:
   Lexer() = default;
 
-  Lexer(SourceLocation Loc, llvm::StringRef FileBuffer)
-    : EmbeddedLexer(Loc, FileBuffer)
+  Lexer(SourceFile File)
+    : EmbeddedLexer(File.StartLoc, File.Buffer, File.Buffer.begin())
+  { }
+
+  Lexer(SourceFile File, char const* BufferPos)
+    : EmbeddedLexer(File.StartLoc, File.Buffer, BufferPos)
   { }
 
   void Lex(Token& Tok);
