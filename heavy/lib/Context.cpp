@@ -48,10 +48,15 @@ std::unique_ptr<Context> Context::CreateEmbedded() {
 }
 
 Context::Context()
+  : Context(builtin::eval)
+{ }
+
+Context::Context(ValueFn ParseResultHandler)
   : DialectRegisterer()
   , TrashHeap()
   , SystemModule(CreateModule())
   , SystemEnvironment(CreateEnvironment(CreatePair(SystemModule)))
+  , HandleParseResult(ParseResultHandler)
   , EnvStack(SystemEnvironment)
   , EvalStack(*this)
   , MlirContext()
