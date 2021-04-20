@@ -15,6 +15,7 @@
 
 #include "heavy/Dialect.h"
 #include "heavy/EvaluationStack.h"
+#include "heavy/HeavyScheme.h"
 #include "heavy/Source.h"
 #include "heavy/Value.h"
 #include "mlir/IR/MLIRContext.h"
@@ -58,7 +59,6 @@ Value eval(Context&, Value V, Value EnvStack = nullptr);
 void write(llvm::raw_ostream&, Value);
 
 Value opEval(OpEval&);
-void LoadSystemModule(Context&);
 
 class OpEvalImpl;
 struct OpEval {
@@ -70,11 +70,8 @@ struct OpEval {
 class Context : DialectRegisterer {
   friend class OpGen;
   friend class OpEvalImpl;
+  friend class HeavyScheme;
   AllocatorTy TrashHeap;
-
-  // "static" values
-  Undefined Undefined_ = {};
-  Empty     Empty_ = {};
 
   // EnvStack
   //  - Should be at least one element on top of
@@ -83,6 +80,7 @@ class Context : DialectRegisterer {
   //    and swap it back upon completion (via RAII)
   Module* SystemModule;
   Environment* SystemEnvironment;
+  ValueFn HandleParseResult;
   Value EnvStack;
   EvaluationStack EvalStack;
   mlir::MLIRContext MlirContext;
@@ -118,6 +116,7 @@ public:
   static std::unique_ptr<Context> CreateEmbedded();
 
   Context();
+  Context(ValueFn ParseResultHandler);
   ~Context();
 
   // Returns a Builtin from the SystemModule

@@ -18,6 +18,7 @@
 #include <cassert>
 #include <string>
 #include <system_error>
+#include <unordered_map>
 
 namespace heavy {
 class SourceManager;
@@ -64,9 +65,8 @@ class SourceFileStorage {
   friend class SourceManager;
   using StorageTy = std::unique_ptr<llvm::MemoryBuffer>;
 
-  SourceLocation StartLoc;
-  std::string Name;
-  StorageTy Storage;
+  StorageTy Storage = {};
+  std::string Name = {};
 
   llvm::StringRef getBuffer() const {
     return Storage->getBuffer();
@@ -89,6 +89,8 @@ struct SourceFile {
   llvm::StringRef Buffer;
   llvm::StringRef Name;
   SourceLocation StartLoc;
+  // ExternalLocRawEncoding - Used to store clang::SourceLocation
+  uintptr_t ExternalRawEncoding = 0;
 
   bool isValid() const { return StartLoc.isValid(); }
 
@@ -132,6 +134,7 @@ public:
 class SourceManager {
   std::vector<std::unique_ptr<SourceFileStorage>> StoredEntries;
   std::vector<SourceFile> Entries;
+  std::unordered_map<uintptr_t, SourceFile> ExternalLookup;
 
   SourceLocation getNextStartLoc() {
     // Start Loc at 1 as 0 represents
@@ -143,19 +146,29 @@ class SourceManager {
     return SourceLocation(Start.Loc + Len);
   }
 
+  SourceFile createEntry(llvm::StringRef Buffer,
+                         llvm::StringRef Name,
+                         uintptr_t ExternalRawEncoding = 0) {
+    SourceLocation StartLoc = getNextStartLoc();
+    Entries.push_back(SourceFile{Buffer, Name, StartLoc,
+                                 ExternalRawEncoding});
+    return Entries.back();
+  }
+
+
 public:
+
+  SourceManager() = default;
+  SourceManager(SourceManager const&) = delete;
+
   llvm::ErrorOr<SourceFile> Open(llvm::StringRef Filename) {
     auto File = std::make_unique<SourceFileStorage>();
     if (std::error_code ec = File->Open(Filename)) {
       return ec;
     }
-    File->StartLoc = getNextStartLoc();
-    SourceFile Ref{File->getBuffer(),
-                      File->Name,
-                      File->StartLoc};
-    Entries.push_back(Ref);
+    SourceFile Entry = createEntry(File->getBuffer(), File->Name);
     StoredEntries.push_back(std::move(File));
-    return Entries.back();
+    return Entry;
   }
 
   FullSourceLocation getFullSourceLocation(SourceLocation Loc) {
@@ -167,6 +180,18 @@ public:
       if (X.hasLoc(Loc)) return X;
     }
     return SourceFile{};
+  }
+
+  SourceFile getOrCreateExternal(uintptr_t RawEncoding,
+                                 llvm::StringRef Buffer,
+                                 llvm::StringRef Name) {
+    auto itr = ExternalLookup.find(RawEncoding);
+    if (itr == ExternalLookup.end()) {
+      SourceFile File = createEntry(Buffer, Name, RawEncoding);
+      ExternalLookup.insert({RawEncoding, File});
+      return File;
+    }
+    return (*itr).second;
   }
 };
 
