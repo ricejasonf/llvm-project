@@ -22,6 +22,7 @@
 #include "clang/Sema/SemaObjC.h"
 #include "clang/Sema/SemaOpenMP.h"
 #include "llvm/ADT/STLForwardCompat.h"
+#include "heavy/HeavyScheme.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Frontend/OpenMP/OMPContext.h"
 #include "llvm/Support/SaveAndRestore.h"
@@ -148,10 +149,6 @@ enum class CXX11AttributeKind {
   /// is ill-formed by C++11 [dcl.attr.grammar]p6.
   InvalidAttributeSpecifier
 };
-
-  namespace heavy {
-    class Context;
-  } // namespace heavy
 
 /// Parser - This implements a parser for the C family of languages.  After
 /// parsing units of the grammar, productions are invoked to handle whatever has
@@ -330,7 +327,7 @@ class Parser : public CodeCompletionHandler {
 
   std::unique_ptr<CommentHandler> CommentSemaHandler;
 
-  std::unique_ptr<heavy::Context> HeavySchemeContext;
+  heavy::HeavyScheme HeavyScheme;
 
   /// Whether the '>' token acts as an operator or not. This will be
   /// true except when we are parsing an expression within a C++
