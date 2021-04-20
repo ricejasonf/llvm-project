@@ -31,14 +31,23 @@ class HeavyScheme {
   public:
 
   HeavyScheme(std::unique_ptr<heavy::Context>);
+  // The default constructor relies on init() to lazily
+  // initialize the members.
   HeavyScheme();
   ~HeavyScheme();
 
+  // init - idempotent initializer
+  void init();
+
   heavy::Context& getContext() {
+    assert(ContextPtr && SourceManagerPtr &&
+        "HeavyScheme must be initialized");
     return *ContextPtr;
   }
 
   heavy::SourceManager& getSourceManager() {
+    assert(ContextPtr && SourceManagerPtr &&
+        "HeavyScheme must be initialized");
     return *SourceManagerPtr;
   }
 
@@ -56,7 +65,7 @@ class HeavyScheme {
   //                created to shadow whatever environment is loaded in
   //                Context at that point.
   void LoadEmbeddedEnv(void* Handle,
-                       llvm::function_ref<void(void*)> LoadParent);
+          llvm::function_ref<void(HeavyScheme&, void*)> LoadParent);
 
   // LoadCoreEnv  - Loads the core environment for bootstrapping a new module
   //                This is useful as a root node when creating scope nested

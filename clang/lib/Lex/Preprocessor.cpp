@@ -38,7 +38,6 @@
 #include "clang/Lex/CodeCompletionHandler.h"
 #include "clang/Lex/ExternalPreprocessorSource.h"
 #include "clang/Lex/HeaderSearch.h"
-#include "clang/Lex/HeavySchemeLexer.h"
 #include "clang/Lex/LexDiagnostic.h"
 #include "clang/Lex/Lexer.h"
 #include "clang/Lex/LiteralSupport.h"
@@ -52,6 +51,7 @@
 #include "clang/Lex/ScratchBuffer.h"
 #include "clang/Lex/Token.h"
 #include "clang/Lex/TokenLexer.h"
+#include "heavy/Lexer.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -1426,17 +1426,17 @@ void Preprocessor::createPreprocessingRecord() {
   addPPCallbacks(std::unique_ptr<PPCallbacks>(Record));
 }
 
-void Preprocessor::InitEmbeddedLexer(EmbeddedLexer& EL) {
-  EL.Init(CurLexer->getFileLoc(),
-          CurLexer->BufferStart,
-          CurLexer->BufferEnd,
-          CurLexer->BufferPtr);
+void Preprocessor::InitEmbeddedLexer(
+          llvm::function_ref<EmbeddedLexerInitFn> InitFn) {
+  InitFn(CurLexer->getFileLoc(),
+         CurLexer->BufferStart,
+         CurLexer->BufferEnd,
+         CurLexer->BufferPtr);
 }
 
-void Preprocessor::FinishEmbeddedLexer(EmbeddedLexer& EL) {
+void Preprocessor::FinishEmbeddedLexer(unsigned Offset) {
   // Have the CurLexer resume on the char
   // immediately after the last char lexed
-  // byt the embedded lexer
-  unsigned Offset = EL.GetByteOffset();
+  // by the the embedded lexer (specified by Offset)
   CurLexer->SetByteOffset(Offset, /*IsStartOfLine=*/false);
 }

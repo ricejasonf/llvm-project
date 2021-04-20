@@ -71,7 +71,6 @@ class ExternalPreprocessorSource;
 class FileEntry;
 class FileManager;
 class HeaderSearch;
-class EmbeddedLexer;
 class MacroArgs;
 class PragmaHandler;
 class PragmaNamespace;
@@ -2375,8 +2374,17 @@ private:
       *ExcludedConditionalDirectiveSkipMappings;
 
 public:
-  void InitEmbeddedLexer(EmbeddedLexer& EL);
-  void FinishEmbeddedLexer(EmbeddedLexer& EL);
+  using EmbeddedLexerInitFn = void (clang::SourceLocation /*FileLoc*/,
+                                    const char*           /*BufferStart*/,
+                                    const char*           /*BufferEnd*/,
+                                    const char*           /*BufferPtr*/);
+
+  // InitEmbeddedLexer - Calls InitFn to allow an external lexer to take
+  //                     over consuming bytes from the lexers buffer.
+  void InitEmbeddedLexer(llvm::function_ref<EmbeddedLexerInitFn> InitFn);
+  // FinishEmbeddedLexer - When external lexer is finished it resigns control
+  //                       telling the lexer where to resume via Offset.
+  void FinishEmbeddedLexer(unsigned Offset);
 };
 
 /// Abstract base class that describes a handler that will receive
