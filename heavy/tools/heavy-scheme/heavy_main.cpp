@@ -45,7 +45,9 @@ static cl::opt<ExecutionMode> InputMode(
                         "output mlir code"}),
   cl::init(ExecutionMode::repl));
 
-void ProcessTopLevelExpr(heavy::Context& Context, heavy::Value Val) {
+heavy::Value ProcessTopLevelExpr(heavy::Context& Context, llvm::ArrayRef<heavy::Value> Values) {
+  assert(Values.size() == 1 && "Expecting single parse result");
+  heavy::Value Val = Values[0];
   switch (InputMode.getValue()) {
   case ExecutionMode::repl:
     Val = heavy::eval(Context, Val);
@@ -59,6 +61,8 @@ void ProcessTopLevelExpr(heavy::Context& Context, heavy::Value Val) {
   default:
     llvm_unreachable("Invalid execution mode for loop");
   }
+
+  return Val;
 }
 
 int main(int argc, char const** argv) {
@@ -80,39 +84,14 @@ int main(int argc, char const** argv) {
 
   // Top level Scheme parse/eval stuff
 
-  heavy::Context Context;
-  heavy::Lexer   SchemeLexer(File.StartLoc, File.Buffer);
-  heavy::Parser  Parser(SchemeLexer, Context);
-
-  Parser.ConsumeToken();
-
-  // Make the Top Level Environment mutable
-  Context.PushMutableModule();
-
-  heavy::ValueResult Result;
-  bool HasError = Context.CheckError();
-  while (true) {
-    Result = Parser.ParseTopLevelExpr();
-    if (!HasError && Context.CheckError()) {
-      HasError = true;
-      // TODO print error source location
-      // with Context.getErrorLocation()
-      llvm::errs() << "\nerror: "
-                   << Context.getErrorMessage()
-                   << "\n\n";
-    }
-    // Keep parsing until we find the end
-    if (Parser.isFinished()) break;
-    if (HasError) continue;
-    if (Result.isUsable()) {
-      ProcessTopLevelExpr(Context, Result.get());
-    }
-  };
-
-  if (HasError) return 1;
+  heavy::HeavyScheme HeavyScheme(
+      std::make_unique<heavy::Context>(ProcessTopLevelExpr));
+  heavy::Lexer Lexer(File);
+  HeavyScheme.CreateTopLevelModule();
+  HeavyScheme.ProcessTopLevelCommands(Lexer);
 
   if (InputMode.getValue() == ExecutionMode::mlir) {
-    Context.dumpModuleOp();
+    HeavyScheme.getContext().dumpModuleOp();
     llvm::errs() << "\n";
   }
 }

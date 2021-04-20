@@ -339,7 +339,6 @@ bool Lexer::TryProcessComment(const char *&CurPtr) {
   return false;
 }
 
-#if 0
 // Copy/Pasted from Lexer (mostly)
 SourceLocation Lexer::getSourceLocation(const char *Loc) const {
   assert(Loc >= BufferStart && Loc <= BufferEnd &&
@@ -350,4 +349,3 @@ SourceLocation Lexer::getSourceLocation(const char *Loc) const {
   unsigned CharNo = Loc - BufferStart;
   return FileLoc.getLocWithOffset(CharNo);
 }
-#endif
