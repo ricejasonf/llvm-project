@@ -78,6 +78,7 @@ Context::Context(ValueFn ParseResultHandler)
   AddBuiltin("/",                 builtin::operator_div);
   AddBuiltin("list",              builtin::list);
   AddBuiltin("append",            builtin::append);
+  AddBuiltin("dump",              builtin::dump);
   AddBuiltin("eq?",               builtin::eqv);
   AddBuiltin("equal?",            builtin::equal);
   AddBuiltin("eqv?",              builtin::eqv);
