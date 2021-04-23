@@ -45,13 +45,13 @@ static cl::opt<ExecutionMode> InputMode(
                         "output mlir code"}),
   cl::init(ExecutionMode::repl));
 
-heavy::Value ProcessTopLevelExpr(heavy::Context& Context, llvm::ArrayRef<heavy::Value> Values) {
+heavy::Value ProcessTopLevelExpr(heavy::Context& Context, heavy::ValueRefs Values) {
   assert(Values.size() == 1 && "Expecting single parse result");
   heavy::Value Val = Values[0];
   switch (InputMode.getValue()) {
   case ExecutionMode::repl:
     Val = heavy::eval(Context, Val);
-    LLVM_FALLTHROUGH;
+    break;
   case ExecutionMode::read:
     if (!Context.CheckError()) Val.dump();
     break;
@@ -84,11 +84,18 @@ int main(int argc, char const** argv) {
 
   // Top level Scheme parse/eval stuff
 
+  auto OnError = [](llvm::StringRef Err, heavy::FullSourceLocation) {
+    // TODO display error location
+    llvm::errs() << "\nerror: "
+                 << Err
+                 << "\n\n";
+  };
+
   heavy::HeavyScheme HeavyScheme(
       std::make_unique<heavy::Context>(ProcessTopLevelExpr));
   heavy::Lexer Lexer(File);
   HeavyScheme.CreateTopLevelModule();
-  HeavyScheme.ProcessTopLevelCommands(Lexer);
+  HeavyScheme.ProcessTopLevelCommands(Lexer, OnError);
 
   if (InputMode.getValue() == ExecutionMode::mlir) {
     HeavyScheme.getContext().dumpModuleOp();

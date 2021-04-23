@@ -50,6 +50,11 @@ public:
     return SourceLocation(Loc + Offset);
   }
 
+  unsigned getOffsetFrom(SourceLocation Start) {
+    assert(Start.Loc < Loc && "location must exist after start location");
+    return Loc - Start.Loc;
+  }
+
   bool isValid() const {
     return Loc != 0;
   }
@@ -124,6 +129,16 @@ public:
 
   SourceLocation getLocation() const {
     return Loc;
+  }
+
+  uintptr_t getExternalRawEncoding() {
+    return File.ExternalRawEncoding;
+  }
+
+  // getOffset - returns offset of location from
+  //             the start of the file
+  unsigned getOffset() {
+    return Loc.getOffsetFrom(File.StartLoc);
   }
 
   bool isValid() const {

@@ -60,7 +60,7 @@ class Context;
 class Pair;
 class Binding;
 class Symbol;
-using ValueRefs = llvm::ArrayRef<heavy::Value>;
+using ValueRefs = llvm::MutableArrayRef<heavy::Value>;
 using ValueFn   = heavy::Value (*)(Context&, ValueRefs);
 // TODO consider having this return an Operation*
 using SyntaxFn  = mlir::Value (*)(OpGen&, Pair*);

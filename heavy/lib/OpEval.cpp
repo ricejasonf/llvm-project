@@ -263,7 +263,7 @@ private:
         return CallLambdaIr(Op, L, ArgResults);
       }
       case ValueKind::Builtin: {
-        llvm::ArrayRef<heavy::Value> ArgResultsRef(ArgResults);
+        llvm::MutableArrayRef<heavy::Value> ArgResultsRef(ArgResults);
         Builtin* B = cast<Builtin>(Callee);
 
         heavy::Value Result = B->Fn(Context,
