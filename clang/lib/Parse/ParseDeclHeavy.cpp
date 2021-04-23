@@ -56,8 +56,18 @@ bool Parser::ParseHeavyScheme() {
   DeclContext* DC = getActions().CurContext;
   HeavyScheme.LoadEmbeddedEnv(DC, LoadParentEnv);
 
+  auto ErrorHandler = [&](llvm::StringRef Err,
+                          heavy::FullSourceLocation EmbeddedLoc) {
+    clang::SourceLocation ErrLoc = clang::SourceLocation
+      ::getFromRawEncoding(EmbeddedLoc.getExternalRawEncoding())
+       .getLocWithOffset(EmbeddedLoc.getOffset());
+    Diag(ErrLoc, diag::err_heavy_scheme) << Err;
+  };
+
+
   heavy::TokenKind Terminator = heavy::tok::r_brace;
   bool HasError = HeavyScheme.ProcessTopLevelCommands(SchemeLexer,
+                                                      ErrorHandler,
                                                       Terminator);
 
   // Return control to C++ Lexer

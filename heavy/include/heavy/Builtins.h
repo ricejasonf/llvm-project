@@ -28,7 +28,7 @@ class Value;
 class OpGen;
 class OpEval;
 class Pair;
-using ValueRefs = llvm::ArrayRef<heavy::Value>;
+using ValueRefs = llvm::MutableArrayRef<heavy::Value>;
 
 }
 
@@ -46,6 +46,7 @@ mlir::Value set(OpGen& OG, Pair* P);
 namespace heavy { namespace builtin {
 
 heavy::Value eval(Context& C, ValueRefs Args);
+heavy::Value dump(Context& C, ValueRefs Args);
 heavy::Value operator_add(Context& C, ValueRefs Args);
 heavy::Value operator_mul(Context&C, ValueRefs Args);
 heavy::Value operator_sub(Context&C, ValueRefs Args);

@@ -86,15 +86,32 @@ public:
     , Context(C)
   { }
 
-  void setTerminator(TokenKind Kind) {
-    Terminator = Kind;
-  }
-
   bool isFinished() const {
     return IsFinished;
   }
 
   ValueResult ParseTopLevelExpr();
+
+  // Consumes the first token for parsing.
+  // If the terminator is brace-like, the
+  // matching opening brace is expected as
+  // the first token and is consumed.
+  // Returns false on failure. (sorry)
+  bool PrimeToken(heavy::TokenKind Term) {
+    Lexer.Lex(Tok);
+
+    Terminator = Term;
+    switch (Terminator) {
+    case tok::r_brace:
+      return TryConsumeToken(tok::l_brace, "expecting {");
+    case tok::r_paren:
+      return TryConsumeToken(tok::l_paren, "expecting (");
+    case tok::r_square:
+      return TryConsumeToken(tok::l_square, "expecting [");
+    default:
+      return true;
+    }
+  }
 
   SourceLocation ConsumeToken() {
     PrevTokLocation = Tok.getLocation();
@@ -102,9 +119,11 @@ public:
     return PrevTokLocation;
   }
 
-  bool TryConsumeToken(heavy::TokenKind Expected) {
-    if (Tok.isNot(Expected))
+  bool TryConsumeToken(heavy::TokenKind Expected, llvm::StringRef ErrMsg) {
+    if (Tok.isNot(Expected)) {
+      SetError(Tok, ErrMsg);
       return false;
+    }
     ConsumeToken();
     return true;
   }

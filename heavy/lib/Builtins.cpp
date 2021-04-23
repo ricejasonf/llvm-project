@@ -117,6 +117,12 @@ heavy::Value eval(Context& C, ValueRefs Args) {
   return opEval(C.OpEval);
 }
 
+heavy::Value dump(Context& C, ValueRefs Args) {
+  if (Args.size() != 1) return C.SetError("invalid arity");
+  Args[0].dump();
+  return heavy::Undefined();
+}
+
 template <typename Op>
 heavy::Value operator_helper(Context& C, Value X, Value Y) {
   if (!X.isNumber()) return C.SetInvalidKind(X);

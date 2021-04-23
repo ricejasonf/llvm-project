@@ -73,13 +73,24 @@ void HeavyScheme::CreateTopLevelModule() {
   Context.PushMutableModule();
 }
 
-bool HeavyScheme::ProcessTopLevelCommands(heavy::Lexer& Lexer,
-                                          heavy::tok Terminator) {
+bool HeavyScheme::ProcessTopLevelCommands(
+                              heavy::Lexer& Lexer,
+                              llvm::function_ref<ErrorHandlerFn> ErrorHandler,
+                              heavy::tok Terminator) {
   auto& Context = getContext();
-  heavy::Parser Parser(Lexer, Context);
-  Parser.setTerminator(Terminator);
+  auto& SM = getSourceManager();
+  auto handleError = [&] {
+    heavy::FullSourceLocation FullLoc = SM.getFullSourceLocation(
+        Context.getErrorLocation());
+    ErrorHandler(Context.getErrorMessage(), FullLoc);
+    return true;
+  };
 
-  Parser.ConsumeToken();
+  heavy::Parser Parser(Lexer, Context);
+  if (!Parser.PrimeToken(Terminator)) {
+    handleError();
+    return true;
+  }
 
   heavy::ValueResult Result;
   bool HasError = Context.CheckError();
@@ -87,17 +98,14 @@ bool HeavyScheme::ProcessTopLevelCommands(heavy::Lexer& Lexer,
     Result = Parser.ParseTopLevelExpr();
     if (!HasError && Context.CheckError()) {
       HasError = true;
-      // TODO allow the user to specify what to do
-      //      with error messages
-      llvm::errs() << "\nerror: "
-                   << Context.getErrorMessage()
-                   << "\n\n";
+      handleError();
     }
     // Keep parsing until we find the end
     if (Parser.isFinished()) break;
     if (HasError) continue;
     if (Result.isUsable()) {
-      Context.HandleParseResult(Context, Result.get());
+      heavy::Value ResultVal = Result.get();
+      Context.HandleParseResult(Context, ResultVal);
     }
   };
 
