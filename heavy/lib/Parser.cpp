@@ -257,9 +257,7 @@ ValueResult Parser::ParseDottedCdr(Token const& StartTok) {
   assert(Tok.is(tok::period));
   ConsumeToken();
   ValueResult Cdr = ParseExpr();
-  if (!TryConsumeToken(tok::r_paren)) {
-    llvm_unreachable(
-        "TODO emit a diagnostic about illegal dot notation");
+  if (!TryConsumeToken(tok::r_paren, "invalid dot notation")) {
     return ValueError();
   }
   return Cdr;

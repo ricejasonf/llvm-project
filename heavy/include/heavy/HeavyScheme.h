@@ -15,7 +15,8 @@
 
 #include "heavy/Lexer.h"
 #include "heavy/Source.h"
-#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/STLExtras.h" // function_ref
+#include "llvm/ADT/StringRef.h"
 #include <memory>
 
 namespace heavy {
@@ -76,6 +77,7 @@ class HeavyScheme {
   // and loads it as the current environment
   void CreateTopLevelModule();
 
+  using ErrorHandlerFn = void(llvm::StringRef, heavy::FullSourceLocation);
 
   // ProcessTopLevelCommands
   //              - Reading tokens with the provided lexer, this command parses
@@ -85,7 +87,9 @@ class HeavyScheme {
   //                (ie a heavy::tok::r_paren can terminate without effecting
   //                 the parsing of lists that are delimited by parens)
   bool ProcessTopLevelCommands(heavy::Lexer& Lexer,
+                               llvm::function_ref<ErrorHandlerFn> ErrorHandler,
                                heavy::tok Terminator = heavy::tok::eof);
+
 };
 
 }
