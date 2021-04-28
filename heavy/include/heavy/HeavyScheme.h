@@ -39,6 +39,7 @@ class HeavyScheme {
 
   // init - idempotent initializer
   void init();
+  bool isInitialized() { return ContextPtr; }
 
   heavy::Context& getContext() {
     assert(ContextPtr && SourceManagerPtr &&
@@ -90,6 +91,35 @@ class HeavyScheme {
                                llvm::function_ref<ErrorHandlerFn> ErrorHandler,
                                heavy::tok Terminator = heavy::tok::eof);
 
+};
+
+template <typename T>
+struct function_helper : function_helper<decltype(&T::operator())>
+{ };
+
+tmeplate <typename ...Xs>
+struct function_helper<uintptr_t(Xs...)> {
+  template <typename F>
+  auto operator()(F& f, Xs ...xs) {
+    f(from_value<Xs>(x)...);
+  }
+};
+
+
+class function {
+public:
+  function(function const&) = default;
+
+  // F must be trivially copyable and trivially destructible
+  template <typename F>
+  function(F f) {
+    auto CallFn = [](F& f, auto... params
+  }
+};
+
+template <typename AllocateFn, typename CallFn, typename ...Params>
+class function_storage {
+  AllocateFn allocate;
 };
 
 }
