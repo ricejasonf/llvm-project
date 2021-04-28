@@ -14,8 +14,6 @@
 #define LLVM_HEAVY_VALUE_H
 
 #include "heavy/Source.h"
-#include "mlir/IR/Operation.h"
-#include "mlir/IR/Function.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -46,7 +44,6 @@ using llvm::dyn_cast;
 using llvm::dyn_cast_or_null;
 using llvm::isa;
 using mlir::Operation;
-using mlir::FuncOp;
 
 // Value - A result of evaluation. This derives from
 //         an llvm::PointerSumType to point to values
@@ -196,7 +193,6 @@ struct PointerLikeTypeTraits<heavy::Char>
 namespace heavy {
 
 struct ValueSumType {
-  // TODO add Char to this list
   enum SumKind {
     ValueBase = 0,
     Int,
@@ -210,11 +206,13 @@ struct ValueSumType {
   using type = llvm::PointerSumType<SumKind,
     llvm::PointerSumTypeMember<ValueBase,  heavy::ValueBase*>,
     llvm::PointerSumTypeMember<Int,        heavy::Int>,
-    llvm::PointerSumTypeMember<Bool,    heavy::Bool>,
+    llvm::PointerSumTypeMember<Bool,       heavy::Bool>,
     llvm::PointerSumTypeMember<Char,       heavy::Char>,
     llvm::PointerSumTypeMember<Empty,      heavy::Empty>,
     llvm::PointerSumTypeMember<Undefined,  heavy::Undefined>,
-    llvm::PointerSumTypeMember<Operation,  mlir::Operation*>>;
+    llvm::PointerSumTypeMember<Operation,  mlir::Operation*, 
+                        llvm::PointerLikeTypeTraits<heavy::ValueBase*>>>;
+    // The PointerLikeTypeTraits for Operation* are checked in Dialect.h
 };
 
 using ValuePtrBase = typename ValueSumType::type;
@@ -846,31 +844,39 @@ class Lambda final
   : public ValueBase,
     private llvm::TrailingObjects<Lambda, Value> {
 
-  friend class llvm::TrailingObjects<Lambda, Value>;
+  friend class llvm::TrailingObjects<Lambda, Value, char>;
+  friend Context;
 
-  ValueFn Fn;
-  unsigned NumCaptures: 8;
+  using FnPtrTy = Value(*)(void*, Context&, ValueRefs);
+
+  FnPtrTy FnPtr;
+  unsigned short NumCaptures;
+  unsigned short StorageLen;
 
   size_t numTrailingObjects(OverloadToken<Value> const) const {
     return NumCaptures;
   }
 
+  size_t numTrailingObjects(OverloadToken<char> const) const {
+    return StorageLen;
+  }
+
+  void* getStoragePtr() { return getTrailingObjects<char>(); }
 public:
-  Lambda(ValueFn Fn, unsigned NumCaptures)
+  Lambda(FnPtrTy Fn, unsigned short NumCaptures,
+                     unsigned short StorageLen)
     : ValueBase(ValueKind::Lambda)
-    , Fn(Fn)
+    , FnPtr(Fn)
     , NumCaptures(NumCaptures)
+    , StorageLen(StorageLen)
   { }
 
   static bool classof(Value V) {
     return V.getKind() == ValueKind::Lambda;
   }
 
-  ValueFn getFn() const { return Fn; }
-
-  llvm::ArrayRef<Value> getCaptures() const {
-    return llvm::ArrayRef<Value>(
-        getTrailingObjects<Value>(), NumCaptures);
+  Value call(Context& C, ValueRefs Vs) {
+    return FnPtr(getStoragePtr(), C, Vs);
   }
 
   llvm::MutableArrayRef<Value> getCaptures() {
