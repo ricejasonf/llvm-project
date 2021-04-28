@@ -134,11 +134,6 @@ Vector* Context::CreateVector(unsigned N) {
   return new (Mem) Vector(CreateUndefined(), N);
 }
 
-Lambda* Context::CreateLambda(heavy::ValueFn Fn,
-                              llvm::ArrayRef<heavy::Value> Captures) {
-  return new (TrashHeap) Lambda(Fn, /*NumCaptures=*/0);
-}
-
 LambdaIr* Context::CreateLambdaIr(FuncOp Op,
                               llvm::ArrayRef<heavy::Value> Captures) {
   size_t size = LambdaIr::sizeToAlloc(Captures.size());
