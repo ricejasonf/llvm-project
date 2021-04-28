@@ -20,10 +20,18 @@
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/Support/PointerLikeTypeTraits.h"
 
 // Kinds go away with an August 2020 MLIR commit in `main`
 #define HEAVY_VALUE_KIND \
   mlir::Attribute::Kind::FIRST_PRIVATE_EXPERIMENTAL_0_ATTR
+
+// In Value we assume Operation* has the same alignment as ValueBase*.
+// (which should be 8 bytes)
+// Check that here
+static_assert(llvm::PointerLikeTypeTraits<heavy::ValueBase*>::NumLowBitsAvailable ==
+              llvm::PointerLikeTypeTraits<heavy::Operation*>::NumLowBitsAvailable,
+              "mlir::Operation* must have 8 byte alignment to fit in heavy::Value");
 
 namespace heavy {
 using mlir::FuncOp;
