@@ -259,8 +259,38 @@ public:
 
   LambdaIr* CreateLambdaIr(FuncOp Op,
                            llvm::ArrayRef<heavy::Value> Captures);
-  Lambda*   CreateLambda(ValueFn Fn,
-                         llvm::ArrayRef<heavy::Value> Captures);
+  template <typename F>
+  Lambda* Context::CreateLambda(F Fn,
+                              llvm::ArrayRef<heavy::Value> Captures) {
+  // The way the llvm::TrailingObjects<Lambda, Value, char> works
+  // is that the storage pointer (via char) has the same alignment as
+  // its previous trailing objects' type `Value` which is pointer-like
+  // and aligned to 8 bytes. Types requiring greater alignments probably
+  // wouldn't work (though I am not exactly sure what would happen)
+  static_assert(alignof(F) <= alignof(Value),
+  "lambda function storage requires alignment that fits within heavy::Value");
+  size_t StorageLen = sizeof(F);
+  size_t size = LambdaIr::sizeToAlloc(Captures.size(), StorageLen);
+  void* Mem = TrashHeap.Allocate(size, alignof(Lambda));
+
+  auto CallFn = [](void* Storage, Context& C, ValueRefs Values) -> Value {
+    F& Func = *static_cast<F*>(Storage);
+    return Func(C, Values);
+  };
+
+  Lambda* New = new (Mem) Lambda(CallFn, Captures.size(), StorageLen);
+  auto CapturesItr = Captures.begin();
+  for (heavy::Value& V : New->getCaptures()) {
+    V = *CapturesItr;
+    ++CapturesItr;
+  }
+
+  void* StoragePtr = New->getStoragePtr();
+  new (StoragePtr) F(Fn);
+  New->FnPtr = CallFn;
+
+  return New;
+}
 
   Builtin* CreateBuiltin(ValueFn Fn) {
     return new (TrashHeap) Builtin(Fn);

@@ -34,10 +34,19 @@ void LoadParentEnv(heavy::HeavyScheme& HS, void* Handle) {
     HS.LoadEmbeddedEnv(DC->getParent(), LoadParentEnv);
   }
 }
+
+void LoadBuiltinModule(heavy::HeavyScheme& HS) {
+  // TODO
+  //HS.LoadBuiltinModule(???);
+}
 } // end anon namespace
 
 bool Parser::ParseHeavyScheme() {
-  HeavyScheme.init();
+  if (!HeavyScheme.isInitialized()) {
+    HeavyScheme.init();
+    LoadBuiltinModule(HS);
+  }
+
   heavy::Lexer SchemeLexer;
   auto LexerInitFn = [&](clang::SourceLocation Loc,
                          char const* BufferStart,
