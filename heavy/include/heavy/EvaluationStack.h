@@ -55,8 +55,9 @@ class StackFrame final : public llvm::TrailingObjects<StackFrame, Value,
   }
 
 public:
-  StackFrame(mlir::Operation* Op)
-    : Op(Op)
+  StackFrame(mlir::Operation* Op, SourceLocation Loc)
+    : Op(Op),
+      CallLoc(Loc)
   { }
 
   ~StackFrame() {
@@ -92,6 +93,8 @@ public:
 
   // "instruction pointer" Op
   mlir::Operation* getOp() { return Op; }
+
+  SourceLocation getCallLoc() { return CallLoc; }
 
   // Returns the value for callee or nullptr
   // if the StackFrame is invalid
@@ -145,10 +148,10 @@ public:
       Top(getStartingPoint())
   {
     // push an invalid StackFrame as the bottom
-    push(nullptr);
+    push(nullptr, {});
   }
 
-  StackFrame* push(mlir::Operation* Op) {
+  StackFrame* push(mlir::Operation* Op, heavy::SourceLocation CallLoc) {
     unsigned ByteLen = StackFrame::sizeToAlloc(Op);
 
     char* CurPtr = reinterpret_cast<char*>(Top);
@@ -158,16 +161,17 @@ public:
       return nullptr;
     }
 
-    StackFrame* New = new (NewPtr) StackFrame(Op);
+    StackFrame* New = new (NewPtr) StackFrame(Op, CallLoc);
     Top = New;
     return New;
   }
 
   // Args here includes the callee
-  StackFrame* push(mlir::Operation* Op, llvm::ArrayRef<Value> Args) {
+  StackFrame* push(mlir::Operation* Op, heavy::SourceLocation CallLoc,
+                   llvm::ArrayRef<Value> Args) {
     assert(StackFrame::getArgCount(Op) == Args.size() &&
         "operation arity mismatch");
-    StackFrame* Frame = push(Op);
+    StackFrame* Frame = push(Op, CallLoc);
     if (!Frame) return nullptr;
 
     if (!Args.empty()) {
