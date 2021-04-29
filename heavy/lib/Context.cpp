@@ -134,20 +134,6 @@ Vector* Context::CreateVector(unsigned N) {
   return new (Mem) Vector(CreateUndefined(), N);
 }
 
-LambdaIr* Context::CreateLambdaIr(FuncOp Op,
-                              llvm::ArrayRef<heavy::Value> Captures) {
-  size_t size = LambdaIr::sizeToAlloc(Captures.size());
-  void* Mem = TrashHeap.Allocate(size, alignof(LambdaIr));
-  LambdaIr* New = new (Mem) LambdaIr(Op, Captures.size());
-  auto CapturesItr = Captures.begin();
-  for (heavy::Value& V : New->getCaptures()) {
-    V = *CapturesItr;
-    ++CapturesItr;
-  }
-  assert(New->getCaptures().size() == Captures.size());
-  return New;
-}
-
 EnvFrame* Context::PushLambdaFormals(Value Formals,
                                      bool& HasRestParam) {
   llvm::SmallVector<Symbol*, 8> Names;
