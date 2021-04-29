@@ -69,7 +69,7 @@ Context::Context(ValueFn ParseResultHandler)
   AddBuiltinSyntax("lambda",      builtin_syntax::lambda);
   AddBuiltinSyntax("quasiquote",  builtin_syntax::quasiquote);
   AddBuiltinSyntax("quote",       builtin_syntax::quote);
-  AddBuiltinSyntax("set",         builtin_syntax::set);
+  AddBuiltinSyntax("set!",        builtin_syntax::set);
 
   // Load Builtin Procedures
   AddBuiltin("+",                 builtin::operator_add);
