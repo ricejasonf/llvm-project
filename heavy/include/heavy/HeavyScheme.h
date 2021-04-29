@@ -39,7 +39,7 @@ class HeavyScheme {
 
   // init - idempotent initializer
   void init();
-  bool isInitialized() { return ContextPtr; }
+  bool isInitialized() { return static_cast<bool>(ContextPtr); }
 
   heavy::Context& getContext() {
     assert(ContextPtr && SourceManagerPtr &&

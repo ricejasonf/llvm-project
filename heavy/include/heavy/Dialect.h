@@ -29,8 +29,8 @@
 // In Value we assume Operation* has the same alignment as ValueBase*.
 // (which should be 8 bytes)
 // Check that here
-static_assert(llvm::PointerLikeTypeTraits<heavy::ValueBase*>::NumLowBitsAvailable ==
-              llvm::PointerLikeTypeTraits<heavy::Operation*>::NumLowBitsAvailable,
+static_assert(llvm::PointerLikeTypeTraits<heavy::Operation*>::NumLowBitsAvailable ==
+              heavy::ValueSumType::OperationTraits::NumLowBitsAvailable,
               "mlir::Operation* must have 8 byte alignment to fit in heavy::Value");
 
 namespace heavy {
