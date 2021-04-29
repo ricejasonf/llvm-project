@@ -79,7 +79,6 @@ enum class ValueKind {
   ForwardRef,
   Int,
   Lambda,
-  LambdaIr,
   Module,
   Operation,
   Pair,
@@ -203,6 +202,20 @@ struct ValueSumType {
     Operation,
   };
 
+  // mlir::Operation* is incomplete so we have to assume
+  // its alignment and verify later (in Dialect.h)
+  struct OperationTraits {
+    static inline void *getAsVoidPointer(mlir::Operation* P) {
+      return reinterpret_cast<void *>(P);
+    }
+    static inline mlir::Operation* getFromVoidPointer(void *P) {
+      return reinterpret_cast<mlir::Operation*>(P);
+    }
+
+    static constexpr int NumLowBitsAvailable =
+      llvm::detail::ConstantLog2<alignof(void*)>::value;
+  };
+
   using type = llvm::PointerSumType<SumKind,
     llvm::PointerSumTypeMember<ValueBase,  heavy::ValueBase*>,
     llvm::PointerSumTypeMember<Int,        heavy::Int>,
@@ -210,9 +223,7 @@ struct ValueSumType {
     llvm::PointerSumTypeMember<Char,       heavy::Char>,
     llvm::PointerSumTypeMember<Empty,      heavy::Empty>,
     llvm::PointerSumTypeMember<Undefined,  heavy::Undefined>,
-    llvm::PointerSumTypeMember<Operation,  mlir::Operation*, 
-                        llvm::PointerLikeTypeTraits<heavy::ValueBase*>>>;
-    // The PointerLikeTypeTraits for Operation* are checked in Dialect.h
+    llvm::PointerSumTypeMember<Operation,  mlir::Operation*, OperationTraits>>;
 };
 
 using ValuePtrBase = typename ValueSumType::type;
@@ -842,7 +853,7 @@ public:
 
 class Lambda final
   : public ValueBase,
-    private llvm::TrailingObjects<Lambda, Value> {
+    private llvm::TrailingObjects<Lambda, Value, char> {
 
   friend class llvm::TrailingObjects<Lambda, Value, char>;
   friend Context;
@@ -875,6 +886,11 @@ public:
     return V.getKind() == ValueKind::Lambda;
   }
 
+  static size_t sizeToAlloc(unsigned short NumCaptures,
+                            unsigned short StorageLen) {
+    return totalSizeToAlloc<Value, char>(NumCaptures, StorageLen);
+  }
+
   Value call(Context& C, ValueRefs Vs) {
     return FnPtr(getStoragePtr(), C, Vs);
   }
@@ -882,52 +898,6 @@ public:
   llvm::MutableArrayRef<Value> getCaptures() {
     return llvm::MutableArrayRef<Value>(
         getTrailingObjects<Value>(), NumCaptures);
-  }
-};
-
-// A lambda object that has not been compiled
-// for use with the tree walking evaluator (OpEval)
-class LambdaIr final
-  : public ValueBase,
-    private llvm::TrailingObjects<LambdaIr, Value> {
-
-  friend class llvm::TrailingObjects<LambdaIr, Value>;
-
-  FuncOp Op;
-  unsigned NumCaptures: 8;
-
-  size_t numTrailingObjects(OverloadToken<Value> const) const {
-    return NumCaptures;
-  }
-
-public:
-  LambdaIr(FuncOp Op, unsigned NumCaptures)
-    : ValueBase(ValueKind::LambdaIr)
-    , Op(Op)
-    , NumCaptures(NumCaptures)
-  { }
-
-  static bool classof(Value V) {
-    return V.getKind() == ValueKind::LambdaIr;
-  }
-
-  FuncOp getOp() const { return Op; }
-  mlir::Block& getBody() {
-    return Op.getBody().front();
-  }
-
-  llvm::ArrayRef<Value> getCaptures() const {
-    return llvm::ArrayRef<Value>(
-        getTrailingObjects<Value>(), NumCaptures);
-  }
-
-  llvm::MutableArrayRef<Value> getCaptures() {
-    return llvm::MutableArrayRef<Value>(
-        getTrailingObjects<Value>(), NumCaptures);
-  }
-
-  static size_t sizeToAlloc(unsigned Length) {
-    return totalSizeToAlloc<Value>(Length);
   }
 };
 
@@ -1222,7 +1192,6 @@ protected:
   VISIT_FN(ForwardRef)
   VISIT_FN(Int)
   VISIT_FN(Lambda)
-  VISIT_FN(LambdaIr)
   VISIT_FN(Module)
   VISIT_FN(Operation)
   VISIT_FN(Pair)
@@ -1258,7 +1227,6 @@ public:
     case ValueKind::ForwardRef:     DISPATCH(ForwardRef);
     case ValueKind::Int:            DISPATCH(Int);
     case ValueKind::Lambda:         DISPATCH(Lambda);
-    case ValueKind::LambdaIr:       DISPATCH(LambdaIr);
     case ValueKind::Module:         DISPATCH(Module);
     case ValueKind::Operation:      DISPATCH(Operation);
     case ValueKind::Pair:           DISPATCH(Pair);
@@ -1297,7 +1265,6 @@ inline llvm::StringRef getKindName(heavy::ValueKind Kind) {
   GET_KIND_NAME_CASE(ForwardRef)
   GET_KIND_NAME_CASE(Int)
   GET_KIND_NAME_CASE(Lambda)
-  GET_KIND_NAME_CASE(LambdaIr)
   GET_KIND_NAME_CASE(Module)
   GET_KIND_NAME_CASE(Operation)
   GET_KIND_NAME_CASE(Pair)

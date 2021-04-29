@@ -28,10 +28,38 @@ class OpEvalImpl {
   using ValueMapTy = llvm::ScopedHashTable<mlir::Value, heavy::Value>;
   using ValueMapScope = typename ValueMapTy::ScopeTy;
 
+  // FunctionEntryPointTy - Allows IR (not compiled) functions to affect
+  //                        control flow.
+  //                       
+  class FunctionEntryPointTy {
+    BlockItrTy Inst;
+    bool IsSet = false;
+
+    public:
+    operator bool() const {
+      return IsSet;
+    }
+
+    void operator=(BlockItrTy B) {
+      Inst = B;
+      IsSet = true;
+    }
+
+    // Gets the instruction and clears the state
+    BlockItrTy flush() {
+      assert(IsSet && "instruction must be set");
+      BlockItrTy Result = Inst;
+      Inst = BlockItrTy();
+      IsSet = false;
+      return Result;
+    }
+  };
+
   heavy::Context& Context;
   BlockItrTy LastIp; // the last op evaluated
   ValueMapTy ValueMap;
   std::stack<ValueMapScope> ValueMapScopes;
+  FunctionEntryPointTy FunctionEntryPoint = {};
 
   void setValue(mlir::Value M, heavy::Value H) {
     assert(M && "must be set to a valid value");
@@ -120,7 +148,8 @@ private:
       // llvm::errs() << "push_frame: "; Op->dump();
     assert(Op && "stack frame op must be a valid op");
     ValueMapScopes.emplace(ValueMap);
-    return Context.EvalStack.push(Op, Args);
+    heavy::SourceLocation CallLoc = getSourceLocation(Op->getLoc());
+    return Context.EvalStack.push(Op, CallLoc, Args);
   }
 
   void pop_frame()  {
@@ -192,23 +221,21 @@ private:
     }
   }
 
-  void LoadArgs(StackFrame* Frame, mlir::Block& Body) {
+  void LoadArgs(StackFrame& Frame, mlir::Block& Body) {
     // This associates values with BlockArguments
     // which later gets assigned to BingingOps (in code)
 
     // Note we are not setting the callee (which might end up as a param)
     auto OpArgs = Body.getArguments();
-    auto FrameArgs = Frame->getArgs();
+    auto FrameArgs = Frame.getArgs();
     for (unsigned i = 0; i < OpArgs.size(); ++i) {
       setValue(OpArgs[i], FrameArgs[i]);
     }
   }
 
-  BlockItrTy CallLambdaIr(heavy::ApplyOp ApplyOp, heavy::LambdaIr* L,
-                          llvm::ArrayRef<heavy::Value> Args) {
-    heavy::SourceLocation CallLoc = getSourceLocation(ApplyOp.getLoc());
-    heavy::FuncOp F = L->getOp();
-
+  BlockItrTy CallFuncOp(heavy::FuncOp F, ValueRefs Args) {
+    heavy::StackFrame& Frame = getCurrentFrame();
+    SourceLocation CallLoc = Frame.getCallLoc();
     // check arguments
     {
       unsigned NumArgs = Args.size();
@@ -217,17 +244,27 @@ private:
                                .cast<mlir::FunctionType>();
       // assert(!F.hasRestParam() && "TODO support rest parameters");
       if (FT.getNumInputs() != NumArgs) {
-        return SetError(CallLoc, "invalid arity", L);
+        return SetError(CallLoc, "invalid arity", heavy::Undefined());
       }
     }
 
-    heavy::StackFrame* Frame = push_frame(ApplyOp, Args);
-    if (!Frame) return BlockItrTy();
-
-    mlir::Block& Body = L->getBody();
+    mlir::Block& Body = F.getBody().front();
     LoadArgs(Frame, Body);
     // return the first instruction of the function body
     return BlockItrTy(Body.front());
+  }
+
+  BlockItrTy CallLambda(heavy::ApplyOp ApplyOp, heavy::Lambda* L,
+                        ValueRefs Args) {
+    heavy::StackFrame* Frame = push_frame(ApplyOp, Args);
+    if (!Frame) return BlockItrTy();
+    L->call(Context, Args);
+    if (FunctionEntryPoint) return FunctionEntryPoint.flush();
+    // If the FunctionEntryPoint was not specified then it
+    // has already executed a precompiled function. Resume
+    // with the next operation after popping the stack frame.
+    pop_frame();
+    return next(ApplyOp);
   }
 
   void LoadArgResults(ApplyOp Op,
@@ -255,12 +292,10 @@ private:
     }
 
     switch (Callee.getKind()) {
-      case ValueKind::Lambda:
-        llvm_unreachable("TODO");
+      case ValueKind::Lambda: {
+        Lambda* L = cast<Lambda>(Callee);
+        return CallLambda(Op, L, ArgResults);
         break;
-      case ValueKind::LambdaIr: {
-        LambdaIr* L = cast<LambdaIr>(Callee);
-        return CallLambdaIr(Op, L, ArgResults);
       }
       case ValueKind::Builtin: {
         llvm::MutableArrayRef<heavy::Value> ArgResultsRef(ArgResults);
@@ -361,8 +396,14 @@ private:
       Captures.push_back(getBindingOrValue(Val));
     }
 
-    heavy::Value V = Context.CreateLambdaIr(F, Captures);
-    setValue(Op.result(), V);
+    auto CallFn = [this, F](heavy::Context& C, ValueRefs Args) {
+      FunctionEntryPoint = this->CallFuncOp(F, Args);
+      return heavy::Undefined();
+    };
+
+    Lambda* L = Context.CreateLambda(CallFn, Captures);
+
+    setValue(Op.result(), L);
     return next(Op);
   }
 
@@ -379,7 +420,7 @@ private:
     uint32_t Index = Op.index().getZExtValue();
     heavy::Value Closure = getValue(Op.closure());
     heavy::Value V = nullptr;
-    if (auto* C = dyn_cast<LambdaIr>(Closure)) {
+    if (auto* C = dyn_cast<Lambda>(Closure)) {
       V = C->getCaptures()[Index];
     }
 
