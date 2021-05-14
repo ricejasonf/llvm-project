@@ -112,4 +112,19 @@ bool HeavyScheme::ProcessTopLevelCommands(
   return HasError;
 }
 
+void HeavyScheme::LoadBuiltinModule(llvm::StringRef Name,
+                                    LambdaDefList Fns) {
+  // TODO
+  //  - create the symbol prefix for the module name
+  //  - check if the module is loaded
+  //  - if not create a Module and add the symbols/functions to it
+  //  - otherwise assign the functions to their corresponding global values
+  //    using a precompiled init function (somehow)
+}
+
+heavy::Undefined setError(heavy::Context& C, llvm::StringRef Msg) {
+  C.SetError(Msg);
+  return {};
+}
+
 }

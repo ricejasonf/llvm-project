@@ -15,9 +15,11 @@
 
 #include "heavy/Lexer.h"
 #include "heavy/Source.h"
+#include "heavy/Value.h"
 #include "llvm/ADT/STLExtras.h" // function_ref
 #include "llvm/ADT/StringRef.h"
 #include <memory>
+#include <type_traits>
 
 namespace heavy {
 class Context;
@@ -28,6 +30,9 @@ class SourceManager;
 class HeavyScheme {
   std::unique_ptr<heavy::Context> ContextPtr;
   std::unique_ptr<heavy::SourceManager> SourceManagerPtr;
+
+  using LambdaDef = std::pair<llvm::StringRef, detail::FunctionDataView>;
+  using LambdaDefList = std::initializer_list<LambdaDef>;
 
   public:
 
@@ -91,7 +96,21 @@ class HeavyScheme {
                                llvm::function_ref<ErrorHandlerFn> ErrorHandler,
                                heavy::tok Terminator = heavy::tok::eof);
 
+  // LoadBuiltinModule - Takes an initializer list of the results to calls to
+  //                     DefineLambda the type of which is implementation defined
+  void LoadBuiltinModule(llvm::StringRef Name, LambdaDefList Defs);
+
+  template <typename F>
+  LambdaDef DefineLambda(llvm::StringRef Name, F Fn) {
+    static_assert(std::is_trivially_copyable<F>::value,
+        "F must be trivially_copyable");
+
+    return {Name, detail::createFunctionDataView(Fn)};
+  }
 };
+
+// Functions for working with heavy::Context and values
+heavy::Undefined setError(heavy::Context&, llvm::StringRef Msg);
 
 }
 
