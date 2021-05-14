@@ -45,6 +45,20 @@ using llvm::dyn_cast_or_null;
 using llvm::isa;
 using mlir::Operation;
 
+template <typename DerivedT>
+void* allocate(llvm::AllocatorBase<DerivedT>& Allocator,
+               size_t Size, size_t Alignment) {
+  return static_cast<DerivedT&>(Allocator).Allocate(Size, Alignment);
+}
+
+template <size_t MaxSize, size_t MaxAlignment>
+void* allocate(std::aligned_storage<MaxSize, size_t MaxAlignment>& Storage,
+               size_t Size, size_t Alignment) {
+  assert(Size <= MaxSize && "allocation out of bounds for storage");
+  assert(MaxAlignment % Alignment != 0 && "improper alignment for storage");
+  return &Storage;
+}
+
 // Value - A result of evaluation. This derives from
 //         an llvm::PointerSumType to point to values
 //         on the heap as well as store small values
@@ -554,7 +568,6 @@ public:
     , EnvStack(Stack)
   { }
 
-  //Binding* AddDefinition(Symbol* Name, ...
   static bool classof(Value V) {
     return V.getKind() == ValueKind::Environment;
   }
@@ -855,11 +868,13 @@ class Lambda final
   : public ValueBase,
     private llvm::TrailingObjects<Lambda, Value, char> {
 
+public:
   friend class llvm::TrailingObjects<Lambda, Value, char>;
   friend Context;
 
   using FnPtrTy = Value(*)(void*, Context&, ValueRefs);
 
+private:
   FnPtrTy FnPtr;
   unsigned short NumCaptures;
   unsigned short StorageLen;
@@ -873,7 +888,12 @@ class Lambda final
   }
 
   void* getStoragePtr() { return getTrailingObjects<char>(); }
-public:
+
+  struct FunctionDataView {
+    Lambda::FnPtrTy CallFn;
+    llvm::StringRef Storage;
+  };
+
   Lambda(FnPtrTy Fn, unsigned short NumCaptures,
                      unsigned short StorageLen)
     : ValueBase(ValueKind::Lambda)
@@ -882,14 +902,41 @@ public:
     , StorageLen(StorageLen)
   { }
 
+public:
+
+  template <typename F>
+  static FunctionDataView createFunctionDataView(F& Fn);
+
+  Lambda(FunctionDataView FnData, llvm::ArrayRef<Value> Captures)
+    : Lambda(FnData.CallFn, Captures.size(), FnData.Storage.size())
+  {
+    // Storage
+    void const* OrigStorage = FnData.Storage.data();
+    size_t StorageLen       = FnData.Storage.size();
+    void* StoragePtr = getStoragePtr();
+    std::memcpy(StoragePtr, OrigStorage, StorageLen);
+
+    // Captures
+    auto CapturesItr = Captures.begin();
+    for (heavy::Value& V : getCaptures()) {
+      V = *CapturesItr;
+      ++CapturesItr;
+    }
+  }
+
   static bool classof(Value V) {
     return V.getKind() == ValueKind::Lambda;
   }
+
 
   static size_t sizeToAlloc(unsigned short NumCaptures,
                             unsigned short StorageLen) {
     return totalSizeToAlloc<Value, char>(NumCaptures, StorageLen);
   }
+
+  template <typename Allocator>
+  static void* allocate(Allocator& Alloc, FunctionDataView&,
+                        llvm::ArrayRef<heavy::Value> Captures);
 
   Value call(Context& C, ValueRefs Vs) {
     return FnPtr(getStoragePtr(), C, Vs);
@@ -1296,7 +1343,80 @@ inline bool equal(Value V1, Value V2) {
   return equal_slow(V1, V2);
 }
 
+Lambda::Lambda(FunctionDataView FnData, llvm::ArrayRef<Value> Captures)
+  : Lambda(FnData.CallFn, Captures.size(), FnData.Storage.size())
+{
+  // Storage
+  void const* OrigStorage = FnData.Storage.data();
+  size_t StorageLen       = FnData.Storage.size();
+  void* StoragePtr = getStoragePtr();
+  std::memcpy(StoragePtr, OrigStorage, StorageLen);
 
+  // Captures
+  auto CapturesItr = Captures.begin();
+  for (heavy::Value& V : getCaptures()) {
+    V = *CapturesItr;
+    ++CapturesItr;
+  }
 }
+
+template <typename F>
+auto Lambda::createFunctionDataView(F& Fn) {
+  // The way the llvm::TrailingObjects<Lambda, Value, char> works
+  // is that the storage pointer (via char) has the same alignment as
+  // its previous trailing objects' type `Value` which is pointer-like.
+  // Types requiring greater alignments probably wouldn't work
+  // (though I am not exactly sure what would happen)
+  static_assert(alignof(F) <= alignof(Value),
+    "function storage alignment is too large");
+
+  static_assert(std::is_trivially_copyable<F>::value,
+    "F must be trivially_copyable");
+  auto CallFn = [](void* Storage, Context& C, ValueRefs Values) -> Value {
+    F& Func = *static_cast<F*>(Storage);
+    return Func(C, Values);
+  };
+  llvm::StringRef Storage(reinterpret_cast<char*>(&Fn), sizeof(F));
+  return FunctionDataView{CallFn, Storage};
+}
+
+template <typename Allocator>
+void* Lambda::allocate(Allocator& Alloc, Lambda::FunctionDataView,
+                       llvm::ArrayRef<heavy::Value> Captures) {
+  void const* OrigStorage = FnData.Storage.data();
+  size_t StorageLen       = FnData.Storage.size();
+  auto CallFn             = FnData.CallFn;
+  size_t size = Lambda::sizeToAlloc(Captures.size(), StorageLen);
+  return heavy::allocate(Alloc, size, alignof(Lambda));
+}
+
+// ExternValue - Stores a lambda in an aligned storage
+//               with a value that points to it. Via StandardLayout,
+//               we can have a single symbol point to the value with a
+//               way of accessing its storage for initialization.
+//               This should be useful for hand coding Scheme
+//               modules in C++
+template <size_t StorageLen, size_t Alignment = alignof(void*)>
+struct ExternValue {
+  heavy::Value Value;
+  std::aligned_storage<StorageLen, Alignment> Storage;
+
+  ExternValue() = default;
+  ExternValue(ExternLambda const&) = delete;
+  
+  // CreateLambda Initializes the value as a lambda
+  template <typename F>
+  void initLambda(F Fn) {
+    auto FnData = detail::createFunctionDataView(Fn);
+    void* Mem = Lambda::allocate(Storage, FnData, /*Captures=*/{});
+    Lambda* New = new (Mem) Lambda(FnData, Captures);
+
+    Value = New;
+  }
+};
+
+using ExternLambda<size_t CaptureCount> = ExternValue<
+        sizeof(void*) * CaptureCount + sizeof(Lambda), alignof(Lambda)>;
+}}
 
 #endif
