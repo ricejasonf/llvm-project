@@ -71,6 +71,7 @@ class Context : DialectRegisterer {
   friend class OpGen;
   friend class OpEvalImpl;
   friend class HeavyScheme;
+  friend void* allocate(Context& C, size_t Size, size_t Alignment);
   AllocatorTy TrashHeap;
 
   // EnvStack
@@ -78,6 +79,7 @@ class Context : DialectRegisterer {
   //    an Environment
   //  - Calls to procedures or eval will set the EnvStack
   //    and swap it back upon completion (via RAII)
+  std::deque<Module> Modules;
   Module* SystemModule;
   Environment* SystemEnvironment;
   ValueFn HandleParseResult;
@@ -259,32 +261,9 @@ public:
 
   template <typename F>
   Lambda* CreateLambda(F Fn, llvm::ArrayRef<heavy::Value> Captures) {
-    // The way the llvm::TrailingObjects<Lambda, Value, char> works
-    // is that the storage pointer (via char) has the same alignment as
-    // its previous trailing objects' type `Value` which is pointer-like.
-    // Types requiring greater alignments probably wouldn't work
-    // (though I am not exactly sure what would happen)
-    static_assert(alignof(F) <= alignof(Value),
-    "lambda function storage alignment is too large");
-    size_t StorageLen = sizeof(F);
-    size_t size = Lambda::sizeToAlloc(Captures.size(), StorageLen);
-    void* Mem = TrashHeap.Allocate(size, alignof(Lambda));
-
-    auto CallFn = [](void* Storage, Context& C, ValueRefs Values) -> Value {
-      F& Func = *static_cast<F*>(Storage);
-      return Func(C, Values);
-    };
-
-    Lambda* New = new (Mem) Lambda(CallFn, Captures.size(), StorageLen);
-    auto CapturesItr = Captures.begin();
-    for (heavy::Value& V : New->getCaptures()) {
-      V = *CapturesItr;
-      ++CapturesItr;
-    }
-
-    void* StoragePtr = New->getStoragePtr();
-    new (StoragePtr) F(Fn);
-    New->FnPtr = CallFn;
+    auto FnData = detail::createFunctionDataView(Fn);
+    void* Mem = Lambda::allocate(TrashHeap, FnData, Captures);
+    Lambda* New = new (Mem) Lambda(FnData, Captures);
 
     return New;
   }
@@ -307,9 +286,15 @@ public:
     return new (TrashHeap) Exception(V);
   }
 
-  Module* CreateModule() {
-    return new (TrashHeap) Module();
+  Module* CreateModule(llvm::StringRef Name = {}) {
+    Modules.emplace_back();
+    Module* M =  &(Modules.back());
+    if (Name.size()) {
+      
+    }
+    return M;
   }
+
   Binding* CreateBinding(Symbol* S, Value V) {
     return new (TrashHeap) Binding(S, V);
   }
