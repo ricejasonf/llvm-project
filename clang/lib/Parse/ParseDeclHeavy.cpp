@@ -11,7 +11,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "heavy/Clang.h"
 #include "heavy/HeavyScheme.h"
+#include "heavy/Value.h"
 #include "clang/Parse/Parser.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/PrettyDeclStackTrace.h"
@@ -25,6 +27,9 @@
 
 using namespace clang;
 
+heavy::ExternLambda<1> HEAVY_CLANG_VAR(diag_error) = {};
+heavy::ExternLambda<1> HEAVY_CLANG_VAR(hello_world) = {};
+
 namespace {
 void LoadParentEnv(heavy::HeavyScheme& HS, void* Handle) {
   DeclContext* DC = reinterpret_cast<DeclContext*>(Handle);
@@ -35,16 +40,33 @@ void LoadParentEnv(heavy::HeavyScheme& HS, void* Handle) {
   }
 }
 
-void LoadBuiltinModule(heavy::HeavyScheme& HS) {
-  // TODO
-  //HS.LoadBuiltinModule(???);
+void LoadBuiltinModule(clang::Parser& P) {
+  auto diag_error = [&](heavy::Context& C, heavy::ValueRefs Args) {
+    // TODO automate argument checking somehow
+    if (Args.size() != 1) return setError(C, "invalid arity to function");
+    if (!isa<heavy::String>(Args[0])) return setError(C, "expecting string");
+    llvm::StringRef Err = cast<heavy::String>(Args[0])->getView();
+
+    P.Diag(clang::SourceLocation{}, diag::err_heavy_scheme)
+      << "MESSAGE FROM CLANG LAND: " << Err;
+    return heavy::Undefined{};
+  };
+
+  auto hello_world = [](auto&&...) {
+    llvm::errs() << "\nhello world (from clang)\n";
+    return heavy::Undefined{};
+  };
+
+  HEAVY_CLANG_VAR(diag_error)   = diag_error;
+  HEAVY_CLANG_VAR(hello_world)  = hello_world;
 }
 } // end anon namespace
 
 bool Parser::ParseHeavyScheme() {
   if (!HeavyScheme.isInitialized()) {
     HeavyScheme.init();
-    LoadBuiltinModule(HS);
+    LoadBuiltinModule(*this);
+    HeavyScheme.RegisterModule(HEAVY_CLANG_LIB_STR, HEAVY_CLANG_IMPORT);
   }
 
   heavy::Lexer SchemeLexer;

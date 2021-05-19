@@ -232,7 +232,7 @@ Procedure* Context::CreateProcedure(Pair* P) {
 
 // NextStack supports tail recursion with nested Environments
 // The Stack may be an improper list ending with an Environment
-Binding* Context::Lookup(Symbol* Name, Value Stack, Value NextStack) {
+Value Context::Lookup(Symbol* Name, Value Stack, Value NextStack) {
   if (isa<Empty>(Stack) && !NextStack) return nullptr;
   if (isa<Empty>(Stack)) Stack = NextStack;
   if (isa<Environment>(Stack)) Stack = cast<Environment>(Stack)->EnvStack;
@@ -256,13 +256,11 @@ Binding* Context::Lookup(Symbol* Name, Value Stack, Value NextStack) {
     default:
       llvm_unreachable("Invalid Lookup Type");
   }
-  if (Result && isa<Binding>(Result)) {
-    return cast<Binding>(Result);
-  }
-  assert(!Result && "lookup result should be a binding or null");
+  if (Result) return Result;
   return Lookup(Name, Next, NextStack);
 }
 
+// TODO delete CreateGlobal
 // Returns Binding or Undefined on error
 Value Context::CreateGlobal(Symbol* S, Value V, Value OrigCall) {
   // A module at the top of the EnvStack is mutable
@@ -275,20 +273,22 @@ Value Context::CreateGlobal(Symbol* S, Value V, Value OrigCall) {
   }
   if (!M) return SetError("define used in immutable environment", OrigCall);
 
-  // If the name already exists in the current module
+  // If a Binding already exists in the current module
   // then it behaves like `set!`
-  Binding* B = M->Lookup(S);
-  if (B) {
+  Value Result = M->Lookup(S);
+  if (Binding* B = dyn_cast_or_null<Binding>(Result)) {
     B->Val = V;
     return B;
   }
 
+  // Non-Bindings are considered immutable.
   // Top Level definitions may not shadow names in
-  // the parent environment
-  B = Lookup(S, EnvRest);
-  if (B) return SetError("define overwrites immutable location", S);
+  // the parent environment.
+  if (Result || Lookup(S, EnvRest)) {
+    return SetError("define overwrites immutable location", S);
+  }
 
-  B = CreateBinding(S, V);
+  Binding* B = CreateBinding(S, V);
   M->Insert(B);
   return B;
 }
@@ -410,22 +410,6 @@ private:
     // TODO we might want to escape special
     // characters other than newline
     OS << '"' << S->getView() << '"';
-  }
-
-  void VisitModule(Module* M) {
-    OS << "Module() {\n";
-    ++IndentationLevel;
-    for (Binding* B : *M) {
-      PrintFormattedWhitespace();
-      OS << B->getName()->getVal() << ": ";
-      Visit(B->getValue());
-    }
-    --IndentationLevel;
-    PrintFormattedWhitespace();
-    OS << "}";
-    // TEMP dont print out the pointer value
-    OS << " " << ((size_t) M);
-    PrintFormattedWhitespace();
   }
 };
 
