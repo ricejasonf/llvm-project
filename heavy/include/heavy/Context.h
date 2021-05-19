@@ -22,6 +22,7 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/Casting.h"
@@ -30,8 +31,8 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <memory>
-#include <string>
 #include <unordered_map>
 #include <utility>
 
@@ -74,12 +75,13 @@ class Context : DialectRegisterer {
   friend void* allocate(Context& C, size_t Size, size_t Alignment);
   AllocatorTy TrashHeap;
 
+  std::deque<std::pair<Module, ModuleImportFn*>> Modules = {};
+  llvm::StringMap<Module*> ModuleLookup = {};
   // EnvStack
   //  - Should be at least one element on top of
   //    an Environment
   //  - Calls to procedures or eval will set the EnvStack
   //    and swap it back upon completion (via RAII)
-  std::deque<Module> Modules;
   Module* SystemModule;
   Environment* SystemEnvironment;
   ValueFn HandleParseResult;
@@ -108,6 +110,14 @@ public:
     EnvStack = CreatePair(CreateModule(), EnvStack);
   }
 
+  void RegisterModule(llvm::StringRef MangledName,
+                      heavy::ModuleImportFn* Import) {
+    Module* M = CreateModule(MangledName, Import);
+    // TEMP load the module is if called via (import {name})
+
+
+  }
+
   void AddBuiltin(StringRef Str, ValueFn Fn);
 
   void AddBuiltinSyntax(StringRef Str, SyntaxFn Fn) {
@@ -129,13 +139,13 @@ public:
   // Lookup
   //  - Takes a Symbol or nullptr
   //  - Returns a matching Binder or nullptr
-  static Binding* Lookup(Symbol* Name,
-                         Value Stack,
-                         Value NextStack = nullptr);
-  Binding* Lookup(Symbol* Name) {
+  static Value Lookup(Symbol* Name,
+                      Value Stack,
+                      Value NextStack = nullptr);
+  Value Lookup(Symbol* Name) {
     return Lookup(Name, EnvStack);
   }
-  Binding* Lookup(Value Name) {
+  Value Lookup(Value Name) {
     Symbol* S = dyn_cast<Symbol>(Name);
     if (!S) return nullptr;
     return Lookup(S);
@@ -261,7 +271,7 @@ public:
 
   template <typename F>
   Lambda* CreateLambda(F Fn, llvm::ArrayRef<heavy::Value> Captures) {
-    auto FnData = detail::createFunctionDataView(Fn);
+    auto FnData = Lambda::createFunctionDataView(Fn);
     void* Mem = Lambda::allocate(TrashHeap, FnData, Captures);
     Lambda* New = new (Mem) Lambda(FnData, Captures);
 
@@ -286,12 +296,19 @@ public:
     return new (TrashHeap) Exception(V);
   }
 
-  Module* CreateModule(llvm::StringRef Name = {}) {
-    Modules.emplace_back();
-    Module* M =  &(Modules.back());
-    if (Name.size()) {
-      
-    }
+  // creates anonymous module
+  // (usually for the current environment)
+  Module* CreateModule(heavy::ModuleImportFn* Import = nullptr) {
+    Modules.emplace_back(heavy::Module{}, Import);
+    return &(Modules.back().first);
+  }
+
+  Module* CreateModule(llvm::StringRef MangledName,
+                       heavy::ModuleImportFn* Import = nullptr) {
+    Module* M = CreateModule();
+
+    auto Result = ModuleLookup.try_emplace(MangledName, M);   
+    assert(Result.second && "module should be created only once");
     return M;
   }
 

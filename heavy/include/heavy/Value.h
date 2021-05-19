@@ -52,10 +52,10 @@ void* allocate(llvm::AllocatorBase<DerivedT>& Allocator,
 }
 
 template <size_t MaxSize, size_t MaxAlignment>
-void* allocate(std::aligned_storage<MaxSize, size_t MaxAlignment>& Storage,
+void* allocate(std::aligned_storage<MaxSize, MaxAlignment>& Storage,
                size_t Size, size_t Alignment) {
   assert(Size <= MaxSize && "allocation out of bounds for storage");
-  assert(MaxAlignment % Alignment != 0 && "improper alignment for storage");
+  assert(MaxAlignment % Alignment == 0 && "improper alignment for storage");
   return &Storage;
 }
 
@@ -889,11 +889,6 @@ private:
 
   void* getStoragePtr() { return getTrailingObjects<char>(); }
 
-  struct FunctionDataView {
-    Lambda::FnPtrTy CallFn;
-    llvm::StringRef Storage;
-  };
-
   Lambda(FnPtrTy Fn, unsigned short NumCaptures,
                      unsigned short StorageLen)
     : ValueBase(ValueKind::Lambda)
@@ -903,6 +898,10 @@ private:
   { }
 
 public:
+  struct FunctionDataView {
+    Lambda::FnPtrTy CallFn;
+    llvm::StringRef Storage;
+  };
 
   template <typename F>
   static FunctionDataView createFunctionDataView(F& Fn);
@@ -935,7 +934,7 @@ public:
   }
 
   template <typename Allocator>
-  static void* allocate(Allocator& Alloc, FunctionDataView&,
+  static void* allocate(Allocator& Alloc, FunctionDataView,
                         llvm::ArrayRef<heavy::Value> Captures);
 
   Value call(Context& C, ValueRefs Vs) {
@@ -1083,13 +1082,19 @@ public:
 
 class Module : public ValueBase {
   friend class Context;
-  using MapTy = llvm::StringMap<Binding*>;
+  using MapTy = llvm::StringMap<Value>;
+  using MapIteratorTy  = typename MapTy::iterator;
   // TODO An IdentifierTable would probably be
   //      better than using the strings themselves
   //      as keys.
   MapTy Map;
 
 public:
+  // InitListTy - used in heavy::Context where we can do cool stuff
+  //              like use identifier tables and generated IR operations
+  using InitListPairTy = std::pair<llvm::StringRef, heavy::Value>;
+  using InitListTy     = std::initializer_list<InitListPairTy>;
+
   Module()
     : ValueBase(ValueKind::Module)
     , Map()
@@ -1100,13 +1105,17 @@ public:
     return B;
   }
 
+  void Insert(InitListPairTy P) {
+    Map.insert(P);
+  }
+
   // Returns nullptr if not found
-  Binding* Lookup(llvm::StringRef Str) {
+  Value Lookup(llvm::StringRef Str) {
     return Map.lookup(Str);
   }
 
   // Returns nullptr if not found
-  Binding* Lookup(Symbol* Name) {
+  Value Lookup(Symbol* Name) {
     return Lookup(Name->getVal());
   }
 
@@ -1117,7 +1126,7 @@ public:
   class Iterator : public llvm::iterator_facade_base<
                                               Iterator,
                                               std::forward_iterator_tag,
-                                              Binding*>
+                                              Value>
   {
     friend class Module;
     using ItrTy = typename MapTy::iterator;
@@ -1127,8 +1136,8 @@ public:
   public:
     Iterator& operator=(Iterator const& R) { Itr = R.Itr; return *this; }
     bool operator==(Iterator const& R) const { return Itr == R.Itr; }
-    Binding* const& operator*() const { return (*Itr).getValue(); }
-    Binding*& operator*() { return (*Itr).getValue(); }
+    Value const& operator*() const { return (*Itr).getValue(); }
+    Value& operator*() { return (*Itr).getValue(); }
     Iterator& operator++() { ++Itr; return *this; }
   };
 
@@ -1343,25 +1352,8 @@ inline bool equal(Value V1, Value V2) {
   return equal_slow(V1, V2);
 }
 
-Lambda::Lambda(FunctionDataView FnData, llvm::ArrayRef<Value> Captures)
-  : Lambda(FnData.CallFn, Captures.size(), FnData.Storage.size())
-{
-  // Storage
-  void const* OrigStorage = FnData.Storage.data();
-  size_t StorageLen       = FnData.Storage.size();
-  void* StoragePtr = getStoragePtr();
-  std::memcpy(StoragePtr, OrigStorage, StorageLen);
-
-  // Captures
-  auto CapturesItr = Captures.begin();
-  for (heavy::Value& V : getCaptures()) {
-    V = *CapturesItr;
-    ++CapturesItr;
-  }
-}
-
 template <typename F>
-auto Lambda::createFunctionDataView(F& Fn) {
+Lambda::FunctionDataView Lambda::createFunctionDataView(F& Fn) {
   // The way the llvm::TrailingObjects<Lambda, Value, char> works
   // is that the storage pointer (via char) has the same alignment as
   // its previous trailing objects' type `Value` which is pointer-like.
@@ -1381,11 +1373,9 @@ auto Lambda::createFunctionDataView(F& Fn) {
 }
 
 template <typename Allocator>
-void* Lambda::allocate(Allocator& Alloc, Lambda::FunctionDataView,
+void* Lambda::allocate(Allocator& Alloc, Lambda::FunctionDataView FnData,
                        llvm::ArrayRef<heavy::Value> Captures) {
-  void const* OrigStorage = FnData.Storage.data();
-  size_t StorageLen       = FnData.Storage.size();
-  auto CallFn             = FnData.CallFn;
+  size_t StorageLen = FnData.Storage.size();
   size_t size = Lambda::sizeToAlloc(Captures.size(), StorageLen);
   return heavy::allocate(Alloc, size, alignof(Lambda));
 }
@@ -1402,21 +1392,30 @@ struct ExternValue {
   std::aligned_storage<StorageLen, Alignment> Storage;
 
   ExternValue() = default;
-  ExternValue(ExternLambda const&) = delete;
-  
-  // CreateLambda Initializes the value as a lambda
-  template <typename F>
-  void initLambda(F Fn) {
-    auto FnData = detail::createFunctionDataView(Fn);
-    void* Mem = Lambda::allocate(Storage, FnData, /*Captures=*/{});
-    Lambda* New = new (Mem) Lambda(FnData, Captures);
+  ExternValue(ExternValue const&) = delete;
 
-    Value = New;
+  operator heavy::Value() { return Value; }
+};
+
+template <size_t CaptureCount>
+struct ExternLambda : public ExternValue<
+        sizeof(void*) * CaptureCount + sizeof(Lambda), alignof(Lambda)> {
+  // takes any invocable object and allocates
+  // it as a type-erased Scheme lambda
+  template <typename F>
+  void operator=(F f) {
+    auto FnData = Lambda::createFunctionDataView(f);
+    void* Mem = Lambda::allocate(this->Storage, FnData, /*Captures=*/{});
+    Lambda* New = new (Mem) Lambda(FnData, /*Captures=*/{});
+
+    this->Value = New;
   }
 };
 
-using ExternLambda<size_t CaptureCount> = ExternValue<
-        sizeof(void*) * CaptureCount + sizeof(Lambda), alignof(Lambda)>;
-}}
+// createModule - Creates a compile-time name/value lookup for importing modules
+//                This should be called by the module's import function.
+void createModule(heavy::Context&, llvm::StringRef MangledName,
+                  Module::InitListTy InitList);
+}
 
 #endif
