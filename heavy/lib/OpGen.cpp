@@ -240,8 +240,10 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
 
   // If the name already exists in the current module
   // then it behaves like `set!`
-  Binding* B = M->Lookup(S);
-  if (B && !B->isSyntactic()) {
+  heavy::Value Result = M->Lookup(S);
+  if (Binding* B = dyn_cast_or_null<Binding>(Result)) {
+    assert(B->isSyntactic() &&
+        "TODO make Syntax never be wrapped in a Binding");
     mlir::Value BVal = BindingTable.lookup(B);
     assert(BVal && "expecting BindingOp for Binding");
     mlir::Value Init = VisitDefineArgs(DefineArgs);
@@ -250,12 +252,12 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
 
   // Top Level definitions may not shadow names in
   // the parent environment
-  B = Context.Lookup(S, EnvRest);
-  if (B) {
+  Result = Context.Lookup(S, EnvRest);
+  if (Result) {
     return SetError("define overwrites immutable location", S);
   }
 
-  B = Context.CreateBinding(S, DefineArgs);
+  Binding* B = Context.CreateBinding(S, DefineArgs);
   M->Insert(B);
   mlir::Value BVal = createBinding(B, createUndefined());
   mlir::Value Init = VisitDefineArgs(DefineArgs);
@@ -335,14 +337,14 @@ mlir::Value OpGen::VisitDefineArgs(Value Args) {
 }
 
 mlir::Value OpGen::VisitSymbol(Symbol* S) {
-  Binding* B = Context.Lookup(S);
+  Value V = Context.Lookup(S);
 
-  if (!B) {
+  if (!V) {
     String* Msg = Context.CreateString("unbound symbol '",
                                        S->getVal(), "'");
     return SetError(Msg, S);
   }
-  return VisitBinding(B);
+  return Visit(V);
 }
 
 mlir::Value OpGen::VisitBinding(Binding* B) {
@@ -385,8 +387,12 @@ void OpGen::HandleCallArgs(Value V,
 mlir::Value OpGen::VisitPair(Pair* P) {
   Value Operator = P->Car;
   // A named operator might point to some kind of syntax transformer
-  if (Binding* B = Context.Lookup(Operator)) {
-    Operator = B->getValue();
+  if (Value V = Context.Lookup(Operator)) {
+    if (Binding* B = dyn_cast<Binding>(V)) {
+      Operator = B->getValue();
+    } else {
+      Operator = V;
+    }
   }
 
   switch (Operator.getKind()) {
