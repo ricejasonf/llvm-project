@@ -112,7 +112,8 @@ public:
 
   void RegisterModule(llvm::StringRef MangledName,
                       heavy::ModuleImportFn* Import) {
-    Module* M = CreateModule(MangledName, Import);
+    CreateModule(MangledName, Import);
+    //Module* M = CreateModule(MangledName, Import);
     // TEMP load the module is if called via (import {name})
 
 

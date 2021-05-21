@@ -37,7 +37,7 @@ extern heavy::ExternLambda<1> HEAVY_CLANG_VAR(hello_world);
 
 extern "C" {
   // initialize the module for run-time independent of the compiler
-  inline void HEAVY_CLANG_INIT(void* Context) {
+  inline void HEAVY_CLANG_INIT(heavy::Context& Context) {
     assert(!HEAVY_CLANG_IS_LOADED &&
       "module should not be loaded more than once");
     HEAVY_CLANG_IS_LOADED = true;
@@ -49,10 +49,9 @@ extern "C" {
 
   // initializes the module and loads lookup information
   // for the compiler
-  inline void HEAVY_CLANG_IMPORT(heavy::Context* Context) {
-    heavy::Context& Ctx = *static_cast<heavy::Context*>(Context);
+  inline void HEAVY_CLANG_IMPORT(heavy::Context& Context) {
     HEAVY_CLANG_INIT(Context);
-    heavy::createModule(Ctx, HEAVY_CLANG_LIB_STR, {
+    heavy::createModule(Context, HEAVY_CLANG_LIB_STR, {
       {"diag-error",  HEAVY_CLANG_VAR(diag_error)},
       {"hello-world", HEAVY_CLANG_VAR(hello_world)}
     });
