@@ -67,6 +67,13 @@ mlir::Value set(OpGen& OG, Pair* P) {
   return OG.createSet(P->getSourceLocation(), S, Expr);
 }
 
+mlir::Value import(OpGen& OG, Pair* P) {
+  heavy::Context& Context = OG.getContext(); 
+  ImportSet* ImpSet = Context.CreateImportSet(P->Cdr);
+  Context.AddImportSet(ImpSet);
+  return OG.createUndefined();
+}
+
 }} // end of namespace heavy::builtin_syntax
 
 namespace heavy {
