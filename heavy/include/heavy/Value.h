@@ -256,31 +256,31 @@ public:
 
   Value(Undefined)
     : ValuePtrBase(create<ValueSumType::Undefined>({}))
-  { 
+  {
     assert(*this);
   }
 
   Value(Empty)
     : ValuePtrBase(create<ValueSumType::Empty>({}))
-  { 
+  {
     assert(*this);
   }
 
   Value(Int I)
     : ValuePtrBase(create<ValueSumType::Int>(I))
-  { 
+  {
     assert(*this);
   }
 
   Value(Bool B)
     : ValuePtrBase(create<ValueSumType::Bool>(B))
-  { 
+  {
     assert(*this);
   }
 
   Value(Char C)
     : ValuePtrBase(create<ValueSumType::Char>(C))
-  { 
+  {
     assert(*this);
   }
 
@@ -720,30 +720,6 @@ inline bool Number::isExactZero(Value V) {
   return cast<Int>(V) == 0;
 }
 
-class Symbol : public ValueBase,
-               public ValueWithSource {
-  llvm::StringRef Val;
-
-public:
-  Symbol(llvm::StringRef V, SourceLocation L = SourceLocation())
-    : ValueBase(ValueKind::Symbol)
-    , ValueWithSource(L)
-    , Val(V)
-  { }
-
-  using ValueWithSource::getSourceLocation;
-
-  llvm::StringRef getVal() { return Val; }
-  static bool classof(Value V) {
-    return V.getKind() == ValueKind::Symbol;
-  }
-
-  bool equals(llvm::StringRef Str) const { return Val == Str; }
-  bool equals(Symbol* S) const {
-    return S->getVal() == Val;
-  }
-};
-
 class String final
   : public ValueBase,
     private llvm::TrailingObjects<String, char> {
@@ -790,6 +766,36 @@ public:
 
   static bool classof(Value V) {
     return V.getKind() == ValueKind::String;
+  }
+};
+
+// Symbol - Is an identifier with source information
+//          and a String which can be unique via an
+//          identifier table.
+class Symbol : public ValueBase,
+               public ValueWithSource {
+  String* Val;
+
+public:
+  Symbol(String* V, SourceLocation L = SourceLocation())
+    : ValueBase(ValueKind::Symbol)
+    , ValueWithSource(L)
+    , Val(V)
+  { }
+
+  using ValueWithSource::getSourceLocation;
+
+  llvm::StringRef getVal() const { return Val->getView(); }
+  String* getString() const { return Val; }
+
+  bool equals(llvm::StringRef Str) const { return getVal() == Str; }
+  bool equals(Symbol* S) const {
+    // compare the String* since they are uniqued
+    return Val == S.Val;
+  }
+
+  static bool classof(Value V) {
+    return V.getKind() == ValueKind::Symbol;
   }
 };
 
@@ -1081,177 +1087,6 @@ public:
   }
 };
 
-class Module : public ValueBase {
-  friend class Context;
-  using MapTy = llvm::StringMap<Value>;
-  using MapIteratorTy  = typename MapTy::iterator;
-  // TODO An IdentifierTable would probably be
-  //      better than using the strings themselves
-  //      as keys.
-  MapTy Map;
-
-public:
-  // InitListTy - used in heavy::Context where we can do cool stuff
-  //              like use identifier tables and generated IR operations
-  using InitListPairTy = std::pair<llvm::StringRef, heavy::Value>;
-  using InitListTy     = std::initializer_list<InitListPairTy>;
-
-  Module()
-    : ValueBase(ValueKind::Module)
-    , Map()
-  { }
-
-  Binding* Insert(Binding* B) {
-    Map.insert(std::make_pair(B->getName()->getVal(), B));
-    return B;
-  }
-
-  void Insert(InitListPairTy P) {
-    Map.insert(P);
-  }
-
-  // Returns nullptr if not found
-  Value Lookup(llvm::StringRef Str) {
-    return Map.lookup(Str);
-  }
-
-  // Returns nullptr if not found
-  Value Lookup(Symbol* Name) {
-    return Lookup(Name->getVal());
-  }
-
-  static bool classof(Value V) {
-    return V.getKind() == ValueKind::Module;
-  }
-
-  class Iterator : public llvm::iterator_facade_base<
-                                              Iterator,
-                                              std::forward_iterator_tag,
-                                              Value>
-  {
-    friend class Module;
-    using ItrTy = typename MapTy::iterator;
-    ItrTy Itr;
-    Iterator(ItrTy I) : Itr(I) { }
-
-  public:
-    Iterator& operator=(Iterator const& R) { Itr = R.Itr; return *this; }
-    bool operator==(Iterator const& R) const { return Itr == R.Itr; }
-    Value const& operator*() const { return (*Itr).getValue(); }
-    Value& operator*() { return (*Itr).getValue(); }
-    Iterator& operator++() { ++Itr; return *this; }
-  };
-
-  Iterator begin() {
-    return Iterator(Map.begin());
-  }
-
-  Iterator end() {
-    return Iterator(Map.end());
-  }
-};
-
-class ImportSet : public ValueBase { 
-public:
-  enum class ImportKind {
-    All,
-    Only,
-    Except,
-    Prefix,    
-    Rename,
-  };
-
-private:
-  // Parent - Either a Module or another ImportSet
-  heavy::Value Parent;
-  // Specifier - Refers directly to a subset of the AST for the
-  //             import set syntax. Its representation is specific
-  //             to the ImportKind and documented in Lookup.
-  heavy::Value Specifier; 
-  ImportKind Kind;
-
-public:
-  ImportSet(ImportKind Kind, Value Parent, Value Specifier)
-    : ValueBase(ValueKind::ImportSet),
-      Parent(Parent),
-      Specifier(Specifier),
-      Kind(Kind)
-  {
-    assert((isa<Module, ImportSet>(Parent)) &&
-        "parent must be an import set");
-  }
-
-  static bool classof(Value V) {
-    return V.getKind() == ValueKind::ImportSet;
-  }
-
-  bool isInIdentiferList(llvm::StringRef Str) {
-    Value Current = Specifier;
-    while (Pair* P = dyn_cast<Pair>(Current)) {
-      llvm::StringRef IdStr = cast<Symbol>(P->Car)->getVal();
-      if (Str == IdStr) return true;
-      Current = P->Cdr;
-    }
-    return false;
-  }
-
-  Value LookupFromPairs(llvm::StringRef Str) {
-    // The syntax of Specifier should be checked already
-    assert(Kind == ImportKind::Rename && "expecting import rename");
-    Value CurrentRow = Specifier;
-    while (Pair* P = dyn_cast<Pair>(CurrentRow)) {
-      Pair* Row = cast<Pair>(P->Car);
-      llvm::StringRef Key = cast<Symbol>(
-          cast<Pair>(Row->Cdr)->Car)->getVal();
-      llvm::StringRef Value = cast<Symbol>(
-          cast<Pair>(Row->Cdr)->Car)->getVal();
-      if (Str == Value) return ParentLookup(Key);
-      CurrentRow = P->Cdr;
-    }
-    return Value(nullptr);
-  }
-
-  Value ParentLookup(llvm::StringRef Str) {
-    switch (Parent.getKind()) {
-    case ValueKind::Module:
-      return cast<Module>(Parent)->Lookup(Str);
-    case ValueKind::ImportSet:
-      return cast<ImportSet>(Parent)->Lookup(Str);
-    default:
-      return Value(nullptr);
-    }
-  }
-
-  // FIXME Comparing Symbol* would be ideal,
-  //       but Prefix messes that up right now
-  Value Lookup(llvm::StringRef Str) {
-    switch(Kind) {
-    case ImportKind::All:
-      return ParentLookup(Str);
-    case ImportKind::Only:
-      // Specifier is a list of Symbols
-      return isInIdentiferList(Str) ? ParentLookup(Str) : Value(nullptr);
-    case ImportKind::Except:
-      // Specifier is a list of Symbols
-      return !isInIdentiferList(Str) ? ParentLookup(Str) : Value(nullptr);
-    case ImportKind::Prefix: {
-      // Specifier is just a Symbol
-      llvm::StringRef Prefix = cast<Symbol>(Specifier)->getVal();
-      // FIXME we need a way to get the Symbol after removing the prefix
-      return Str.consume_front(Prefix) ? ParentLookup(Str) : Value(nullptr);
-    }
-    case ImportKind::Rename:
-      // Specifier is a list of pairs of symbols
-      return LookupFromPairs(Str); 
-    }
-  }
-
-  Value Lookup(Symbol* S) {
-    return Lookup(S->getVal());
-  }
-};
-
-
 // ForwardRef - used for garbage collection
 class ForwardRef : public ValueBase {
 public:
@@ -1519,8 +1354,10 @@ struct ExternLambda : public ExternValue<
 
 // createModule - Creates a compile-time name/value lookup for importing modules
 //                This should be called by the module's import function.
+using ModuleInitListPairTy = std::pair<llvm::StringRef, heavy::Value>;
+using ModuleInitListTy     = std::initializer_list<InitListPairTy>;
 void createModule(heavy::Context&, llvm::StringRef MangledName,
-                  Module::InitListTy InitList);
+                  ModuleInitListTy InitList);
 }
 
 #endif
