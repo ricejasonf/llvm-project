@@ -86,8 +86,8 @@ Context::Context(ValueFn ParseResultHandler)
 
 Context::~Context() = default;
 
-template <typename A, typename ...StringRefs>
-String* CreateStringHelper(A& TrashHeap, StringRefs ...S) {
+template <typename Allocator, typename ...StringRefs>
+static String* CreateStringHelper(Allocator& Alloc, StringRefs ...S) {
   std::array<unsigned, sizeof...(S)> Sizes{static_cast<unsigned>(S.size())...};
   unsigned TotalLen = 0;
   for (unsigned Size : Sizes) {
@@ -95,27 +95,65 @@ String* CreateStringHelper(A& TrashHeap, StringRefs ...S) {
   }
 
   unsigned MemSize = String::sizeToAlloc(TotalLen);
-  void* Mem = TrashHeap.Allocate(MemSize, alignof(String));
+  void* Mem = heavy::allocate(Alloc, MemSize, alignof(String));
 
   return new (Mem) String(TotalLen, S...);
 }
 
-String* Context::CreateString(StringRef S) {
-  // Allocate and copy the string data
-  size_t MemSize = String::sizeToAlloc(S.size());
-  void* Mem = TrashHeap.Allocate(MemSize, alignof(String));
-  return new (Mem) String(S);
+String* Context::CreateString(llvm::StringRef S) {
+  return CreateStringHelper(TrashHeap, S);
 }
 
-String* Context::CreateString(StringRef S1, StringRef S2) {
+String* Context::CreateString(llvm::StringRef S1, StringRef S2) {
   return CreateStringHelper(TrashHeap, S1, S2);
 }
 
-String* Context::CreateString(StringRef S1,
-                              StringRef S2,
-                              StringRef S3) {
+String* Context::CreateString(llvm::StringRef S1,
+                              llvm::StringRef S2,
+                              llvm::StringRef S3) {
   return CreateStringHelper(TrashHeap, S1, S2, S3);
 }
+
+String* Context::CreateIdTableEntry(llvm::StringRef S) {
+  String*& Str = IdTable[S];
+  if (!Str) {
+    Str = CreateString(S);
+  }
+  return Str;
+}
+
+String* Context::CreateIdTableEntry(llvm::StringRef Prefix,
+                                    llvm::StringRef S) {
+  // unfortunately we have to create a garbage string
+  // just to check this
+  String* Temp = CreateString(Prefix, S);
+  return CreateIdTableEntry(Temp);
+}
+
+Symbol* Context::CreateSymbol(llvm::StringRef S,
+                         SourceLocation Loc) {
+  // Symbol wraps uniqued instances of String
+  // tracked by IdTable
+  String*& Str = IdTable[S];
+  if (!Str) {
+    Str = CreateString(S);
+  }
+  String* Str = CreateIdTableEntry(S);
+  return new (TrashHeap) Symbol(Str, Loc);
+}
+
+#if 0 // not sure if we want to create symbols for every possible import
+// for import prefixes
+Symbol* Context::CreateSymbol(llvm::StringRef S1, StringRef S2) {
+  // settle for a std::string so we don't create a garbage String
+  // every time we encounter this. (there has to be a better way)
+  std::string Temp{};
+  Temp.reserve(S1.size() + S2.size());
+  Temp += S1;
+  Temp += S2;
+  return CreateSymbol(TrashHeap, Temp);
+}
+#endif
 
 Float* Context::CreateFloat(llvm::APFloat Val) {
   return new (TrashHeap) Float(Val);
@@ -132,6 +170,23 @@ Vector* Context::CreateVector(unsigned N) {
   size_t size = Vector::sizeToAlloc(N);
   void* Mem = TrashHeap.Allocate(size, alignof(Vector));
   return new (Mem) Vector(CreateUndefined(), N);
+}
+
+bool Context::Import(heavy::ImportSet* ImportSet) {
+  heavy::Value Current = EnvStack;
+  heavy::Environment* Env = nullptr;
+  while (Pair* P = dyn_cast<Pair>(Current)) {
+    Env = dyn_cast<Environment>(P->Car);
+    if (Env) break;
+  }
+  assert(Env && "EnvStack should have an Environment");
+
+  // TODO
+  // Iterate ImportSet performing a lookup to check for
+  // name conflicts
+
+  return false;
+  //return Env->AddImportSet(ImportSet);
 }
 
 EnvFrame* Context::PushLambdaFormals(Value Formals,
@@ -217,20 +272,8 @@ bool Context::CheckLambdaFormals(Value Formals,
   Names.push_back(cast<Symbol>(P->Car));
   return CheckLambdaFormals(P->Cdr, Names, HasRestParam);
 }
-#if 0 // TODO implement creating a Procedure
 
-Procedure* Context::CreateProcedure(Pair* P) {
-  int Arity = 0;
-  Value Formals = P->Car;
-  BindingRegion* Region = CreateRegion();
-  ProcessFormals(Formals, Region, Arity);
-
-  // The rest are expressions considered as the body
-  Procedure* New = new (TrashHeap) Procedure(/*stuff*/);
-}
-#endif
-
-// NextStack supports tail recursion with nested Environments
+// NextStack was for supporting tail recursion with nested Environments
 // The Stack may be an improper list ending with an Environment
 Value Context::Lookup(Symbol* Name, Value Stack, Value NextStack) {
   if (isa<Empty>(Stack) && !NextStack) return nullptr;
@@ -249,6 +292,9 @@ Value Context::Lookup(Symbol* Name, Value Stack, Value NextStack) {
     case ValueKind::Module:
       Result = cast<Module>(V)->Lookup(Name);
       break;
+    case ValueKind::ImportSet:
+      Result = cast<ImportSet>(V)->Lookup(*this, Name);
+      break;
     case ValueKind::Environment:
       NextStack = Next;
       Next = cast<Environment>(V)->EnvStack;
@@ -258,39 +304,6 @@ Value Context::Lookup(Symbol* Name, Value Stack, Value NextStack) {
   }
   if (Result) return Result;
   return Lookup(Name, Next, NextStack);
-}
-
-// TODO delete CreateGlobal
-// Returns Binding or Undefined on error
-Value Context::CreateGlobal(Symbol* S, Value V, Value OrigCall) {
-  // A module at the top of the EnvStack is mutable
-  Module* M = nullptr;
-  Value EnvRest = nullptr;
-  if (isa<Pair>(EnvStack)) {
-    Value EnvTop  = cast<Pair>(EnvStack)->Car;
-    EnvRest = cast<Pair>(EnvStack)->Cdr;
-    M = dyn_cast<Module>(EnvTop);
-  }
-  if (!M) return SetError("define used in immutable environment", OrigCall);
-
-  // If a Binding already exists in the current module
-  // then it behaves like `set!`
-  Value Result = M->Lookup(S);
-  if (Binding* B = dyn_cast_or_null<Binding>(Result)) {
-    B->Val = V;
-    return B;
-  }
-
-  // Non-Bindings are considered immutable.
-  // Top Level definitions may not shadow names in
-  // the parent environment.
-  if (Result || Lookup(S, EnvRest)) {
-    return SetError("define overwrites immutable location", S);
-  }
-
-  Binding* B = CreateBinding(S, V);
-  M->Insert(B);
-  return B;
 }
 
 void Context::AddBuiltin(StringRef Str, ValueFn Fn) {
@@ -467,4 +480,145 @@ bool eqv_slow(Value V1, Value V2) {
 
 void EvaluationStack::EmitStackSpaceError() {
   Context.SetError("insufficient stack space");
+}
+
+Value ImportSet::Lookup(heavy::Context& C, Symbol* S) {
+  switch(Kind) {
+  case ImportKind::Library:
+    return cast<Module>(Specifier)->Lookup(S);
+  case ImportKind::Only:
+    // Specifier is a list of Symbols
+    return isInIdentiferList(S) ? Parent->Lookup(C, S) : nullptr;
+  case ImportKind::Except:
+    // Specifier is a list of Symbols
+    return !isInIdentiferList(S) ? Parent->Lookup(C, S) : nullptr;
+  case ImportKind::Prefix: {
+    llvm::StringRef Str = S->getVal();
+    // Specifier is just a Symbol
+    llvm::StringRef Prefix = cast<Symbol>(Specifier)->getVal();
+    if (!Str.consume_front(Prefix)) return nullptr;
+    S = C.CreateSymbol(Str, S->getSourceLocation());
+    return Parent->Lookup(C, S);
+  }
+  case ImportKind::Rename:
+    // Specifier is a list of pairs of symbols
+    return LookupFromPairs(C, S); 
+  }
+  llvm_unreachable("invalid import kind");
+}
+
+Value ImportSet::LookupFromPairs(heavy::Context& C, Symbol* S) {
+  // The syntax of Specifier should be checked already
+  assert(Kind == ImportKind::Rename && "expecting import rename");
+  Value CurrentRow = Specifier;
+  while (Pair* P = dyn_cast<Pair>(CurrentRow)) {
+    Pair* Row = cast<Pair>(P->Car);
+    Symbol* Key   = cast<Symbol>(Row->Car);
+    Symbol* Value = cast<Symbol>(cast<Pair>(Row->Cdr)->Car);
+    if (S->equals(Value)) return Parent->Lookup(C, Key);
+    CurrentRow = P->Cdr;
+  }
+  return Value(nullptr);
+}
+
+String* ImportSet::FilterName(heavy::Context& C, String* S) {
+  // recurse all the way to the module and
+  // traverse back down removing or replacing the String
+  if (Kind == ImportKind::Library) {
+    Module* M = cast<Module>(Specifier);
+    assert(M->Lookup(S) != nullptr && "filtered name not in library");
+    return S;
+  }
+  S = Parent->FilterName(C, S);
+  switch(Kind) {
+  case ImportKind::Only:
+    // filter if not in the list
+    return isInIdentiferList(S) ? S : nullptr;
+  case ImportKind::Except:
+    // filter if its in the list
+    return !isInIdentiferList(S) ? S : nullptr;
+  case ImportKind::Prefix: {
+    // add the prefix
+    llvm::StringRef Str = S->getView();
+    llvm::StringRef Prefix = cast<Symbol>(Specifier)->getVal();
+    return C.CreateIdTableEntry(Prefix, Str);
+  }
+  case ImportKind::Rename:
+    return FilterFromPairs(C, S); 
+  default:
+    llvm_unreachable("invalid import kind");
+  }
+}
+
+String* ImportSet::FilterFromPairs(heavy::Context& C, String* S) {
+  assert(Kind == ImportKind::Rename && "expecting import rename");
+  Value CurrentRow = Specifier;
+  while (Pair* P = dyn_cast<Pair>(CurrentRow)) {
+    Pair* Row = cast<Pair>(P->Car);
+    String* Key   = cast<Symbol>(Row->Car)->getString();
+    String* Value = cast<Symbol>(cast<Pair>(Row->Cdr)->Car)->getString();
+    if (S->equals(Key)) return Value;
+    CurrentRow = P->Cdr;
+  }
+  return S;
+}
+
+Value Context::CreateImportSet(Value InputSpec) {
+  Pair* Spec = dyn_cast<Pair>(InputSpec);
+  Symbol* Keyword = dyn_cast_or_null<Symbol>(Spec->Car);
+  if (!Keyword) return OG.SetError("expecting import set", InputSpec);
+  if (Keyword.equals("only")) {
+    Kind = Import::ImportKind::Only;
+  } else if (Keyword.equals("except")) {
+    Kind = Import::ImportKind::Except;
+  } else if (Keyword.equals("rename")) {
+    Kind = Import::ImportKind::Rename;
+  } else {
+    Kind = Import::ImportKind::Library;
+    Module* M = Context.LoadLibrary(Spec);
+    if (!M) return OG.Error();
+    return new (TrashHeap) ImportSet(Kind, M);
+  }
+
+  ImportSet* Parent = Empty{};
+  if (Pair* P = dyn_cast<Pair>(Spec->Cdr) {
+    Parent = CreateImportSet(P->Car);
+  } else {
+    return OG.SetError("expecting nested import set", Spec);
+  }
+
+  // Check the syntax and that each provided name
+  // exists in the parent import set and maybe insert it
+  // into the target Module object
+  Value Current = Spec->Cdr;
+  while (Pair* P = dyn_cast<Pair>(Current)) {
+    switch (Kind) {
+    case Import::ImportKind::Only:
+    case Import::ImportKind::Except:
+      Symbol* Name = dyn_cast<Symbol>(P->Car);
+      break;
+    case Import::ImportKind::Rename:
+      Pair* P2 = dyn_cast<Pair>(P->Car);
+      if (!P2) return SetError("rename requires pairs of identifiers", P);
+      Symbol* Name = dyn_cast<Symbol>(P2->Car);
+      Pair* P3 = dyn_cast<Pair>(P2->Cdr);
+      if (!P3 || (isa<Empty>(P3->Cdr))) {
+        return SetError("rename requires pairs of identifiers", P2);
+      }
+      Symbol* Rename = dyn_cast<Symbol>(P3->Car);
+      if (!Rename) return SetError("expecting identifier", P3);
+    }
+  }
+  // TODO Iterate and check for collisions in AddImportSet
+}
+ImportSet* Context::CreateImportSetExcept(Value Spec) {
+  // TODO check validity of Spec
+}
+ImportSet* Context::CreateImportSetOnly(Value Spec) {
+  // TODO check validity of Spec
+}
+ImportSet* Context::CreateImportSetRename(Value Spec) {
+  // TODO check validity of Spec
+}
+ImportSet* Context::CreateImportSetLibrary(Module* Library) {
 }
