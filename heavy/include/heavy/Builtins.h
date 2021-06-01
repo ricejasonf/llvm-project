@@ -40,7 +40,7 @@ mlir::Value lambda(OpGen& OG, Pair* P);
 mlir::Value quasiquote(OpGen& C, Pair* P); // lib/Quasiquote.cpp
 mlir::Value quote(OpGen& OG, Pair* P);     // lib/Quasiquote.cpp
 mlir::Value set(OpGen& OG, Pair* P);
-
+mlir::Value import(OpGen& OG, Pair* P);
 }}
 
 namespace heavy { namespace builtin {
