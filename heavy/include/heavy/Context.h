@@ -77,6 +77,7 @@ class Context : DialectRegisterer {
 
   std::deque<std::pair<Module, ModuleImportFn*>> Modules = {};
   llvm::StringMap<Module*> ModuleLookup = {};
+  llvm::StringMap<String*> IdTable = {};
   // EnvStack
   //  - Should be at least one element on top of
   //    an Environment
@@ -119,6 +120,11 @@ public:
 
   }
 
+  // Import - Finds the Environment in EnvStack, adds the
+  //          ImportSet to it, and checks for name collisions
+  //          Returns true on Error
+  bool Import(ImportSet*);
+
   void AddBuiltin(StringRef Str, ValueFn Fn);
 
   void AddBuiltinSyntax(StringRef Str, SyntaxFn Fn) {
@@ -140,9 +146,8 @@ public:
   // Lookup
   //  - Takes a Symbol or nullptr
   //  - Returns a matching Binder or nullptr
-  static Value Lookup(Symbol* Name,
-                      Value Stack,
-                      Value NextStack = nullptr);
+  Value Lookup(Symbol* Name, Value Stack,
+               Value NextStack = nullptr);
   Value Lookup(Symbol* Name) {
     return Lookup(Name, EnvStack);
   }
@@ -157,8 +162,6 @@ public:
   EnvFrame* PushEnvFrame(llvm::ArrayRef<Symbol*> Names);
   void PopEnvFrame();
   void PushLocalBinding(Binding* B);
-
-  Value CreateGlobal(Symbol* S, Value V, Value OrigCall);
 
   // PushLambdaFormals - Checks formals, creates an EnvFrame,
   //                     and pushes it onto the EnvStack
@@ -245,12 +248,12 @@ public:
   String*     CreateString(StringRef S);
   String*     CreateString(StringRef S1, StringRef S2);
   String*     CreateString(StringRef, StringRef, StringRef);
-  Symbol*     CreateSymbol(StringRef V,
-                         SourceLocation Loc = SourceLocation()) {
-    // FIXME uhh this should store a copy V's contents somewhere
-    // TODO make a lookup table for symbols
-    return new (TrashHeap) Symbol(V, Loc);
-  }
+  String*     CreateIdTableEntry(llvm::StringRef S);
+  String*     CreateIdTableEntry(llvm::StringRef Prefix,
+                                 llvm::StringRef S);
+  Symbol*     CreateSymbol(StringRef S,
+                           SourceLocation Loc = SourceLocation());
+
   Vector*     CreateVector(ArrayRef<Value> Xs);
   Vector*     CreateVector(unsigned N);
   Environment* CreateEnvironment(Value Stack) {
@@ -308,7 +311,7 @@ public:
                        heavy::ModuleImportFn* Import = nullptr) {
     Module* M = CreateModule();
 
-    auto Result = ModuleLookup.try_emplace(MangledName, M);   
+    auto Result = ModuleLookup.try_emplace(MangledName, M);
     assert(Result.second && "module should be created only once");
     return M;
   }
@@ -323,6 +326,16 @@ public:
   }
 
   Quote* CreateQuote(Value V) { return new (TrashHeap) Quote(V); }
+
+  ImportSet* CreateImportSet(Value Spec);
+  ImportSet* CreateImportSetExcept(Value Spec);
+  ImportSet* CreateImportSetOnly(Value Spec);
+  ImportSet* CreateImportSetRename(Value Spec);
+  ImportSet* CreateImportSetLibrary(Module* Library);
+
+  Value getCaar(Value Input) {
+     
+  }
 };
 
 }
