@@ -582,73 +582,6 @@ public:
   }
 };
 
-// Environment
-//  - Represents an Environment Specifier created with (environment ...)
-//    or the default environment
-//  - Stacks Modules the bottom of which is the SystemModule.
-//  - Only the top module can be mutable
-//  - Adding top level definitions that shadow parent environments
-//    is forbidden
-class Environment : public ValueBase {
-  friend class Context;
-
-  Value EnvStack;
-
-public:
-  Environment(Value Stack)
-    : ValueBase(ValueKind::Environment)
-    , EnvStack(Stack)
-  { }
-
-  static bool classof(Value V) {
-    return V.getKind() == ValueKind::Environment;
-  }
-};
-
-// EnvFrame - Represents a local scope that introduces variables
-//          - This should be used exclusively at compile time
-//            (unless we go the route of capturing entire scopes
-//             to keep values alive)
-class EnvFrame final
-  : public ValueBase,
-    private llvm::TrailingObjects<EnvFrame, Binding*> {
-
-  friend class llvm::TrailingObjects<EnvFrame, Binding*>;
-  friend class Context;
-
-  unsigned NumBindings;
-  size_t numTrailingObjects(OverloadToken<Binding*> const) const {
-    return NumBindings;
-  }
-
-  EnvFrame(unsigned NumBindings)
-    : ValueBase(ValueKind::EnvFrame),
-      NumBindings(NumBindings)
-  { }
-
-public:
-  llvm::ArrayRef<Binding*> getBindings() const {
-    return llvm::ArrayRef<Binding*>(
-        getTrailingObjects<Binding*>(), NumBindings);
-  }
-
-  llvm::MutableArrayRef<Binding*> getBindings() {
-    return llvm::MutableArrayRef<Binding*>(
-        getTrailingObjects<Binding*>(), NumBindings);
-  }
-
-  static size_t sizeToAlloc(unsigned NumBindings) {
-    return totalSizeToAlloc<Binding*>(NumBindings);
-  }
-
-  // Returns nullptr if not found
-  Binding* Lookup(Symbol* Name) const;
-
-  static bool classof(Value V) {
-    return V.getKind() == ValueKind::EnvFrame;
-  }
-};
-
 class Exception: public ValueBase {
 public:
   Value Val;
@@ -1164,14 +1097,6 @@ inline llvm::StringRef Error::getErrorMessage() {
     return  S->getView();
   }
   return "Unknown error (invalid error message)";
-}
-
-inline Binding* EnvFrame::Lookup(Symbol* Name) const {
-  // linear search
-  for (Binding* B : getBindings()) {
-    if (Name->equals(B->getName())) return B;
-  }
-  return nullptr;
 }
 
 // ValueVisitor
