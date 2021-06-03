@@ -24,12 +24,14 @@ class Module : public ValueBase {
   friend class Context;
   using MapTy = llvm::DenseMap<String*, Value>;
   using MapIteratorTy  = typename MapTy::iterator;
+  heavy::Context& Context; // for String lookup
   MapTy Map;
 
 public:
-  Module()
-    : ValueBase(ValueKind::Module)
-    , Map()
+  Module(heavy::Context& C)
+    : ValueBase(ValueKind::Module),
+      Context(C),
+      Map()
   { }
 
   Binding* Insert(Binding* B) {
@@ -55,35 +57,36 @@ public:
     return V.getKind() == ValueKind::Module;
   }
 
-  class Iterator : public llvm::iterator_facade_base<
-                                              Iterator,
+  class ValueIterator : public llvm::iterator_facade_base<
+                                              ValueIterator,
                                               std::forward_iterator_tag,
                                               Value>
   {
     friend class Module;
     using ItrTy = typename MapTy::iterator;
     ItrTy Itr;
-    Iterator(ItrTy I) : Itr(I) { }
+    ValueIterator(ItrTy I) : Itr(I) { }
 
   public:
-    Iterator& operator=(Iterator const& R) { Itr = R.Itr; return *this; }
-    bool operator==(Iterator const& R) const { return Itr == R.Itr; }
+    ValueIterator& operator=(ValueIterator const& R)
+    { Itr = R.Itr; return *this; }
+    bool operator==(ValueIterator const& R) const { return Itr == R.Itr; }
     Value const& operator*() const { return (*Itr).getValue(); }
     Value& operator*() { return (*Itr).getValue(); }
-    Iterator& operator++() { ++Itr; return *this; }
+    ValueIterator& operator++() { ++Itr; return *this; }
   };
 
-  Iterator begin() {
-    return Iterator(Map.begin());
+  ValueIterator values_begin() {
+    return ValueIterator(Map.begin());
   }
 
-  Iterator end() {
-    return Iterator(Map.end());
+  ValueIterator values_end() {
+    return ValueIterator(Map.end());
   }
 
   // Used by ImportSet::Iterator
-  auto lookup_begin() { return Map.begin(); }
-  auto lookup_end() { return Map.end(); }
+  auto begin() { return Map.begin(); }
+  auto end() { return Map.end(); }
 };
 
 
@@ -106,6 +109,13 @@ class ImportSet : public ValueBase {
   heavy::Value Specifier;
   ImportKind Kind;
 
+  // FilterName - used for iteration of Module members
+  //              filtered by import sets
+  String* FilterFromPairs(heavy::Context& C, String* S);
+  String* FilterName(heavy::Context&, String*);
+  Value LookupFromPairs(heavy::Context& C, Symbol* S);
+  Module* getLibrary();
+
 public:
   ImportSet(ImportKind Kind, ImportSet* Parent, Value Specifier)
     : ValueBase(ValueKind::ImportSet),
@@ -113,9 +123,18 @@ public:
       Specifier(Specifier),
       Kind(Kind)
   {
-    assert((Parent || Kind == ImportKind::Library)
+    assert((Specifier && Parent && Kind != ImportKind::Library)
       && "parent cannot be null unless it is a library");
   }
+
+  ImportSet(ImportKind Kind, Module* M)
+    : ValueBase(ValueKind::ImportSet),
+      Parent(nullptr),
+      Specifier(M),
+      Kind(ImportKind::Library)
+  { }
+
+  Value Lookup(heavy::Context& C, Symbol* S);
 
   static bool classof(Value V) {
     return V.getKind() == ValueKind::ImportSet;
@@ -129,14 +148,6 @@ public:
     }
     return false;
   }
-
-  Value LookupFromPairs(heavy::Context& C, Symbol* S);
-  Value Lookup(heavy::Context& C, Symbol* S);
-
-  // FilterName - used for iteration of Module members
-  //              filtered by import sets
-  String* FilterFromPairs(heavy::Context& C, String* S);
-  String* FilterName(heavy::Context&, String*);
 
   // IteratorValueTy - The String* member will be modified
   //                   to reflect the possibly renamed value
@@ -185,6 +196,19 @@ public:
     ValueTy operator*() const { return getValue(); }
     Iterator& operator++() { ++Itr; return *this; }
   };
+
+  Iterator begin() {
+    // recurse to get the Module to get the iterator
+    Module* M = getModule();
+    heavy::Context& C = M->getContext();
+    return return Iterator(C, M->lookup_begin(), *this);
+  }
+
+  Iterator end() {
+    Module* M = getModule();
+    heavy::Context& C = M->getContext();
+    return return Iterator(C, M->lookup_end(), *this);
+  }
 };
 
 }
