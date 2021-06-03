@@ -89,6 +89,7 @@ class Context : DialectRegisterer {
   Value EnvStack;
   EvaluationStack EvalStack;
   mlir::MLIRContext MlirContext;
+  Value Loc = {}; // last know location for errors
   Value Err = nullptr;
   std::unordered_map<void*, Value> EmbeddedEnvs;
 public:
@@ -210,9 +211,18 @@ public:
     return SetError(Loc, CreateString(S), V);
   }
 
+  Value setLoc(Value V) {
+    SourceLocation L = V.getSourceLocation();
+    if (L.isValid()) {
+      Loc = L;
+    }
+    return V;
+  }
+
   SourceLocation getErrorLocation() {
-    if (Err) return Err.getSourceLocation();
-    return SourceLocation();
+    SourceLocation L = Err.getSourceLocation();
+    if (L.isValid()) return L;
+    return Loc;
   }
 
   StringRef getErrorMessage() {
@@ -333,9 +343,12 @@ public:
   ImportSet* CreateImportSetRename(Value Spec);
   ImportSet* CreateImportSetLibrary(Module* Library);
 
-  Value getCaar(Value Input) {
-     
-  }
+  // These accessors help track the location
+  // so it convenient to overwrite a variable
+  Value car(Value V) { return setLoc(V).car(); }
+  Value cdr(Value V) { return setLoc(V).cdr(); }
+  Value cadr(Value V) { return setLoc(V).cadr(); }
+  Value cddr(Value V) { return setLoc(V).cddr(); }
 };
 
 }

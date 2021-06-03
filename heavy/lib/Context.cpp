@@ -563,34 +563,45 @@ String* ImportSet::FilterFromPairs(heavy::Context& C, String* S) {
   return S;
 }
 
-Value Context::CreateImportSet(Value InputSpec) {
-  Pair* Spec = dyn_cast<Pair>(InputSpec);
-  Symbol* Keyword = dyn_cast_or_null<Symbol>(Spec->Car);
-  if (!Keyword) return OG.SetError("expecting import set", InputSpec);
+Value Context::CreateImportSet(Value Spec) {
+  Import::ImportKind Kind;
+  Symbol* Keyword = dyn_cast_or_null<Symbol>(Spec.car());
+  if (!Keyword) return SetError("expecting import set", Spec);
   if (Keyword.equals("only")) {
     Kind = Import::ImportKind::Only;
   } else if (Keyword.equals("except")) {
     Kind = Import::ImportKind::Except;
   } else if (Keyword.equals("rename")) {
     Kind = Import::ImportKind::Rename;
+  } else if (Keyword.equals("prefix")) {
+    Kind = Import::ImportKind::Prefix;
   } else {
-    Kind = Import::ImportKind::Library;
+    // Import::ImportKind::Library;
     Module* M = Context.LoadLibrary(Spec);
-    if (!M) return OG.Error();
-    return new (TrashHeap) ImportSet(Kind, M);
+    if (!M) return Undefined();
+    return new (TrashHeap) ImportSet(M);
   }
 
-  ImportSet* Parent = Empty{};
-  if (Pair* P = dyn_cast<Pair>(Spec->Cdr) {
-    Parent = CreateImportSet(P->Car);
-  } else {
-    return OG.SetError("expecting nested import set", Spec);
+  Value Parent = CreateImportSet(cadr(Spec));
+  if (!isa<ImportSet>(Parent)) return Undefined();
+
+  if (Kind == Import::ImportKind::Prefix) {
+    Symbol* Prefix = dyn_cast_or_null<Symbol>(cadr(Spec));
+    if (!Prefix) return SetError("expected identifier for prefix");
+    if (!isa_or_null<Empty>(cddr(Spec)))
+      return SetError("expected end of list");
+    return new (TrashHeap) ImportSet(Kind, Parent, Prefix); 
   }
 
+  // Identifier (pairs) list
   // Check the syntax and that each provided name
-  // exists in the parent import set and maybe insert it
-  // into the target Module object
-  Value Current = Spec->Cdr;
+  // exists in the parent import set
+  Spec = cadr(Spec);
+  if (!isa_or_null<Pair>(Spec)) return SetError("expecting list");
+  if (!isa_or_null<Empty>(cddr(Spec)) return SetError("expected end of list");
+  // Spec is now the list of ids to be used by ImportSet
+
+  Value Current = Spec;
   while (Pair* P = dyn_cast<Pair>(Current)) {
     switch (Kind) {
     case Import::ImportKind::Only:
@@ -599,18 +610,23 @@ Value Context::CreateImportSet(Value InputSpec) {
       break;
     case Import::ImportKind::Rename:
       Pair* P2 = dyn_cast<Pair>(P->Car);
-      if (!P2) return SetError("rename requires pairs of identifiers", P);
+      if (!P2) return SetError("expected pair", P);
       Symbol* Name = dyn_cast<Symbol>(P2->Car);
-      Pair* P3 = dyn_cast<Pair>(P2->Cdr);
-      if (!P3 || (isa<Empty>(P3->Cdr))) {
-        return SetError("rename requires pairs of identifiers", P2);
-      }
-      Symbol* Rename = dyn_cast<Symbol>(P3->Car);
-      if (!Rename) return SetError("expecting identifier", P3);
+      Symbol* Rename = dyn_cast_or_null<Symbol>(P2.cadr());
+      if (Name || Rename)
+        return SetError("expected pair of identifiers", P2);
+    default:
+      llvm_unreachable("invalid import set kind");
+    }
+    Value LookupResult = Parent->Lookup(*this, Name);
+    if (!LookupResult) {
+      return SetError("name does not exist in import set");
     }
   }
-  // TODO Iterate and check for collisions in AddImportSet
+  return new (TrashHeap) ImportSet(Kind, Parent, Spec);
 }
+
+#if 0
 ImportSet* Context::CreateImportSetExcept(Value Spec) {
   // TODO check validity of Spec
 }
@@ -622,3 +638,4 @@ ImportSet* Context::CreateImportSetRename(Value Spec) {
 }
 ImportSet* Context::CreateImportSetLibrary(Module* Library) {
 }
+#endif
