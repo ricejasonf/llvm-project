@@ -181,12 +181,19 @@ bool Context::Import(heavy::ImportSet* ImportSet) {
   }
   assert(Env && "EnvStack should have an Environment");
 
-  // TODO
-  // Iterate ImportSet performing a lookup to check for
-  // name conflicts
+  for (ImportSet::ValueTy ImportVal : *ImportSet) {
+    String* Name = ImportVal.first;
+    // if there is no name just skip it (it was filtered out)
+    if (!Name) continue;
+    if (!Env.ImportValue(ImportVal)) {
+      String* ErrMsg = CreateString("imported name already exists: ",
+                                    Name->getView());
+      SetError(ErrMsg, ImportSet);
+      return true;
+    }
+  }
 
   return false;
-  //return Env->AddImportSet(ImportSet);
 }
 
 EnvFrame* Context::PushLambdaFormals(Value Formals,
@@ -295,10 +302,15 @@ Value Context::Lookup(Symbol* Name, Value Stack, Value NextStack) {
     case ValueKind::ImportSet:
       Result = cast<ImportSet>(V)->Lookup(*this, Name);
       break;
-    case ValueKind::Environment:
-      NextStack = Next;
-      Next = cast<Environment>(V)->EnvStack;
+    case ValueKind::Environment: {
+      auto* Env = cast<Environment>(V);
+      Result = Env.EnvMap.lookup(Name.getString());
+      if (!Result) {
+        NextStack = Next;
+        Next = cast<Environment>(V)->EnvStack;
+      }
       break;
+    }
     default:
       llvm_unreachable("Invalid Lookup Type");
   }

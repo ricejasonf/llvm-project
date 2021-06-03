@@ -70,7 +70,7 @@ mlir::Value set(OpGen& OG, Pair* P) {
 mlir::Value import(OpGen& OG, Pair* P) {
   heavy::Context& Context = OG.getContext(); 
   ImportSet* ImpSet = Context.CreateImportSet(P->Cdr);
-  Context.AddImportSet(ImpSet);
+  Context.Import(ImpSet);
   return OG.createUndefined();
 }
 

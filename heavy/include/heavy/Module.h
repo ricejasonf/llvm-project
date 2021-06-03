@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//  This file defines Module, ImportSet, and ImportSetIterator
+//  This file defines Module, ImportSet, Environment, and EnvFrame
 //  Definitions reside in Context.cpp
 //
 //===----------------------------------------------------------------------===//
@@ -17,6 +17,7 @@
 #include "heavy/Value.h"
 #include "llvm/ADT/iterator.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/TrailingObjects.h"
 
 namespace heavy {
 
@@ -149,19 +150,18 @@ public:
     return false;
   }
 
-  // IteratorValueTy - The String* member will be modified
-  //                   to reflect the possibly renamed value
-  //                   or nullptr if it was filtered out.
-  //                   (this should eliminate redundant calls
-  //                    to filter name and having to store
-  //                    the end() of the map)
-  using IteratorValueTy = std::pair<String*, Value>;
+  // ValueTy - The String* member will be modified
+  //           to reflect the possibly renamed value
+  //           or nullptr if it was filtered out.
+  //           (this should eliminate redundant calls
+  //           to filter name and having to store
+  //           the end() of the map)
+  using ValueTy = std::pair<String*, Value>;
   class Iterator : public llvm::iterator_facade_base<
                                               Iterator,
                                               std::forward_iterator_tag,
-                                              IteratorValueTy>
+                                              ValueTy>
   {
-    using ValueTy = IteratorValueTy;
     using ItrTy = typename MapTy::iterator;
     heavy::Context& Context; // for String lookup
     ImportSet Filter;
@@ -210,6 +210,93 @@ public:
     return return Iterator(C, M->lookup_end(), *this);
   }
 };
+
+// Environment
+//  - EnvMap is where we put all imported variables
+//  - EnvStack allows shadowed underlying layers such as
+//    core syntax or embedded environments
+//  - Represents an Environment Specifier created with (environment ...)
+//    or the default or embedded environments
+//  - Stacks Modules the bottom of which is the SystemModule.
+//  - Adding top level definitions that shadow names in EnvMap
+//    is forbidden
+class Environment : public ValueBase {
+  friend class Context;
+  using MapTy = llvm::DenseMap<String*, Value>;
+
+  Value EnvStack;
+  MapTy EnvMap;
+
+public:
+  Environment(heavy::Context& C, Value Stack)
+    : ValueBase(ValueKind::Environment),
+      EnvStack(Stack),
+      EnvMap()
+  { }
+
+  // ImportValue returns false if the name already exists
+  bool ImportValue(ImportSet::ValueTy X) {
+    assert(X.first && "name should point to a string in identifier table");
+    Value Val = X.second;
+    return EnvMap.insert(X).second;
+  }
+
+  static bool classof(Value V) {
+    return V.getKind() == ValueKind::Environment;
+  }
+};
+
+// EnvFrame - Represents a local scope that introduces variables
+//          - This should be used exclusively at compile time
+//            (unless we go the route of capturing entire scopes
+//             to keep values alive)
+class EnvFrame final
+  : public ValueBase,
+    private llvm::TrailingObjects<EnvFrame, Binding*> {
+
+  friend class llvm::TrailingObjects<EnvFrame, Binding*>;
+  friend class Context;
+
+  unsigned NumBindings;
+  size_t numTrailingObjects(OverloadToken<Binding*> const) const {
+    return NumBindings;
+  }
+
+  EnvFrame(unsigned NumBindings)
+    : ValueBase(ValueKind::EnvFrame),
+      NumBindings(NumBindings)
+  { }
+
+public:
+  llvm::ArrayRef<Binding*> getBindings() const {
+    return llvm::ArrayRef<Binding*>(
+        getTrailingObjects<Binding*>(), NumBindings);
+  }
+
+  llvm::MutableArrayRef<Binding*> getBindings() {
+    return llvm::MutableArrayRef<Binding*>(
+        getTrailingObjects<Binding*>(), NumBindings);
+  }
+
+  static size_t sizeToAlloc(unsigned NumBindings) {
+    return totalSizeToAlloc<Binding*>(NumBindings);
+  }
+
+  // Returns nullptr if not found
+  Binding* Lookup(Symbol* Name) const;
+
+  static bool classof(Value V) {
+    return V.getKind() == ValueKind::EnvFrame;
+  }
+};
+
+inline Binding* EnvFrame::Lookup(Symbol* Name) const {
+  // linear search
+  for (Binding* B : getBindings()) {
+    if (Name->equals(B->getName())) return B;
+  }
+  return nullptr;
+}
 
 }
 
