@@ -341,6 +341,10 @@ public:
            getKind() == ValueKind::Float;
   }
 
+  bool isEmpty() {
+    return getKind() == ValueKind::Empty;
+  }
+
   bool isTrue() {
     // returns true for everything except
     // explicit #f (per r7rS)
@@ -355,6 +359,33 @@ public:
         ->getSourceLocation();
     }
     return SourceLocation();
+  }
+
+  // The car/cdr et al  return nullptr if any
+  // value is invalid for that accessor
+  Value car() {
+    if (Pair* P = dyn_cast<Pair>(*this))
+      return P->Car;
+    return nullptr;
+  }
+  Value cdr() {
+    if (Pair* P = dyn_cast<Pair>(*this))
+      return P->Cdr;
+    return nullptr;
+  }
+
+  Value cadr() {
+    if (Pair* P = dyn_cast<Pair>(*this))
+      if (Pair* P2 = dyn_cast<Pair>(P->Cdr))
+        return P2->Car;
+    return nullptr;
+  }
+
+  Value cddr() {
+    if (Pair* P = dyn_cast<Pair>(*this))
+      if (Pair* P2 = dyn_cast<Pair>(P->Cdr))
+        return P2->Cdr;
+    return nullptr;
   }
 
   void dump();
