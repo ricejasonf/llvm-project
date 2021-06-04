@@ -118,10 +118,11 @@ void HeavyScheme::RegisterModule(llvm::StringRef MangledName,
 }
 
 void createModule(heavy::Context& C, llvm::StringRef MangledName,
-                  Module::InitListTy InitList) {
+                  ModuleInitListTy InitList) {
   Module* M = C.CreateModule(MangledName);
-  for (Module::InitListPairTy const& X : InitList) {
-    M->Insert(X); 
+  for (ModuleInitListPairTy const& X : InitList) {
+    String* Id = C.CreateIdTableEntry(X.first);
+    M->Insert(std::pair<String*, Value>{Id, X.second});
   }
 }
 

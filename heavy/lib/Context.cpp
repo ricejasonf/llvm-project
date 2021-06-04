@@ -127,17 +127,11 @@ String* Context::CreateIdTableEntry(llvm::StringRef Prefix,
   // unfortunately we have to create a garbage string
   // just to check this
   String* Temp = CreateString(Prefix, S);
-  return CreateIdTableEntry(Temp);
+  return CreateIdTableEntry(Temp->getView());
 }
 
 Symbol* Context::CreateSymbol(llvm::StringRef S,
                          SourceLocation Loc) {
-  // Symbol wraps uniqued instances of String
-  // tracked by IdTable
-  String*& Str = IdTable[S];
-  if (!Str) {
-    Str = CreateString(S);
-  }
   String* Str = CreateIdTableEntry(S);
   return new (TrashHeap) Symbol(Str, Loc);
 }
@@ -185,7 +179,7 @@ bool Context::Import(heavy::ImportSet* ImportSet) {
     String* Name = ImportVal.first;
     // if there is no name just skip it (it was filtered out)
     if (!Name) continue;
-    if (!Env.ImportValue(ImportVal)) {
+    if (!Env->ImportValue(ImportVal)) {
       String* ErrMsg = CreateString("imported name already exists: ",
                                     Name->getView());
       SetError(ErrMsg, ImportSet);
@@ -241,7 +235,7 @@ void Context::PushLocalBinding(Binding* B) {
 }
 
 EnvFrame* Context::CreateEnvFrame(llvm::ArrayRef<Symbol*> Names) {
-  unsigned MemSize = EnvFrame::sizeToAlloc(Names.size());  
+  unsigned MemSize = EnvFrame::sizeToAlloc(Names.size());
 
   void* Mem = TrashHeap.Allocate(MemSize, alignof(EnvFrame));
 
@@ -304,7 +298,7 @@ Value Context::Lookup(Symbol* Name, Value Stack, Value NextStack) {
       break;
     case ValueKind::Environment: {
       auto* Env = cast<Environment>(V);
-      Result = Env.EnvMap.lookup(Name.getString());
+      Result = Env->EnvMap.lookup(Name->getString());
       if (!Result) {
         NextStack = Next;
         Next = cast<Environment>(V)->EnvStack;
@@ -514,7 +508,7 @@ Value ImportSet::Lookup(heavy::Context& C, Symbol* S) {
   }
   case ImportKind::Rename:
     // Specifier is a list of pairs of symbols
-    return LookupFromPairs(C, S); 
+    return LookupFromPairs(C, S);
   }
   llvm_unreachable("invalid import kind");
 }
@@ -556,7 +550,7 @@ String* ImportSet::FilterName(heavy::Context& C, String* S) {
     return C.CreateIdTableEntry(Prefix, Str);
   }
   case ImportKind::Rename:
-    return FilterFromPairs(C, S); 
+    return FilterFromPairs(C, S);
   default:
     llvm_unreachable("invalid import kind");
   }
@@ -575,79 +569,90 @@ String* ImportSet::FilterFromPairs(heavy::Context& C, String* S) {
   return S;
 }
 
-Value Context::CreateImportSet(Value Spec) {
-  Import::ImportKind Kind;
+ImportSet* Context::CreateImportSet(Value Spec) {
+  ImportSet::ImportKind Kind;
   Symbol* Keyword = dyn_cast_or_null<Symbol>(Spec.car());
-  if (!Keyword) return SetError("expecting import set", Spec);
-  if (Keyword.equals("only")) {
-    Kind = Import::ImportKind::Only;
-  } else if (Keyword.equals("except")) {
-    Kind = Import::ImportKind::Except;
-  } else if (Keyword.equals("rename")) {
-    Kind = Import::ImportKind::Rename;
-  } else if (Keyword.equals("prefix")) {
-    Kind = Import::ImportKind::Prefix;
+  if (!Keyword) {
+    SetError("expecting import set", Spec);
+    return nullptr;
+  }
+  // TODO perhaps we could intern these keywords in the IdTable
+  if (Keyword->equals("only")) {
+    Kind = ImportSet::ImportKind::Only;
+  } else if (Keyword->equals("except")) {
+    Kind = ImportSet::ImportKind::Except;
+  } else if (Keyword->equals("rename")) {
+    Kind = ImportSet::ImportKind::Rename;
+  } else if (Keyword->equals("prefix")) {
+    Kind = ImportSet::ImportKind::Prefix;
   } else {
-    // Import::ImportKind::Library;
-    Module* M = Context.LoadLibrary(Spec);
-    if (!M) return Undefined();
+    // ImportSet::ImportKind::Library;
+    Module* M = LoadLibrary(Spec);
+    if (!M) return nullptr;
     return new (TrashHeap) ImportSet(M);
   }
 
-  Value Parent = CreateImportSet(cadr(Spec));
-  if (!isa<ImportSet>(Parent)) return Undefined();
+  ImportSet* Parent = CreateImportSet(cadr(Spec));
+  if (!Parent) return nullptr;
 
-  if (Kind == Import::ImportKind::Prefix) {
+  if (Kind == ImportSet::ImportKind::Prefix) {
     Symbol* Prefix = dyn_cast_or_null<Symbol>(cadr(Spec));
-    if (!Prefix) return SetError("expected identifier for prefix");
-    if (!isa_or_null<Empty>(cddr(Spec)))
-      return SetError("expected end of list");
-    return new (TrashHeap) ImportSet(Kind, Parent, Prefix); 
+    if (!Prefix) {
+      SetError("expected identifier for prefix");
+      return nullptr;
+    }
+    if (!isa_and_nonnull<Empty>(cddr(Spec))) {
+      SetError("expected end of list");
+      return nullptr;
+    }
+    return new (TrashHeap) ImportSet(Kind, Parent, Prefix);
   }
 
   // Identifier (pairs) list
   // Check the syntax and that each provided name
   // exists in the parent import set
   Spec = cadr(Spec);
-  if (!isa_or_null<Pair>(Spec)) return SetError("expecting list");
-  if (!isa_or_null<Empty>(cddr(Spec)) return SetError("expected end of list");
+  if (!isa_and_nonnull<Pair>(Spec)) {
+    SetError("expecting list");
+    return nullptr;
+  }
+  if (!isa_and_nonnull<Empty>(cddr(Spec))) {
+    SetError("expected end of list");
+    return nullptr;
+  }
   // Spec is now the list of ids to be used by ImportSet
 
   Value Current = Spec;
+  Symbol* Name = nullptr;
   while (Pair* P = dyn_cast<Pair>(Current)) {
     switch (Kind) {
-    case Import::ImportKind::Only:
-    case Import::ImportKind::Except:
-      Symbol* Name = dyn_cast<Symbol>(P->Car);
+    case ImportSet::ImportKind::Only:
+    case ImportSet::ImportKind::Except:
+      Name = dyn_cast<Symbol>(P->Car);
       break;
-    case Import::ImportKind::Rename:
+    case ImportSet::ImportKind::Rename: {
       Pair* P2 = dyn_cast<Pair>(P->Car);
-      if (!P2) return SetError("expected pair", P);
-      Symbol* Name = dyn_cast<Symbol>(P2->Car);
-      Symbol* Rename = dyn_cast_or_null<Symbol>(P2.cadr());
-      if (Name || Rename)
-        return SetError("expected pair of identifiers", P2);
+      if (!P2) {
+       SetError("expected pair", P);
+       return nullptr;
+      }
+      Name = dyn_cast<Symbol>(P2->Car);
+      Symbol* Rename = dyn_cast_or_null<Symbol>(Value(P2).cadr());
+      if (Name || Rename) {
+        SetError("expected pair of identifiers", P2);
+        return nullptr;
+      }
+      break;
+    }
     default:
       llvm_unreachable("invalid import set kind");
     }
+
     Value LookupResult = Parent->Lookup(*this, Name);
     if (!LookupResult) {
-      return SetError("name does not exist in import set");
+      SetError("name does not exist in import set");
+      return nullptr;
     }
   }
   return new (TrashHeap) ImportSet(Kind, Parent, Spec);
 }
-
-#if 0
-ImportSet* Context::CreateImportSetExcept(Value Spec) {
-  // TODO check validity of Spec
-}
-ImportSet* Context::CreateImportSetOnly(Value Spec) {
-  // TODO check validity of Spec
-}
-ImportSet* Context::CreateImportSetRename(Value Spec) {
-  // TODO check validity of Spec
-}
-ImportSet* Context::CreateImportSetLibrary(Module* Library) {
-}
-#endif
