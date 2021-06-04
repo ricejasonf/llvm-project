@@ -40,13 +40,6 @@ void Value::dump() {
   llvm::errs() << '\n';
 }
 
-// FIXME not sure if CreateEmbedded is even useful anymore
-//       originally we were setting the IntWidth
-std::unique_ptr<Context> Context::CreateEmbedded() {
-  auto Cptr = std::make_unique<Context>();
-  return Cptr;
-}
-
 Context::Context()
   : Context(builtin::eval)
 { }
@@ -54,10 +47,10 @@ Context::Context()
 Context::Context(ValueFn ParseResultHandler)
   : DialectRegisterer()
   , TrashHeap()
-  , SystemModule(CreateModule())
-  , SystemEnvironment(CreateEnvironment(CreatePair(SystemModule)))
+  , SystemModule(std::make_unique<Module>())
+  , SystemEnvironment(std::make_unique<Environment>())
+  , EnvStack(SystemEnvironment.get())
   , HandleParseResult(ParseResultHandler)
-  , EnvStack(SystemEnvironment)
   , EvalStack(*this)
   , MlirContext()
   , OpGen(std::make_unique<heavy::OpGen>(*this))
@@ -164,6 +157,15 @@ Vector* Context::CreateVector(unsigned N) {
   size_t size = Vector::sizeToAlloc(N);
   void* Mem = TrashHeap.Allocate(size, alignof(Vector));
   return new (Mem) Vector(CreateUndefined(), N);
+}
+
+void Context::RegisterModule(llvm::StringRef MangledName,
+                             heavy::ModuleImportFn* Import) {
+  String* Id = CreateIdTableEntry(MangledName);
+  auto Result = Modules.try_emplace(Id, Import);
+  bool DidInsert = Result.second;
+
+  assert(!DidInsert && "module should be created only once");
 }
 
 bool Context::Import(heavy::ImportSet* ImportSet) {
@@ -274,12 +276,11 @@ bool Context::CheckLambdaFormals(Value Formals,
   return CheckLambdaFormals(P->Cdr, Names, HasRestParam);
 }
 
-// NextStack was for supporting tail recursion with nested Environments
-// The Stack may be an improper list ending with an Environment
-Value Context::Lookup(Symbol* Name, Value Stack, Value NextStack) {
-  if (isa<Empty>(Stack) && !NextStack) return nullptr;
-  if (isa<Empty>(Stack)) Stack = NextStack;
-  if (isa<Environment>(Stack)) Stack = cast<Environment>(Stack)->EnvStack;
+// The Stack is an improper list ending with an Environment
+Value Context::Lookup(Symbol* Name, Value Stack) {
+  if (auto* E = dyn_cast<Environment>(Stack)) {
+    return E->Lookup(Name);
+  }
   Value Result = nullptr;
   Value V    = cast<Pair>(Stack)->Car;
   Value Next = cast<Pair>(Stack)->Cdr;
@@ -297,26 +298,25 @@ Value Context::Lookup(Symbol* Name, Value Stack, Value NextStack) {
       Result = cast<ImportSet>(V)->Lookup(*this, Name);
       break;
     case ValueKind::Environment: {
-      auto* Env = cast<Environment>(V);
-      Result = Env->EnvMap.lookup(Name->getString());
-      if (!Result) {
-        NextStack = Next;
-        Next = cast<Environment>(V)->EnvStack;
-      }
+      Result = cast<Environment>(V)->Lookup(Name);
       break;
     }
     default:
       llvm_unreachable("Invalid Lookup Type");
   }
   if (Result) return Result;
-  return Lookup(Name, Next, NextStack);
+  return Lookup(Name, Next);
 }
 
 void Context::AddBuiltin(StringRef Str, ValueFn Fn) {
   Symbol* S = CreateSymbol(Str);
-  Module* M = SystemModule;
+  Module* M = SystemModule.get();
   mlir::Value V = OpGen->VisitTopLevel(CreateBuiltin(Fn));
   OpGen->createTopLevelDefine(S, V, M);
+
+  // TODO these "builtins" should not be automatically imported
+  SystemEnvironment->ImportValue(
+    std::pair<String*, Value>(B->getName()->getString(), B));
 }
 
 mlir::Operation* Context::getModuleOp() {
