@@ -75,23 +75,24 @@ class Context : DialectRegisterer {
   friend void* allocate(Context& C, size_t Size, size_t Alignment);
   AllocatorTy TrashHeap;
 
-  std::deque<std::pair<Module, ModuleImportFn*>> Modules = {};
-  llvm::StringMap<Module*> ModuleLookup = {};
   llvm::StringMap<String*> IdTable = {};
+  llvm::DenseMap<String*, Module*> Modules;
+  // TODO probably move EmbeddedEnvs to class HeavyScheme
+  llvm::DenseMap<void*, std::unique_ptr<Environment>> EmbeddedEnvs;
+
+  std::unique_ptr<Module> SystemModule; // TODO deprecate
+  std::unique_ptr<Environment> SystemEnvironment; // TODO deprecate
   // EnvStack
-  //  - Should be at least one element on top of
-  //    an Environment
+  //  - an improper list ending with an Environment
   //  - Calls to procedures or eval will set the EnvStack
   //    and swap it back upon completion (via RAII)
-  Module* SystemModule;
-  Environment* SystemEnvironment;
-  ValueFn HandleParseResult;
   Value EnvStack;
+
+  ValueFn HandleParseResult;
   EvaluationStack EvalStack;
   mlir::MLIRContext MlirContext;
-  SourceLocation Loc = {}; // last know location for errors
+  SourceLocation Loc = {}; // last known location for errors
   Value Err = nullptr;
-  std::unordered_map<void*, Value> EmbeddedEnvs;
 public:
   std::unique_ptr<heavy::OpGen> OpGen;
   heavy::OpEval OpEval;
@@ -108,36 +109,37 @@ public:
     return SetError(S, V);
   }
 
-  void PushMutableModule() {
-    EnvStack = CreatePair(CreateModule(), EnvStack);
+  Value getEnvironment() {
+    return EnvStack;
+  }
+  void setEnvironment(Value E) {
+    assert((isa<Environment, Pair>(E)) && "invalid environment specifier");
+    EnvStack = E;
   }
 
   void RegisterModule(llvm::StringRef MangledName,
-                      heavy::ModuleImportFn* Import) {
-    CreateModule(MangledName, Import);
-    //Module* M = CreateModule(MangledName, Import);
-    // TEMP load the module is if called via (import {name})
-
-
-  }
+                      heavy::ModuleImportFn* Import = nullptr);
 
   // Import - Finds the Environment in EnvStack, adds the
   //          ImportSet to it, and checks for name collisions
   //          Returns true on Error
   bool Import(ImportSet*);
 
-  // LoadLibrary - Idempotently loads a library
-  //               Returns nullptr on failure
-  Module* LoadLibrary(Value Spec);
+  // LoadModule - Idempotently loads a library
+  //              Returns nullptr on failure
+  Module* LoadModule(Value Spec);
 
   void AddBuiltin(StringRef Str, ValueFn Fn);
-
   void AddBuiltinSyntax(StringRef Str, SyntaxFn Fn) {
-    SystemModule->Insert(CreateBinding(CreateSymbol(Str),
-                                       CreateBuiltinSyntax(Fn)));
-  }
 
-  static std::unique_ptr<Context> CreateEmbedded();
+    Binding* B = CreateBinding(CreateSymbol(Str),
+                               CreateBuiltinSyntax(Fn));
+    SystemModule->Insert(B);
+    // TODO these "builtins" should not be automatically imported
+    // (except for import which shouldn't need to be)
+    SystemEnvironment->ImportValue(
+      std::pair<String*, Value>(B->getName()->getString(), B));
+  }
 
   Context();
   Context(ValueFn ParseResultHandler);
@@ -151,12 +153,13 @@ public:
   // Lookup
   //  - Takes a Symbol or nullptr
   //  - Returns a matching Binder or nullptr
-  Value Lookup(Symbol* Name, Value Stack,
-               Value NextStack = nullptr);
+  Value Lookup(Symbol* Name, Value Stack);
   Value Lookup(Symbol* Name) {
     return Lookup(Name, EnvStack);
   }
   Value Lookup(Value Name) {
+    // FIXME why did allow lookup by Value?
+    //       (if anything it should create an error)
     Symbol* S = dyn_cast<Symbol>(Name);
     if (!S) return nullptr;
     return Lookup(S);
@@ -270,9 +273,6 @@ public:
 
   Vector*     CreateVector(ArrayRef<Value> Xs);
   Vector*     CreateVector(unsigned N);
-  Environment* CreateEnvironment(Value Stack) {
-    return new (TrashHeap) Environment(Stack);
-  }
   EnvFrame*   CreateEnvFrame(llvm::ArrayRef<Symbol*> Names);
 
   String* CreateMutableString(StringRef V) {
@@ -312,22 +312,6 @@ public:
 
   Exception* CreateException(Value V) {
     return new (TrashHeap) Exception(V);
-  }
-
-  // creates anonymous module
-  // (usually for the current environment)
-  Module* CreateModule(heavy::ModuleImportFn* Import = nullptr) {
-    Modules.emplace_back(heavy::Module(*this), Import);
-    return &(Modules.back().first);
-  }
-
-  Module* CreateModule(llvm::StringRef MangledName,
-                       heavy::ModuleImportFn* Import = nullptr) {
-    Module* M = CreateModule();
-
-    auto Result = ModuleLookup.try_emplace(MangledName, M);
-    assert(Result.second && "module should be created only once");
-    return M;
   }
 
   Binding* CreateBinding(Symbol* S, Value V) {
