@@ -1276,15 +1276,27 @@ class Environment : public ValueBase {
   friend class Context;
   using MapTy = llvm::DenseMap<String*, Value>;
 
-  Value EnvStack;
+  Environment* Parent = nullptr;
   MapTy EnvMap;
 
 public:
-  Environment(Value Stack)
+  Environment(Environment* Parent = nullptr)
     : ValueBase(ValueKind::Environment),
-      EnvStack(Stack),
+      Parent(Parent),
       EnvMap()
   { }
+
+  // Returns nullptr if not found
+  Value Lookup(String* Str) {
+    Value Result = EnvMap.lookup(Str);
+    if (Result) return Result;
+    return Parent->Lookup(Str);
+  }
+
+  // Returns nullptr if not found
+  Value Lookup(Symbol* Name) {
+    return EnvMap.lookup(Name->getString());
+  }
 
   // ImportValue returns false if the name already exists
   bool ImportValue(ImportSet::ValueTy X) {

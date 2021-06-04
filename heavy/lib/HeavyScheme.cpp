@@ -48,6 +48,7 @@ heavy::Lexer HeavyScheme::createEmbeddedLexer(uintptr_t ExternalRawLoc,
 void HeavyScheme::LoadEmbeddedEnv(void* Handle,
           llvm::function_ref<void(HeavyScheme&, void*)> LoadParent) {
   auto& Context = getContext();
+  auto& EmbeddedEnvs = Context.EmbeddedEnvs; // TODO store EmbeddedEnvs in HeavyScheme
   auto itr = Context.EmbeddedEnvs.find(Handle);
   if (itr != Context.EmbeddedEnvs.end()) {
     Context.EnvStack = itr->second;
@@ -55,10 +56,10 @@ void HeavyScheme::LoadEmbeddedEnv(void* Handle,
   }
 
   LoadParent(*this, Handle);
-  Value Env = Context.EnvStack;
-  Env = Context.CreatePair(Context.CreateModule(), Env);
-  Context.EmbeddedEnvs[Handle] = Env;
-  Context.EnvStack = Env;
+  Environment* Parent = cast<Environment>(Context.getEnvironment());
+  auto& Env = Context.EmbeddedEnvs[Handle] =
+    std::make_unique<Environment>(Parent);
+  Context.setEnvironment(Env);
   return;
 }
 

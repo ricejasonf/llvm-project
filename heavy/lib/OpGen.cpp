@@ -228,6 +228,10 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
   SourceLocation DefineLoc = OrigCall.getSourceLocation();
   heavy::Value EnvStack = Context.EnvStack;
 
+  // TODO update this to use the improved EnvStack
+  //      Environment must track whether a name is
+  //      imported and therefore immutable
+
   // A module at the top of the EnvStack is mutable
   Module* M = nullptr;
   Value EnvRest = nullptr;
