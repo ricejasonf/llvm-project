@@ -89,7 +89,7 @@ class Context : DialectRegisterer {
   Value EnvStack;
   EvaluationStack EvalStack;
   mlir::MLIRContext MlirContext;
-  Value Loc = {}; // last know location for errors
+  SourceLocation Loc = {}; // last know location for errors
   Value Err = nullptr;
   std::unordered_map<void*, Value> EmbeddedEnvs;
 public:
@@ -125,6 +125,10 @@ public:
   //          ImportSet to it, and checks for name collisions
   //          Returns true on Error
   bool Import(ImportSet*);
+
+  // LoadLibrary - Idempotently loads a library
+  //               Returns nullptr on failure
+  Module* LoadLibrary(Value Spec);
 
   void AddBuiltin(StringRef Str, ValueFn Fn);
 
@@ -313,7 +317,7 @@ public:
   // creates anonymous module
   // (usually for the current environment)
   Module* CreateModule(heavy::ModuleImportFn* Import = nullptr) {
-    Modules.emplace_back(heavy::Module{}, Import);
+    Modules.emplace_back(heavy::Module(*this), Import);
     return &(Modules.back().first);
   }
 
@@ -337,11 +341,8 @@ public:
 
   Quote* CreateQuote(Value V) { return new (TrashHeap) Quote(V); }
 
+  // CreateImportSet - Returns nullptr on failure
   ImportSet* CreateImportSet(Value Spec);
-  ImportSet* CreateImportSetExcept(Value Spec);
-  ImportSet* CreateImportSetOnly(Value Spec);
-  ImportSet* CreateImportSetRename(Value Spec);
-  ImportSet* CreateImportSetLibrary(Module* Library);
 
   // These accessors help track the location
   // so it convenient to overwrite a variable
