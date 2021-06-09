@@ -25,9 +25,6 @@ class Context;
 class SourceManager;
 class Value;
 class Undefined;
-// ModuleImportFn - customization point for dynamically initializing a
-//                  module and loading its lookup table for the compiler
-using ModuleImportFn = void(heavy::Context*);
 
 // HeavyScheme - Opaque wrapper for heavy::Context and common operations
 //               needed for embedding scheme
@@ -99,7 +96,7 @@ class HeavyScheme {
 
   // Registers a module import function
   void RegisterModule(llvm::StringRef MangledName,
-                      heavy::ModuleImportFn*);
+                      heavy::ModuleLoadNamesFn*);
 };
 
 // Functions for working with heavy::Context and values

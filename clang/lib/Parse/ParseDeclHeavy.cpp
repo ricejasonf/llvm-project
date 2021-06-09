@@ -66,7 +66,7 @@ bool Parser::ParseHeavyScheme() {
   if (!HeavyScheme.isInitialized()) {
     HeavyScheme.init();
     LoadBuiltinModule(*this);
-    HeavyScheme.RegisterModule(HEAVY_CLANG_LIB_STR, HEAVY_CLANG_IMPORT);
+    HeavyScheme.RegisterModule(HEAVY_CLANG_LIB_STR, HEAVY_CLANG_LOAD_MODULE);
   }
 
   heavy::Lexer SchemeLexer;

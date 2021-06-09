@@ -1050,6 +1050,9 @@ public:
   }
 };
 
+// ModuleLoadNamesFn - customization point for dynamically initializing a
+//                  module and loading its lookup table for the compiler
+using ModuleLoadNamesFn = void(heavy::Context&);
 // createModule - Creates a compile-time name/value lookup for importing modules
 //                This should be called by the module's import function.
 using ModuleInitListPairTy = std::pair<llvm::StringRef, heavy::Value>;
@@ -1062,16 +1065,25 @@ class Module : public ValueBase {
   using MapTy = llvm::DenseMap<String*, Value>;
   using MapIteratorTy  = typename MapTy::iterator;
   heavy::Context& Context; // for String lookup
+  heavy::ModuleLoadNamesFn* LoadNamesFn; // for lazy importing
   MapTy Map;
 
 public:
-  Module(heavy::Context& C)
+  Module(heavy::Context& C, heavy::ModuleLoadNamesFn* LoadNamesFn = nullptr)
     : ValueBase(ValueKind::Module),
       Context(C),
+      LoadNamesFn(LoadNamesFn),
       Map()
   { }
 
   heavy::Context& getContext() { return Context; }
+
+  // LoadNames - Idempotently loads names into module
+  void LoadNames() {
+    if (!LoadNamesFn) return;
+    LoadNamesFn(Context);
+    LoadNamesFn = nullptr;
+  }
 
   Binding* Insert(Binding* B) {
     Map.insert(std::make_pair(B->getName()->getString(), B));
@@ -1274,7 +1286,15 @@ public:
 //    is forbidden
 class Environment : public ValueBase {
   friend class Context;
-  using MapTy = llvm::DenseMap<String*, Value>;
+
+public:
+  struct EntryT {
+    bool IsImmutable;
+    heavy::Value Value;
+  };
+
+private:
+  using MapTy = llvm::DenseMap<String*, EntryT>;
 
   Environment* Parent = nullptr;
   MapTy EnvMap;
@@ -1288,20 +1308,40 @@ public:
 
   // Returns nullptr if not found
   Value Lookup(String* Str) {
-    Value Result = EnvMap.lookup(Str);
+    Value Result = EnvMap.lookup(Str).Value;
     if (Result) return Result;
     return Parent->Lookup(Str);
   }
 
   // Returns nullptr if not found
   Value Lookup(Symbol* Name) {
+    return Lookup(Name->getString());
+  }
+
+  EntryT LookupForMutation(Symbol* Name) {
     return EnvMap.lookup(Name->getString());
   }
 
   // ImportValue returns false if the name already exists
   bool ImportValue(ImportSet::ValueTy X) {
     assert(X.first && "name should point to a string in identifier table");
-    return EnvMap.insert(X).second;
+    String* Name = X.first;
+    Value Val = X.second;
+    bool IsImmutable = true;
+    auto Entry = std::make_pair(Name,
+                  EntryT{IsImmutable, Val});
+    return EnvMap.insert(Entry).second;
+  }
+
+  // Insert - Adds a named mutable location. Overwriting
+  //          with a new object is okay here if it is mutable
+  void Insert(Binding* B) {
+    String* Name = B->getName()->getString();
+    bool IsImmutable = false;
+    auto& Entry = EnvMap[Name];
+    assert(!Entry.IsImmutable &&
+        "insert may not modify immutable locations");
+    Entry = EntryT{IsImmutable, B};
   }
 
   static bool classof(Value V) {
