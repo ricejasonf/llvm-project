@@ -49,9 +49,9 @@ void HeavyScheme::LoadEmbeddedEnv(void* Handle,
           llvm::function_ref<void(HeavyScheme&, void*)> LoadParent) {
   auto& Context = getContext();
   auto& EmbeddedEnvs = Context.EmbeddedEnvs; // TODO store EmbeddedEnvs in HeavyScheme
-  auto itr = Context.EmbeddedEnvs.find(Handle);
-  if (itr != Context.EmbeddedEnvs.end()) {
-    Context.EnvStack = itr->second;
+  auto itr = EmbeddedEnvs.find(Handle);
+  if (itr != EmbeddedEnvs.end()) {
+    Context.EnvStack = itr->second.get();
     return;
   }
 
@@ -59,19 +59,18 @@ void HeavyScheme::LoadEmbeddedEnv(void* Handle,
   Environment* Parent = cast<Environment>(Context.getEnvironment());
   auto& Env = Context.EmbeddedEnvs[Handle] =
     std::make_unique<Environment>(Parent);
-  Context.setEnvironment(Env);
+  Context.setEnvironment(Env.get());
   return;
 }
 
 void HeavyScheme::LoadCoreEnv() {
   auto& Context = getContext();
-  Context.EnvStack = Context.SystemEnvironment;
+  Context.EnvStack = Context.SystemEnvironment.get();
 }
 
 void HeavyScheme::CreateTopLevelModule() {
-  auto& Context = getContext();
+  //auto& Context = getContext();
   LoadCoreEnv();
-  Context.PushMutableModule();
 }
 
 bool HeavyScheme::ProcessTopLevelCommands(
@@ -114,13 +113,13 @@ bool HeavyScheme::ProcessTopLevelCommands(
 }
 
 void HeavyScheme::RegisterModule(llvm::StringRef MangledName,
-                                 void(*ImportFn)(heavy::Context*)) {
-  getContext().RegisterModule(MangledName, ImportFn);
+                                 void(*LoadNamesFn)(heavy::Context*)) {
+  getContext().RegisterModule(MangledName, LoadNamesFn);
 }
 
 void createModule(heavy::Context& C, llvm::StringRef MangledName,
                   ModuleInitListTy InitList) {
-  Module* M = C.CreateModule(MangledName);
+  Module* M = C.RegisterModule(MangledName);
   for (ModuleInitListPairTy const& X : InitList) {
     String* Id = C.CreateIdTableEntry(X.first);
     M->Insert(std::pair<String*, Value>{Id, X.second});

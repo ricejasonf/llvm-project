@@ -76,7 +76,7 @@ class Context : DialectRegisterer {
   AllocatorTy TrashHeap;
 
   llvm::StringMap<String*> IdTable = {};
-  llvm::DenseMap<String*, Module*> Modules;
+  llvm::DenseMap<String*, std::unique_ptr<Module>> Modules;
   // TODO probably move EmbeddedEnvs to class HeavyScheme
   llvm::DenseMap<void*, std::unique_ptr<Environment>> EmbeddedEnvs;
 
@@ -117,8 +117,8 @@ public:
     EnvStack = E;
   }
 
-  void RegisterModule(llvm::StringRef MangledName,
-                      heavy::ModuleImportFn* Import = nullptr);
+  Module* RegisterModule(llvm::StringRef MangledName,
+                         heavy::ModuleLoadNamesFn* LoadNames = nullptr);
 
   // Import - Finds the Environment in EnvStack, adds the
   //          ImportSet to it, and checks for name collisions
