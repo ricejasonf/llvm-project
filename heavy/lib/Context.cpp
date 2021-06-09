@@ -47,7 +47,7 @@ Context::Context()
 Context::Context(ValueFn ParseResultHandler)
   : DialectRegisterer()
   , TrashHeap()
-  , SystemModule(std::make_unique<Module>())
+  , SystemModule(std::make_unique<Module>(*this))
   , SystemEnvironment(std::make_unique<Environment>())
   , EnvStack(SystemEnvironment.get())
   , HandleParseResult(ParseResultHandler)
@@ -159,13 +159,15 @@ Vector* Context::CreateVector(unsigned N) {
   return new (Mem) Vector(CreateUndefined(), N);
 }
 
-void Context::RegisterModule(llvm::StringRef MangledName,
-                             heavy::ModuleImportFn* Import) {
+Module* Context::RegisterModule(llvm::StringRef MangledName,
+                                heavy::ModuleLoadNamesFn* LoadNames) {
   String* Id = CreateIdTableEntry(MangledName);
-  auto Result = Modules.try_emplace(Id, Import);
+  auto Result = Modules.try_emplace(Id, *this, LoadNames);
+  auto Itr = Result.first;
   bool DidInsert = Result.second;
 
   assert(!DidInsert && "module should be created only once");
+  return Itr->getSecond().get();
 }
 
 bool Context::Import(heavy::ImportSet* ImportSet) {
@@ -314,9 +316,11 @@ void Context::AddBuiltin(StringRef Str, ValueFn Fn) {
   mlir::Value V = OpGen->VisitTopLevel(CreateBuiltin(Fn));
   OpGen->createTopLevelDefine(S, V, M);
 
+#if 0
   // TODO these "builtins" should not be automatically imported
   SystemEnvironment->ImportValue(
     std::pair<String*, Value>(B->getName()->getString(), B));
+#endif
 }
 
 mlir::Operation* Context::getModuleOp() {
@@ -587,7 +591,7 @@ ImportSet* Context::CreateImportSet(Value Spec) {
     Kind = ImportSet::ImportKind::Prefix;
   } else {
     // ImportSet::ImportKind::Library;
-    Module* M = LoadLibrary(Spec);
+    Module* M = LoadModule(Spec);
     if (!M) return nullptr;
     return new (TrashHeap) ImportSet(M);
   }
@@ -655,4 +659,28 @@ ImportSet* Context::CreateImportSet(Value Spec) {
     }
   }
   return new (TrashHeap) ImportSet(Kind, Parent, Spec);
+}
+
+Module* Context::LoadModule(Value Spec) {
+  String* Name = getMangledModuleName(Spec);
+  std::unique_ptr<Module>& M = Modules[Name];  
+  if (!M) {
+    SetError("unable to load module", Spec);
+    return nullptr;
+#if 0
+    // TODO
+    // Load the file and compile the scheme code and check again
+    // We might need the SourceManager to belong to Context
+    std::string Filename = getModuleFilename(Spec);
+    std::unique_ptr<Module>& M = Modules[Name];  
+    if (!M) {
+      String* Msg = CreateString("loaded file does not contain library: ",
+                                 Filename);
+      SetError(Msg, Spec);
+      return nullptr;
+    }
+#endif
+  }
+  M->LoadNames();
+  return M.get();
 }

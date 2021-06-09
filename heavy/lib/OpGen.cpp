@@ -226,43 +226,33 @@ mlir::Value OpGen::createDefine(Symbol* S, Value DefineArgs,
 mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
                                         Value OrigCall) {
   SourceLocation DefineLoc = OrigCall.getSourceLocation();
-  heavy::Value EnvStack = Context.EnvStack;
 
-  // TODO update this to use the improved EnvStack
-  //      Environment must track whether a name is
-  //      imported and therefore immutable
+  // If EnvStack isn't an Environment then there is local
+  // scope information on top of it
+  Environment* Env = cast<Environment>(Context.EnvStack);
 
-  // A module at the top of the EnvStack is mutable
-  Module* M = nullptr;
-  Value EnvRest = nullptr;
-  if (isa<Pair>(EnvStack)) {
-    Value EnvTop = cast<Pair>(EnvStack)->Car;
-    EnvRest = cast<Pair>(EnvStack)->Cdr;
-    M = dyn_cast<Module>(EnvTop);
+#if 0 // FIXME Values should report mutability properly
+  if (Env->isImmutable()) {
+    return SetError("define used in immutable environment", OrigCall);
   }
-  if (!M) return SetError("define used in immutable environment", OrigCall);
+#endif
+
+  auto Entry = Env->LookupForMutation(S);
+  if (Entry.Value && Entry.IsImmutable) {
+    return SetError("define overwrites immutable location", S);
+  }
 
   // If the name already exists in the current module
   // then it behaves like `set!`
-  heavy::Value Result = M->Lookup(S);
-  if (Binding* B = dyn_cast_or_null<Binding>(Result)) {
-    assert(B->isSyntactic() &&
-        "TODO make Syntax never be wrapped in a Binding");
+  if (Binding* B = dyn_cast_or_null<Binding>(Entry.Value)) {
     mlir::Value BVal = BindingTable.lookup(B);
     assert(BVal && "expecting BindingOp for Binding");
     mlir::Value Init = VisitDefineArgs(DefineArgs);
     return create<SetOp>(DefineLoc, BVal, Init);
   }
 
-  // Top Level definitions may not shadow names in
-  // the parent environment
-  Result = Context.Lookup(S, EnvRest);
-  if (Result) {
-    return SetError("define overwrites immutable location", S);
-  }
-
   Binding* B = Context.CreateBinding(S, DefineArgs);
-  M->Insert(B);
+  Env->Insert(B);
   mlir::Value BVal = createBinding(B, createUndefined());
   mlir::Value Init = VisitDefineArgs(DefineArgs);
   return create<SetOp>(DefineLoc, BVal, Init);
