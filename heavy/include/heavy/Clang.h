@@ -21,7 +21,7 @@
 #define HEAVY_CLANG_LIB               _HEAVYL5clang
 #define HEAVY_CLANG_LIB_STR          "_HEAVYL5clang"
 #define HEAVY_CLANG_IS_LOADED         HEAVY_CLANG_LIB##_is_loaded
-#define HEAVY_CLANG_IMPORT            HEAVY_CLANG_LIB##_import
+#define HEAVY_CLANG_LOAD_MODULE       HEAVY_CLANG_LIB##_LOAD_MODULE
 #define HEAVY_CLANG_INIT              HEAVY_CLANG_LIB##_init
 #define HEAVY_CLANG_VAR(NAME)         HEAVY_CLANG_VAR__##NAME
 #define HEAVY_CLANG_VAR__diag_error   _HEAVYL5clangV4diagmi5error
@@ -49,7 +49,7 @@ extern "C" {
 
   // initializes the module and loads lookup information
   // for the compiler
-  inline void HEAVY_CLANG_IMPORT(heavy::Context& Context) {
+  inline void HEAVY_CLANG_LOAD_MODULE(heavy::Context& Context) {
     HEAVY_CLANG_INIT(Context);
     heavy::createModule(Context, HEAVY_CLANG_LIB_STR, {
       {"diag-error",  HEAVY_CLANG_VAR(diag_error)},
