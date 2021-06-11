@@ -1303,14 +1303,15 @@ public:
   Environment(Environment* Parent = nullptr)
     : ValueBase(ValueKind::Environment),
       Parent(Parent),
-      EnvMap()
+      EnvMap(0)
   { }
 
   // Returns nullptr if not found
   Value Lookup(String* Str) {
     Value Result = EnvMap.lookup(Str).Value;
     if (Result) return Result;
-    return Parent->Lookup(Str);
+    if (Parent) return Parent->Lookup(Str);
+    return nullptr;
   }
 
   // Returns nullptr if not found
