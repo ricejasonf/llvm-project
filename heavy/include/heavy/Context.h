@@ -76,7 +76,7 @@ class Context : DialectRegisterer {
   AllocatorTy TrashHeap;
 
   llvm::StringMap<String*> IdTable = {};
-  llvm::DenseMap<String*, std::unique_ptr<Module>> Modules;
+  llvm::StringMap<std::unique_ptr<Module>> Modules;
   // TODO probably move EmbeddedEnvs to class HeavyScheme
   llvm::DenseMap<void*, std::unique_ptr<Environment>> EmbeddedEnvs;
 
