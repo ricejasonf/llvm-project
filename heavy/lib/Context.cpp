@@ -14,6 +14,7 @@
 #include "heavy/Dialect.h"
 #include "heavy/Context.h"
 #include "heavy/OpGen.h"
+#include "heavy/Mangle.h"
 #include "heavy/Source.h"
 #include "heavy/Value.h"
 #include "mlir/IR/Module.h"
@@ -161,13 +162,13 @@ Vector* Context::CreateVector(unsigned N) {
 
 Module* Context::RegisterModule(llvm::StringRef MangledName,
                                 heavy::ModuleLoadNamesFn* LoadNames) {
-  String* Id = CreateIdTableEntry(MangledName);
-  auto Result = Modules.try_emplace(Id, *this, LoadNames);
+  auto Result = Modules.try_emplace(MangledName,
+      std::make_unique<Module>(*this, LoadNames));
   auto Itr = Result.first;
   bool DidInsert = Result.second;
 
   assert(!DidInsert && "module should be created only once");
-  return Itr->getSecond().get();
+  return Itr->second.get();
 }
 
 bool Context::Import(heavy::ImportSet* ImportSet) {
@@ -314,13 +315,12 @@ void Context::AddBuiltin(StringRef Str, ValueFn Fn) {
   Symbol* S = CreateSymbol(Str);
   Module* M = SystemModule.get();
   mlir::Value V = OpGen->VisitTopLevel(CreateBuiltin(Fn));
-  OpGen->createTopLevelDefine(S, V, M);
+  Binding* B;
+  OpGen->createTopLevelDefine(S, V, M, B);
 
-#if 0
   // TODO these "builtins" should not be automatically imported
   SystemEnvironment->ImportValue(
     std::pair<String*, Value>(B->getName()->getString(), B));
-#endif
 }
 
 mlir::Operation* Context::getModuleOp() {
@@ -662,7 +662,8 @@ ImportSet* Context::CreateImportSet(Value Spec) {
 }
 
 Module* Context::LoadModule(Value Spec) {
-  String* Name = getMangledModuleName(Spec);
+  heavy::Mangler Mangler(*this);
+  std::string Name = Mangler.mangleModule(Spec);
   std::unique_ptr<Module>& M = Modules[Name];  
   if (!M) {
     SetError("unable to load module", Spec);
