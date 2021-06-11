@@ -113,7 +113,7 @@ bool HeavyScheme::ProcessTopLevelCommands(
 }
 
 void HeavyScheme::RegisterModule(llvm::StringRef MangledName,
-                                 void(*LoadNamesFn)(heavy::Context*)) {
+                                 heavy::ModuleLoadNamesFn* LoadNamesFn) {
   getContext().RegisterModule(MangledName, LoadNamesFn);
 }
 
