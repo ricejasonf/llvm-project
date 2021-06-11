@@ -5,9 +5,10 @@ add_llvm_library(heavy
   ${HEAVY_LIB}/Context.cpp
   ${HEAVY_LIB}/Dialect.cpp
   ${HEAVY_LIB}/HeavyScheme.cpp
+  ${HEAVY_LIB}/Lexer.cpp
+  ${HEAVY_LIB}/Mangle.cpp
   ${HEAVY_LIB}/OpEval.cpp
   ${HEAVY_LIB}/OpGen.cpp
-  ${HEAVY_LIB}/Lexer.cpp
   ${HEAVY_LIB}/Parser.cpp
   ${HEAVY_LIB}/Quasiquote.cpp
   ${HEAVY_LIB}/../../clang/lib/Basic/CharInfo.cpp)
