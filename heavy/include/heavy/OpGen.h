@@ -14,10 +14,12 @@
 #define LLVM_HEAVY_OP_GEN_H
 
 #include "heavy/Context.h"
+#include "heavy/Mangle.h"
 #include "mlir/IR/Builders.h"
 #include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/Support/Casting.h"
 #include <deque>
+#include <string>
 #include <utility>
 
 namespace mlir {
@@ -82,6 +84,7 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   BindingScopeTable BindingTable;
   std::deque<LambdaScopeNode> LambdaScopes;
   mlir::Operation* TopLevel;
+  std::string ModulePrefix = {};
   unsigned LambdaNameCount = 0;
   bool IsTopLevel = false;
   bool IsTailPos = true;
@@ -108,6 +111,19 @@ public:
   heavy::Context& getContext() { return Context; }
 
   mlir::ModuleOp getTopLevel();
+
+  void setModulePrefix(std::string&& Prefix) {
+    ModulePrefix = std::move(Prefix);
+  }
+  void resetModulePrefix() {
+    ModulePrefix.clear();
+  }
+  llvm::StringRef getModulePrefix() {
+    if (ModulePrefix.empty()) {
+      return heavy::Mangler::getManglePrefix();
+    }
+    return ModulePrefix;
+  }
 
   mlir::Value VisitTopLevel(Value V) {
     // there should be an insertion point already setup
