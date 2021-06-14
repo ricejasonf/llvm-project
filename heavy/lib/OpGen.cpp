@@ -11,8 +11,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "heavy/Builtins.h"
-#include "heavy/Dialect.h"
 #include "heavy/Context.h"
+#include "heavy/Dialect.h"
+#include "heavy/Mangle.h"
 #include "heavy/OpGen.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Module.h"
@@ -199,7 +200,10 @@ mlir::Value OpGen::createBinding(Binding *B, mlir::Value Init) {
   BindingTable.insert(B, BVal);
 
   if (isTopLevel()) {
-    BVal.getDefiningOp<BindingOp>().setName(B->getName()->getVal());
+    heavy::Mangler Mangler(Context);
+    std::string MangledName = Mangler.mangleVariable(getModulePrefix(),
+                                                     B->getName());
+    BVal.getDefiningOp<BindingOp>().setName(MangledName);
   }
 
   return BVal;
