@@ -14,8 +14,6 @@
 #include "heavy/Value.h"
 #include "heavy/Mangle.h"
 
-#define HEAVY_MANGLE_PREFIX "_HEAVY"
-
 namespace {
 bool isSpecialChar(char c) {
   // TODO
@@ -42,7 +40,7 @@ bool isSpecialChar(char c) {
 namespace heavy {
 
 std::string Mangler::mangleModule(Value Spec) {
-  return mangleModuleName(HEAVY_MANGLE_PREFIX, Spec);
+  return mangleModuleName(ManglePrefix, Spec);
 }
 
 std::string Mangler::mangleModuleName(Twine Prefix, Value Spec) {
@@ -93,9 +91,11 @@ std::string Mangler::mangleNameSegment(Continuation Cont, Twine Prefix,
   if (Str.empty()) return Cont(Prefix);
   llvm::StringRef NameSegment = Str.take_until(isSpecialChar);
   if (NameSegment.empty()) return mangleSpecialChar(Cont, Prefix, Str);
-  Twine NameSegmentPrefix = Twine(NameSegment.size()) + Twine('S');
+  size_t NameSegmentSize = NameSegment.size(); // must be on stack
+  Twine NameSegmentPrefix = Twine(NameSegmentSize) + Twine('S');
+  Twine FullPrefix = Prefix + NameSegmentPrefix;
   return mangleNameSegment(Cont, 
-                           NameSegmentPrefix + NameSegment,
+                           FullPrefix + NameSegment,
                            Str.drop_front(NameSegment.size()));
 }
 
@@ -126,7 +126,7 @@ std::string Mangler::mangleSpecialChar(Continuation Cont, Twine Prefix,
     return mangleCharHexCode(Cont, Prefix, Str);
   }
 
-  return mangleNameSegment(Cont, Result, Str.drop_front(1));
+  return mangleNameSegment(Cont, Prefix + Result, Str.drop_front(1));
 }
 
 std::string Mangler::mangleCharHexCode(Continuation Cont, Twine Prefix,
