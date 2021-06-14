@@ -74,6 +74,7 @@ class Mangler {
   using Twine = llvm::Twine;
   using StringRef = llvm::StringRef;
   using Continuation = llvm::function_ref<std::string(Twine)>;
+  static constexpr char const* ManglePrefix = "_HEAVY";
 
   heavy::Context& Context;
   llvm::StringRef NameBuffer = {};
@@ -97,6 +98,7 @@ public:
     : Context(C)
   { }
 
+  static llvm::StringRef getManglePrefix() { return ManglePrefix; }
   std::string mangleModule(Value Spec);
   std::string mangleVariable(Twine ModulePrefix, Value Name);
   std::string mangleSpecialName(Twine ModulePrefix, llvm::StringRef Name);
