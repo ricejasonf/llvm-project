@@ -57,8 +57,8 @@ void ApplyOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
 }
 
 void BindingOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
-                      mlir::Value Input, bool IsTopLevel) {
-  BindingOp::build(B, OpState, B.getType<HeavyValue>(), Input, IsTopLevel);
+                      mlir::Value Input) {
+  BindingOp::build(B, OpState, B.getType<HeavyValue>(), Input);
 }
 
 void BuiltinOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
