@@ -19,13 +19,16 @@
 #include "heavy/Value.h"
 
 #define HEAVY_CLANG_LIB               _HEAVYL5clang
+#define HEAVY_CLANG_LIB_(NAME)        _HEAVYL5clang ## NAME
 #define HEAVY_CLANG_LIB_STR          "_HEAVYL5clang"
 #define HEAVY_CLANG_IS_LOADED         HEAVY_CLANG_LIB##_is_loaded
-#define HEAVY_CLANG_LOAD_MODULE       HEAVY_CLANG_LIB##_LOAD_MODULE
+#define HEAVY_CLANG_LOAD_MODULE       HEAVY_CLANG_LIB##_load_module
 #define HEAVY_CLANG_INIT              HEAVY_CLANG_LIB##_init
 #define HEAVY_CLANG_VAR(NAME)         HEAVY_CLANG_VAR__##NAME
-#define HEAVY_CLANG_VAR__diag_error   _HEAVYL5clangV4diagmi5error
-#define HEAVY_CLANG_VAR__hello_world  _HEAVYL5clangV5hellomi5world
+#define HEAVY_CLANG_VAR__diag_error   HEAVY_CLANG_LIB(VS4diagmi5Serror)
+#define HEAVY_CLANG_VAR__hello_world  HEAVY_CLANG_LIB(V5Shellomi5Sworld)
+// #define HEAVY_CLANG_VAR__diag_error   _HEAVYL5clangVS4diagmi5Serror
+// #define HEAVY_CLANG_VAR__hello_world  _HEAVYL5clangV5Shellomi5Sworld
 
 static bool HEAVY_CLANG_IS_LOADED = false;
 
@@ -36,26 +39,26 @@ extern heavy::ExternLambda<1> HEAVY_CLANG_VAR(diag_error);
 extern heavy::ExternLambda<1> HEAVY_CLANG_VAR(hello_world);
 
 extern "C" {
-  // initialize the module for run-time independent of the compiler
-  inline void HEAVY_CLANG_INIT(heavy::Context& Context) {
-    assert(!HEAVY_CLANG_IS_LOADED &&
-      "module should not be loaded more than once");
-    HEAVY_CLANG_IS_LOADED = true;
-    assert(HEAVY_CLANG_VAR(diag_error).Value &&
-        "external module must be preloaded");
-    assert(HEAVY_CLANG_VAR(hello_world).Value &&
-        "external module must be preloaded");
-  }
+// initialize the module for run-time independent of the compiler
+inline void HEAVY_CLANG_INIT(heavy::Context& Context) {
+  assert(!HEAVY_CLANG_IS_LOADED &&
+    "module should not be loaded more than once");
+  HEAVY_CLANG_IS_LOADED = true;
+  assert(HEAVY_CLANG_VAR(diag_error).Value &&
+      "external module must be preloaded");
+  assert(HEAVY_CLANG_VAR(hello_world).Value &&
+      "external module must be preloaded");
+}
 
-  // initializes the module and loads lookup information
-  // for the compiler
-  inline void HEAVY_CLANG_LOAD_MODULE(heavy::Context& Context) {
-    HEAVY_CLANG_INIT(Context);
-    heavy::createModule(Context, HEAVY_CLANG_LIB_STR, {
-      {"diag-error",  HEAVY_CLANG_VAR(diag_error)},
-      {"hello-world", HEAVY_CLANG_VAR(hello_world)}
-    });
-  }
+// initializes the module and loads lookup information
+// for the compiler
+inline void HEAVY_CLANG_LOAD_MODULE(heavy::Context& Context) {
+  HEAVY_CLANG_INIT(Context);
+  heavy::createModule(Context, HEAVY_CLANG_LIB_STR, {
+    {"diag-error",  HEAVY_CLANG_VAR(diag_error)},
+    {"hello-world", HEAVY_CLANG_VAR(hello_world)}
+  });
+}
 }
 
 #endif
