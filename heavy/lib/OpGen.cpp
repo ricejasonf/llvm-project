@@ -38,6 +38,14 @@ OpGen::OpGen(heavy::Context& C)
   LambdaScopes.emplace_back(TL, BindingTable);
 }
 
+std::string OpGen::mangleFunctionName(llvm::StringRef Name) {
+  heavy::Mangler Mangler(Context);
+  if (Name.empty()) {
+    return Mangler.mangleAnonymousId(getModulePrefix(), LambdaNameCount++);
+  }
+  return Mangler.mangleFunction(getModulePrefix(), Name);
+}
+
 mlir::ModuleOp OpGen::getTopLevel() {
   return cast<mlir::ModuleOp>(TopLevel);
 }
@@ -71,11 +79,7 @@ mlir::Value OpGen::createLambda(Value Formals, Value Body,
                                 llvm::StringRef Name) {
   IsTopLevel = false;
 
-  std::string GeneratedName;
-  if (Name.size() == 0) {
-    GeneratedName = generateLambdaName();
-    Name = GeneratedName;
-  }
+  std::string MangledName = mangleFunctionName(Name);
 
   bool HasRestParam = false;
   heavy::EnvFrame* EnvFrame = Context.PushLambdaFormals(Formals,
@@ -84,7 +88,7 @@ mlir::Value OpGen::createLambda(Value Formals, Value Body,
   unsigned Arity = EnvFrame->getBindings().size();
   mlir::FunctionType FT = createFunctionType(Arity, HasRestParam);
 
-  auto F = create<mlir::FuncOp>(Loc, Name, FT);
+  auto F = create<mlir::FuncOp>(Loc, MangledName, FT);
   LambdaScope LScope(*this, F);
 
   // Insert into the function body
@@ -112,7 +116,7 @@ mlir::Value OpGen::createLambda(Value Formals, Value Body,
   }
 
   LambdaScopeNode& LS = LambdaScopes.back();
-  return create<LambdaOp>(Loc, Name, LS.Captures);
+  return create<LambdaOp>(Loc, MangledName, LS.Captures);
 }
 
 bool OpGen::isLocalDefineAllowed() {

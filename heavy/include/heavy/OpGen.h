@@ -136,10 +136,7 @@ public:
   bool isTailPos() { return IsTailPos && !IsTopLevel; }
   bool isLocalDefineAllowed();
 
-  std::string generateLambdaName() {
-    return std::string("lambda__") +
-           std::to_string(LambdaNameCount++);
-  }
+  std::string mangleFunctionName(llvm::StringRef Name);
 
   template <typename Op, typename ...Args>
   static Op create(mlir::OpBuilder& Builder, heavy::SourceLocation Loc,
