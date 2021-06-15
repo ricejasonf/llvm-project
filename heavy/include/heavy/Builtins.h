@@ -1,4 +1,4 @@
-//===- Builtins.h - Builtin functions for HeavyScheme -----------*- C++ -*-===//
+//===- Base.h - Base library functions for HeavyScheme ----------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,14 +6,93 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//  This file defines HeavyScheme decalarations for values and evaluation.
+//  This file declares values and functions for the (heavy base) scheme library
 //
 //===----------------------------------------------------------------------===//
 
 #ifndef LLVM_HEAVY_BUILTINS_H
 #define LLVM_HEAVY_BUILTINS_H
 
-#include "llvm/ADT/ArrayRef.h"
+#include "heavy/Value.h"
+
+#define HEAVY_BASE_LIB                _HEAVYL4base
+#define HEAVY_BASE_LIB_(NAME)         _HEAVYL4base ## NAME
+#define HEAVY_BASE_LIB_STR            "_HEAVYL4base"
+#define HEAVY_BASE_IS_LOADED          HEAVY_BASE_LIB##_is_loaded
+#define HEAVY_BASE_LOAD_MODULE        HEAVY_BASE_LIB##_load_module
+#define HEAVY_BASE_INIT               HEAVY_BASE_LIB##_init
+#define HEAVY_BASE_VAR(NAME)          HEAVY_BASE_VAR__##NAME
+#define HEAVY_BASE_VAR__add           HEAVY_BASE_LIB(Vpl)
+#define HEAVY_BASE_VAR__sub           HEAVY_BASE_LIB(Vmi)
+#define HEAVY_BASE_VAR__div           HEAVY_BASE_LIB(Vdv)
+#define HEAVY_BASE_VAR__mul           HEAVY_BASE_LIB(Vml)
+#define HEAVY_BASE_VAR__gt            HEAVY_BASE_LIB(Vgt)
+#define HEAVY_BASE_VAR__lt            HEAVY_BASE_LIB(Vlt)
+#define HEAVY_BASE_VAR__list          HEAVY_BASE_LIB(V4Slist)
+#define HEAVY_BASE_VAR__append        HEAVY_BASE_LIB(V6Sappend)
+#define HEAVY_BASE_VAR__dump          HEAVY_BASE_LIB(V4Sdump)
+#define HEAVY_BASE_VAR__eq            HEAVY_BASE_LIB(V2Seqqu)
+#define HEAVY_BASE_VAR__equal         HEAVY_BASE_LIB(V5Sequalqu)
+#define HEAVY_BASE_VAR__eqv           HEAVY_BASE_LIB(V3Seqvqu)
+#define HEAVY_BASE_VAR__eval          HEAVY_BASE_LIB(V4Seval)
+
+heavy::ExternFunction HEAVY_BASE_VAR(add);
+heavy::ExternFunction HEAVY_BASE_VAR(sub);
+heavy::ExternFunction HEAVY_BASE_VAR(div);
+heavy::ExternFunction HEAVY_BASE_VAR(mul);
+heavy::ExternFunction HEAVY_BASE_VAR(gt);
+heavy::ExternFunction HEAVY_BASE_VAR(lt);
+heavy::ExternFunction HEAVY_BASE_VAR(list);
+heavy::ExternFunction HEAVY_BASE_VAR(append);
+heavy::ExternFunction HEAVY_BASE_VAR(dump);
+heavy::ExternFunction HEAVY_BASE_VAR(eq);
+heavy::ExternFunction HEAVY_BASE_VAR(equal);
+heavy::ExternFunction HEAVY_BASE_VAR(eqv);
+heavy::ExternFunction HEAVY_BASE_VAR(eval);
+
+extern "C" {
+// initialize the module for run-time independent of the compiler
+inline void HEAVY_BASE_INIT(heavy::Context& Context) {
+  assert(!HEAVY_BASE_IS_LOADED &&
+    "module should not be loaded more than once");
+  HEAVY_BASE_IS_LOADED = true;
+  // assign the vars their corresponding function pointers
+  HEAVY_BASE_VAR(add)     = heavy::base::add;
+  HEAVY_BASE_VAR(sub)     = heavy::base::sub;
+  HEAVY_BASE_VAR(div)     = heavy::base::div;
+  HEAVY_BASE_VAR(mul)     = heavy::base::mul;
+  HEAVY_BASE_VAR(gt)      = heavy::base::gt;
+  HEAVY_BASE_VAR(lt)      = heavy::base::lt;
+  HEAVY_BASE_VAR(list)    = heavy::base::list;
+  HEAVY_BASE_VAR(append)  = heavy::base::append;
+  HEAVY_BASE_VAR(dump)    = heavy::base::dump;
+  HEAVY_BASE_VAR(eq)      = heavy::base::eq;
+  HEAVY_BASE_VAR(equal)   = heavy::base::equal;
+  HEAVY_BASE_VAR(eqv)     = heavy::base::eqv;
+  HEAVY_BASE_VAR(eval)    = heavy::base::eval;
+}
+
+// initializes the module and loads lookup information
+// for the compiler
+inline void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
+  HEAVY_BASE_INIT(Context);
+  heavy::createModule(Context, HEAVY_CLANG_LIB_STR, {
+    {"+",       HEAVY_BASE_VAR(add)},
+    {"-",       HEAVY_BASE_VAR(sub)},
+    {"/",       HEAVY_BASE_VAR(div)},
+    {"*",       HEAVY_BASE_VAR(mul)},
+    {">",       HEAVY_BASE_VAR(gt)},
+    {"<",       HEAVY_BASE_VAR(lt)},
+    {"list",    HEAVY_BASE_VAR(list)},
+    {"append",  HEAVY_BASE_VAR(append)},
+    {"dump",    HEAVY_BASE_VAR(dump)},
+    {"eq?",     HEAVY_BASE_VAR(eq)},
+    {"equal?",  HEAVY_BASE_VAR(equal)},
+    {"eqv?",    HEAVY_BASE_VAR(eqv)}
+    {"eval",    HEAVY_BASE_VAR(eval)}
+  });
+}
+}
 
 namespace mlir {
 
@@ -43,16 +122,16 @@ mlir::Value set(OpGen& OG, Pair* P);
 mlir::Value import(OpGen& OG, Pair* P);
 }}
 
-namespace heavy { namespace builtin {
+namespace heavy { namespace base {
 
 heavy::Value eval(Context& C, ValueRefs Args);
 heavy::Value dump(Context& C, ValueRefs Args);
-heavy::Value operator_add(Context& C, ValueRefs Args);
-heavy::Value operator_mul(Context&C, ValueRefs Args);
-heavy::Value operator_sub(Context&C, ValueRefs Args);
-heavy::Value operator_div(Context& C, ValueRefs Args);
-heavy::Value operator_gt(Context& C, ValueRefs Args);
-heavy::Value operator_lt(Context& C, ValueRefs Args);
+heavy::Value add(Context& C, ValueRefs Args);
+heavy::Value mul(Context&C, ValueRefs Args);
+heavy::Value sub(Context&C, ValueRefs Args);
+heavy::Value div(Context& C, ValueRefs Args);
+heavy::Value gt(Context& C, ValueRefs Args);
+heavy::Value lt(Context& C, ValueRefs Args);
 heavy::Value eq(Context& C, ValueRefs Args);
 heavy::Value equal(Context& C, ValueRefs Args);
 heavy::Value eqv(Context& C, ValueRefs Args);

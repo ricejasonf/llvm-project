@@ -1671,6 +1671,21 @@ struct ExternLambda : public ExternValue<
     this->Value = New;
   }
 };
+
+struct ExternFunction : ExternValue<sizeof(void*)> {
+  void operator=(heavy::ValueFn Fn) {
+    void* Mem = Builtin::allocate(this->Storage, Fn);
+    Builtin* New = new (Mem) Builtin(Fn);
+    this->Value = New;
+  }
+};
+struct ExternSyntax : ExternValue<sizeof(void*)> {
+  void operator=(heavy::SytnaxFn Fn) {
+    void* Mem = Builtin::allocate(this->Storage, Fn);
+    Builtin* New = new (Mem) Builtin(Fn);
+    this->Value = New;
+  }
+};
 }
 
 #endif
