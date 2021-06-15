@@ -59,6 +59,17 @@ std::string Mangler::mangleVariable(Twine ModulePrefix, Value Name) {
   return mangleName(Cont, ModulePrefix + Twine('V'), Name);
 }
 
+std::string Mangler::mangleFunction(Twine ModulePrefix, llvm::StringRef Name) {
+  auto Cont = [&](Twine Result) { return Result.str(); };
+  return mangleName(Cont, ModulePrefix + Twine('F'), Name);
+}
+
+std::string Mangler::mangleAnonymousId(Twine ModulePrefix, size_t Id) {
+  auto Cont = [&](Twine Result) { return Result.str(); };
+  Twine Name = Twine('A') + Twine(Id);
+  return Cont(ModulePrefix + Name);
+}
+
 std::string Mangler::mangleSpecialName(Twine ModulePrefix,
                                        llvm::StringRef Name) {
   assert(Name.drop_until(isSpecialChar).empty() &&
@@ -77,7 +88,11 @@ std::string Mangler::mangleName(Continuation Cont, Twine Prefix,
   } else {
     return setError("expected name in name mangler", Name);
   }
+  return mangleName(Cont, Prefix, Str);
+}
 
+std::string Mangler::mangleName(Continuation Cont, Twine Prefix,
+                                llvm::StringRef Str) {
   // <empty-name>
   if (Str.empty()) {
     return Prefix.concat(Twine('N')).str();
