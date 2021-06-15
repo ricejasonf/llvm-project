@@ -64,11 +64,11 @@ def heavy_BindingOp : HeavyOp<"binding", [Symbol]> {
     elided and the result can refer directly to the enclosed value.
   }];
 
-  let arguments = (ins HeavyValue:$input, BoolAttr:$isTopLevel);
+  let arguments = (ins HeavyValue:$input);
   let results   = (outs HeavyValue:$result);
   let builders = [
     OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, "
-              "::mlir::Value input, bool IsTopLevel">
+              "::mlir::Value input">
   ];
 
   let extraClassDeclaration = [{
