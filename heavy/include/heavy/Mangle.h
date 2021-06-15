@@ -39,11 +39,22 @@
 
   <encoding>            ::= <module-name>
                         ::= <variable-name>
+                        ::= <function-name>
                         ::= <special-name>
 
   <module-name>         ::= <module-name> <module-name-node>
   <module-name-node>    ::= L <name>
+
+  <function-name>       ::= <module-name> F <name>
+                        ::= F <name>
+
+  # anonymous functions for lambdas
+  <anonymous-name>      ::= <module-name> A <id-segment>
+                        ::= A <id-segment>
+
   <variable-name>       ::= <module-name> V <name>
+                        ::= V <name>
+
   <special-name>        ::= <module-name> _ <id-segment>
 
   <name>                ::= <name-encoding>
@@ -61,10 +72,10 @@
   <hex-char-encoding>   ::= 0x <hex-char-code> z
 
   <empty-name>          ::= N
-  <id-segment>          ::= [_A-Za-z0-9]+         # note these can start with digits
+  <id-segment>          ::= [_A-Za-z0-9]+   # note these can start with digits
   <length-encoding>     ::= [1-9] [0-9]+
 
-  <special-char-code>   ::= [a-z][a-z]            # see table for valid codes
+  <special-char-code>   ::= [a-z][a-z]      # see table for valid codes
   <hex-char-code>       ::= [0-9a-f]+
 ********************************************/
 
@@ -89,6 +100,7 @@ class Mangler {
   // been a preallocated string buffer.
   std::string mangleModuleName(Twine Prefix, Value Name);
   std::string mangleName(Continuation, Twine Prefix, Value Name);
+  std::string mangleName(Continuation, Twine Prefix, llvm::StringRef);
   std::string mangleNameSegment(Continuation, Twine Prefix, StringRef);
   std::string mangleSpecialChar(Continuation, Twine Prefix, StringRef);
   std::string mangleCharHexCode(Continuation, Twine Prefix, StringRef);
@@ -101,7 +113,12 @@ public:
   static llvm::StringRef getManglePrefix() { return ManglePrefix; }
   std::string mangleModule(Value Spec);
   std::string mangleVariable(Twine ModulePrefix, Value Name);
+  std::string mangleFunction(Twine ModulePrefix, llvm::StringRef Name);
   std::string mangleSpecialName(Twine ModulePrefix, llvm::StringRef Name);
+
+  // mangleAnonymousId - Id is meant to be strictly monotonic but is 
+  //                     managed external to this class
+  std::string mangleAnonymousId(Twine ModulePrefix, size_t Id);
 };
 
 }
