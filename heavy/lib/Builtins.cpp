@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "heavy/Base.h"
 #include "heavy/Context.h"
 #include "heavy/OpGen.h"
 #include "llvm/Support/Casting.h"
@@ -149,7 +150,7 @@ heavy::Value operator_helper(Context& C, Value X, Value Y) {
   }
 }
 
-heavy::Value operator_add(Context& C, ValueRefs Args) {
+heavy::Value add(Context& C, ValueRefs Args) {
   Value Temp = Args[0];
   for (heavy::Value X : Args.drop_front()) {
     Temp = operator_helper<NumberOp::Add>(C, Temp, X);
@@ -157,7 +158,7 @@ heavy::Value operator_add(Context& C, ValueRefs Args) {
   return Temp;
 }
 
-heavy::Value operator_mul(Context&C, ValueRefs Args) {
+heavy::Value mul(Context&C, ValueRefs Args) {
   Value Temp = Args[0];
   for (heavy::Value X : Args.drop_front()) {
     Temp = operator_helper<NumberOp::Mul>(C, Temp, X);
@@ -165,7 +166,7 @@ heavy::Value operator_mul(Context&C, ValueRefs Args) {
   return Temp;
 }
 
-heavy::Value operator_sub(Context&C, ValueRefs Args) {
+heavy::Value sub(Context&C, ValueRefs Args) {
   Value Temp = Args[0];
   for (heavy::Value X : Args.drop_front()) {
     Temp = operator_helper<NumberOp::Sub>(C, Temp, X);
@@ -173,7 +174,7 @@ heavy::Value operator_sub(Context&C, ValueRefs Args) {
   return Temp;
 }
 
-heavy::Value operator_div(Context& C, ValueRefs Args) {
+heavy::Value div(Context& C, ValueRefs Args) {
   Value Temp = Args[0];
   for (heavy::Value X : Args.drop_front()) {
     if (Number::isExactZero(X)) {
@@ -185,12 +186,12 @@ heavy::Value operator_div(Context& C, ValueRefs Args) {
   return Temp;
 }
 
-heavy::Value operator_gt(Context& C, ValueRefs Args) {
+heavy::Value gt(Context& C, ValueRefs Args) {
   llvm_unreachable("TODO");
   return nullptr;
 }
 
-heavy::Value operator_lt(Context& C, ValueRefs Args) {
+heavy::Value lt(Context& C, ValueRefs Args) {
   llvm_unreachable("TODO");
   return nullptr;
 }
@@ -223,4 +224,3 @@ heavy::Value append(Context& C, ValueRefs Args) {
 }
 
 }} // end of namespace heavy::builtin
-
