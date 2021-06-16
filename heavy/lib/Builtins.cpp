@@ -10,10 +10,29 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "heavy/Base.h"
+#include "heavy/Builtins.h"
 #include "heavy/Context.h"
 #include "heavy/OpGen.h"
 #include "llvm/Support/Casting.h"
+
+bool HEAVY_BASE_IS_LOADED = false;
+
+// import must be pre-loaded
+heavy::ExternSyntax HEAVY_BASE_VAR(import);
+
+heavy::ExternFunction HEAVY_BASE_VAR(add);
+heavy::ExternFunction HEAVY_BASE_VAR(sub);
+heavy::ExternFunction HEAVY_BASE_VAR(div);
+heavy::ExternFunction HEAVY_BASE_VAR(mul);
+heavy::ExternFunction HEAVY_BASE_VAR(gt);
+heavy::ExternFunction HEAVY_BASE_VAR(lt);
+heavy::ExternFunction HEAVY_BASE_VAR(list);
+heavy::ExternFunction HEAVY_BASE_VAR(append);
+heavy::ExternFunction HEAVY_BASE_VAR(dump);
+heavy::ExternFunction HEAVY_BASE_VAR(eq);
+heavy::ExternFunction HEAVY_BASE_VAR(equal);
+heavy::ExternFunction HEAVY_BASE_VAR(eqv);
+heavy::ExternFunction HEAVY_BASE_VAR(eval);
 
 namespace heavy { namespace builtin_syntax {
 
@@ -70,8 +89,10 @@ mlir::Value set(OpGen& OG, Pair* P) {
 
 mlir::Value import(OpGen& OG, Pair* P) {
   heavy::Context& Context = OG.getContext(); 
-  ImportSet* ImpSet = Context.CreateImportSet(P->Cdr);
-  Context.Import(ImpSet);
+  ImportSet* ImpSet = Context.CreateImportSet(P->Cdr.car());
+  if (ImpSet) {
+    Context.Import(ImpSet);
+  }
   return OG.createUndefined();
 }
 
@@ -101,7 +122,7 @@ struct NumberOp {
 
 } // end namespace heavy
 
-namespace heavy { namespace builtin {
+namespace heavy { namespace base {
 heavy::Value eval(Context& C, ValueRefs Args) {
   unsigned Len = Args.size();
   assert((Len == 1 || Len == 2) && "Invalid arity to builtin `eval`");
@@ -223,4 +244,4 @@ heavy::Value append(Context& C, ValueRefs Args) {
   llvm_unreachable("TODO append");
 }
 
-}} // end of namespace heavy::builtin
+}} // end of namespace heavy::base

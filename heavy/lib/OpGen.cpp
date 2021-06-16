@@ -476,5 +476,5 @@ mlir::Value OpGen::LocalizeRec(heavy::Binding* B,
 Value heavy::eval(Context& C, Value V, Value EnvStack) {
   heavy::Value Args[2] = {V, EnvStack};
   int ArgCount = EnvStack ? 2 : 1;
-  return builtin::eval(C, ValueRefs(Args, ArgCount));
+  return base::eval(C, ValueRefs(Args, ArgCount));
 }
