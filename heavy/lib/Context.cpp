@@ -42,7 +42,7 @@ void Value::dump() {
 }
 
 Context::Context()
-  : Context(builtin::eval)
+  : Context(base::eval)
 { }
 
 Context::Context(ValueFn ParseResultHandler)
@@ -57,6 +57,9 @@ Context::Context(ValueFn ParseResultHandler)
   , OpGen(std::make_unique<heavy::OpGen>(*this))
   , OpEval(*this)
 {
+  HEAVY_BASE_VAR(import) = heavy::builtin_syntax::import;
+
+#if 0 // TODO replace with module (heavy base)
   // Load Builtin Syntax
   AddBuiltinSyntax("define",      builtin_syntax::define);
   AddBuiltinSyntax("if",          builtin_syntax::if_);
@@ -66,16 +69,17 @@ Context::Context(ValueFn ParseResultHandler)
   AddBuiltinSyntax("set!",        builtin_syntax::set);
 
   // Load Builtin Procedures
-  AddBuiltin("+",                 builtin::operator_add);
-  AddBuiltin("*",                 builtin::operator_mul);
-  AddBuiltin("-",                 builtin::operator_sub);
-  AddBuiltin("/",                 builtin::operator_div);
-  AddBuiltin("list",              builtin::list);
-  AddBuiltin("append",            builtin::append);
-  AddBuiltin("dump",              builtin::dump);
-  AddBuiltin("eq?",               builtin::eqv);
-  AddBuiltin("equal?",            builtin::equal);
-  AddBuiltin("eqv?",              builtin::eqv);
+  AddBuiltin("+",                 base::add);
+  AddBuiltin("*",                 base::mul);
+  AddBuiltin("-",                 base::sub);
+  AddBuiltin("/",                 base::div);
+  AddBuiltin("list",              base::list);
+  AddBuiltin("append",            base::append);
+  AddBuiltin("dump",              base::dump);
+  AddBuiltin("eq?",               base::eqv);
+  AddBuiltin("equal?",            base::equal);
+  AddBuiltin("eqv?",              base::eqv);
+#endif
 }
 
 Context::~Context() = default;
@@ -172,13 +176,12 @@ Module* Context::RegisterModule(llvm::StringRef MangledName,
 }
 
 bool Context::Import(heavy::ImportSet* ImportSet) {
-  heavy::Value Current = EnvStack;
-  heavy::Environment* Env = nullptr;
-  while (Pair* P = dyn_cast<Pair>(Current)) {
-    Env = dyn_cast<Environment>(P->Car);
-    if (Env) break;
+  heavy::Environment* Env = dyn_cast<Environment>(EnvStack);
+  if (!Env) {
+    // import doesn't work in local scope
+    SetError("unexpected import", ImportSet);
+    return true;
   }
-  assert(Env && "EnvStack should have an Environment");
 
   for (ImportSet::ValueTy ImportVal : *ImportSet) {
     String* Name = ImportVal.first;
@@ -282,7 +285,11 @@ bool Context::CheckLambdaFormals(Value Formals,
 // The Stack is an improper list ending with an Environment
 Value Context::Lookup(Symbol* Name, Value Stack) {
   if (auto* E = dyn_cast<Environment>(Stack)) {
-    return E->Lookup(Name);
+    Value Result =  E->Lookup(Name);
+    if (!Result && Name->equals("import")) {
+      return HEAVY_BASE_VAR(import);
+    }
+    return Result;
   }
   Value Result = nullptr;
   Value V    = cast<Pair>(Stack)->Car;
@@ -664,6 +671,7 @@ ImportSet* Context::CreateImportSet(Value Spec) {
 Module* Context::LoadModule(Value Spec) {
   heavy::Mangler Mangler(*this);
   std::string Name = Mangler.mangleModule(Spec);
+  llvm::errs() << "module name: " << Name << '\n';
   std::unique_ptr<Module>& M = Modules[Name];  
   if (!M) {
     SetError("unable to load module", Spec);

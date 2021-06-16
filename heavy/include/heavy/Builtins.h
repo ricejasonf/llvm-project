@@ -18,81 +18,24 @@
 #define HEAVY_BASE_LIB                _HEAVYL4base
 #define HEAVY_BASE_LIB_(NAME)         _HEAVYL4base ## NAME
 #define HEAVY_BASE_LIB_STR            "_HEAVYL4base"
-#define HEAVY_BASE_IS_LOADED          HEAVY_BASE_LIB##_is_loaded
-#define HEAVY_BASE_LOAD_MODULE        HEAVY_BASE_LIB##_load_module
-#define HEAVY_BASE_INIT               HEAVY_BASE_LIB##_init
+#define HEAVY_BASE_IS_LOADED          HEAVY_BASE_LIB_(_is_loaded)
+#define HEAVY_BASE_LOAD_MODULE        HEAVY_BASE_LIB_(_load_module)
+#define HEAVY_BASE_INIT               HEAVY_BASE_LIB_(_init)
 #define HEAVY_BASE_VAR(NAME)          HEAVY_BASE_VAR__##NAME
-#define HEAVY_BASE_VAR__add           HEAVY_BASE_LIB(Vpl)
-#define HEAVY_BASE_VAR__sub           HEAVY_BASE_LIB(Vmi)
-#define HEAVY_BASE_VAR__div           HEAVY_BASE_LIB(Vdv)
-#define HEAVY_BASE_VAR__mul           HEAVY_BASE_LIB(Vml)
-#define HEAVY_BASE_VAR__gt            HEAVY_BASE_LIB(Vgt)
-#define HEAVY_BASE_VAR__lt            HEAVY_BASE_LIB(Vlt)
-#define HEAVY_BASE_VAR__list          HEAVY_BASE_LIB(V4Slist)
-#define HEAVY_BASE_VAR__append        HEAVY_BASE_LIB(V6Sappend)
-#define HEAVY_BASE_VAR__dump          HEAVY_BASE_LIB(V4Sdump)
-#define HEAVY_BASE_VAR__eq            HEAVY_BASE_LIB(V2Seqqu)
-#define HEAVY_BASE_VAR__equal         HEAVY_BASE_LIB(V5Sequalqu)
-#define HEAVY_BASE_VAR__eqv           HEAVY_BASE_LIB(V3Seqvqu)
-#define HEAVY_BASE_VAR__eval          HEAVY_BASE_LIB(V4Seval)
-
-heavy::ExternFunction HEAVY_BASE_VAR(add);
-heavy::ExternFunction HEAVY_BASE_VAR(sub);
-heavy::ExternFunction HEAVY_BASE_VAR(div);
-heavy::ExternFunction HEAVY_BASE_VAR(mul);
-heavy::ExternFunction HEAVY_BASE_VAR(gt);
-heavy::ExternFunction HEAVY_BASE_VAR(lt);
-heavy::ExternFunction HEAVY_BASE_VAR(list);
-heavy::ExternFunction HEAVY_BASE_VAR(append);
-heavy::ExternFunction HEAVY_BASE_VAR(dump);
-heavy::ExternFunction HEAVY_BASE_VAR(eq);
-heavy::ExternFunction HEAVY_BASE_VAR(equal);
-heavy::ExternFunction HEAVY_BASE_VAR(eqv);
-heavy::ExternFunction HEAVY_BASE_VAR(eval);
-
-extern "C" {
-// initialize the module for run-time independent of the compiler
-inline void HEAVY_BASE_INIT(heavy::Context& Context) {
-  assert(!HEAVY_BASE_IS_LOADED &&
-    "module should not be loaded more than once");
-  HEAVY_BASE_IS_LOADED = true;
-  // assign the vars their corresponding function pointers
-  HEAVY_BASE_VAR(add)     = heavy::base::add;
-  HEAVY_BASE_VAR(sub)     = heavy::base::sub;
-  HEAVY_BASE_VAR(div)     = heavy::base::div;
-  HEAVY_BASE_VAR(mul)     = heavy::base::mul;
-  HEAVY_BASE_VAR(gt)      = heavy::base::gt;
-  HEAVY_BASE_VAR(lt)      = heavy::base::lt;
-  HEAVY_BASE_VAR(list)    = heavy::base::list;
-  HEAVY_BASE_VAR(append)  = heavy::base::append;
-  HEAVY_BASE_VAR(dump)    = heavy::base::dump;
-  HEAVY_BASE_VAR(eq)      = heavy::base::eq;
-  HEAVY_BASE_VAR(equal)   = heavy::base::equal;
-  HEAVY_BASE_VAR(eqv)     = heavy::base::eqv;
-  HEAVY_BASE_VAR(eval)    = heavy::base::eval;
-}
-
-// initializes the module and loads lookup information
-// for the compiler
-inline void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
-  HEAVY_BASE_INIT(Context);
-  heavy::createModule(Context, HEAVY_CLANG_LIB_STR, {
-    {"+",       HEAVY_BASE_VAR(add)},
-    {"-",       HEAVY_BASE_VAR(sub)},
-    {"/",       HEAVY_BASE_VAR(div)},
-    {"*",       HEAVY_BASE_VAR(mul)},
-    {">",       HEAVY_BASE_VAR(gt)},
-    {"<",       HEAVY_BASE_VAR(lt)},
-    {"list",    HEAVY_BASE_VAR(list)},
-    {"append",  HEAVY_BASE_VAR(append)},
-    {"dump",    HEAVY_BASE_VAR(dump)},
-    {"eq?",     HEAVY_BASE_VAR(eq)},
-    {"equal?",  HEAVY_BASE_VAR(equal)},
-    {"eqv?",    HEAVY_BASE_VAR(eqv)}
-    {"eval",    HEAVY_BASE_VAR(eval)}
-  });
-}
-}
+#define HEAVY_BASE_VAR__import        HEAVY_BASE_LIB_(V6Simport)
+#define HEAVY_BASE_VAR__add           HEAVY_BASE_LIB_(Vpl)
+#define HEAVY_BASE_VAR__sub           HEAVY_BASE_LIB_(Vmi)
+#define HEAVY_BASE_VAR__div           HEAVY_BASE_LIB_(Vdv)
+#define HEAVY_BASE_VAR__mul           HEAVY_BASE_LIB_(Vml)
+#define HEAVY_BASE_VAR__gt            HEAVY_BASE_LIB_(Vgt)
+#define HEAVY_BASE_VAR__lt            HEAVY_BASE_LIB_(Vlt)
+#define HEAVY_BASE_VAR__list          HEAVY_BASE_LIB_(V4Slist)
+#define HEAVY_BASE_VAR__append        HEAVY_BASE_LIB_(V6Sappend)
+#define HEAVY_BASE_VAR__dump          HEAVY_BASE_LIB_(V4Sdump)
+#define HEAVY_BASE_VAR__eq            HEAVY_BASE_LIB_(V2Seqqu)
+#define HEAVY_BASE_VAR__equal         HEAVY_BASE_LIB_(V5Sequalqu)
+#define HEAVY_BASE_VAR__eqv           HEAVY_BASE_LIB_(V3Seqvqu)
+#define HEAVY_BASE_VAR__eval          HEAVY_BASE_LIB_(V4Seval)
 
 namespace mlir {
 
@@ -139,6 +82,72 @@ heavy::Value list(Context& C, ValueRefs Args);
 heavy::Value append(Context& C, ValueRefs Args);
 
 }}
+
+extern heavy::ExternSyntax   HEAVY_BASE_VAR(import);
+
+extern heavy::ExternFunction HEAVY_BASE_VAR(add);
+extern heavy::ExternFunction HEAVY_BASE_VAR(sub);
+extern heavy::ExternFunction HEAVY_BASE_VAR(div);
+extern heavy::ExternFunction HEAVY_BASE_VAR(mul);
+extern heavy::ExternFunction HEAVY_BASE_VAR(gt);
+extern heavy::ExternFunction HEAVY_BASE_VAR(lt);
+extern heavy::ExternFunction HEAVY_BASE_VAR(list);
+extern heavy::ExternFunction HEAVY_BASE_VAR(append);
+extern heavy::ExternFunction HEAVY_BASE_VAR(dump);
+extern heavy::ExternFunction HEAVY_BASE_VAR(eq);
+extern heavy::ExternFunction HEAVY_BASE_VAR(equal);
+extern heavy::ExternFunction HEAVY_BASE_VAR(eqv);
+extern heavy::ExternFunction HEAVY_BASE_VAR(eval);
+
+extern bool HEAVY_BASE_IS_LOADED;
+
+extern "C" {
+// initialize the module for run-time independent of the compiler
+inline void HEAVY_BASE_INIT(heavy::Context& Context) {
+  assert(!HEAVY_BASE_IS_LOADED &&
+    "module should not be loaded more than once");
+  HEAVY_BASE_IS_LOADED = true;
+  // assign the vars their corresponding function pointers
+  HEAVY_BASE_VAR(add)     = heavy::base::add;
+  HEAVY_BASE_VAR(sub)     = heavy::base::sub;
+  HEAVY_BASE_VAR(div)     = heavy::base::div;
+  HEAVY_BASE_VAR(mul)     = heavy::base::mul;
+  HEAVY_BASE_VAR(gt)      = heavy::base::gt;
+  HEAVY_BASE_VAR(lt)      = heavy::base::lt;
+  HEAVY_BASE_VAR(list)    = heavy::base::list;
+  HEAVY_BASE_VAR(append)  = heavy::base::append;
+  HEAVY_BASE_VAR(dump)    = heavy::base::dump;
+  HEAVY_BASE_VAR(eq)      = heavy::base::eq;
+  HEAVY_BASE_VAR(equal)   = heavy::base::equal;
+  HEAVY_BASE_VAR(eqv)     = heavy::base::eqv;
+  HEAVY_BASE_VAR(eval)    = heavy::base::eval;
+}
+
+// initializes the module and loads lookup information
+// for the compiler
+inline void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
+  HEAVY_BASE_INIT(Context);
+  heavy::createModule(Context, HEAVY_BASE_LIB_STR, {
+    // syntax
+    {"import",  HEAVY_BASE_VAR(import)},
+    // functions
+    {"+",       HEAVY_BASE_VAR(add)},
+    {"-",       HEAVY_BASE_VAR(sub)},
+    {"/",       HEAVY_BASE_VAR(div)},
+    {"*",       HEAVY_BASE_VAR(mul)},
+    {">",       HEAVY_BASE_VAR(gt)},
+    {"<",       HEAVY_BASE_VAR(lt)},
+    {"list",    HEAVY_BASE_VAR(list)},
+    {"append",  HEAVY_BASE_VAR(append)},
+    {"dump",    HEAVY_BASE_VAR(dump)},
+    {"eq?",     HEAVY_BASE_VAR(eq)},
+    {"equal?",  HEAVY_BASE_VAR(equal)},
+    {"eqv?",    HEAVY_BASE_VAR(eqv)},
+    {"eval",    HEAVY_BASE_VAR(eval)}
+  });
+}
+}
+
 
 #endif
 

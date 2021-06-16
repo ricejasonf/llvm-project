@@ -1323,6 +1323,8 @@ public:
     return EnvMap.lookup(Name->getString());
   }
 
+  static BuiltinSyntax* getImportSyntax();
+
   // ImportValue returns false if the name already exists
   bool ImportValue(ImportSet::ValueTy X) {
     assert(X.first && "name should point to a string in identifier table");
@@ -1674,15 +1676,17 @@ struct ExternLambda : public ExternValue<
 
 struct ExternFunction : ExternValue<sizeof(void*)> {
   void operator=(heavy::ValueFn Fn) {
-    void* Mem = Builtin::allocate(this->Storage, Fn);
+    void* Mem = heavy::allocate(this->Storage, sizeof(void*),
+                                alignof(Builtin));
     Builtin* New = new (Mem) Builtin(Fn);
     this->Value = New;
   }
 };
 struct ExternSyntax : ExternValue<sizeof(void*)> {
-  void operator=(heavy::SytnaxFn Fn) {
-    void* Mem = Builtin::allocate(this->Storage, Fn);
-    Builtin* New = new (Mem) Builtin(Fn);
+  void operator=(heavy::SyntaxFn Fn) {
+    void* Mem = heavy::allocate(this->Storage, sizeof(void*),
+                                alignof(BuiltinSyntax));
+    BuiltinSyntax* New = new (Mem) BuiltinSyntax(Fn);
     this->Value = New;
   }
 };
