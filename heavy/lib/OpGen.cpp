@@ -388,9 +388,15 @@ void OpGen::HandleCallArgs(Value V,
 
 mlir::Value OpGen::VisitPair(Pair* P) {
   Value Operator = P->Car;
-  // A named operator might point to some kind of syntax transformer
-  if (Value V = Context.Lookup(Operator)) {
-    if (Binding* B = dyn_cast<Binding>(V)) {
+  // A named operator might point to some kind of syntax transformer.
+  if (Symbol* Name = dyn_cast<Symbol>(Operator)) {
+    Value V = Context.Lookup(Name);
+    if (!V) {
+      // this makes it fail before the operands do
+      String* Msg = Context.CreateString("unbound symbol '",
+                                         Name->getVal(), "'");
+      return SetError(Msg, Name);
+    } else if (Binding* B = dyn_cast<Binding>(V)) {
       Operator = B->getValue();
     } else {
       Operator = V;

@@ -157,13 +157,6 @@ public:
   Value Lookup(Symbol* Name) {
     return Lookup(Name, EnvStack);
   }
-  Value Lookup(Value Name) {
-    // FIXME why did allow lookup by Value?
-    //       (if anything it should create an error)
-    Symbol* S = dyn_cast<Symbol>(Name);
-    if (!S) return nullptr;
-    return Lookup(S);
-  }
 
   // PushEnvFrame - Creates and pushes an EnvFrame to the
   //                current environment (EnvStack)
