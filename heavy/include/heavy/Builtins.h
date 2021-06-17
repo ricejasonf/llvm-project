@@ -15,9 +15,9 @@
 
 #include "heavy/Value.h"
 
-#define HEAVY_BASE_LIB                _HEAVYL4base
-#define HEAVY_BASE_LIB_(NAME)         _HEAVYL4base ## NAME
-#define HEAVY_BASE_LIB_STR            "_HEAVYL4base"
+#define HEAVY_BASE_LIB                _HEAVYL5SheavyL4Sbase
+#define HEAVY_BASE_LIB_(NAME)         _HEAVYL5SheavyL4Sbase ## NAME
+#define HEAVY_BASE_LIB_STR            "_HEAVYL5SheavyL4Sbase"
 #define HEAVY_BASE_IS_LOADED          HEAVY_BASE_LIB_(_is_loaded)
 #define HEAVY_BASE_LOAD_MODULE        HEAVY_BASE_LIB_(_load_module)
 #define HEAVY_BASE_INIT               HEAVY_BASE_LIB_(_init)
@@ -117,7 +117,7 @@ inline void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(list)    = heavy::base::list;
   HEAVY_BASE_VAR(append)  = heavy::base::append;
   HEAVY_BASE_VAR(dump)    = heavy::base::dump;
-  HEAVY_BASE_VAR(eq)      = heavy::base::eq;
+  HEAVY_BASE_VAR(eq)      = heavy::base::eqv;
   HEAVY_BASE_VAR(equal)   = heavy::base::equal;
   HEAVY_BASE_VAR(eqv)     = heavy::base::eqv;
   HEAVY_BASE_VAR(eval)    = heavy::base::eval;
@@ -127,9 +127,7 @@ inline void HEAVY_BASE_INIT(heavy::Context& Context) {
 // for the compiler
 inline void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
   HEAVY_BASE_INIT(Context);
-  heavy::createModule(Context, HEAVY_BASE_LIB_STR, {
-    // syntax
-    {"import",  HEAVY_BASE_VAR(import)},
+  heavy::initModule(Context, HEAVY_BASE_LIB_STR, {
     // functions
     {"+",       HEAVY_BASE_VAR(add)},
     {"-",       HEAVY_BASE_VAR(sub)},
