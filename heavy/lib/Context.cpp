@@ -58,6 +58,7 @@ Context::Context(ValueFn ParseResultHandler)
   , OpEval(*this)
 {
   HEAVY_BASE_VAR(import) = heavy::builtin_syntax::import;
+  RegisterModule(HEAVY_BASE_LIB_STR, HEAVY_BASE_LOAD_MODULE);
 
 #if 0 // TODO replace with module (heavy base)
   // Load Builtin Syntax
@@ -171,7 +172,7 @@ Module* Context::RegisterModule(llvm::StringRef MangledName,
   auto Itr = Result.first;
   bool DidInsert = Result.second;
 
-  assert(!DidInsert && "module should be created only once");
+  assert(DidInsert && "module should be created only once");
   return Itr->second.get();
 }
 
@@ -671,7 +672,6 @@ ImportSet* Context::CreateImportSet(Value Spec) {
 Module* Context::LoadModule(Value Spec) {
   heavy::Mangler Mangler(*this);
   std::string Name = Mangler.mangleModule(Spec);
-  llvm::errs() << "module name: " << Name << '\n';
   std::unique_ptr<Module>& M = Modules[Name];  
   if (!M) {
     SetError("unable to load module", Spec);

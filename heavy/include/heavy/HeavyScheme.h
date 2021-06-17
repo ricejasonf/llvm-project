@@ -72,14 +72,7 @@ class HeavyScheme {
   void LoadEmbeddedEnv(void* Handle,
           llvm::function_ref<void(HeavyScheme&, void*)> LoadParent);
 
-  // LoadCoreEnv  - Loads the core environment for bootstrapping a new module
-  //                This is useful as a root node when creating scope nested
-  //                embedded environments.
-  void LoadCoreEnv();
-
-  // CreateTopLevelModule - Creates a new module on top of the core environment
-  // and loads it as the current environment
-  void CreateTopLevelModule();
+  void SetEnvironment(Environment& Env);
 
   using ErrorHandlerFn = void(llvm::StringRef, heavy::FullSourceLocation);
 

@@ -63,14 +63,9 @@ void HeavyScheme::LoadEmbeddedEnv(void* Handle,
   return;
 }
 
-void HeavyScheme::LoadCoreEnv() {
+void HeavyScheme::SetEnvironment(Environment& Env) {
   auto& Context = getContext();
-  Context.EnvStack = Context.SystemEnvironment.get();
-}
-
-void HeavyScheme::CreateTopLevelModule() {
-  //auto& Context = getContext();
-  LoadCoreEnv();
+  Context.setEnvironment(&Env);
 }
 
 bool HeavyScheme::ProcessTopLevelCommands(
@@ -117,9 +112,10 @@ void HeavyScheme::RegisterModule(llvm::StringRef MangledName,
   getContext().RegisterModule(MangledName, LoadNamesFn);
 }
 
-void createModule(heavy::Context& C, llvm::StringRef MangledName,
+void initModule(heavy::Context& C, llvm::StringRef MangledName,
                   ModuleInitListTy InitList) {
-  Module* M = C.RegisterModule(MangledName);
+  Module* M = C.Modules[MangledName].get();
+  assert(M && "module must be registered");
   for (ModuleInitListPairTy const& X : InitList) {
     String* Id = C.CreateIdTableEntry(X.first);
     M->Insert(std::pair<String*, Value>{Id, X.second});
