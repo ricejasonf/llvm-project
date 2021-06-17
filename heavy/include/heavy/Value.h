@@ -46,6 +46,15 @@ using llvm::isa;
 using llvm::isa_and_nonnull;
 using mlir::Operation;
 
+// ExternValue - Stores a concrete value in an aligned storage
+//               with a Value that points to it. Via StandardLayout,
+//               we can have a single symbol point to the value with a
+//               way of accessing its storage for initialization.
+//               This should be useful for hand coding Scheme
+//               modules in C++
+template <size_t StorageLen, size_t Alignment = alignof(void*)>
+struct ExternValue;
+
 template <typename DerivedT>
 void* allocate(llvm::AllocatorBase<DerivedT>& Allocator,
                size_t Size, size_t Alignment) {
@@ -53,11 +62,12 @@ void* allocate(llvm::AllocatorBase<DerivedT>& Allocator,
 }
 
 template <size_t MaxSize, size_t MaxAlignment>
-void* allocate(std::aligned_storage<MaxSize, MaxAlignment>& Storage,
+void* allocate(ExternValue<MaxSize, MaxAlignment>& Val,
+//void* allocate(std::aligned_storage_t<MaxSize, MaxAlignment>& Storage,
                size_t Size, size_t Alignment) {
   assert(Size <= MaxSize && "allocation out of bounds for storage");
   assert(MaxAlignment % Alignment == 0 && "improper alignment for storage");
-  return &Storage;
+  return &(Val.Storage);
 }
 
 // Value - A result of evaluation. This derives from
@@ -1053,12 +1063,12 @@ public:
 // ModuleLoadNamesFn - customization point for dynamically initializing a
 //                  module and loading its lookup table for the compiler
 using ModuleLoadNamesFn = void(heavy::Context&);
-// createModule - Creates a compile-time name/value lookup for importing modules
-//                This should be called by the module's import function.
+// initModule - Creates a compile-time name/value lookup for importing modules
+//              This should be called by the module's import function.
 using ModuleInitListPairTy = std::pair<llvm::StringRef, heavy::Value>;
 using ModuleInitListTy     = std::initializer_list<ModuleInitListPairTy>;
-void createModule(heavy::Context&, llvm::StringRef MangledName,
-                  ModuleInitListTy InitList);
+void initModule(heavy::Context&, llvm::StringRef MangledName,
+                ModuleInitListTy InitList);
 
 class Module : public ValueBase {
   friend class Context;
@@ -1642,16 +1652,10 @@ void* Lambda::allocate(Allocator& Alloc, Lambda::FunctionDataView FnData,
   return heavy::allocate(Alloc, size, alignof(Lambda));
 }
 
-// ExternValue - Stores a lambda in an aligned storage
-//               with a value that points to it. Via StandardLayout,
-//               we can have a single symbol point to the value with a
-//               way of accessing its storage for initialization.
-//               This should be useful for hand coding Scheme
-//               modules in C++
-template <size_t StorageLen, size_t Alignment = alignof(void*)>
+template <size_t StorageLen, size_t Alignment>
 struct ExternValue {
   heavy::Value Value;
-  std::aligned_storage<StorageLen, Alignment> Storage;
+  std::aligned_storage_t<StorageLen, Alignment> Storage;
 
   ExternValue() = default;
   ExternValue(ExternValue const&) = delete;
@@ -1667,24 +1671,24 @@ struct ExternLambda : public ExternValue<
   template <typename F>
   void operator=(F f) {
     auto FnData = Lambda::createFunctionDataView(f);
-    void* Mem = Lambda::allocate(this->Storage, FnData, /*Captures=*/{});
+    void* Mem = Lambda::allocate(*this, FnData, /*Captures=*/{});
     Lambda* New = new (Mem) Lambda(FnData, /*Captures=*/{});
 
     this->Value = New;
   }
 };
 
-struct ExternFunction : ExternValue<sizeof(void*)> {
+struct ExternFunction : ExternValue<sizeof(Builtin)> {
   void operator=(heavy::ValueFn Fn) {
-    void* Mem = heavy::allocate(this->Storage, sizeof(void*),
+    void* Mem = heavy::allocate(*this, sizeof(void*),
                                 alignof(Builtin));
     Builtin* New = new (Mem) Builtin(Fn);
     this->Value = New;
   }
 };
-struct ExternSyntax : ExternValue<sizeof(void*)> {
+struct ExternSyntax : ExternValue<sizeof(BuiltinSyntax)> {
   void operator=(heavy::SyntaxFn Fn) {
-    void* Mem = heavy::allocate(this->Storage, sizeof(void*),
+    void* Mem = heavy::allocate(*this, sizeof(void*),
                                 alignof(BuiltinSyntax));
     BuiltinSyntax* New = new (Mem) BuiltinSyntax(Fn);
     this->Value = New;
