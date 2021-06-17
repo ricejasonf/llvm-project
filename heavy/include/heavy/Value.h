@@ -711,7 +711,7 @@ public:
     }
   }
 
-  static size_t sizeToAlloc(unsigned Length) {
+  static constexpr size_t sizeToAlloc(unsigned Length) {
     return totalSizeToAlloc<char>(Length);
   }
 
@@ -998,6 +998,15 @@ public:
 
 };
 
+// EnvEntry - Used to store lookup results for
+struct EnvEntry {
+  heavy::Value Value;
+  String* MangledName = nullptr;
+
+  operator bool() const { return bool(Value); }
+};
+using EnvBucket = std::pair<String*, EnvEntry>;
+
 class Binding : public ValueBase {
   friend class Context;
   Symbol* Name;
@@ -1029,10 +1038,10 @@ public:
     Val = V;
   }
 
-  Value Lookup(Symbol* S) {
+  EnvEntry Lookup(Symbol* S) {
     assert(Val && "null binding should not be a part of lookup");
-    if (Name->equals(S)) return Value(this);
-    return nullptr;
+    if (Name->equals(S)) return EnvEntry{Value(this)};
+    return {};
   }
 
   bool isSyntactic() {
@@ -1072,7 +1081,7 @@ void initModule(heavy::Context&, llvm::StringRef MangledName,
 
 class Module : public ValueBase {
   friend class Context;
-  using MapTy = llvm::DenseMap<String*, Value>;
+  using MapTy = llvm::DenseMap<String*, EnvEntry>;
   using MapIteratorTy  = typename MapTy::iterator;
   heavy::Context& Context; // for String lookup
   heavy::ModuleLoadNamesFn* LoadNamesFn; // for lazy importing
@@ -1096,21 +1105,21 @@ public:
   }
 
   Binding* Insert(Binding* B) {
-    Map.insert(std::make_pair(B->getName()->getString(), B));
+    Map.insert(EnvBucket(B->getName()->getString(), EnvEntry{B}));
     return B;
   }
 
-  void Insert(std::pair<String*, Value> P) {
-    Map.insert(P);
+  void Insert(EnvBucket Bucket) {
+    Map.insert(Bucket);
   }
 
-  // Returns nullptr if not found
-  Value Lookup(String* Str) {
+  // Returns EnvEntry() if not found
+  EnvEntry Lookup(String* Str) {
     return Map.lookup(Str);
   }
 
-  // Returns nullptr if not found
-  Value Lookup(Symbol* Name) {
+  // Returns EnvEntry() if not found
+  EnvEntry Lookup(Symbol* Name) {
     return Map.lookup(Name->getString());
   }
 
@@ -1132,8 +1141,8 @@ public:
     ValueIterator& operator=(ValueIterator const& R)
     { Itr = R.Itr; return *this; }
     bool operator==(ValueIterator const& R) const { return Itr == R.Itr; }
-    Value const& operator*() const { return (*Itr).second; }
-    Value& operator*() { return (*Itr).second; }
+    Value const& operator*() const { return (*Itr).second.Value; }
+    Value& operator*() { return (*Itr).second.Value; }
     ValueIterator& operator++() { ++Itr; return *this; }
   };
 
@@ -1151,10 +1160,7 @@ public:
   auto end() { return Map.end(); }
 };
 
-
 class ImportSet : public ValueBase {
-  friend class ImportSetIterator;
-
 public:
   enum class ImportKind {
     Library,
@@ -1177,7 +1183,7 @@ private:
   //              filtered by import sets
   String* FilterFromPairs(heavy::Context& C, String* S);
   String* FilterName(heavy::Context&, String*);
-  Value LookupFromPairs(heavy::Context& C, Symbol* S);
+  EnvEntry LookupFromPairs(heavy::Context& C, Symbol* S);
 
   // recurse to the Library import set
   Module* getModule() {
@@ -1203,7 +1209,7 @@ public:
       Kind(ImportKind::Library)
   { }
 
-  Value Lookup(heavy::Context& C, Symbol* S);
+  EnvEntry Lookup(heavy::Context& C, Symbol* S);
 
   static bool classof(Value V) {
     return V.getKind() == ValueKind::ImportSet;
@@ -1223,17 +1229,16 @@ public:
     return isInIdentiferList(S->getString());
   }
 
-  // ValueTy - The String* member will be modified
-  //           to reflect the possibly renamed value
-  //           or nullptr if it was filtered out.
-  //           (this should eliminate redundant calls
-  //           to filter name and having to store
-  //           the end() of the map)
-  using ValueTy = std::pair<String*, Value>;
+  // The String* member of EnvBucket will
+  // be modified to reflect the possibly renamed
+  // value or nullptr if it was filtered out.
+  // (this should eliminate redundant calls
+  // to filter name and having to store the end()
+  // of the map)
   class Iterator : public llvm::iterator_facade_base<
                                               Iterator,
                                               std::forward_iterator_tag,
-                                              ValueTy>
+                                              EnvBucket>
   {
     friend class ImportSet;
     using ItrTy = typename Module::iterator;
@@ -1254,8 +1259,8 @@ public:
       return Filter.FilterName(Context, Orig);
     }
 
-    ValueTy getValue() const {
-      return ValueTy{getName(), (*Itr).getSecond()};
+    EnvBucket getValue() const {
+      return EnvBucket{getName(), (*Itr).getSecond()};
     }
 
   public:
@@ -1267,7 +1272,7 @@ public:
     }
 
     bool operator==(Iterator const& R) const { return Itr == R.Itr; }
-    ValueTy operator*() const { return getValue(); }
+    EnvBucket operator*() const { return getValue(); }
     Iterator& operator++() { ++Itr; return *this; }
   };
 
@@ -1297,14 +1302,8 @@ public:
 class Environment : public ValueBase {
   friend class Context;
 
-public:
-  struct EntryT {
-    bool IsImmutable;
-    heavy::Value Value;
-  };
-
 private:
-  using MapTy = llvm::DenseMap<String*, EntryT>;
+  using MapTy = llvm::DenseMap<String*, EnvEntry>;
 
   Environment* Parent = nullptr;
   MapTy EnvMap;
@@ -1317,44 +1316,35 @@ public:
   { }
 
   // Returns nullptr if not found
-  Value Lookup(String* Str) {
-    Value Result = EnvMap.lookup(Str).Value;
+  EnvEntry Lookup(String* Str) {
+    EnvEntry Result = EnvMap.lookup(Str);
     if (Result) return Result;
     if (Parent) return Parent->Lookup(Str);
-    return nullptr;
+    return {};
   }
 
-  // Returns nullptr if not found
-  Value Lookup(Symbol* Name) {
+  // Returns EnvEntry() if not found
+  EnvEntry Lookup(Symbol* Name) {
     return Lookup(Name->getString());
-  }
-
-  EntryT LookupForMutation(Symbol* Name) {
-    return EnvMap.lookup(Name->getString());
   }
 
   static BuiltinSyntax* getImportSyntax();
 
   // ImportValue returns false if the name already exists
-  bool ImportValue(ImportSet::ValueTy X) {
+  bool ImportValue(EnvBucket X) {
     assert(X.first && "name should point to a string in identifier table");
-    String* Name = X.first;
-    Value Val = X.second;
-    bool IsImmutable = true;
-    auto Entry = std::make_pair(Name,
-                  EntryT{IsImmutable, Val});
-    return EnvMap.insert(Entry).second;
+    assert(X.second.MangledName && "import requires external name");
+    return EnvMap.insert(X).second;
   }
 
   // Insert - Adds a named mutable location. Overwriting
   //          with a new object is okay here if it is mutable
   void Insert(Binding* B) {
     String* Name = B->getName()->getString();
-    bool IsImmutable = false;
     auto& Entry = EnvMap[Name];
-    assert(!Entry.IsImmutable &&
+    assert(!Entry.MangledName &&
         "insert may not modify immutable locations");
-    Entry = EntryT{IsImmutable, B};
+    Entry.Value = B;
   }
 
   static bool classof(Value V) {
@@ -1399,19 +1389,19 @@ public:
   }
 
   // Returns nullptr if not found
-  Binding* Lookup(Symbol* Name) const;
+  EnvEntry Lookup(Symbol* Name) const;
 
   static bool classof(Value V) {
     return V.getKind() == ValueKind::EnvFrame;
   }
 };
 
-inline Binding* EnvFrame::Lookup(Symbol* Name) const {
+inline EnvEntry EnvFrame::Lookup(Symbol* Name) const {
   // linear search
   for (Binding* B : getBindings()) {
-    if (Name->equals(B->getName())) return B;
+    if (Name->equals(B->getName())) return EnvEntry{B};
   }
-  return nullptr;
+  return {};
 }
 
 
@@ -1680,7 +1670,7 @@ struct ExternLambda : public ExternValue<
 
 struct ExternFunction : ExternValue<sizeof(Builtin)> {
   void operator=(heavy::ValueFn Fn) {
-    void* Mem = heavy::allocate(*this, sizeof(void*),
+    void* Mem = heavy::allocate(*this, sizeof(Builtin),
                                 alignof(Builtin));
     Builtin* New = new (Mem) Builtin(Fn);
     this->Value = New;
@@ -1688,10 +1678,25 @@ struct ExternFunction : ExternValue<sizeof(Builtin)> {
 };
 struct ExternSyntax : ExternValue<sizeof(BuiltinSyntax)> {
   void operator=(heavy::SyntaxFn Fn) {
-    void* Mem = heavy::allocate(*this, sizeof(void*),
+    void* Mem = heavy::allocate(*this, sizeof(BuiltinSyntax),
                                 alignof(BuiltinSyntax));
     BuiltinSyntax* New = new (Mem) BuiltinSyntax(Fn);
     this->Value = New;
+  }
+};
+
+// ExternString - Used for the symbol name of "import"
+template <size_t Len>
+struct ExternString : public ExternValue<String::sizeToAlloc(Len)> {
+  void operator=(llvm::StringRef Str) {
+    void* Mem = heavy::allocate(*this, String::sizeToAlloc(Len),
+                                alignof(String));
+    String* New = new (Mem) String(Len, Str);
+    this->Value = New;
+  }
+
+  operator String*() {
+    return cast<String>(this->Value);
   }
 };
 }

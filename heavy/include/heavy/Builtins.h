@@ -83,7 +83,6 @@ heavy::Value append(Context& C, ValueRefs Args);
 
 }}
 
-extern heavy::ExternSyntax   HEAVY_BASE_VAR(import);
 extern heavy::ExternSyntax   HEAVY_BASE_VAR(define);
 extern heavy::ExternSyntax   HEAVY_BASE_VAR(if);
 extern heavy::ExternSyntax   HEAVY_BASE_VAR(lambda);
