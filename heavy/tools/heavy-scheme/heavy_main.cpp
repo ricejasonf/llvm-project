@@ -96,10 +96,11 @@ int main(int argc, char const** argv) {
       std::make_unique<heavy::Context>(ProcessTopLevelExpr));
   heavy::Lexer Lexer(File);
   HeavyScheme.SetEnvironment(*Env);
-  HeavyScheme.ProcessTopLevelCommands(Lexer, OnError);
+  bool HasErrors = HeavyScheme.ProcessTopLevelCommands(Lexer, OnError);
 
   if (InputMode.getValue() == ExecutionMode::mlir) {
     HeavyScheme.getContext().dumpModuleOp();
     llvm::errs() << "\n";
   }
+  if (HasErrors) std::exit(1);
 }
