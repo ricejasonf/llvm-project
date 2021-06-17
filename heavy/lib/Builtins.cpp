@@ -20,6 +20,13 @@ bool HEAVY_BASE_IS_LOADED = false;
 // import must be pre-loaded
 heavy::ExternSyntax HEAVY_BASE_VAR(import);
 
+heavy::ExternSyntax HEAVY_BASE_VAR(define);
+heavy::ExternSyntax HEAVY_BASE_VAR(if);
+heavy::ExternSyntax HEAVY_BASE_VAR(lambda);
+heavy::ExternSyntax HEAVY_BASE_VAR(quasiquote);
+heavy::ExternSyntax HEAVY_BASE_VAR(quote);
+heavy::ExternSyntax HEAVY_BASE_VAR(set);
+
 heavy::ExternFunction HEAVY_BASE_VAR(add);
 heavy::ExternFunction HEAVY_BASE_VAR(sub);
 heavy::ExternFunction HEAVY_BASE_VAR(div);
@@ -34,7 +41,7 @@ heavy::ExternFunction HEAVY_BASE_VAR(equal);
 heavy::ExternFunction HEAVY_BASE_VAR(eqv);
 heavy::ExternFunction HEAVY_BASE_VAR(eval);
 
-namespace heavy { namespace builtin_syntax {
+namespace heavy { namespace base {
 
 mlir::Value define(OpGen& OG, Pair* P) {
   Pair*   P2    = dyn_cast<Pair>(P->Cdr);
@@ -96,7 +103,7 @@ mlir::Value import(OpGen& OG, Pair* P) {
   return OG.createUndefined();
 }
 
-}} // end of namespace heavy::builtin_syntax
+}} // end of namespace heavy::base
 
 namespace heavy {
 // TODO Replace NumberOp here with corresponding arithmetic ops in OpGen and OpEval
