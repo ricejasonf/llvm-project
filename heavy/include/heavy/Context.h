@@ -143,8 +143,8 @@ public:
   // Lookup
   //  - Takes a Symbol or nullptr
   //  - Returns a matching Binder or nullptr
-  Value Lookup(Symbol* Name, Value Stack);
-  Value Lookup(Symbol* Name) {
+  EnvEntry Lookup(Symbol* Name, Value Stack);
+  EnvEntry Lookup(Symbol* Name) {
     return Lookup(Name, EnvStack);
   }
 
@@ -312,7 +312,7 @@ public:
   ImportSet* CreateImportSet(Value Spec);
 
   // These accessors help track the location
-  // so it convenient to overwrite a variable
+  // so it is convenient to overwrite a variable
   Value car(Value V) { return setLoc(V).car(); }
   Value cdr(Value V) { return setLoc(V).cdr(); }
   Value cadr(Value V) { return setLoc(V).cadr(); }
