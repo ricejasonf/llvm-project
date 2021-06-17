@@ -13,6 +13,7 @@
 #include "heavy/Context.h"
 #include "heavy/HeavyScheme.h"
 #include "heavy/Lexer.h"
+#include "heavy/Mangle.h"
 #include "heavy/Parser.h"
 
 
@@ -112,13 +113,17 @@ void HeavyScheme::RegisterModule(llvm::StringRef MangledName,
   getContext().RegisterModule(MangledName, LoadNamesFn);
 }
 
-void initModule(heavy::Context& C, llvm::StringRef MangledName,
+void initModule(heavy::Context& C, llvm::StringRef ModuleMangledName,
                   ModuleInitListTy InitList) {
-  Module* M = C.Modules[MangledName].get();
+  Module* M = C.Modules[ModuleMangledName].get();
   assert(M && "module must be registered");
+  heavy::Mangler Mangler(C);
   for (ModuleInitListPairTy const& X : InitList) {
     String* Id = C.CreateIdTableEntry(X.first);
-    M->Insert(std::pair<String*, Value>{Id, X.second});
+    Value Val = X.second;
+    String* MangledName = C.CreateIdTableEntry(
+        Mangler.mangleVariable(ModuleMangledName, Id));
+    M->Insert(EnvBucket{Id, EnvEntry{Val, MangledName}});
   }
 }
 
