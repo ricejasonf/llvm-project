@@ -57,30 +57,8 @@ Context::Context(ValueFn ParseResultHandler)
   , OpGen(std::make_unique<heavy::OpGen>(*this))
   , OpEval(*this)
 {
-  HEAVY_BASE_VAR(import) = heavy::builtin_syntax::import;
+  HEAVY_BASE_VAR(import) = heavy::base::import;
   RegisterModule(HEAVY_BASE_LIB_STR, HEAVY_BASE_LOAD_MODULE);
-
-#if 0 // TODO replace with module (heavy base)
-  // Load Builtin Syntax
-  AddBuiltinSyntax("define",      builtin_syntax::define);
-  AddBuiltinSyntax("if",          builtin_syntax::if_);
-  AddBuiltinSyntax("lambda",      builtin_syntax::lambda);
-  AddBuiltinSyntax("quasiquote",  builtin_syntax::quasiquote);
-  AddBuiltinSyntax("quote",       builtin_syntax::quote);
-  AddBuiltinSyntax("set!",        builtin_syntax::set);
-
-  // Load Builtin Procedures
-  AddBuiltin("+",                 base::add);
-  AddBuiltin("*",                 base::mul);
-  AddBuiltin("-",                 base::sub);
-  AddBuiltin("/",                 base::div);
-  AddBuiltin("list",              base::list);
-  AddBuiltin("append",            base::append);
-  AddBuiltin("dump",              base::dump);
-  AddBuiltin("eq?",               base::eqv);
-  AddBuiltin("equal?",            base::equal);
-  AddBuiltin("eqv?",              base::eqv);
-#endif
 }
 
 Context::~Context() = default;
@@ -317,18 +295,6 @@ Value Context::Lookup(Symbol* Name, Value Stack) {
   }
   if (Result) return Result;
   return Lookup(Name, Next);
-}
-
-void Context::AddBuiltin(StringRef Str, ValueFn Fn) {
-  Symbol* S = CreateSymbol(Str);
-  Module* M = SystemModule.get();
-  mlir::Value V = OpGen->VisitTopLevel(CreateBuiltin(Fn));
-  Binding* B;
-  OpGen->createTopLevelDefine(S, V, M, B);
-
-  // TODO these "builtins" should not be automatically imported
-  SystemEnvironment->ImportValue(
-    std::pair<String*, Value>(B->getName()->getString(), B));
 }
 
 mlir::Operation* Context::getModuleOp() {

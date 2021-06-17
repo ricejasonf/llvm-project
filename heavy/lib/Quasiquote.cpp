@@ -230,7 +230,7 @@ private:
 
 }
 
-namespace heavy { namespace builtin_syntax {
+namespace heavy { namespace base {
 
 mlir::Value quasiquote(OpGen& OG, Pair* P) {
   Value Input = GetSingleSyntaxArg(P);
