@@ -245,8 +245,8 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
   }
 #endif
 
-  auto Entry = Env->LookupForMutation(S);
-  if (Entry.Value && Entry.IsImmutable) {
+  EnvEntry Entry = Env->Lookup(S);
+  if (Entry.Value && Entry.MangledName) {
     return SetError("define overwrites immutable location", S);
   }
 
@@ -331,14 +331,21 @@ mlir::Value OpGen::VisitDefineArgs(Value Args) {
 }
 
 mlir::Value OpGen::VisitSymbol(Symbol* S) {
-  Value V = Context.Lookup(S);
+  EnvEntry Entry = Context.Lookup(S);
 
-  if (!V) {
+
+  if (!Entry) {
     String* Msg = Context.CreateString("unbound symbol '",
                                        S->getVal(), "'");
     return SetError(Msg, S);
   }
-  return Visit(V);
+
+  if (Entry.MangledName) {
+    // this is an external global
+    llvm::errs() << "VisitSymbol MangledName: " << Entry.MangledName->getView() << '\n';
+  }
+
+  return Visit(Entry.Value);
 }
 
 mlir::Value OpGen::VisitBinding(Binding* B) {
@@ -382,16 +389,16 @@ mlir::Value OpGen::VisitPair(Pair* P) {
   Value Operator = P->Car;
   // A named operator might point to some kind of syntax transformer.
   if (Symbol* Name = dyn_cast<Symbol>(Operator)) {
-    Value V = Context.Lookup(Name);
-    if (!V) {
+    EnvEntry Entry = Context.Lookup(Name);
+    if (!Entry) {
       // this makes it fail before the operands do
       String* Msg = Context.CreateString("unbound symbol '",
                                          Name->getVal(), "'");
       return SetError(Msg, Name);
-    } else if (Binding* B = dyn_cast<Binding>(V)) {
+    } else if (Binding* B = dyn_cast<Binding>(Entry.Value)) {
       Operator = B->getValue();
     } else {
-      Operator = V;
+      Operator = Entry.Value;
     }
   }
 

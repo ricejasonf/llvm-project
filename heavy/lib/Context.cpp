@@ -41,6 +41,13 @@ void Value::dump() {
   llvm::errs() << '\n';
 }
 
+// NameForImportVar - Because we use String* for storing mangled
+//                    names, we need to create one for "import"
+//                    which is special. We also give it a relatively
+//                    simple, readable symbol name.
+heavy::ExternString<20> NameForImportVar;
+heavy::ExternSyntax _HEAVY_import;
+
 Context::Context()
   : Context(base::eval)
 { }
@@ -57,7 +64,8 @@ Context::Context(ValueFn ParseResultHandler)
   , OpGen(std::make_unique<heavy::OpGen>(*this))
   , OpEval(*this)
 {
-  HEAVY_BASE_VAR(import) = heavy::base::import;
+  NameForImportVar = "_HEAVY_import";
+  _HEAVY_import = heavy::base::import;
   RegisterModule(HEAVY_BASE_LIB_STR, HEAVY_BASE_LOAD_MODULE);
 }
 
@@ -162,7 +170,7 @@ bool Context::Import(heavy::ImportSet* ImportSet) {
     return true;
   }
 
-  for (ImportSet::ValueTy ImportVal : *ImportSet) {
+  for (EnvBucket ImportVal : *ImportSet) {
     String* Name = ImportVal.first;
     // if there is no name just skip it (it was filtered out)
     if (!Name) continue;
@@ -262,15 +270,15 @@ bool Context::CheckLambdaFormals(Value Formals,
 }
 
 // The Stack is an improper list ending with an Environment
-Value Context::Lookup(Symbol* Name, Value Stack) {
+EnvEntry Context::Lookup(Symbol* Name, Value Stack) {
   if (auto* E = dyn_cast<Environment>(Stack)) {
-    Value Result =  E->Lookup(Name);
+    EnvEntry Result = E->Lookup(Name);
     if (!Result && Name->equals("import")) {
-      return HEAVY_BASE_VAR(import);
+      return EnvEntry{_HEAVY_import, NameForImportVar};
     }
     return Result;
   }
-  Value Result = nullptr;
+  EnvEntry Result = {};
   Value V    = cast<Pair>(Stack)->Car;
   Value Next = cast<Pair>(Stack)->Cdr;
   switch (V.getKind()) {
@@ -466,21 +474,21 @@ void EvaluationStack::EmitStackSpaceError() {
   Context.SetError("insufficient stack space");
 }
 
-Value ImportSet::Lookup(heavy::Context& C, Symbol* S) {
+EnvEntry ImportSet::Lookup(heavy::Context& C, Symbol* S) {
   switch(Kind) {
   case ImportKind::Library:
     return cast<Module>(Specifier)->Lookup(S);
   case ImportKind::Only:
     // Specifier is a list of Symbols
-    return isInIdentiferList(S) ? Parent->Lookup(C, S) : nullptr;
+    return isInIdentiferList(S) ? Parent->Lookup(C, S) : EnvEntry{};
   case ImportKind::Except:
     // Specifier is a list of Symbols
-    return !isInIdentiferList(S) ? Parent->Lookup(C, S) : nullptr;
+    return !isInIdentiferList(S) ? Parent->Lookup(C, S) : EnvEntry{};
   case ImportKind::Prefix: {
     llvm::StringRef Str = S->getVal();
     // Specifier is just a Symbol
     llvm::StringRef Prefix = cast<Symbol>(Specifier)->getVal();
-    if (!Str.consume_front(Prefix)) return nullptr;
+    if (!Str.consume_front(Prefix)) return {};
     S = C.CreateSymbol(Str, S->getSourceLocation());
     return Parent->Lookup(C, S);
   }
@@ -491,7 +499,7 @@ Value ImportSet::Lookup(heavy::Context& C, Symbol* S) {
   llvm_unreachable("invalid import kind");
 }
 
-Value ImportSet::LookupFromPairs(heavy::Context& C, Symbol* S) {
+EnvEntry ImportSet::LookupFromPairs(heavy::Context& C, Symbol* S) {
   // The syntax of Specifier should be checked already
   assert(Kind == ImportKind::Rename && "expecting import rename");
   Value CurrentRow = Specifier;
@@ -502,7 +510,7 @@ Value ImportSet::LookupFromPairs(heavy::Context& C, Symbol* S) {
     if (S->equals(Value)) return Parent->Lookup(C, Key);
     CurrentRow = P->Cdr;
   }
-  return Value(nullptr);
+  return {};
 }
 
 String* ImportSet::FilterName(heavy::Context& C, String* S) {
@@ -510,7 +518,7 @@ String* ImportSet::FilterName(heavy::Context& C, String* S) {
   // traverse back down removing or replacing the String
   if (Kind == ImportKind::Library) {
     Module* M = cast<Module>(Specifier);
-    assert(M->Lookup(S) != nullptr && "filtered name not in library");
+    assert(M->Lookup(S).Value != nullptr && "filtered name not in library");
     return S;
   }
   S = Parent->FilterName(C, S);
@@ -626,7 +634,7 @@ ImportSet* Context::CreateImportSet(Value Spec) {
       llvm_unreachable("invalid import set kind");
     }
 
-    Value LookupResult = Parent->Lookup(*this, Name);
+    EnvEntry LookupResult = Parent->Lookup(*this, Name);
     if (!LookupResult) {
       SetError("name does not exist in import set");
       return nullptr;
