@@ -73,6 +73,8 @@ class Context : DialectRegisterer {
   friend class OpEvalImpl;
   friend class HeavyScheme;
   friend void* allocate(Context& C, size_t Size, size_t Alignment);
+  friend void initModule(heavy::Context&, llvm::StringRef MangledName,
+                         ModuleInitListTy InitList);
   AllocatorTy TrashHeap;
 
   llvm::StringMap<String*> IdTable = {};

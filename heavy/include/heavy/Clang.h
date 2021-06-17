@@ -54,7 +54,7 @@ inline void HEAVY_CLANG_INIT(heavy::Context& Context) {
 // for the compiler
 inline void HEAVY_CLANG_LOAD_MODULE(heavy::Context& Context) {
   HEAVY_CLANG_INIT(Context);
-  heavy::createModule(Context, HEAVY_CLANG_LIB_STR, {
+  heavy::initModule(Context, HEAVY_CLANG_LIB_STR, {
     {"diag-error",  HEAVY_CLANG_VAR(diag_error)},
     {"hello-world", HEAVY_CLANG_VAR(hello_world)}
   });
