@@ -131,18 +131,6 @@ public:
   //              Returns nullptr on failure
   Module* LoadModule(Value Spec);
 
-  void AddBuiltin(StringRef Str, ValueFn Fn);
-  void AddBuiltinSyntax(StringRef Str, SyntaxFn Fn) {
-
-    Binding* B = CreateBinding(CreateSymbol(Str),
-                               CreateBuiltinSyntax(Fn));
-    SystemModule->Insert(B);
-    // TODO these "builtins" should not be automatically imported
-    // (except for import which shouldn't need to be)
-    SystemEnvironment->ImportValue(
-      std::pair<String*, Value>(B->getName()->getString(), B));
-  }
-
   Context();
   Context(ValueFn ParseResultHandler);
   ~Context();

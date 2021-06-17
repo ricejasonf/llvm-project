@@ -54,8 +54,9 @@ using ValueRefs = llvm::MutableArrayRef<heavy::Value>;
 
 }
 
-namespace heavy { namespace builtin_syntax {
+namespace heavy { namespace base {
 
+// syntax
 mlir::Value define(OpGen& OG, Pair* P);
 mlir::Value if_(OpGen& OG, Pair* P);
 mlir::Value lambda(OpGen& OG, Pair* P);
@@ -63,10 +64,9 @@ mlir::Value quasiquote(OpGen& C, Pair* P); // lib/Quasiquote.cpp
 mlir::Value quote(OpGen& OG, Pair* P);     // lib/Quasiquote.cpp
 mlir::Value set(OpGen& OG, Pair* P);
 mlir::Value import(OpGen& OG, Pair* P);
-}}
 
-namespace heavy { namespace base {
 
+// functions
 heavy::Value eval(Context& C, ValueRefs Args);
 heavy::Value dump(Context& C, ValueRefs Args);
 heavy::Value add(Context& C, ValueRefs Args);
@@ -84,6 +84,12 @@ heavy::Value append(Context& C, ValueRefs Args);
 }}
 
 extern heavy::ExternSyntax   HEAVY_BASE_VAR(import);
+extern heavy::ExternSyntax   HEAVY_BASE_VAR(define);
+extern heavy::ExternSyntax   HEAVY_BASE_VAR(if);
+extern heavy::ExternSyntax   HEAVY_BASE_VAR(lambda);
+extern heavy::ExternSyntax   HEAVY_BASE_VAR(quasiquote);
+extern heavy::ExternSyntax   HEAVY_BASE_VAR(quote);
+extern heavy::ExternSyntax   HEAVY_BASE_VAR(set);
 
 extern heavy::ExternFunction HEAVY_BASE_VAR(add);
 extern heavy::ExternFunction HEAVY_BASE_VAR(sub);
@@ -107,7 +113,16 @@ inline void HEAVY_BASE_INIT(heavy::Context& Context) {
   assert(!HEAVY_BASE_IS_LOADED &&
     "module should not be loaded more than once");
   HEAVY_BASE_IS_LOADED = true;
-  // assign the vars their corresponding function pointers
+
+  // syntax
+  HEAVY_BASE_VAR(define)      = heavy::base::define;
+  HEAVY_BASE_VAR(if)          = heavy::base::if_;
+  HEAVY_BASE_VAR(lambda)      = heavy::base::lambda;
+  HEAVY_BASE_VAR(quasiquote)  = heavy::base::quasiquote;
+  HEAVY_BASE_VAR(quote)       = heavy::base::quote;
+  HEAVY_BASE_VAR(set)         = heavy::base::set;
+
+  // functions
   HEAVY_BASE_VAR(add)     = heavy::base::add;
   HEAVY_BASE_VAR(sub)     = heavy::base::sub;
   HEAVY_BASE_VAR(div)     = heavy::base::div;
@@ -128,6 +143,14 @@ inline void HEAVY_BASE_INIT(heavy::Context& Context) {
 inline void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
   HEAVY_BASE_INIT(Context);
   heavy::initModule(Context, HEAVY_BASE_LIB_STR, {
+    // syntax
+    {"define",      HEAVY_BASE_VAR(define)},
+    {"if",          HEAVY_BASE_VAR(if)},
+    {"lambda",      HEAVY_BASE_VAR(lambda)},
+    {"quasiquote",  HEAVY_BASE_VAR(quasiquote)},
+    {"quote",       HEAVY_BASE_VAR(quote)},
+    {"set!",        HEAVY_BASE_VAR(set)},
+
     // functions
     {"+",       HEAVY_BASE_VAR(add)},
     {"-",       HEAVY_BASE_VAR(sub)},

@@ -167,7 +167,6 @@ public:
   mlir::Value createIf(SourceLocation Loc, Value Cond, Value Then,
                        Value Else);
   mlir::Value createTopLevelDefine(Symbol* S, Value Args, Value OrigCall);
-  mlir::Value createTopLevelDefine(Symbol* S, mlir::Value Init, Module* M, Binding*&);
   mlir::Value createUndefined();
   mlir::Value createSet(SourceLocation Loc, Value LHS, Value RHS);
 
