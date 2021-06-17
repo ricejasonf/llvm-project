@@ -266,14 +266,6 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
   return create<SetOp>(DefineLoc, BVal, Init);
 }
 
-// TEMP used by builtins
-mlir::Value OpGen::createTopLevelDefine(Symbol* S, mlir::Value Init,
-                                        Module* M, Binding*& B) {
-  B = Context.CreateBinding(S, Context.CreateUndefined());
-  M->Insert(B);
-  return createBinding(B, Init);
-}
-
 mlir::Value OpGen::createIf(SourceLocation Loc, Value Cond, Value Then,
                             Value Else) {
   // Cond
