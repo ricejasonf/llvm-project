@@ -646,7 +646,7 @@ ImportSet* Context::CreateImportSet(Value Spec) {
 Module* Context::LoadModule(Value Spec) {
   heavy::Mangler Mangler(*this);
   std::string Name = Mangler.mangleModule(Spec);
-  std::unique_ptr<Module>& M = Modules[Name];  
+  std::unique_ptr<Module>& M = Modules[Name];
   if (!M) {
     SetError("unable to load module", Spec);
     return nullptr;
@@ -655,7 +655,7 @@ Module* Context::LoadModule(Value Spec) {
     // Load the file and compile the scheme code and check again
     // We might need the SourceManager to belong to Context
     std::string Filename = getModuleFilename(Spec);
-    std::unique_ptr<Module>& M = Modules[Name];  
+    std::unique_ptr<Module>& M = Modules[Name];
     if (!M) {
       String* Msg = CreateString("loaded file does not contain library: ",
                                  Filename);
@@ -666,4 +666,36 @@ Module* Context::LoadModule(Value Spec) {
   }
   M->LoadNames();
   return M.get();
+}
+
+
+void Context::AddKnownAddress(String* MangledName, heavy::Value Value) {
+  assert(Value && "value at address must actually be known");
+  KnownAddresses[MangledName] = Value;
+}
+
+Value Context::GetKnownValue(llvm::StringRef MangledName) {
+  String* Id = IdTable[MangledName];
+  assert(Id && "identifier should have been inserted into table for mangled name");
+  // Could we possibly use dlsym or something here
+  // for actual external values?
+  return KnownAddresses.lookup(Id);
+}
+
+void heavy::initModule(heavy::Context& C, llvm::StringRef ModuleMangledName,
+                  ModuleInitListTy InitList) {
+  Module* M = C.Modules[ModuleMangledName].get();
+  assert(M && "module must be registered");
+  heavy::Mangler Mangler(C);
+  for (ModuleInitListPairTy const& X : InitList) {
+    String* Id = C.CreateIdTableEntry(X.first);
+    Value Val = X.second;
+    String* MangledName = C.CreateIdTableEntry(
+        Mangler.mangleVariable(ModuleMangledName, Id));
+    M->Insert(EnvBucket{Id, EnvEntry{Val, MangledName}});
+    // Track valid values by their mangled names
+    if (Val) {
+      C.AddKnownAddress(MangledName, Val);
+    }
+  }
 }

@@ -81,6 +81,7 @@ class Context : DialectRegisterer {
   llvm::StringMap<std::unique_ptr<Module>> Modules;
   // TODO probably move EmbeddedEnvs to class HeavyScheme
   llvm::DenseMap<void*, std::unique_ptr<Environment>> EmbeddedEnvs;
+  llvm::DenseMap<String*, Value> KnownAddresses;
 
   std::unique_ptr<Module> SystemModule; // TODO deprecate
   std::unique_ptr<Environment> SystemEnvironment; // TODO deprecate
@@ -121,6 +122,9 @@ public:
 
   Module* RegisterModule(llvm::StringRef MangledName,
                          heavy::ModuleLoadNamesFn* LoadNames = nullptr);
+
+  void AddKnownAddress(String* MangledName, Value);
+  Value GetKnownValue(llvm::StringRef MangledName);
 
   // Import - Finds the Environment in EnvStack, adds the
   //          ImportSet to it, and checks for name collisions
