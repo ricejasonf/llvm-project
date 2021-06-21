@@ -216,8 +216,8 @@ private:
   mlir::Value VisitPair(Pair* P);
   // TODO mlir::Value VisitVector(Vector* V);
 
-  mlir::Value LocalizeValue(heavy::Binding* B, mlir::Value V);
-  mlir::Value LocalizeRec(heavy::Binding* B,
+  mlir::Value LocalizeValue(heavy::Value B, mlir::Value V);
+  mlir::Value LocalizeRec(heavy::Value B,
                           mlir::Operation* Op,
                           mlir::Operation* Owner,
                           LambdaScopeIterator Itr);
