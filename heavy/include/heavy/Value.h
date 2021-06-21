@@ -261,6 +261,7 @@ using ValuePtrBase = typename ValueSumType::type;
 class Value : ValuePtrBase {
 public:
   Value() = default;
+
   Value(ValueBase* V)
     : ValuePtrBase(create<ValueSumType::ValueBase>(V))
   { }
@@ -519,9 +520,14 @@ inline T* dyn_cast_or_null(::heavy::Value V) {
 }
 
 template <>
-struct DenseMapInfo<::heavy::Value>
-  : DenseMapInfo<::heavy::ValuePtrBase> {
-  // Makes heavy value behave the same as PointerSumType
+struct DenseMapInfo<::heavy::Value> {
+  static ::heavy::Value getEmptyKey() { 
+    return DenseMapInfo<::heavy::ValueBase*>::getEmptyKey();
+  }
+  static ::heavy::Value getTombstoneKey() {
+    return DenseMapInfo<::heavy::ValueBase*>::getTombstoneKey();
+  }
+
   static unsigned getHashValue(::heavy::Value Arg) {
     uintptr_t OpaqueValue = Arg.getOpaqueValue();
     return DenseMapInfo<uintptr_t>::getHashValue(OpaqueValue);

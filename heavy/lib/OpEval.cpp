@@ -30,7 +30,7 @@ class OpEvalImpl {
 
   // FunctionEntryPointTy - Allows IR (not compiled) functions to affect
   //                        control flow.
-  //                       
+  //
   class FunctionEntryPointTy {
     BlockItrTy Inst;
     bool IsSet = false;
@@ -68,10 +68,21 @@ class OpEvalImpl {
   }
 
   heavy::Value getBindingOrValue(mlir::Value M) {
+
     heavy::Value V = ValueMap.lookup(M);
     if (!V && (M.getDefiningOp<UndefinedOp>() ||
                M.getDefiningOp<SetOp>())) {
       return Context.CreateUndefined();
+    }
+
+    if (!V) {
+      if (GlobalOp G = M.getDefiningOp<GlobalOp>()) {
+        if (G.isExternal()) {
+          heavy::Value Val = Context.GetKnownValue(G.sym_name());
+          setValue(M, Val);
+          return Val;
+        }
+      }
     }
 
     // failure here could mean failure to capture in a closure
@@ -202,6 +213,7 @@ private:
     else if (isa<ApplyOp>(Op))        return Visit(cast<ApplyOp>(Op));
     else if (isa<BuiltinOp>(Op))      return Visit(cast<BuiltinOp>(Op));
     else if (isa<ContOp>(Op))         return Visit(cast<ContOp>(Op));
+    else if (isa<GlobalOp>(Op))       return Visit(cast<GlobalOp>(Op));
     else if (isa<LoadClosureOp>(Op))  return Visit(cast<LoadClosureOp>(Op));
     else if (isa<LoadGlobalOp>(Op))   return Visit(cast<LoadGlobalOp>(Op));
     else if (isa<LambdaOp>(Op))       return Visit(cast<LambdaOp>(Op));
@@ -210,7 +222,7 @@ private:
     else if (isa<SpliceOp>(Op))       return Visit(cast<SpliceOp>(Op));
     else if (isa<SetOp>(Op))          return Visit(cast<SetOp>(Op));
     else if (isa<FuncOp>(Op))         return next(Op); // skip functions
-    else if (UndefinedOp UndefOp = dyn_cast<UndefinedOp>(Op))  {
+    else if (UndefinedOp UndefOp = dyn_cast<UndefinedOp>(Op)) {
       setValue(UndefOp, Context.CreateUndefined());
       return next(Op);
     }
@@ -353,9 +365,10 @@ private:
 
     mlir::Operation* Parent = Op.getParentOp();
     mlir::Operation* Caller = getCurrentFrame().getOp();
-    assert(Caller && "heavy.cont op must return to a valid stack frame");
 
-    if (Parent != Caller) {
+    if (!Caller) {
+      Caller = Parent;
+    } else if (Parent != Caller) {
       // The continuation is on the stack frame
       // If this isn't receiving a tail call
       // then pop the frame (for tail calls this was done earlier)
@@ -363,8 +376,6 @@ private:
       if (!AppOp || AppOp.isTailPos()) {
         pop_frame();
       }
-    } else {
-      Caller = Parent;
     }
 
     auto Results = Caller->getResults();
@@ -433,8 +444,15 @@ private:
   BlockItrTy Visit(LoadGlobalOp Op) {
     mlir::ModuleOp M = Context.OpGen->getTopLevel();
     mlir::Operation* G = M.lookupSymbol(Op.name());
+    assert(G && "symbol does not exist");
     setValue(Op, getValue(G->getResult(0)));
     return next(Op);
+  }
+
+  BlockItrTy Visit(GlobalOp Op) {
+    // skip external global ops
+    if (Op.isExternal()) return next(Op);
+    return Op.initializer().front().begin();
   }
 
   BlockItrTy Visit(SetOp Op) {

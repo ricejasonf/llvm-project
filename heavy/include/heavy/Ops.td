@@ -130,13 +130,26 @@ def heavy_GlobalOp : HeavyOp<"global", [Symbol]> {
   let summary = "global";
   let description = [{
     This indicates a module top level variable providing
-    a symbol. The input would be a binding but it should be
-    possible to reference a value directly.
+    a symbol. If there is no initializer then it is external.
   }];
 
-  let arguments = (ins StrAttr:$sym_name,
-                       HeavyValue:$input);
-  let results   = (outs); // no result
+  let regions = (region AnyRegion:$initializer);
+  let extraClassDeclaration = [{
+    bool isExternal() { return initializer().empty(); }
+    Block* addEntryBlock() {
+      assert(initializer().empty() && "GlobalOp already has an entry block");
+      Block* entry = new Block();
+      initializer().push_back(entry);
+      return entry;
+    }
+  }];
+
+  let arguments = (ins StrAttr:$sym_name);
+  let results   = (outs HeavyValue:$result);
+  let builders = [
+    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&,"
+              "StringRef Name">
+  ];
 }
 
 def heavy_IfOp : HeavyOp<"if", []> {
