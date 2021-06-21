@@ -113,21 +113,6 @@ void HeavyScheme::RegisterModule(llvm::StringRef MangledName,
   getContext().RegisterModule(MangledName, LoadNamesFn);
 }
 
-void initModule(heavy::Context& C, llvm::StringRef ModuleMangledName,
-                  ModuleInitListTy InitList) {
-  Module* M = C.Modules[ModuleMangledName].get();
-  assert(M && "module must be registered");
-  heavy::Mangler Mangler(C);
-  for (ModuleInitListPairTy const& X : InitList) {
-    String* Id = C.CreateIdTableEntry(X.first);
-    Value Val = X.second;
-    String* MangledName = C.CreateIdTableEntry(
-        Mangler.mangleVariable(ModuleMangledName, Id));
-    M->Insert(EnvBucket{Id, EnvEntry{Val, MangledName}});
-  }
-}
-
-
 heavy::Undefined setError(heavy::Context& C, llvm::StringRef Msg) {
   C.SetError(Msg);
   return {};

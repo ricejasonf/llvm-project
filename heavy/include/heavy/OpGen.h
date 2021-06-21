@@ -36,7 +36,7 @@ namespace heavy {
 class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   friend class ValueVisitor<OpGen, mlir::Value>;
   using BindingScopeTable = llvm::ScopedHashTable<
-                                            heavy::Binding*,
+                                            heavy::Value,
                                             mlir::Value>;
   using BindingScope = typename BindingScopeTable::ScopeTy;
 

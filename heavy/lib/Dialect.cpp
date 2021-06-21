@@ -76,6 +76,12 @@ void ConsOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
   ConsOp::build(B, OpState, HeavyValueTy, X, Y);
 }
 
+void GlobalOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                     llvm::StringRef SymName) {
+  mlir::Type HeavyValueTy = B.getType<HeavyValue>();
+  GlobalOp::build(B, OpState, HeavyValueTy, SymName);
+}
+
 void IfOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                  mlir::Value Input) {
   IfOp::build(B, OpState, B.getType<HeavyValue>(), Input);
