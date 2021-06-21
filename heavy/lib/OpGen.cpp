@@ -360,8 +360,7 @@ mlir::Value OpGen::VisitSymbol(Symbol* S) {
         Builder.setInsertionPointToStart(M.getBody());
         G = create<GlobalOp>(Loc, SymName).getOperation();
       }
-      // TODO use LocalizeValue
-      return G->getResult(0);
+      return LocalizeValue(Entry.Value, G->getResult(0));
     }
   }
 
@@ -456,7 +455,7 @@ mlir::Value OpGen::VisitVector(Vector* V) {
 //                 Tracking of captures for nested scopes is handled
 //                 here too.
 //
-mlir::Value OpGen::LocalizeValue(heavy::Binding* B, mlir::Value V) {
+mlir::Value OpGen::LocalizeValue(heavy::Value B, mlir::Value V) {
   mlir::Operation* Op = V.getDefiningOp();
   assert(Op && "value should be an operation result");
 
@@ -466,7 +465,7 @@ mlir::Value OpGen::LocalizeValue(heavy::Binding* B, mlir::Value V) {
   return LocalizeRec(B, Op, Owner, LambdaScopes.rbegin());
 }
 
-mlir::Value OpGen::LocalizeRec(heavy::Binding* B,
+mlir::Value OpGen::LocalizeRec(heavy::Value B,
                                mlir::Operation* Op,
                                mlir::Operation* Owner,
                                LambdaScopeIterator Itr) {
