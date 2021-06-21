@@ -203,13 +203,6 @@ mlir::Value OpGen::createBinding(Binding *B, mlir::Value Init) {
   mlir::Value BVal = create<BindingOp>(SymbolLoc, Init);
   BindingTable.insert(B, BVal);
 
-  if (isTopLevel()) {
-    heavy::Mangler Mangler(Context);
-    std::string MangledName = Mangler.mangleVariable(getModulePrefix(),
-                                                     B->getName());
-    BVal.getDefiningOp<BindingOp>().setName(MangledName);
-  }
-
   return BVal;
 }
 
@@ -259,11 +252,25 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
     return create<SetOp>(DefineLoc, BVal, Init);
   }
 
-  Binding* B = Context.CreateBinding(S, DefineArgs);
-  Env->Insert(B);
-  mlir::Value BVal = createBinding(B, createUndefined());
-  mlir::Value Init = VisitDefineArgs(DefineArgs);
-  return create<SetOp>(DefineLoc, BVal, Init);
+  heavy::Mangler Mangler(Context);
+  std::string MangledName = Mangler.mangleVariable(getModulePrefix(), S);
+  auto GlobalOp = create<heavy::GlobalOp>(DefineLoc, MangledName);
+  mlir::Block& Block = *GlobalOp.addEntryBlock();
+
+  {
+    // set insertion point. add initializer
+    mlir::OpBuilder::InsertionGuard IG(Builder);
+    Builder.setInsertionPointToStart(&Block);
+
+    Binding* B = Context.CreateBinding(S, DefineArgs);
+    Env->Insert(B);
+    mlir::Value BVal = createBinding(B, createUndefined());
+    mlir::Value Init = VisitDefineArgs(DefineArgs);
+    create<SetOp>(DefineLoc, BVal, Init);
+    create<ContOp>(DefineLoc, BVal);
+  }
+
+  return mlir::Value();
 }
 
 mlir::Value OpGen::createIf(SourceLocation Loc, Value Cond, Value Then,
@@ -332,7 +339,7 @@ mlir::Value OpGen::VisitDefineArgs(Value Args) {
 
 mlir::Value OpGen::VisitSymbol(Symbol* S) {
   EnvEntry Entry = Context.Lookup(S);
-
+  SourceLocation Loc = S->getSourceLocation();
 
   if (!Entry) {
     String* Msg = Context.CreateString("unbound symbol '",
@@ -341,8 +348,21 @@ mlir::Value OpGen::VisitSymbol(Symbol* S) {
   }
 
   if (Entry.MangledName) {
-    // this is an external global
-    llvm::errs() << "VisitSymbol MangledName: " << Entry.MangledName->getView() << '\n';
+    {
+      llvm::StringRef SymName = Entry.MangledName->getView();
+      mlir::ModuleOp M = Context.OpGen->getTopLevel();
+      Operation* G = M.lookupSymbol(SymName);
+      if (!G) {
+        // Lazily insert extern GlobalOps
+        // at the beginning of the module.
+        // Note that OpEval will never visit these.
+        mlir::OpBuilder::InsertionGuard IG(Builder);
+        Builder.setInsertionPointToStart(M.getBody());
+        G = create<GlobalOp>(Loc, SymName).getOperation();
+      }
+      // TODO use LocalizeValue
+      return G->getResult(0);
+    }
   }
 
   return Visit(Entry.Value);
