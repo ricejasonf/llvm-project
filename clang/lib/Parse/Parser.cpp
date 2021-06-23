@@ -20,6 +20,7 @@
 #include "clang/Sema/DeclSpec.h"
 #include "clang/Sema/ParsedTemplate.h"
 #include "clang/Sema/Scope.h"
+#include "heavy/HeavyScheme.h" // for ~HeavyScheme
 #include "llvm/Support/Path.h"
 using namespace clang;
 
