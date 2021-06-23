@@ -22,12 +22,15 @@
 #include "clang/Sema/SemaObjC.h"
 #include "clang/Sema/SemaOpenMP.h"
 #include "llvm/ADT/STLForwardCompat.h"
-#include "heavy/HeavyScheme.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Frontend/OpenMP/OMPContext.h"
 #include "llvm/Support/SaveAndRestore.h"
 #include <optional>
 #include <stack>
+
+namespace heavy {
+  class HeavyScheme;
+}
 
 namespace clang {
 class PragmaHandler;

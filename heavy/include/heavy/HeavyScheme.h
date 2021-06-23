@@ -25,6 +25,8 @@ class Context;
 class SourceManager;
 class Value;
 class Undefined;
+class Environment;
+using ModuleLoadNamesFn = void(heavy::Context&);
 
 // HeavyScheme - Opaque wrapper for heavy::Context and common operations
 //               needed for embedding scheme
