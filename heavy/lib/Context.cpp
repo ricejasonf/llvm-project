@@ -580,14 +580,15 @@ ImportSet* Context::CreateImportSet(Value Spec) {
 
   ImportSet* Parent = CreateImportSet(cadr(Spec));
   if (!Parent) return nullptr;
+  Spec = Spec.cdr().cdr();
 
   if (Kind == ImportSet::ImportKind::Prefix) {
-    Symbol* Prefix = dyn_cast_or_null<Symbol>(cadr(Spec));
+    Symbol* Prefix = dyn_cast_or_null<Symbol>(car(Spec));
     if (!Prefix) {
       SetError("expected identifier for prefix");
       return nullptr;
     }
-    if (!isa_and_nonnull<Empty>(cddr(Spec))) {
+    if (!isa_and_nonnull<Empty>(cdr(Spec))) {
       SetError("expected end of list");
       return nullptr;
     }
@@ -597,13 +598,8 @@ ImportSet* Context::CreateImportSet(Value Spec) {
   // Identifier (pairs) list
   // Check the syntax and that each provided name
   // exists in the parent import set
-  Spec = cadr(Spec);
   if (!isa_and_nonnull<Pair>(Spec)) {
     SetError("expecting list");
-    return nullptr;
-  }
-  if (!isa_and_nonnull<Empty>(cddr(Spec))) {
-    SetError("expected end of list");
     return nullptr;
   }
   // Spec is now the list of ids to be used by ImportSet
@@ -639,6 +635,7 @@ ImportSet* Context::CreateImportSet(Value Spec) {
       SetError("name does not exist in import set");
       return nullptr;
     }
+    Current = P->Cdr;
   }
   return new (TrashHeap) ImportSet(Kind, Parent, Spec);
 }
