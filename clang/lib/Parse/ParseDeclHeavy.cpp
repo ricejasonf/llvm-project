@@ -27,15 +27,14 @@
 
 using namespace clang;
 
+bool HEAVY_CLANG_IS_LOADED = false;
 heavy::ExternLambda<1> HEAVY_CLANG_VAR(diag_error) = {};
 heavy::ExternLambda<1> HEAVY_CLANG_VAR(hello_world) = {};
 
 namespace {
 void LoadParentEnv(heavy::HeavyScheme& HS, void* Handle) {
   DeclContext* DC = reinterpret_cast<DeclContext*>(Handle);
-  if (DC->isTranslationUnit()) {
-    HS.LoadCoreEnv();
-  } else {
+  if (!DC->isTranslationUnit()) {
     HS.LoadEmbeddedEnv(DC->getParent(), LoadParentEnv);
   }
 }
@@ -63,10 +62,11 @@ void LoadBuiltinModule(clang::Parser& P) {
 } // end anon namespace
 
 bool Parser::ParseHeavyScheme() {
-  if (!HeavyScheme.isInitialized()) {
-    HeavyScheme.init();
+  if (!HeavyScheme) {
+    HeavyScheme = std::make_unique<heavy::HeavyScheme>();
+    HeavyScheme->init();
     LoadBuiltinModule(*this);
-    HeavyScheme.RegisterModule(HEAVY_CLANG_LIB_STR, HEAVY_CLANG_LOAD_MODULE);
+    HeavyScheme->RegisterModule(HEAVY_CLANG_LIB_STR, HEAVY_CLANG_LOAD_MODULE);
   }
 
   heavy::Lexer SchemeLexer;
@@ -74,7 +74,7 @@ bool Parser::ParseHeavyScheme() {
                          char const* BufferStart,
                          char const* BufferEnd,
                          char const* BufferPtr) {
-    SchemeLexer = HeavyScheme.createEmbeddedLexer(
+    SchemeLexer = HeavyScheme->createEmbeddedLexer(
                         Loc.getRawEncoding(),
                         BufferStart,
                         BufferEnd,
@@ -85,7 +85,7 @@ bool Parser::ParseHeavyScheme() {
 
   // Load the environment for the current DeclContext
   DeclContext* DC = getActions().CurContext;
-  HeavyScheme.LoadEmbeddedEnv(DC, LoadParentEnv);
+  HeavyScheme->LoadEmbeddedEnv(DC, LoadParentEnv);
 
   auto ErrorHandler = [&](llvm::StringRef Err,
                           heavy::FullSourceLocation EmbeddedLoc) {
@@ -97,7 +97,7 @@ bool Parser::ParseHeavyScheme() {
 
 
   heavy::TokenKind Terminator = heavy::tok::r_brace;
-  bool HasError = HeavyScheme.ProcessTopLevelCommands(SchemeLexer,
+  bool HasError = HeavyScheme->ProcessTopLevelCommands(SchemeLexer,
                                                       ErrorHandler,
                                                       Terminator);
 
