@@ -25,6 +25,7 @@
 #include "clang/Sema/Scope.h"
 #include "clang/Sema/SemaCodeCompletion.h"
 #include "llvm/ADT/STLForwardCompat.h"
+#include "heavy/HeavyScheme.h" // for ~HeavyScheme
 #include "llvm/Support/Path.h"
 #include "llvm/Support/TimeProfiler.h"
 using namespace clang;

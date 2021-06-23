@@ -18,19 +18,19 @@
 
 #include "heavy/Value.h"
 
-#define HEAVY_CLANG_LIB               _HEAVYL5clang
-#define HEAVY_CLANG_LIB_(NAME)        _HEAVYL5clang ## NAME
-#define HEAVY_CLANG_LIB_STR          "_HEAVYL5clang"
+#define HEAVY_CLANG_LIB               _HEAVYL5Sclang
+#define HEAVY_CLANG_LIB_(NAME)        _HEAVYL5Sclang ## NAME
+#define HEAVY_CLANG_LIB_STR          "_HEAVYL5Sclang"
 #define HEAVY_CLANG_IS_LOADED         HEAVY_CLANG_LIB##_is_loaded
 #define HEAVY_CLANG_LOAD_MODULE       HEAVY_CLANG_LIB##_load_module
 #define HEAVY_CLANG_INIT              HEAVY_CLANG_LIB##_init
 #define HEAVY_CLANG_VAR(NAME)         HEAVY_CLANG_VAR__##NAME
-#define HEAVY_CLANG_VAR__diag_error   HEAVY_CLANG_LIB(VS4diagmi5Serror)
-#define HEAVY_CLANG_VAR__hello_world  HEAVY_CLANG_LIB(V5Shellomi5Sworld)
+#define HEAVY_CLANG_VAR__diag_error   HEAVY_CLANG_LIB_(VS4diagmi5Serror)
+#define HEAVY_CLANG_VAR__hello_world  HEAVY_CLANG_LIB_(V5Shellomi5Sworld)
 // #define HEAVY_CLANG_VAR__diag_error   _HEAVYL5clangVS4diagmi5Serror
 // #define HEAVY_CLANG_VAR__hello_world  _HEAVYL5clangV5Shellomi5Sworld
 
-static bool HEAVY_CLANG_IS_LOADED = false;
+extern bool HEAVY_CLANG_IS_LOADED;
 
 // diag-error
 extern heavy::ExternLambda<1> HEAVY_CLANG_VAR(diag_error);

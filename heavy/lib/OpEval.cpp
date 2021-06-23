@@ -270,12 +270,13 @@ private:
                         ValueRefs Args) {
     heavy::StackFrame* Frame = push_frame(ApplyOp, Args);
     if (!Frame) return BlockItrTy();
-    L->call(Context, Args);
+    heavy::Value Result = L->call(Context, Args);
     if (FunctionEntryPoint) return FunctionEntryPoint.flush();
     // If the FunctionEntryPoint was not specified then it
     // has already executed a precompiled function. Resume
     // with the next operation after popping the stack frame.
     pop_frame();
+    setValue(ApplyOp.result(), Result);
     return next(ApplyOp);
   }
 
@@ -314,7 +315,7 @@ private:
         Builtin* B = cast<Builtin>(Callee);
 
         heavy::Value Result = B->Fn(Context,
-                                     ArgResultsRef.drop_front());
+                                    ArgResultsRef.drop_front());
         if (isa<Error>(Result)) return BlockItrTy();
         setValue(Op.result(), Result);
         return next(Op);
@@ -388,7 +389,6 @@ private:
     }
 
     return next(Caller);
-
   }
 
   BlockItrTy Visit(IfOp Op) {
