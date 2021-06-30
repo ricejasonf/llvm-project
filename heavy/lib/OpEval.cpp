@@ -164,7 +164,6 @@ private:
   }
 
   void pop_frame()  {
-      // llvm::errs() << "pop_frame:  "; getCurrentFrame().getOp()->dump();
     Context.EvalStack.pop();
     ValueMapScopes.pop();
   }
