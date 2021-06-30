@@ -13,7 +13,6 @@
 #ifndef LLVM_HEAVY_EVALUATION_STACK_H
 #define LLVM_HEAVY_EVALUATION_STACK_H
 
-#include "heavy/Dialect.h"
 #include "heavy/Source.h"
 #include "heavy/Value.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -43,11 +42,12 @@ class StackFrame final : public llvm::TrailingObjects<StackFrame, Value,
                                                 RedZoneByte> {
   friend class llvm::TrailingObjects<StackFrame, Value>;
 
-  mlir::Operation* Op;
+  heavy::Value Caller;
+  unsigned ArgCount;
   SourceLocation CallLoc;
 
   size_t numTrailingObjects(OverloadToken<Value> const) const {
-    return getArgCount(Op);
+    return ArgCount;
   }
 
   size_t numTrailingObjects(OverloadToken<RedZoneByte> const) const {
@@ -55,8 +55,9 @@ class StackFrame final : public llvm::TrailingObjects<StackFrame, Value,
   }
 
 public:
-  StackFrame(mlir::Operation* Op, SourceLocation Loc)
-    : Op(Op),
+  StackFrame(heavy::Value Caller, unsigned ArgCount, SourceLocation Loc)
+    : Caller(Caller),
+      ArgCount(ArgCount),
       CallLoc(Loc)
   { }
 
@@ -64,48 +65,52 @@ public:
     // "Zero fill" everything except the red zone bytes
     CallLoc = {};
     Value* Vs = getTrailingObjects<Value>();
-    std::fill(&Vs[0], &Vs[getArgCount(Op)], nullptr);
-    Op = nullptr;
+    std::fill(&Vs[0], &Vs[ArgCount], nullptr);
+    Caller = nullptr;
   }
 
-  static unsigned getArgCount(mlir::Operation* Op) {
-    if (ApplyOp A = llvm::dyn_cast_or_null<ApplyOp>(Op)) {
-      return A.args().size() + 1; // includes callee
-    }
-    return 0;
-  }
-
-  static size_t sizeToAlloc(mlir::Operation* Op) {
+  static size_t sizeToAlloc(unsigned ArgCount) {
     // this could potentially include a "red zone" of trailing bytes
     return totalSizeToAlloc<Value, RedZoneByte>(
-        getArgCount(Op), HEAVY_STACK_RED_ZONE_SIZE);
+        ArgCount, HEAVY_STACK_RED_ZONE_SIZE);
   }
 
   bool isInvalid() const {
-    return Op == nullptr;
+    return Caller == nullptr;
   }
 
   // Gets the size in bytes that we allocated
   // minus the red zone bytes
   unsigned getMemLength() const {
-    return sizeToAlloc(Op) - HEAVY_STACK_RED_ZONE_SIZE;
+    return sizeToAlloc(ArgCount) - HEAVY_STACK_RED_ZONE_SIZE;
   }
 
-  // "instruction pointer" Op
-  mlir::Operation* getOp() { return Op; }
+  // may return nullptr
+  heavy::Value getCaller() {
+    return Caller;
+  }
+
+  // "instruction pointer" Op for IR OpEval
+  // may return nullptr
+  mlir::Operation* getOp() {
+    if (auto* Op = dyn_cast_or_null<mlir::Operation>(Caller)) {
+      return Op;
+    }
+    return nullptr;
+  }
 
   SourceLocation getCallLoc() { return CallLoc; }
 
   // Returns the value for callee or nullptr
   // if the StackFrame is invalid
   Value getCallee() const {
-    if (getArgCount(Op) == 0) return nullptr;
+    if (ArgCount == 0) return nullptr;
     return getTrailingObjects<Value>()[0];
   }
 
   llvm::MutableArrayRef<heavy::Value> getArgs() {
     return llvm::MutableArrayRef<heavy::Value>(
-        getTrailingObjects<Value>(), getArgCount(Op));
+        getTrailingObjects<Value>(), ArgCount);
   }
 
   // Get the previous stack frame. This assumes that
@@ -115,7 +120,7 @@ public:
   // The client is responsible for ensuring that the
   // previous stack frame is valid and in bounds
   StackFrame* getPrevious() {
-    char* PrevPtr = reinterpret_cast<char*>(this) + sizeToAlloc(Op);
+    char* PrevPtr = reinterpret_cast<char*>(this) + sizeToAlloc(ArgCount);
     return reinterpret_cast<StackFrame*>(PrevPtr);
   }
 };
@@ -140,19 +145,9 @@ class EvaluationStack {
 
   void EmitStackSpaceError();
 
-
-public:
-  EvaluationStack(heavy::Context& C)
-    : Context(C),
-      Storage(HEAVY_STACK_SIZE, 0),
-      Top(getStartingPoint())
-  {
-    // push an invalid StackFrame as the bottom
-    push(nullptr, {});
-  }
-
-  StackFrame* push(mlir::Operation* Op, heavy::SourceLocation CallLoc) {
-    unsigned ByteLen = StackFrame::sizeToAlloc(Op);
+  StackFrame* push_helper(heavy::Value Caller, unsigned ArgCount,
+                   heavy::SourceLocation CallLoc) {
+    unsigned ByteLen = StackFrame::sizeToAlloc(ArgCount);
 
     char* CurPtr = reinterpret_cast<char*>(Top);
     char* NewPtr = CurPtr - ByteLen;
@@ -161,17 +156,25 @@ public:
       return nullptr;
     }
 
-    StackFrame* New = new (NewPtr) StackFrame(Op, CallLoc);
+    StackFrame* New = new (NewPtr) StackFrame(Caller, ArgCount, CallLoc);
     Top = New;
     return New;
   }
 
+public:
+  EvaluationStack(heavy::Context& C)
+    : Context(C),
+      Storage(HEAVY_STACK_SIZE, 0),
+      Top(getStartingPoint())
+  {
+    // push an invalid StackFrame as the bottom
+    push_helper(Value(nullptr), 0, {});
+  }
+
   // Args here includes the callee
-  StackFrame* push(mlir::Operation* Op, heavy::SourceLocation CallLoc,
+  StackFrame* push(heavy::Value Caller, heavy::SourceLocation CallLoc,
                    llvm::ArrayRef<Value> Args) {
-    assert(StackFrame::getArgCount(Op) == Args.size() &&
-        "operation arity mismatch");
-    StackFrame* Frame = push(Op, CallLoc);
+    StackFrame* Frame = push_helper(Caller, Args.size(), CallLoc);
     if (!Frame) return nullptr;
 
     if (!Args.empty()) {
