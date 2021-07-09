@@ -87,7 +87,7 @@ class Module;
 class ImportSet;
 class EnvFrame;
 using ValueRefs = llvm::MutableArrayRef<heavy::Value>;
-using ValueFn   = heavy::Value (*)(Context&, ValueRefs);
+using ValueFn   = void (*)(Context&, ValueRefs);
 // TODO consider having this return an Operation*
 using SyntaxFn  = mlir::Value (*)(OpGen&, Pair*);
 
@@ -899,18 +899,26 @@ public:
     return V.getKind() == ValueKind::Lambda;
   }
 
-
-  static size_t sizeToAlloc(unsigned short NumCaptures,
-                            unsigned short StorageLen) {
-    return totalSizeToAlloc<Value, char>(NumCaptures, StorageLen);
+  static size_t sizeToAlloc(FunctionDataView const& FnData,
+                            unsigned short NumCaptures) {
+    return totalSizeToAlloc<Value, char>(NumCaptures,
+                                         FnData.Storage.size());
   }
 
   template <typename Allocator>
   static void* allocate(Allocator& Alloc, FunctionDataView,
                         llvm::ArrayRef<heavy::Value> Captures);
 
+  size_t getObjectSize() {
+    return totalSizeToAlloc<Value, char>(NumCaptures, StorageLen);
+  }
+
   Value call(Context& C, ValueRefs Vs) {
     return FnPtr(getStoragePtr(), C, Vs);
+  }
+
+  Value getCapture(unsigned I) {
+    return getCaptures()[I];
   }
 
   llvm::MutableArrayRef<Value> getCaptures() {
@@ -1643,8 +1651,7 @@ Lambda::FunctionDataView Lambda::createFunctionDataView(F& Fn) {
 template <typename Allocator>
 void* Lambda::allocate(Allocator& Alloc, Lambda::FunctionDataView FnData,
                        llvm::ArrayRef<heavy::Value> Captures) {
-  size_t StorageLen = FnData.Storage.size();
-  size_t size = Lambda::sizeToAlloc(Captures.size(), StorageLen);
+  size_t size = Lambda::sizeToAlloc(FnData, Captures.size());
   return heavy::allocate(Alloc, size, alignof(Lambda));
 }
 
