@@ -87,7 +87,7 @@ class Module;
 class ImportSet;
 class EnvFrame;
 using ValueRefs = llvm::MutableArrayRef<heavy::Value>;
-using ValueFn   = void (*)(Context&, ValueRefs);
+using ValueFn   = heavy::Value (*)(Context&, ValueRefs);
 // TODO consider having this return an Operation*
 using SyntaxFn  = mlir::Value (*)(OpGen&, Pair*);
 
