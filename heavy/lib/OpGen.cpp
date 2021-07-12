@@ -263,11 +263,10 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
     Builder.setInsertionPointToStart(&Block);
 
     Binding* B = Context.CreateBinding(S, DefineArgs);
+    BindingTable.insert(B, GlobalOp);
     Env->Insert(B);
-    mlir::Value BVal = createBinding(B, createUndefined());
     mlir::Value Init = VisitDefineArgs(DefineArgs);
-    create<SetOp>(DefineLoc, BVal, Init);
-    create<ContOp>(DefineLoc, BVal);
+    create<ContOp>(DefineLoc, Init);
   }
 
   return mlir::Value();
