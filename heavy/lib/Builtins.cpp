@@ -144,16 +144,12 @@ heavy::Value eval(Context& C, ValueRefs Args) {
     EnvStack = C.CreatePair(E);
   }
 
-  // TODO
-  // uhh we didn't change anything about where we are
-  // inserting operations in relation to the "environment"
-  // We need to set the insertion point to the relevant ModuleOp
-  // inside "VisitTopLevel"
-  // (I think heavy::Module needs to be upgraded to wrap ModuleOp
-  //  or something)
-  C.OpGen->VisitTopLevel(ExprOrDef);
+  mlir::Value V = C.OpGen->VisitTopLevel(ExprOrDef);
+  if (!V) return Undefined{};
+
+  mlir::Operation* Op = V.getDefiningOp();
   if (C.CheckError()) return C.CreateUndefined();
-  return opEval(C.OpEval);
+  return opEval(C.OpEval, Op);
 }
 
 heavy::Value dump(Context& C, ValueRefs Args) {

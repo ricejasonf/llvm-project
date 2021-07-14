@@ -13,8 +13,8 @@
 #ifndef LLVM_HEAVY_CONTEXT_H
 #define LLVM_HEAVY_CONTEXT_H
 
+#include "heavy/ContinuationStack.h"
 #include "heavy/Dialect.h"
-#include "heavy/EvaluationStack.h"
 #include "heavy/HeavyScheme.h"
 #include "heavy/Source.h"
 #include "heavy/Value.h"
@@ -59,7 +59,7 @@ class Context;
 Value eval(Context&, Value V, Value EnvStack = nullptr);
 void write(llvm::raw_ostream&, Value);
 
-Value opEval(OpEval&);
+Value opEval(OpEval&, mlir::Operation*);
 
 class OpEvalImpl;
 struct OpEval {
@@ -92,7 +92,7 @@ class Context : DialectRegisterer {
   Value EnvStack;
 
   ValueFn HandleParseResult;
-  EvaluationStack EvalStack;
+  ContinuationStack ContStack;
   mlir::MLIRContext MlirContext;
   SourceLocation Loc = {}; // last known location for errors
   Value Err = nullptr;
@@ -167,6 +167,16 @@ private:
                           llvm::SmallVectorImpl<Symbol*>& Names,
                           bool& HasRestParam);
 public:
+  void Apply(SourceLocation Loc, ValueRefs Vs) {
+    setLoc(Loc);
+    ContStack.Apply(Vs);
+  }
+  void PushCont(heavy::Lambda::FunctionDataView FnData, ValueRefs Captures) {
+    ContStack.PushCont(FnData, Captures);
+  }
+  void Cont(ValueRefs Args) {
+    ContStack.Cont(Args);
+  }
 
   // Check Error
   //  - Returns true if there is an error or exception
@@ -203,6 +213,11 @@ public:
 
   Value SetError(SourceLocation Loc, StringRef S, Value V) {
     return SetError(Loc, CreateString(S), V);
+  }
+
+  void setLoc(SourceLocation L) {
+    assert(L.isValid() && "explicit source loc must be valid");
+    Loc = L;
   }
 
   Value setLoc(Value V) {
