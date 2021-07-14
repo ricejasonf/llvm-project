@@ -59,7 +59,7 @@ Context::Context(ValueFn ParseResultHandler)
   , SystemEnvironment(std::make_unique<Environment>())
   , EnvStack(SystemEnvironment.get())
   , HandleParseResult(ParseResultHandler)
-  , EvalStack(*this)
+  , ContStack(*this)
   , MlirContext()
   , OpGen(std::make_unique<heavy::OpGen>(*this))
   , OpEval(*this)
@@ -470,7 +470,7 @@ bool eqv_slow(Value V1, Value V2) {
 
 } // end namespace heavy
 
-void EvaluationStack::EmitStackSpaceError() {
+void ContinuationStack::EmitStackSpaceError() {
   Context.SetError("insufficient stack space");
 }
 
