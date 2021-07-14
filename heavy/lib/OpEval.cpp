@@ -64,6 +64,9 @@ class OpEvalImpl {
   void setValue(mlir::Value M, heavy::Value H) {
     assert(M && "must be set to a valid value");
     assert(H && "must be set to a valid value");
+    llvm::errs() << "setValue: \n";
+     M.dump();
+     H.dump();
     ValueMap.insert(M, H);
   }
 
@@ -85,6 +88,7 @@ class OpEvalImpl {
       }
     }
 
+    if (!V) M.dump();
     // failure here could mean failure to capture in a closure
     assert(V && "getValue requires a value in the table");
 
@@ -97,10 +101,6 @@ class OpEvalImpl {
       V = B->getValue();
     }
     return V;
-  }
-
-  heavy::StackFrame& getCurrentFrame() {
-    return *Context.EvalStack.top();
   }
 
   static heavy::SourceLocation getSourceLocation(mlir::Location Loc) {
@@ -154,28 +154,19 @@ public:
     return getValue(LastIp->getResult(0));
   }
 
+  void Eval(mlir::Operation* Op) {
+    Visit(Op); 
+  }
+
 private:
-  heavy::StackFrame* push_frame(mlir::Operation* Op, llvm::ArrayRef<heavy::Value> Args) {
-      // llvm::errs() << "push_frame: "; Op->dump();
-    assert(Op && "stack frame op must be a valid op");
+  void push_scope() {
+    llvm::errs() << "PUSHING SCOPE\n";
     ValueMapScopes.emplace(ValueMap);
-    heavy::SourceLocation CallLoc = getSourceLocation(Op->getLoc());
-    return Context.EvalStack.push(Op, CallLoc, Args);
   }
 
-  void pop_frame()  {
-    Context.EvalStack.pop();
+  void pop_scope() {
+    llvm::errs() << "POPPING SCOPE\n";
     ValueMapScopes.pop();
-  }
-
-  void pop_tail_calls() {
-    // since some frames aren't calls we have to iterate until
-    // we get a non-tail call
-    while (true) {
-      ApplyOp Caller = dyn_cast_or_null<ApplyOp>(getCurrentFrame().getOp());
-      if (!Caller || !Caller.isTailPos()) break;
-      pop_frame();
-    }
   }
 
   BlockItrTy next(mlir::Operation* Op) {
@@ -193,18 +184,6 @@ private:
 
     return BlockItrTy();
   }
-
-#if 0
-  heavy::Value Visit(mlir::Value MVal) {
-    if (MVal.isa<mlir::OpResult>()) {
-      return Visit(MVal.getDefiningOp());
-    } else {
-      // BlockArgument
-      heavy::Value V = getValue(MVal);
-      return V;
-    }
-  }
-#endif
 
   BlockItrTy Visit(mlir::Operation* Op) {
          if (isa<BindingOp>(Op))      return Visit(cast<BindingOp>(Op));
@@ -232,21 +211,18 @@ private:
     }
   }
 
-  void LoadArgs(StackFrame& Frame, mlir::Block& Body) {
+  void LoadArgs(mlir::Block& Body, ValueRefs Args) {
     // This associates values with BlockArguments
     // which later gets assigned to BingingOps (in code)
 
-    // Note we are not setting the callee (which might end up as a param)
     auto OpArgs = Body.getArguments();
-    auto FrameArgs = Frame.getArgs();
     for (unsigned i = 0; i < OpArgs.size(); ++i) {
-      setValue(OpArgs[i], FrameArgs[i]);
+      setValue(OpArgs[i], Args[i]);
     }
   }
 
   BlockItrTy CallFuncOp(heavy::FuncOp F, ValueRefs Args) {
-    heavy::StackFrame& Frame = getCurrentFrame();
-    SourceLocation CallLoc = Frame.getCallLoc();
+    SourceLocation CallLoc = getSourceLocation(F.getLoc());
     // check arguments
     {
       unsigned NumArgs = Args.size();
@@ -259,24 +235,11 @@ private:
       }
     }
 
+    push_scope();
     mlir::Block& Body = F.getBody().front();
-    LoadArgs(Frame, Body);
+    LoadArgs(Body, Args);
     // return the first instruction of the function body
     return BlockItrTy(Body.front());
-  }
-
-  BlockItrTy CallLambda(heavy::ApplyOp ApplyOp, heavy::Lambda* L,
-                        ValueRefs Args) {
-    heavy::StackFrame* Frame = push_frame(ApplyOp, Args);
-    if (!Frame) return BlockItrTy();
-    heavy::Value Result = L->call(Context, Args);
-    if (FunctionEntryPoint) return FunctionEntryPoint.flush();
-    // If the FunctionEntryPoint was not specified then it
-    // has already executed a precompiled function. Resume
-    // with the next operation after popping the stack frame.
-    pop_frame();
-    setValue(ApplyOp.result(), Result);
-    return next(ApplyOp);
   }
 
   void LoadArgResults(ApplyOp Op,
@@ -292,41 +255,12 @@ private:
 
   BlockItrTy Visit(ApplyOp Op) {
     heavy::SourceLocation CallLoc = getSourceLocation(Op.getLoc());
+
     llvm::SmallVector<heavy::Value, 8> ArgResults;
     LoadArgResults(Op, ArgResults);
-    heavy::Value Callee = ArgResults[0];
 
-    // Now that we have ArgResults, we can pop the call frame
-    // before any tail call
-    // (keep the original call that is not in tail position)
-    if (Op.isTailPos()) {
-      pop_tail_calls();
-    }
-
-    switch (Callee.getKind()) {
-      case ValueKind::Lambda: {
-        Lambda* L = cast<Lambda>(Callee);
-        return CallLambda(Op, L, ArgResults);
-        break;
-      }
-      case ValueKind::Builtin: {
-        llvm::MutableArrayRef<heavy::Value> ArgResultsRef(ArgResults);
-        Builtin* B = cast<Builtin>(Callee);
-
-        heavy::Value Result = B->Fn(Context,
-                                    ArgResultsRef.drop_front());
-        if (isa<Error>(Result)) return BlockItrTy();
-        setValue(Op.result(), Result);
-        return next(Op);
-      }
-      default: {
-        String* Msg = Context.CreateString(
-          "invalid operator for call expression: ",
-          getKindName(Callee.getKind())
-        );
-        return SetError(CallLoc, Msg, Callee);
-      }
-    }
+    Context.Apply(CallLoc, ArgResults);
+    return {};
   }
 
   BlockItrTy Visit(BindingOp Op) {
@@ -364,21 +298,16 @@ private:
     }
 
     mlir::Operation* Parent = Op.getParentOp();
-    mlir::Operation* Caller = getCurrentFrame().getOp();
 
-    if (!Caller) {
-      Caller = Parent;
-    } else if (Parent != Caller) {
-      // The continuation is on the stack frame
-      // If this isn't receiving a tail call
-      // then pop the frame (for tail calls this was done earlier)
-      ApplyOp AppOp = ContArgs[0].getDefiningOp<ApplyOp>();
-      if (!AppOp || AppOp.isTailPos()) {
-        pop_frame();
-      }
+    if (isa<FuncOp>(Parent)) {
+      // clear the values in the current scope
+      pop_scope();
+      // The continuation is handled by the run-time
+      Context.Cont(ContValues);
+      return {};
     }
 
-    auto Results = Caller->getResults();
+    auto Results = Parent->getResults();
     assert((Results.empty() ||
            Results.size() == ContArgs.size()) &&
         "continuation arity must match");
@@ -387,7 +316,7 @@ private:
       setValue(Results[i], ContValues[i]);
     }
 
-    return next(Caller);
+    return next(Parent);
   }
 
   BlockItrTy Visit(IfOp Op) {
@@ -500,8 +429,9 @@ private:
   }
 };
 
-heavy::Value opEval(OpEval& E) {
-  return E.Impl->Run();
+heavy::Value opEval(OpEval& E, mlir::Operation* Op) {
+  E.Impl->Eval(Op);
+  return Undefined{};
 }
 
 OpEval::OpEval(heavy::Context& C)
