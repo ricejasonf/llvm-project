@@ -79,6 +79,7 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
                                 ::reverse_iterator;
 
   heavy::Context& Context;
+  mlir::OpBuilder TopLevelBuilder;
   mlir::OpBuilder Builder;
   mlir::OpBuilder LocalInits;
   BindingScopeTable BindingTable;
@@ -105,6 +106,8 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
     }
   };
 
+  void insertTopLevelCommandOp(SourceLocation Loc);
+
 public:
   explicit OpGen(heavy::Context& C);
 
@@ -125,11 +128,24 @@ public:
     return ModulePrefix;
   }
 
-  mlir::Value VisitTopLevel(Value V) {
-    // there should be an insertion point already setup
-    // for the module init function
+  mlir::Operation* VisitTopLevel(Value V) {
     IsTopLevel = true;
-    return Visit(V);
+
+    // We use a null Builder to denote that we should
+    // insert into a lazily created CommandOp by default
+    mlir::OpBuilder::InsertionGuard IG(Builder);
+    Builder.clearInsertionPoint();
+
+    mlir::Value Result = Visit(V);
+    assert(Result && "expecting a valid mlir value");
+    mlir::Operation* Op = Result.getDefiningOp();
+    if (isa<GlobalOp>(Op)) return Op;
+    // The CommandOp was created lazily and should
+    // be the parent of the Result.
+    Op = Result.getDefiningOp()->getParentOp();
+    assert(isa<CommandOp>(Op) &&
+        "top level operation must be GlobalOp or CommandOp");
+    return Op;
   }
 
   bool isTopLevel() { return IsTopLevel; }
@@ -150,6 +166,9 @@ public:
 
   template <typename Op, typename ...Args>
   Op create(heavy::SourceLocation Loc, Args&& ...args) {
+    if (Builder.getBlock() == nullptr) {
+      insertTopLevelCommandOp(Loc);
+    }
     return create<Op>(Builder, Loc, std::forward<Args>(args)...);
   }
 
