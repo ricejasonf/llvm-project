@@ -50,6 +50,7 @@ heavy::Value ProcessTopLevelExpr(heavy::Context& Context, heavy::ValueRefs Value
   heavy::Value Val = Values[0];
   switch (InputMode.getValue()) {
   case ExecutionMode::repl:
+    llvm::errs() << "EVAL:"; Val.dump();
     Val = heavy::eval(Context, Val);
     break;
   case ExecutionMode::read:
@@ -92,11 +93,10 @@ int main(int argc, char const** argv) {
   };
 
   auto Env = std::make_unique<heavy::Environment>();
-  heavy::HeavyScheme HeavyScheme(
-      std::make_unique<heavy::Context>(ProcessTopLevelExpr));
+  heavy::HeavyScheme HeavyScheme;
   heavy::Lexer Lexer(File);
   HeavyScheme.SetEnvironment(*Env);
-  bool HasErrors = HeavyScheme.ProcessTopLevelCommands(Lexer, OnError);
+  bool HasErrors = HeavyScheme.ProcessTopLevelCommands(Lexer, ProcessTopLevelExpr, OnError);
 
   if (InputMode.getValue() == ExecutionMode::mlir) {
     HeavyScheme.getContext().dumpModuleOp();

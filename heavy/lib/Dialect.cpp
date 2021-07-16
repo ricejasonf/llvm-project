@@ -69,6 +69,14 @@ void BuiltinOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
       HeavyValueAttr::get(B.getContext(), Builtin));
 }
 
+#if 0
+void CommandOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                   mlir::Value X) {
+  mlir::Type HeavyValueTy = B.getType<HeavyValue>();
+  CommandOp::build(B, OpState, HeavyValueTy, X);
+}
+#endif
+
 void ConsOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                    mlir::Value X, mlir::Value Y) {
   mlir::Type HeavyValueTy = B.getType<HeavyValue>();

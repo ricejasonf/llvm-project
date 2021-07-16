@@ -27,13 +27,14 @@ using namespace heavy;
 
 OpGen::OpGen(heavy::Context& C)
   : Context(C),
+    TopLevelBuilder(&(C.MlirContext)),
     Builder(&(C.MlirContext)),
     LocalInits(&(C.MlirContext)),
     BindingTable()
 {
   mlir::ModuleOp TL =  Builder.create<mlir::ModuleOp>(
       Builder.getUnknownLoc());
-  Builder.setInsertionPointToStart(TL.getBody());
+  TopLevelBuilder.setInsertionPointToStart(TL.getBody());
   TopLevel = TL;
   LambdaScopes.emplace_back(TL, BindingTable);
 }
@@ -48,6 +49,15 @@ std::string OpGen::mangleFunctionName(llvm::StringRef Name) {
 
 mlir::ModuleOp OpGen::getTopLevel() {
   return cast<mlir::ModuleOp>(TopLevel);
+}
+
+void OpGen::insertTopLevelCommandOp(SourceLocation Loc) {
+  auto CommandOp = create<heavy::CommandOp>(TopLevelBuilder, Loc);
+  mlir::Block& Block = *CommandOp.addEntryBlock();
+  // overwrites Builder without reverting it
+  Builder.setInsertionPointToStart(&Block);
+  create<ContOp>(Loc, createUndefined());
+  Builder.setInsertionPointToStart(&Block);
 }
 
 mlir::Value OpGen::createUndefined() {
@@ -254,7 +264,8 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
 
   heavy::Mangler Mangler(Context);
   std::string MangledName = Mangler.mangleVariable(getModulePrefix(), S);
-  auto GlobalOp = create<heavy::GlobalOp>(DefineLoc, MangledName);
+  auto GlobalOp = create<heavy::GlobalOp>(TopLevelBuilder, DefineLoc,
+                                          MangledName);
   mlir::Block& Block = *GlobalOp.addEntryBlock();
 
   {
@@ -269,7 +280,7 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
     create<ContOp>(DefineLoc, Init);
   }
 
-  return mlir::Value();
+  return GlobalOp;
 }
 
 mlir::Value OpGen::createIf(SourceLocation Loc, Value Cond, Value Then,
