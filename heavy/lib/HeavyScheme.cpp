@@ -10,11 +10,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "heavy/Builtins.h"
 #include "heavy/Context.h"
 #include "heavy/HeavyScheme.h"
 #include "heavy/Lexer.h"
 #include "heavy/Mangle.h"
 #include "heavy/Parser.h"
+#include "heavy/Value.h"
 
 
 namespace heavy {
@@ -24,15 +26,12 @@ HeavyScheme::HeavyScheme(std::unique_ptr<heavy::Context> C)
     SourceManagerPtr(std::make_unique<heavy::SourceManager>())
 { }
 
-HeavyScheme::HeavyScheme() = default;
-HeavyScheme::~HeavyScheme() = default;
+HeavyScheme::HeavyScheme()
+  : ContextPtr(std::make_unique<heavy::Context>()),
+    SourceManagerPtr(std::make_unique<heavy::SourceManager>())
+{ }
 
-void HeavyScheme::init() {
-  if (!ContextPtr) {
-    ContextPtr = std::make_unique<heavy::Context>();
-    SourceManagerPtr = std::make_unique<heavy::SourceManager>();
-  }
-}
+HeavyScheme::~HeavyScheme() = default;
 
 heavy::Lexer HeavyScheme::createEmbeddedLexer(uintptr_t ExternalRawLoc,
                                               char const* BufferStart,
@@ -73,6 +72,14 @@ bool HeavyScheme::ProcessTopLevelCommands(
                               heavy::Lexer& Lexer,
                               llvm::function_ref<ErrorHandlerFn> ErrorHandler,
                               heavy::tok Terminator) {
+  return ProcessTopLevelCommands(Lexer, base::eval, ErrorHandler, Terminator);
+}
+
+bool HeavyScheme::ProcessTopLevelCommands(
+                              heavy::Lexer& Lexer,
+                              llvm::function_ref<ValueFnTy> ExprHandler,
+                              llvm::function_ref<ErrorHandlerFn> ErrorHandler,
+                              heavy::tok Terminator) {
   auto& Context = getContext();
   auto& SM = getSourceManager();
   auto handleError = [&] {
@@ -101,7 +108,7 @@ bool HeavyScheme::ProcessTopLevelCommands(
     if (HasError) continue;
     if (Result.isUsable()) {
       heavy::Value ResultVal = Result.get();
-      Context.HandleParseResult(Context, ResultVal);
+      ExprHandler(Context, ResultVal);
     }
   };
 

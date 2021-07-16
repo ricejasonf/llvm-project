@@ -15,7 +15,6 @@
 
 #include "heavy/ContinuationStack.h"
 #include "heavy/Dialect.h"
-#include "heavy/HeavyScheme.h"
 #include "heavy/Source.h"
 #include "heavy/Value.h"
 #include "mlir/IR/MLIRContext.h"
@@ -68,7 +67,8 @@ struct OpEval {
   ~OpEval();
 };
 
-class Context : DialectRegisterer {
+class Context : DialectRegisterer,
+                public ContinuationStack<Context> {
   friend class OpGen;
   friend class OpEvalImpl;
   friend class HeavyScheme;
@@ -91,8 +91,6 @@ class Context : DialectRegisterer {
   //    and swap it back upon completion (via RAII)
   Value EnvStack;
 
-  ValueFn HandleParseResult;
-  ContinuationStack ContStack;
   mlir::MLIRContext MlirContext;
   SourceLocation Loc = {}; // last known location for errors
   Value Err = nullptr;
@@ -136,7 +134,6 @@ public:
   Module* LoadModule(Value Spec);
 
   Context();
-  Context(ValueFn ParseResultHandler);
   ~Context();
 
   // Returns a Builtin from the SystemModule
@@ -167,16 +164,14 @@ private:
                           llvm::SmallVectorImpl<Symbol*>& Names,
                           bool& HasRestParam);
 public:
-  void Apply(SourceLocation Loc, ValueRefs Vs) {
-    setLoc(Loc);
-    ContStack.Apply(Vs);
+
+  void EmitStackSpaceError();
+
+  void Apply(SourceLocation CallLoc, Value Callee, ValueRefs Args) {
+    setLoc(CallLoc);
+    ContinuationStack<Context>::Apply(Callee, Args);
   }
-  void PushCont(heavy::Lambda::FunctionDataView FnData, ValueRefs Captures) {
-    ContStack.PushCont(FnData, Captures);
-  }
-  void Cont(ValueRefs Args) {
-    ContStack.Cont(Args);
-  }
+  using ContinuationStack<Context>::Apply;
 
   // Check Error
   //  - Returns true if there is an error or exception

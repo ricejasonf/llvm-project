@@ -64,7 +64,6 @@ void LoadBuiltinModule(clang::Parser& P) {
 bool Parser::ParseHeavyScheme() {
   if (!HeavyScheme) {
     HeavyScheme = std::make_unique<heavy::HeavyScheme>();
-    HeavyScheme->init();
     LoadBuiltinModule(*this);
     HeavyScheme->RegisterModule(HEAVY_CLANG_LIB_STR, HEAVY_CLANG_LOAD_MODULE);
   }
