@@ -100,6 +100,30 @@ def heavy_BuiltinOp : HeavyOp<"builtin"> {
   ];
 }
 
+def heavy_CommandOp : HeavyOp<"command"> {
+  let summary = "command";
+  let description = [{
+    Command is a node in a sequence that represents
+    a single expression whose domain and effects
+    would be discarded.
+
+    Currently this is only used for top level expressions.
+  }];
+
+  let regions = (region AnyRegion:$body);
+  let extraClassDeclaration = [{
+    Block* addEntryBlock() {
+      assert(body().empty() && "CommandOp already has an entry block");
+      Block* entry = new Block();
+      body().push_back(entry);
+      return entry;
+    }
+  }];
+  
+  let arguments = (ins /*none*/);
+  let results   = (outs /*none*/);
+}
+
 def heavy_ConsOp : HeavyOp<"cons"> {
   let summary = "cons";
   let description = [{

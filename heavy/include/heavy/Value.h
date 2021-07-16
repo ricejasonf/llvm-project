@@ -87,7 +87,10 @@ class Module;
 class ImportSet;
 class EnvFrame;
 using ValueRefs = llvm::MutableArrayRef<heavy::Value>;
-using ValueFn   = heavy::Value (*)(Context&, ValueRefs);
+using ValueFnTy = heavy::Value (Context&, ValueRefs);
+using ValueFn   = ValueFnTy*;
+//using ValueFn   = heavy::Value (*)(Context&, ValueRefs);
+
 // TODO consider having this return an Operation*
 using SyntaxFn  = mlir::Value (*)(OpGen&, Pair*);
 
@@ -913,8 +916,11 @@ public:
     return totalSizeToAlloc<Value, char>(NumCaptures, StorageLen);
   }
 
-  Value call(Context& C, ValueRefs Vs) {
-    return FnPtr(getStoragePtr(), C, Vs);
+  Value call(Context& C, ValueRefs Args) {
+    assert(Args.size() > 0 && 
+           Args[0] == Value(this) &&
+        "call args must include callee");
+    return FnPtr(getStoragePtr(), C, Args);
   }
 
   Value getCapture(unsigned I) {
@@ -1644,7 +1650,7 @@ Lambda::FunctionDataView Lambda::createFunctionDataView(F& Fn) {
     F& Func = *static_cast<F*>(Storage);
     return Func(C, Values);
   };
-  llvm::StringRef Storage(reinterpret_cast<char*>(&Fn), sizeof(F));
+  llvm::StringRef Storage(reinterpret_cast<char const*>(&Fn), sizeof(F));
   return FunctionDataView{CallFn, Storage};
 }
 
