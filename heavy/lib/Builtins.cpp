@@ -139,15 +139,24 @@ heavy::Value eval(Context& C, ValueRefs Args) {
   unsigned i = 0;
   Value EnvStack = (Len == 2) ? Args[i++] : nullptr;
   Value ExprOrDef = Args[i];
+
+  // TODO We need to be able to pass a ModuleOp for insertion
+  //      or create a temporary one if the Environment is immutable.
+  //
+  //      We could possible store the ModuleOp in the Environment object
+  //
   if (Environment* E = dyn_cast_or_null<Environment>(EnvStack)) {
+    // FIXME This modification of the EnvStack is incorrect I think
+    //       It should probably just replace the EnvStack and revert
+    //       when finished.
+    llvm_unreachable("TODO");
     // nest the Environment in the EnvStack
     EnvStack = C.CreatePair(E);
   }
 
-  mlir::Value V = C.OpGen->VisitTopLevel(ExprOrDef);
-  if (!V) return Undefined{};
+  mlir::Operation* Op = C.OpGen->VisitTopLevel(ExprOrDef);
+  if (!Op) return Undefined{};
 
-  mlir::Operation* Op = V.getDefiningOp();
   if (C.CheckError()) return C.CreateUndefined();
   return opEval(C.OpEval, Op);
 }

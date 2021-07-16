@@ -64,9 +64,6 @@ class OpEvalImpl {
   void setValue(mlir::Value M, heavy::Value H) {
     assert(M && "must be set to a valid value");
     assert(H && "must be set to a valid value");
-    llvm::errs() << "setValue: \n";
-     M.dump();
-     H.dump();
     ValueMap.insert(M, H);
   }
 
@@ -88,7 +85,6 @@ class OpEvalImpl {
       }
     }
 
-    if (!V) M.dump();
     // failure here could mean failure to capture in a closure
     assert(V && "getValue requires a value in the table");
 
@@ -127,35 +123,17 @@ public:
       ValueMapScopes.pop();
   }
 
-  // Evaluate expressions inserted at the top level.
-  // Subsequent calls resume from the last expression evaluated
-  // to allow REPL like behaviour
-  heavy::Value Run() {
-    mlir::ModuleOp TopLevel = Context.OpGen->getTopLevel();
-    BlockItrTy End(TopLevel.getBody()->getTerminator());
-
-    BlockItrTy Itr;
-    if (LastIp == BlockItrTy()) {
-      Itr = TopLevel.begin();
-    } else {
-      Itr = LastIp;
-      ++Itr;
+  heavy::Value Eval(mlir::Operation* Op) {
+    assert((isa<GlobalOp, CommandOp>(Op)) &&
+          "eval expects a top level op");
+    BlockItrTy Itr = Visit(Op);
+    // When a call to Visit returns a null we defer
+    // execution to the continuation stack.
+    while (Itr != BlockItrTy()) {
+      Itr = Visit(&*Itr);
     }
 
-    if (Itr == End) return Context.CreateUndefined();
-    do {
-      Itr = Visit(&*Itr);
-    } while (Itr != BlockItrTy() && Itr != End);
-
-    if (Itr == BlockItrTy() ||
-        Context.CheckError()) return Context.CreateUndefined();
-
-    LastIp = --Itr;
-    return getValue(LastIp->getResult(0));
-  }
-
-  void Eval(mlir::Operation* Op) {
-    Visit(Op); 
+    return Context.Resume();
   }
 
 private:
@@ -199,7 +177,9 @@ private:
     else if (isa<ConsOp>(Op))         return Visit(cast<ConsOp>(Op));
     else if (isa<SpliceOp>(Op))       return Visit(cast<SpliceOp>(Op));
     else if (isa<SetOp>(Op))          return Visit(cast<SetOp>(Op));
+    else if (isa<CommandOp>(Op))      return Visit(cast<CommandOp>(Op));
     else if (isa<FuncOp>(Op))         return next(Op); // skip functions
+    else if (isa<mlir::ModuleTerminatorOp>(Op)) return {};
     else if (UndefinedOp UndefOp = dyn_cast<UndefinedOp>(Op)) {
       setValue(UndefOp, Context.CreateUndefined());
       return next(Op);
@@ -238,8 +218,13 @@ private:
     push_scope();
     mlir::Block& Body = F.getBody().front();
     LoadArgs(Body, Args);
-    // return the first instruction of the function body
-    return BlockItrTy(Body.front());
+    BlockItrTy Itr = Body.begin();
+    while (Itr != BlockItrTy()) {
+      Itr = Visit(&*Itr);
+    }
+    // Something in the function should have
+    // called Context.Apply() or one of those
+    return BlockItrTy();
   }
 
   void LoadArgResults(ApplyOp Op,
@@ -259,8 +244,30 @@ private:
     llvm::SmallVector<heavy::Value, 8> ArgResults;
     LoadArgResults(Op, ArgResults);
 
-    Context.Apply(CallLoc, ArgResults);
-    return {};
+    if (Op.isTailPos()) {
+      Context.Apply(CallLoc, ArgResults[0],
+                    ValueRefs(ArgResults).drop_front());
+      return BlockItrTy();
+    }
+
+    // TODO Handle non-tail Apply which requires
+    //      setting up a continuation
+    //      To make this work with call/cc we have
+    //      to actually capture the values via something
+    //      like a PushContOp
+    //
+    //      Right now we are just resuming with the next Op
+    Context.PushCont([this, Op](heavy::Context& C, ValueRefs Args) {
+      BlockItrTy Itr = next(Op);
+      // When a call to Visit returns a null we defer
+      // execution to the continuation stack.
+      while (Itr != BlockItrTy()) {
+        Itr = Visit(&*Itr);
+      }
+      return Undefined{};
+    }, llvm::None);
+    Context.Apply(ArgResults);
+    return BlockItrTy();
   }
 
   BlockItrTy Visit(BindingOp Op) {
@@ -297,11 +304,11 @@ private:
       ContValues[i] = getValue(ContArgs[i]);
     }
 
+    pop_scope();
+
     mlir::Operation* Parent = Op.getParentOp();
 
     if (isa<FuncOp>(Parent)) {
-      // clear the values in the current scope
-      pop_scope();
       // The continuation is handled by the run-time
       Context.Cont(ContValues);
       return {};
@@ -321,6 +328,7 @@ private:
 
   BlockItrTy Visit(IfOp Op) {
     Value Input = getValue(Op.input());
+    push_scope();
     return Input.isTrue() ? Op.thenRegion().front().begin() :
                             Op.elseRegion().front().begin();
   }
@@ -336,7 +344,7 @@ private:
     }
 
     auto CallFn = [this, F](heavy::Context& C, ValueRefs Args) {
-      FunctionEntryPoint = this->CallFuncOp(F, Args);
+      this->CallFuncOp(F, Args);
       return heavy::Undefined();
     };
 
@@ -380,7 +388,14 @@ private:
   BlockItrTy Visit(GlobalOp Op) {
     // skip external global ops
     if (Op.isExternal()) return next(Op);
+
+    push_scope();
     return Op.initializer().front().begin();
+  }
+
+  BlockItrTy Visit(CommandOp Op) {
+    push_scope();
+    return Op.body().front().begin();
   }
 
   BlockItrTy Visit(SetOp Op) {
@@ -430,8 +445,7 @@ private:
 };
 
 heavy::Value opEval(OpEval& E, mlir::Operation* Op) {
-  E.Impl->Eval(Op);
-  return Undefined{};
+  return E.Impl->Eval(Op);
 }
 
 OpEval::OpEval(heavy::Context& C)

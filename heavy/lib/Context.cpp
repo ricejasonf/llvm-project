@@ -49,17 +49,12 @@ heavy::ExternString<20> NameForImportVar;
 heavy::ExternSyntax _HEAVY_import;
 
 Context::Context()
-  : Context(base::eval)
-{ }
-
-Context::Context(ValueFn ParseResultHandler)
   : DialectRegisterer()
+  , ContinuationStack<Context>()
   , TrashHeap()
   , SystemModule(std::make_unique<Module>(*this))
   , SystemEnvironment(std::make_unique<Environment>())
   , EnvStack(SystemEnvironment.get())
-  , HandleParseResult(ParseResultHandler)
-  , ContStack(*this)
   , MlirContext()
   , OpGen(std::make_unique<heavy::OpGen>(*this))
   , OpEval(*this)
@@ -470,8 +465,10 @@ bool eqv_slow(Value V1, Value V2) {
 
 } // end namespace heavy
 
-void ContinuationStack::EmitStackSpaceError() {
-  Context.SetError("insufficient stack space");
+void Context::EmitStackSpaceError() {
+  // TODO We should probably clear the stack
+  //      and run this as a continuation
+  SetError("insufficient stack space");
 }
 
 EnvEntry ImportSet::Lookup(heavy::Context& C, Symbol* S) {
