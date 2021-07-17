@@ -917,9 +917,6 @@ public:
   }
 
   Value call(Context& C, ValueRefs Args) {
-    assert(Args.size() > 0 && 
-           Args[0] == Value(this) &&
-        "call args must include callee");
     return FnPtr(getStoragePtr(), C, Args);
   }
 
