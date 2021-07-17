@@ -48,6 +48,8 @@ class ContinuationStack {
   heavy::Lambda* Top;
   heavy::Lambda* Bottom; // not a valid Lambda but still castable to Value
 
+  bool DidCallContinuation = false; // debug info
+
   Derived& getDerived() {
     return *static_cast<Derived*>(this);
   }
@@ -90,6 +92,7 @@ class ContinuationStack {
   }
 
   void ApplyHelper(Value Callee, ValueRefs Args) {
+    DidCallContinuation = true; // debug mode only
     std::fill(ApplyArgs.begin(), ApplyArgs.end(), nullptr);
     ApplyArgs.resize(Args.size() + 1);
     ApplyArgs[0] = Callee;
@@ -137,9 +140,14 @@ public:
   heavy::Value Resume() {
     Derived& Context = getDerived();
 
+
     while (Value Callee = ApplyArgs[0]) {
-      ValueRefs Args = ValueRefs(ApplyArgs).drop_front();
       if (Callee == Bottom) break;
+
+      // debug mode only
+      DidCallContinuation = false;
+
+      ValueRefs Args = ValueRefs(ApplyArgs).drop_front();
       switch (Callee.getKind()) {
       case ValueKind::Lambda: {
         Lambda* L = cast<Lambda>(Callee);
@@ -162,6 +170,9 @@ public:
         );
         return Context.SetError(Callee.getSourceLocation(), Msg, Callee);
       }
+
+      // this means a C++ function was not written correctly
+      assert(DidCallContinuation && "function failed to call continuation");
     }
     if (ApplyArgs.size() > 1) return ApplyArgs[1];
     return Undefined{};
