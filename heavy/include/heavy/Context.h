@@ -186,6 +186,7 @@ public:
   Value SetError(Value E) {
     assert(isa<Error>(E) || isa<Exception>(E));
     Err = E;
+    Yield(Undefined()); // Break any run loop
     return CreateUndefined();
   }
 

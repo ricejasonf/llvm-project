@@ -138,13 +138,13 @@ public:
 
 private:
   void push_scope() {
-    llvm::errs() << "PUSHING SCOPE\n";
     ValueMapScopes.emplace(ValueMap);
   }
 
   void pop_scope() {
-    llvm::errs() << "POPPING SCOPE\n";
     ValueMapScopes.pop();
+    assert(ValueMapScopes.size() > 0 &&
+        "scope stack must be balanced");
   }
 
   BlockItrTy next(mlir::Operation* Op) {
@@ -196,8 +196,11 @@ private:
     // which later gets assigned to BingingOps (in code)
 
     auto OpArgs = Body.getArguments();
-    for (unsigned i = 0; i < OpArgs.size(); ++i) {
-      setValue(OpArgs[i], Args[i]);
+    assert(OpArgs.size() == Args.size() + 1
+        && "arity should be checked already");
+    // OpArg[0] is always the context object
+    for (unsigned i = 0; i < Args.size(); ++i) {
+      setValue(OpArgs[i + 1], Args[i]);
     }
   }
 
@@ -210,7 +213,8 @@ private:
                                .getValue()
                                .cast<mlir::FunctionType>();
       // assert(!F.hasRestParam() && "TODO support rest parameters");
-      if (FT.getNumInputs() != NumArgs) {
+      // The function type includes the Context as a parameter
+      if (FT.getNumInputs() != NumArgs + 1) {
         return SetError(CallLoc, "invalid arity", heavy::Undefined());
       }
     }
@@ -227,6 +231,10 @@ private:
     return BlockItrTy();
   }
 
+  // LoadArgResults
+  //  - Loads the values input to the ApplyOp
+  //  - Note that the arguments do not map directly
+  //    to the callees function parameters
   void LoadArgResults(ApplyOp Op,
                       llvm::SmallVectorImpl<heavy::Value>& ArgResults) {
     auto Args = Op.args();
@@ -243,10 +251,11 @@ private:
 
     llvm::SmallVector<heavy::Value, 8> ArgResults;
     LoadArgResults(Op, ArgResults);
+    Value Callee = ArgResults[0];
+    ValueRefs Args = ValueRefs(ArgResults).drop_front();
 
     if (Op.isTailPos()) {
-      Context.Apply(CallLoc, ArgResults[0],
-                    ValueRefs(ArgResults).drop_front());
+      Context.Apply(CallLoc, Callee, Args);
       return BlockItrTy();
     }
 
@@ -266,7 +275,7 @@ private:
       }
       return Undefined{};
     }, llvm::None);
-    Context.Apply(ArgResults);
+    Context.Apply(Callee, Args);
     return BlockItrTy();
   }
 
@@ -323,6 +332,12 @@ private:
       setValue(Results[i], ContValues[i]);
     }
 
+    if (isa<mlir::ModuleOp>(Parent->getParentOp())) {
+      // stop after top level op
+      Context.Cont(heavy::Undefined());
+      return {};
+    }
+
     return next(Parent);
   }
 
@@ -365,8 +380,14 @@ private:
     // get the Lambda object and get its
     // closure value and set it to the value
     uint32_t Index = Op.index().getZExtValue();
-    heavy::Value Closure = getValue(Op.closure());
+
+    // We are assuming we will only ever get a
+    // closure element from the current callee.
+    // heavy::Value Closure = getValue(Op.closure());
+    heavy::Value Closure = Context.getCallee();
+
     heavy::Value V = nullptr;
+
     if (auto* C = dyn_cast<Lambda>(Closure)) {
       V = C->getCaptures()[Index];
     }

@@ -164,7 +164,8 @@ heavy::Value eval(Context& C, ValueRefs Args) {
 heavy::Value dump(Context& C, ValueRefs Args) {
   if (Args.size() != 1) return C.SetError("invalid arity");
   Args[0].dump();
-  return heavy::Undefined();
+  C.Cont(heavy::Undefined());
+  return Undefined();
 }
 
 template <typename Op>
