@@ -192,6 +192,7 @@ heavy::Value add(Context& C, ValueRefs Args) {
   for (heavy::Value X : Args.drop_front()) {
     Temp = operator_helper<NumberOp::Add>(C, Temp, X);
   }
+  C.Cont(Temp);
   return Temp;
 }
 
@@ -200,6 +201,7 @@ heavy::Value mul(Context&C, ValueRefs Args) {
   for (heavy::Value X : Args.drop_front()) {
     Temp = operator_helper<NumberOp::Mul>(C, Temp, X);
   }
+  C.Cont(Temp);
   return Temp;
 }
 
@@ -208,6 +210,7 @@ heavy::Value sub(Context&C, ValueRefs Args) {
   for (heavy::Value X : Args.drop_front()) {
     Temp = operator_helper<NumberOp::Sub>(C, Temp, X);
   }
+  C.Cont(Temp);
   return Temp;
 }
 
@@ -220,6 +223,7 @@ heavy::Value div(Context& C, ValueRefs Args) {
     }
     Temp = operator_helper<NumberOp::Div>(C, Temp, X);
   }
+  C.Cont(Temp);
   return Temp;
 }
 
@@ -244,7 +248,8 @@ heavy::Value eqv(Context& C, ValueRefs Args) {
   if (Args.size() != 2) return C.SetError("invalid arity");
   Value V1 = Args[0];
   Value V2 = Args[1];
-  return Bool(::heavy::eqv(V1, V2));
+  C.Cont(Bool(::heavy::eqv(V1, V2)));
+  return Undefined();
 }
 
 heavy::Value list(Context& C, ValueRefs Args) {
