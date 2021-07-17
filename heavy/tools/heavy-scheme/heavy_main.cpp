@@ -50,7 +50,6 @@ heavy::Value ProcessTopLevelExpr(heavy::Context& Context, heavy::ValueRefs Value
   heavy::Value Val = Values[0];
   switch (InputMode.getValue()) {
   case ExecutionMode::repl:
-    llvm::errs() << "EVAL:"; Val.dump();
     Val = heavy::eval(Context, Val);
     break;
   case ExecutionMode::read:

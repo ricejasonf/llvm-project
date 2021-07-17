@@ -46,7 +46,7 @@ class ContinuationStack {
   std::vector<char> Storage;
   llvm::SmallVector<Value, 8> ApplyArgs; // includes the callee
   heavy::Lambda* Top;
-  heavy::Lambda* Bottom; // not a valid ValueBase
+  heavy::Lambda* Bottom; // not a valid Lambda but still castable to Value
 
   Derived& getDerived() {
     return *static_cast<Derived*>(this);
@@ -58,6 +58,7 @@ class ContinuationStack {
     uintptr_t Start = reinterpret_cast<uintptr_t>(&Storage.back());
     unsigned AlignmentPadding = Start % alignof(Lambda);
     Start -= AlignmentPadding;
+    Start -= sizeof(heavy::Value);
     return reinterpret_cast<Lambda*>(Start);
   }
 
@@ -75,14 +76,24 @@ class ContinuationStack {
     return reinterpret_cast<Lambda*>(NewPtr);
   }
 
-  // PopCont
-  //    - Pops the topmost Lambda zeroing its memory
+  // MaybePopCont
+  //    - If the current continuation is being called,
+  //      pop the topmost Lambda and zero its memory
   //      to prevent weird stuff
-  void PopCont() {
+  void MaybePopCont() {
+    if (ApplyArgs[0] != Top) return;
+    if (Top == Bottom) return;
     char* begin = reinterpret_cast<char*>(Top);
     char* end = begin + Top->getObjectSize();
     std::fill(begin, end, 0);
     Top = reinterpret_cast<Lambda*>(end);
+  }
+
+  void ApplyHelper(Value Callee, ValueRefs Args) {
+    std::fill(ApplyArgs.begin(), ApplyArgs.end(), nullptr);
+    ApplyArgs.resize(Args.size() + 1);
+    ApplyArgs[0] = Callee;
+    std::copy(Args.begin(), Args.end(), ApplyArgs.begin() + 1);
   }
 
 public:
@@ -97,6 +108,10 @@ public:
 
   ContinuationStack(ContinuationStack const&) = delete;
 
+  heavy::Value getCallee() {
+    return ApplyArgs[0];
+  }
+
   // Yield
   //  - Breaks the run loop yielding a value to serve
   //    as the result.
@@ -104,14 +119,16 @@ public:
   void Yield(ValueRefs Results) {
     Apply(Bottom, Results);
   }
+  void Yield(Value Result) {
+    Yield(ValueRefs(Result));
+  }
 
   // PushBreak
   //  - Schedules a yield to be called so any
   //    evaluation that occurs on top can finish
   void PushBreak() {
     PushCont([](Derived& C, ValueRefs Args) {
-      // drop the callee
-      Yield(Args.drop_front());
+      Yield(Args);
     });
   }
 
@@ -119,19 +136,19 @@ public:
   // in ApplyArgs
   heavy::Value Resume() {
     Derived& Context = getDerived();
+
     while (Value Callee = ApplyArgs[0]) {
+      ValueRefs Args = ValueRefs(ApplyArgs).drop_front();
       if (Callee == Bottom) break;
       switch (Callee.getKind()) {
       case ValueKind::Lambda: {
         Lambda* L = cast<Lambda>(Callee);
-        L->call(Context, ApplyArgs);
-        if (L == Top) PopCont();
+        L->call(Context, Args);
         break;
       }
       case ValueKind::Builtin: {
         // TODO make the interface for calling Builtins
         //      consistent with Lambda
-        ValueRefs Args = ValueRefs(ApplyArgs).drop_front();
         Builtin* F = cast<Builtin>(Callee);
         F->Fn(Context, Args);
         break;
@@ -154,9 +171,11 @@ public:
   //    - Creates and pushes a temporary closure to the stack
   template <typename Fn>
   void PushCont(Fn const& F, ValueRefs Captures) {
+    MaybePopCont();
     auto FnData = heavy::Lambda::createFunctionDataView(F);
     size_t size = Lambda::sizeToAlloc(FnData, Captures.size());
 
+    MaybePopCont();
     void* Mem = allocate(size);
     if (!Mem) {
       llvm_unreachable("TODO catastrophic failure or something");
@@ -168,7 +187,7 @@ public:
 
   void PushCont(heavy::Value Callable) {
     PushCont([](Derived& Context, ValueRefs Args) {
-      Lambda* Self = cast<Lambda>(Args[0]);
+      Lambda* Self = cast<Lambda>(Context.getCallee());
       heavy::Value Callable = Self->getCapture(0);
       Context.Apply(Callable, Args.drop_front());
     }, Callable);
@@ -179,31 +198,18 @@ public:
   //    - This can be used for tail calls or, when used
   //      in conjunction with PushCont, non-tail calls
   void Apply(Value Callee, ValueRefs Args) {
-    std::fill(ApplyArgs.begin(), ApplyArgs.end(), nullptr);
-    ApplyArgs.resize(Args.size() + 1);
-    ApplyArgs[0] = Callee;
-    std::copy(Args.begin(), Args.end(), ApplyArgs.begin() + 1);
-  }
-  //  Apply
-  //    - Args should include the callee in this overload
-  void Apply(ValueRefs Args) {
-    Apply(Args[0], Args.drop_front());
+    MaybePopCont();
+    ApplyHelper(Callee, Args);
   }
 
   // Cont
   //    - Prepares a call to the topmost continuation
   //    - Args should not include the callee
   void Cont(ValueRefs Args) {
-    Apply(Top, Args);
-#if 0
-    std::fill(ApplyArgs.begin(), ApplyArgs.end(), nullptr);
-    ApplyArgs.resize(Args.size() + 1);
-    ApplyArgs[0] = Top;
-    auto Itr = ApplyArgs.begin();
-    ++Itr;
-    std::copy(Args.begin(), Args.end(), Itr);
-#endif
+    MaybePopCont();
+    ApplyHelper(Top, Args);
   }
+  void Cont(Value Arg) { Cont(ValueRefs(Arg)); }
 
   //  RestoreStack
   //    - Restores the stack from a String that was saved by CallCC
