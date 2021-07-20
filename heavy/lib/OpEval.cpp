@@ -85,6 +85,7 @@ class OpEvalImpl {
       }
     }
 
+    if (!V) M.getDefiningOp()->dump();
     // failure here could mean failure to capture in a closure
     assert(V && "getValue requires a value in the table");
 
@@ -246,6 +247,21 @@ private:
     ArgResults[0] = getValue(Op.fn());
   }
 
+  // SetContValues
+  //  - Loads the values for the results of an Op
+  //  - Used by ContOp and ApplyOp (since ApplyOp is dynamic)
+  //  - Checks arity
+  void SetContValues(mlir::Operation* Op, ValueRefs ContValues) {
+    auto Results = Op->getResults();
+    assert((Results.empty() ||
+           Results.size() == ContValues.size()) &&
+        "continuation arity must match");
+
+    for (unsigned i = 0; i < Results.size(); ++i) {
+      setValue(Results[i], ContValues[i]);
+    }
+  }
+
   BlockItrTy Visit(ApplyOp Op) {
     heavy::SourceLocation CallLoc = getSourceLocation(Op.getLoc());
 
@@ -266,7 +282,9 @@ private:
     //      like a PushContOp
     //
     //      Right now we are just resuming with the next Op
-    Context.PushCont([this, Op](heavy::Context& C, ValueRefs Args) {
+    Context.PushCont([this, Op](heavy::Context& C, ValueRefs ContValues) {
+      SetContValues(Op, ContValues);
+
       BlockItrTy Itr = next(Op);
       // When a call to Visit returns a null we defer
       // execution to the continuation stack.
@@ -323,14 +341,7 @@ private:
       return {};
     }
 
-    auto Results = Parent->getResults();
-    assert((Results.empty() ||
-           Results.size() == ContArgs.size()) &&
-        "continuation arity must match");
-
-    for (unsigned i = 0; i < Results.size(); ++i) {
-      setValue(Results[i], ContValues[i]);
-    }
+    SetContValues(Parent, ContValues);
 
     if (isa<mlir::ModuleOp>(Parent->getParentOp())) {
       // stop after top level op
