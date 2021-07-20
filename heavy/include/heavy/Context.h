@@ -225,13 +225,14 @@ public:
   }
 
   SourceLocation getErrorLocation() {
+    assert(Err && "requires an error be set");
     SourceLocation L = Err.getSourceLocation();
     if (L.isValid()) return L;
     return Loc;
   }
 
   StringRef getErrorMessage() {
-    assert(Err && "PrintError requires an error be set");
+    assert(Err && "requires an error be set");
     if (Error* E = dyn_cast_or_null<Error>(Err)) {
       return E->getErrorMessage();
     } else {

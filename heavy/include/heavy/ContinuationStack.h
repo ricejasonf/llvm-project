@@ -54,6 +54,12 @@ class ContinuationStack {
     return *static_cast<Derived*>(this);
   }
 
+  void PrintStackSize() {
+    size_t size = reinterpret_cast<uintptr_t>(&(Storage.back())) -
+                  reinterpret_cast<uintptr_t>(Top);
+    llvm::errs() << "STACK SIZE: " << size << '\n';
+  }
+
   // Returns a pointer to an invalid Lambda*
   // used for Bottom and the initial Top
   heavy::Lambda* getStartingPoint() {
@@ -63,7 +69,6 @@ class ContinuationStack {
     Start -= sizeof(heavy::Value);
     return reinterpret_cast<Lambda*>(Start);
   }
-
 
   Lambda* allocate(size_t size) {
     uintptr_t Cur = reinterpret_cast<uintptr_t>(Top);
@@ -78,17 +83,16 @@ class ContinuationStack {
     return reinterpret_cast<Lambda*>(NewPtr);
   }
 
-  // MaybePopCont
-  //    - If the current continuation is being called,
-  //      pop the topmost Lambda and zero its memory
-  //      to prevent weird stuff
-  void MaybePopCont() {
-    if (ApplyArgs[0] != Top) return;
-    if (Top == Bottom) return;
+  // PopCont
+  //  - Note that a call to PushCont will invalidate
+  //    the returned Lambda*
+  Lambda* PopCont() {
+    if (Top == Bottom) return Bottom;
+    Lambda* OldTop = Top;
     char* begin = reinterpret_cast<char*>(Top);
     char* end = begin + Top->getObjectSize();
-    std::fill(begin, end, 0);
     Top = reinterpret_cast<Lambda*>(end);
+    return OldTop;
   }
 
   void ApplyHelper(Value Callee, ValueRefs Args) {
@@ -139,7 +143,7 @@ public:
   // in ApplyArgs
   heavy::Value Resume() {
     Derived& Context = getDerived();
-
+    if (Context.CheckError()) return Undefined();
 
     while (Value Callee = ApplyArgs[0]) {
       if (Callee == Bottom) break;
@@ -162,8 +166,6 @@ public:
         break;
       }
       default:
-        llvm_unreachable(
-            "TODO raise error for invalid operator to function call");
         String* Msg = Context.CreateString(
           "invalid operator for call expression: ",
           getKindName(Callee.getKind())
@@ -182,11 +184,9 @@ public:
   //    - Creates and pushes a temporary closure to the stack
   template <typename Fn>
   void PushCont(Fn const& F, ValueRefs Captures) {
-    MaybePopCont();
     auto FnData = heavy::Lambda::createFunctionDataView(F);
     size_t size = Lambda::sizeToAlloc(FnData, Captures.size());
 
-    MaybePopCont();
     void* Mem = allocate(size);
     if (!Mem) {
       llvm_unreachable("TODO catastrophic failure or something");
@@ -209,7 +209,6 @@ public:
   //    - This can be used for tail calls or, when used
   //      in conjunction with PushCont, non-tail calls
   void Apply(Value Callee, ValueRefs Args) {
-    MaybePopCont();
     ApplyHelper(Callee, Args);
   }
 
@@ -217,8 +216,7 @@ public:
   //    - Prepares a call to the topmost continuation
   //    - Args should not include the callee
   void Cont(ValueRefs Args) {
-    MaybePopCont();
-    ApplyHelper(Top, Args);
+    ApplyHelper(PopCont(), Args);
   }
   void Cont(Value Arg) { Cont(ValueRefs(Arg)); }
 
