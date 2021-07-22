@@ -4113,8 +4113,9 @@ class BindingDecl : public ValueDecl {
   /// binding).
   Expr *Binding = nullptr;
 
-  BindingDecl(DeclContext *DC, SourceLocation IdLoc, IdentifierInfo *Id)
-      : ValueDecl(Decl::Binding, DC, IdLoc, Id, QualType()) {}
+  BindingDecl(DeclContext *DC, SourceLocation IdLoc, IdentifierInfo *Id,
+              QualType T)
+      : ValueDecl(Decl::Binding, DC, IdLoc, Id, T) {}
 
   void anchor() override;
 
@@ -4122,7 +4123,8 @@ public:
   friend class ASTDeclReader;
 
   static BindingDecl *Create(ASTContext &C, DeclContext *DC,
-                             SourceLocation IdLoc, IdentifierInfo *Id);
+                             SourceLocation IdLoc, IdentifierInfo *Id,
+                             QualType T);
   static BindingDecl *CreateDeserialized(ASTContext &C, GlobalDeclID ID);
 
   /// Get the expression to which this declaration is bound. This may be null
@@ -4134,10 +4136,6 @@ public:
   /// decomposition of.
   ValueDecl *getDecomposedDecl() const { return Decomp; }
 
-  /// Get the variable (if any) that holds the value of evaluating the binding.
-  /// Only present for user-defined bindings for tuple-like types.
-  VarDecl *getHoldingVar() const;
-
   /// Set the binding for this BindingDecl, along with its declared type (which
   /// should be a possibly-cv-qualified form of the type of the binding, or a
   /// reference to such a type).
@@ -4148,6 +4146,9 @@ public:
 
   /// Set the decomposed variable for this BindingDecl.
   void setDecomposedDecl(ValueDecl *Decomposed) { Decomp = Decomposed; }
+
+  VarDecl *getHoldingVar() const;
+  static VarDecl *getHoldingVar(Expr* E);
 
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
   static bool classofKind(Kind K) { return K == Decl::Binding; }
@@ -4201,8 +4202,45 @@ public:
 
   void printName(raw_ostream &OS, const PrintingPolicy &Policy) const override;
 
+  /// Visit the variables (if any) that hold the values of evaluating the binding.
+  /// Only present for user-defined bindings for tuple-like types.
+  void VisitHoldingVars(llvm::function_ref<void(VarDecl*)> F) const;
+
+  // Visit the concrete bindings. (workaround)
+  void VisitBindings(llvm::function_ref<void(BindingDecl*)> F) const;
+
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
   static bool classofKind(Kind K) { return K == Decomposition; }
+};
+
+// ImplicitTemplateDecl is just a placeholder to create an implicit template
+// within an non-dependent context. We still have to be able to serialize it
+// and junk (I think).
+class ImplicitTemplateDecl : public Decl, public DeclContext {
+  ImplicitTemplateDecl(ASTContext &C, DeclContext *DC, SourceLocation StartLoc)
+      : Decl(ImplicitTemplate, DC, StartLoc), DeclContext(ImplicitTemplate) {}
+
+public:
+  friend class ASTDeclReader;
+  friend class ASTDeclWriter;
+
+  static ImplicitTemplateDecl *Create(ASTContext &C, DeclContext *DC,
+                                      SourceLocation StartLoc);
+
+  static ImplicitTemplateDecl *CreateDeserialized(ASTContext &C,
+                                                  GlobalDeclID ID);
+
+  // Implement isa/cast/dyncast/etc.
+  static bool classof(const Decl *D) { return classofKind(D->getKind()); }
+  static bool classofKind(Kind K) { return K == ImplicitTemplate; }
+
+  static DeclContext *castToDeclContext(const ImplicitTemplateDecl *D) {
+    return static_cast<DeclContext *>(const_cast<ImplicitTemplateDecl *>(D));
+  }
+
+  static ImplicitTemplateDecl *castFromDeclContext(const DeclContext *DC) {
+    return static_cast<ImplicitTemplateDecl *>(const_cast<DeclContext *>(DC));
+  }
 };
 
 /// An instance of this class represents the declaration of a property

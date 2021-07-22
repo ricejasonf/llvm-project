@@ -18621,6 +18621,11 @@ bool Sema::tryCaptureVariable(
   DeclContext *VarDC = Var->getDeclContext();
   DeclContext *DC = CurContext;
 
+  if (isa<ImplicitTemplateDecl>(DC))
+    DC = DC->getParent();
+  if (isa<ImplicitTemplateDecl>(VarDC))
+    VarDC = VarDC->getParent();
+
   // Skip past RequiresExprBodys because they don't constitute function scopes.
   while (DC->isRequiresExprBody())
     DC = DC->getParent();

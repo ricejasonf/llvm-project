@@ -249,7 +249,8 @@ Sema::createLambdaClosureType(SourceRange IntroducerRange, TypeSourceInfo *Info,
                               unsigned LambdaDependencyKind,
                               LambdaCaptureDefault CaptureDefault) {
   DeclContext *DC = CurContext;
-  while (!(DC->isFunctionOrMethod() || DC->isRecord() || DC->isFileContext()))
+  while (!(DC->isFunctionOrMethod() || DC->isRecord() ||
+           DC->isFileContext() || isa<ImplicitTemplateDecl>(DC)))
     DC = DC->getParent();
 
   bool IsGenericLambda =
@@ -1520,6 +1521,7 @@ void Sema::ActOnStartOfLambdaDefinition(LambdaIntroducer &Intro,
     // - a member of a templated entity,
     // - an enumerator for an enumeration that is a templated entity, or
     // - the closure type of a lambda-expression ([expr.prim.lambda.closure])
+    // - an entity defined with an implicit template region
     // appearing in the declaration of a templated entity. [Note 6: A local
     // class, a local or block variable, or a friend function defined in a
     // templated entity is a templated entity.  — end note]

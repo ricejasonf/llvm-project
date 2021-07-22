@@ -1807,6 +1807,8 @@ DEF_TRAVERSE_DECL(OMPAllocateDecl, {
     TRY_TO(TraverseOMPClause(C));
 })
 
+DEF_TRAVERSE_DECL(ImplicitTemplateDecl, {})
+
 // A helper method for TemplateDecl's children.
 template <typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseTemplateParameterListHelper(
@@ -2924,6 +2926,7 @@ DEF_TRAVERSE_STMT(FunctionParmPackExpr, {})
 DEF_TRAVERSE_STMT(CXXFoldExpr, {})
 DEF_TRAVERSE_STMT(AtomicExpr, {})
 DEF_TRAVERSE_STMT(CXXParenListInitExpr, {})
+DEF_TRAVERSE_STMT(ResolvedUnexpandedPackExpr, {})
 
 DEF_TRAVERSE_STMT(MaterializeTemporaryExpr, {
   if (S->getLifetimeExtendedTemporaryDecl()) {

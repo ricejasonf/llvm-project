@@ -2194,6 +2194,13 @@ void ASTStmtWriter::VisitPackIndexingExpr(PackIndexingExpr *E) {
   Code = serialization::EXPR_PACK_INDEXING;
 }
 
+void ASTStmtWriter::VisitResolvedUnexpandedPackExpr(
+                                              ResolvedUnexpandedPackExpr *E) {
+  VisitExpr(E);
+  llvm_unreachable("TODO???");
+  //Code = serialization::EXPR_???;
+}
+
 void ASTStmtWriter::VisitSubstNonTypeTemplateParmExpr(
                                               SubstNonTypeTemplateParmExpr *E) {
   VisitExpr(E);

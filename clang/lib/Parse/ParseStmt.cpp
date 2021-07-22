@@ -1314,8 +1314,12 @@ StmtResult Parser::ParseCompoundStatementBody(bool isStmtExpr) {
   if (T.getCloseLocation().isValid())
     CloseLoc = T.getCloseLocation();
 
-  return Actions.ActOnCompoundStmt(T.getOpenLocation(), CloseLoc,
-                                   Stmts, isStmtExpr);
+  StmtResult Result = Actions.ActOnCompoundStmt(T.getOpenLocation(), CloseLoc,
+                                                Stmts, isStmtExpr);
+  if (isa<ImplicitTemplateDecl>(Actions.CurContext))
+    Result = Actions.ActOnImplicitTemplateEnd(Actions.CurScope->getParent(),
+                                              Result.get());
+  return Result;
 }
 
 /// ParseParenExprOrCondition:
@@ -1611,6 +1615,12 @@ StmtResult Parser::ParseIfStatement(SourceLocation *TrailingElseLoc) {
   // Pop the 'if' scope if needed.
   InnerScope.Exit();
 
+  // Handle the unlikely case that the ThenStmt introduces
+  // an implicit template region (via a binding pack.)
+  if (isa<ImplicitTemplateDecl>(Actions.CurContext))
+    ThenStmt = Actions.ActOnImplicitTemplateEnd(Actions.CurScope,
+                                                ThenStmt.get());
+
   // If it has an else, parse it.
   SourceLocation ElseLoc;
   SourceLocation ElseStmtLoc;
@@ -1654,6 +1664,13 @@ StmtResult Parser::ParseIfStatement(SourceLocation *TrailingElseLoc) {
 
     // Pop the 'else' scope if needed.
     InnerScope.Exit();
+
+    // Handle the unlikely case that the ElseStmt introduces
+    // an implicit template region (via a binding pack.)
+    if (isa<ImplicitTemplateDecl>(Actions.CurContext))
+      ElseStmt = Actions.ActOnImplicitTemplateEnd(Actions.CurScope,
+                                                  ElseStmt.get());
+
   } else if (Tok.is(tok::code_completion)) {
     cutOffParsing();
     Actions.CodeCompletion().CodeCompleteAfterIf(getCurScope(), IsBracedThen);
@@ -1706,8 +1723,12 @@ StmtResult Parser::ParseIfStatement(SourceLocation *TrailingElseLoc) {
     Kind = NotLocation.isValid() ? IfStatementKind::ConstevalNegated
                                  : IfStatementKind::ConstevalNonNegated;
 
-  return Actions.ActOnIfStmt(IfLoc, Kind, LParen, InitStmt.get(), Cond, RParen,
-                             ThenStmt.get(), ElseLoc, ElseStmt.get());
+  StmtResult IfStmt = Actions.ActOnIfStmt(IfLoc, Kind, LParen, InitStmt.get(),
+                                          Cond, RParen, ThenStmt.get(), ElseLoc,
+                                          ElseStmt.get());
+  if (isa<ImplicitTemplateDecl>(Actions.CurContext))
+    IfStmt = Actions.ActOnImplicitTemplateEnd(Actions.CurScope, IfStmt.get());
+  return IfStmt;
 }
 
 /// ParseSwitchStatement
@@ -1741,6 +1762,7 @@ StmtResult Parser::ParseSwitchStatement(SourceLocation *TrailingElseLoc) {
   unsigned ScopeFlags = Scope::SwitchScope;
   if (C99orCXX)
     ScopeFlags |= Scope::DeclScope | Scope::ControlScope;
+
   ParseScope SwitchScope(this, ScopeFlags);
 
   // Parse the condition.
@@ -1794,7 +1816,11 @@ StmtResult Parser::ParseSwitchStatement(SourceLocation *TrailingElseLoc) {
   InnerScope.Exit();
   SwitchScope.Exit();
 
-  return Actions.ActOnFinishSwitchStmt(SwitchLoc, Switch.get(), Body.get());
+  StmtResult Result = Actions.ActOnFinishSwitchStmt(SwitchLoc,
+                                                    Switch.get(), Body.get());
+  if (isa<ImplicitTemplateDecl>(Actions.CurContext))
+    Result = Actions.ActOnImplicitTemplateEnd(Actions.CurScope, Result.get());
+  return Result;
 }
 
 /// ParseWhileStatement
@@ -1832,6 +1858,7 @@ StmtResult Parser::ParseWhileStatement(SourceLocation *TrailingElseLoc) {
                  Scope::DeclScope  | Scope::ControlScope;
   else
     ScopeFlags = Scope::BreakScope | Scope::ContinueScope;
+
   ParseScope WhileScope(this, ScopeFlags);
 
   // Parse the condition.
@@ -2356,12 +2383,19 @@ StmtResult Parser::ParseForStatement(SourceLocation *TrailingElseLoc) {
     return Actions.ObjC().FinishObjCForCollectionStmt(ForEachStmt.get(),
                                                       Body.get());
 
+  StmtResult ForStmt;
   if (ForRangeInfo.ParsedForRangeDecl())
-    return Actions.FinishCXXForRangeStmt(ForRangeStmt.get(), Body.get());
+    ForStmt = Actions.FinishCXXForRangeStmt(ForRangeStmt.get(), Body.get());
+  else
+    ForStmt = Actions.ActOnForStmt(ForLoc, T.getOpenLocation(),
+                                   FirstPart.get(), SecondPart, ThirdPart,
+                                   T.getCloseLocation(), Body.get());
 
-  return Actions.ActOnForStmt(ForLoc, T.getOpenLocation(), FirstPart.get(),
-                              SecondPart, ThirdPart, T.getCloseLocation(),
-                              Body.get());
+  if (isa<ImplicitTemplateDecl>(Actions.CurContext))
+    ForStmt = Actions.ActOnImplicitTemplateEnd(Actions.CurScope,
+                                               ForStmt.get());
+
+  return ForStmt;
 }
 
 /// ParseGotoStatement

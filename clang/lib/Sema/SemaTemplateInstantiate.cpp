@@ -570,6 +570,7 @@ bool Sema::CodeSynthesisContext::isInstantiationRecord() const {
   case LambdaExpressionSubstitution:
   case BuildingDeductionGuides:
   case TypeAliasTemplateInstantiation:
+  case ImplicitTemplateInstantiation:
     return false;
 
   // This function should never be called when Kind's value is Memoization.
@@ -800,6 +801,13 @@ Sema::InstantiatingTemplate::InstantiatingTemplate(
     BuildingDeductionGuidesTag, SourceRange InstantiationRange)
     : InstantiatingTemplate(
           SemaRef, CodeSynthesisContext::BuildingDeductionGuides,
+          PointOfInstantiation, InstantiationRange, Entity) {}
+
+Sema::InstantiatingTemplate::InstantiatingTemplate(
+    Sema &SemaRef, SourceLocation PointOfInstantiation,
+    ImplicitTemplateDecl* Entity, SourceRange InstantiationRange)
+    : InstantiatingTemplate(
+          SemaRef, CodeSynthesisContext::ImplicitTemplateInstantiation,
           PointOfInstantiation, InstantiationRange, Entity) {}
 
 
@@ -1242,6 +1250,8 @@ void Sema::PrintInstantiationStack() {
           << cast<TypeAliasTemplateDecl>(Active->Entity)
           << Active->InstantiationRange;
       break;
+    case CodeSynthesisContext::ImplicitTemplateInstantiation:
+      break;
     }
   }
 }
@@ -1270,6 +1280,7 @@ std::optional<TemplateDeductionInfo *> Sema::isSFINAEContext() const {
     case CodeSynthesisContext::ParameterMappingSubstitution:
     case CodeSynthesisContext::ConstraintNormalization:
     case CodeSynthesisContext::NestedRequirementConstraintsCheck:
+    case CodeSynthesisContext::ImplicitTemplateInstantiation:
       // This is a template instantiation, so there is no SFINAE.
       return std::nullopt;
     case CodeSynthesisContext::LambdaExpressionSubstitution:
@@ -1553,6 +1564,10 @@ namespace {
     /// pack.
     ExprResult TransformFunctionParmPackExpr(FunctionParmPackExpr *E);
 
+    // Transform a ResolvedUnexpandedPackExpr
+    ExprResult TransformResolvedUnexpandedPackExpr(
+                                        ResolvedUnexpandedPackExpr *E);
+
     QualType TransformFunctionProtoType(TypeLocBuilder &TLB,
                                         FunctionProtoTypeLoc TL) {
       // Call the base version; it will forward to our overridden version below.
@@ -1787,7 +1802,8 @@ bool TemplateInstantiator::AlreadyTransformed(QualType T) {
   if (T.isNull())
     return true;
 
-  if (T->isInstantiationDependentType() || T->isVariablyModifiedType())
+  if (T->isInstantiationDependentType() || T->isVariablyModifiedType() ||
+      T->containsUnexpandedParameterPack())
     return false;
 
   getSema().MarkDeclarationsReferencedInType(Loc, T);
@@ -1840,6 +1856,13 @@ Decl *TemplateInstantiator::TransformDecl(SourceLocation Loc, Decl *D) {
 }
 
 Decl *TemplateInstantiator::TransformDefinition(SourceLocation Loc, Decl *D) {
+  // If we are in an implicit template instantiation and the Decl has
+  // the parent non-dependent context, then we can avoid instantiating it.
+  Sema::CodeSynthesisContext& CSC = getSema().CodeSynthesisContexts.back();
+  if (CSC.Kind == Sema::CodeSynthesisContext::ImplicitTemplateInstantiation &&
+      !D->getDeclContext()->isDependentContext())
+    return D;
+
   Decl *Inst = getSema().SubstDecl(D, getSema().CurContext, TemplateArgs);
   if (!Inst)
     return nullptr;
@@ -2386,6 +2409,15 @@ TemplateInstantiator::TransformDeclRefExpr(DeclRefExpr *E) {
     if (PD->isParameterPack())
       return TransformFunctionParmPackRefExpr(E, PD);
 
+  if (BindingDecl *BD = dyn_cast<BindingDecl>(D);
+        BD && BD->isParameterPack()) {
+    BD = cast<BindingDecl>(TransformDecl(BD->getLocation(), BD));
+    if (auto* RP =
+      dyn_cast_or_null<ResolvedUnexpandedPackExpr>(BD->getBinding())) {
+      return TransformResolvedUnexpandedPackExpr(RP);
+    }
+  }
+
   return inherited::TransformDeclRefExpr(E);
 }
 
@@ -2534,6 +2566,33 @@ TemplateInstantiator::TransformTemplateTypeParmType(TypeLocBuilder &TLB,
   TemplateTypeParmTypeLoc NewTL = TLB.push<TemplateTypeParmTypeLoc>(Result);
   NewTL.setNameLoc(TL.getNameLoc());
   return Result;
+}
+
+ExprResult
+TemplateInstantiator::TransformResolvedUnexpandedPackExpr(
+                                    ResolvedUnexpandedPackExpr* E) {
+  if (getSema().ArgumentPackSubstitutionIndex != -1) {
+    assert(static_cast<unsigned>(getSema().ArgumentPackSubstitutionIndex)
+              < E->getNumExprs()
+      && "ArgumentPackSubstitutionIndex is out of range");
+    return TransformExpr(
+        E->getExpansion(getSema().ArgumentPackSubstitutionIndex));
+  }
+
+  if (!AlwaysRebuild())
+    return E;
+
+  SmallVector<Expr*, 12> NewExprs;
+  if (TransformExprs(E->getExprs(), E->getNumExprs(),
+                     /*IsCall=*/false, NewExprs))
+    return ExprError();
+
+  // NOTE: The type is just a superficial PackExpansionType
+  //       that needs no substitution.
+  return ResolvedUnexpandedPackExpr::Create(SemaRef.Context,
+                                            E->getBeginLoc(),
+                                            E->getType(),
+                                            NewExprs);
 }
 
 QualType TemplateInstantiator::TransformSubstTemplateTypeParmPackType(
@@ -4395,6 +4454,9 @@ LocalInstantiationScope::findInstantiationOf(const Decl *D) {
   // instantiation.
   if (isa<TypedefNameDecl>(D) &&
       isa<CXXDeductionGuideDecl>(D->getDeclContext()))
+    return nullptr;
+
+  if (isa<ImplicitTemplateDecl>(D->getDeclContext()))
     return nullptr;
 
   // If we didn't find the decl, then we either have a sema bug, or we have a

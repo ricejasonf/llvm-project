@@ -240,10 +240,11 @@ bool Decl::isTemplateParameterPack() const {
 }
 
 bool Decl::isParameterPack() const {
-  if (const auto *Var = dyn_cast<VarDecl>(this))
+  if (isTemplateParameterPack()) return true;
+  if (const auto *Var = dyn_cast<ValueDecl>(this))
     return Var->isParameterPack();
 
-  return isTemplateParameterPack();
+  return false;
 }
 
 FunctionDecl *Decl::getAsFunction() {
@@ -987,6 +988,7 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
     case LifetimeExtendedTemporary:
     case RequiresExprBody:
     case ImplicitConceptSpecialization:
+    case ImplicitTemplate:
       // Never looked up by name.
       return 0;
   }
@@ -1317,6 +1319,9 @@ bool DeclContext::isDependentContext() const {
   if (isa<ClassTemplatePartialSpecializationDecl>(this))
     return true;
 
+  if (isa<ImplicitTemplateDecl>(this))
+    return true;
+
   if (const auto *Record = dyn_cast<CXXRecordDecl>(this)) {
     if (Record->getDescribedClassTemplate())
       return true;
@@ -1411,6 +1416,7 @@ DeclContext *DeclContext::getPrimaryContext() {
   case Decl::OMPDeclareReduction:
   case Decl::OMPDeclareMapper:
   case Decl::RequiresExprBody:
+  case Decl::ImplicitTemplate:
     // There is only one DeclContext for these entities.
     return this;
 

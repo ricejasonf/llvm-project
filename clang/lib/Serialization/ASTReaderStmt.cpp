@@ -2197,6 +2197,11 @@ void ASTStmtReader::VisitPackIndexingExpr(PackIndexingExpr *E) {
     Exprs[I] = Record.readExpr();
 }
 
+void ASTStmtReader::VisitResolvedUnexpandedPackExpr(
+                                              ResolvedUnexpandedPackExpr *E) {
+  VisitExpr(E);
+}
+
 void ASTStmtReader::VisitSubstNonTypeTemplateParmExpr(
                                               SubstNonTypeTemplateParmExpr *E) {
   VisitExpr(E);

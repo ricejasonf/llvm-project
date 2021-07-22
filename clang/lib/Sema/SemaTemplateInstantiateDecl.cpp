@@ -975,6 +975,11 @@ Decl *TemplateDeclInstantiator::VisitTemplateParamObjectDecl(
   llvm_unreachable("template parameter objects cannot be instantiated");
 }
 
+Decl *TemplateDeclInstantiator::VisitImplicitTemplateDecl(
+    ImplicitTemplateDecl *D) {
+  llvm_unreachable("implicit templates themselves cannot be instantiated");
+}
+
 Decl *
 TemplateDeclInstantiator::VisitLabelDecl(LabelDecl *D) {
   LabelDecl *Inst = LabelDecl::Create(SemaRef.Context, Owner, D->getLocation(),
@@ -1150,17 +1155,84 @@ TemplateDeclInstantiator::VisitTypeAliasTemplateDecl(TypeAliasTemplateDecl *D) {
 
 Decl *TemplateDeclInstantiator::VisitBindingDecl(BindingDecl *D) {
   auto *NewBD = BindingDecl::Create(SemaRef.Context, Owner, D->getLocation(),
-                                    D->getIdentifier());
+                                    D->getIdentifier(), D->getType());
   NewBD->setReferenced(D->isReferenced());
   SemaRef.CurrentInstantiationScope->InstantiatedLocal(D, NewBD);
+
   return NewBD;
 }
 
 Decl *TemplateDeclInstantiator::VisitDecompositionDecl(DecompositionDecl *D) {
   // Transform the bindings first.
+  // The transformed DD will have all of the concrete BindingDecls.
   SmallVector<BindingDecl*, 16> NewBindings;
-  for (auto *OldBD : D->bindings())
-    NewBindings.push_back(cast<BindingDecl>(VisitBindingDecl(OldBD)));
+  ResolvedUnexpandedPackExpr *NewResolvedPack = nullptr;
+  BindingDecl *NewBindingPack = nullptr;
+  for (auto *OldBD : D->bindings()) {
+    //Expr *BindingExpr = OldBD->getBinding();
+    if (OldBD->isParameterPack() && OldBD->getBinding()) {
+      auto *RP = cast<ResolvedUnexpandedPackExpr>(OldBD->getBinding());
+      Expr** OldExprs = RP->getExprs();
+      for (unsigned I = 0; I < RP->getNumExprs(); I++) {
+        DeclRefExpr* OldDRE = cast<DeclRefExpr>(OldExprs[I]);
+        BindingDecl* OldNestedBD = cast<BindingDecl>(OldDRE->getDecl());
+        BindingDecl* NewBD = cast<BindingDecl>(VisitBindingDecl(OldNestedBD));
+        NewBindings.push_back(cast<BindingDecl>(NewBD));
+      }
+      NewBindingPack = cast<BindingDecl>(VisitBindingDecl(OldBD));
+      ExprResult NewRP = SemaRef.SubstExpr(OldBD->getBinding(), TemplateArgs);
+      // The type is a superficial pack type.
+      NewBindingPack->setBinding(OldBD->getType(), NewRP.get());
+    } else if (OldBD->isParameterPack() && D->getInit()) {
+      // The old DD init was dependent so we need to ascertain how
+      // many element there are so we can have concrete bindings.
+      // FIXME This is a lot of extra, redundant work here, but we need
+      //       this information before allocating the DecompositionDecl.
+      //       Consolidate with stuff in SemaDeclCXX.
+      //Sema::ContextRAII SwitchContext(SemaRef, D->getDeclContext());
+      ExprResult Init = SemaRef.SubstInitializer(D->getInit(), TemplateArgs,
+                                      D->getInitStyle() == VarDecl::CallInit);
+      QualType DecompType = Init.get()->getType();
+      unsigned MemberCount = SemaRef.GetDecompositionElementCount(DecompType);
+      unsigned PackSize = MemberCount - D->bindings().size() + 1;
+      NewBindingPack = cast<BindingDecl>(VisitBindingDecl(OldBD));
+      NewResolvedPack = ResolvedUnexpandedPackExpr::Create(
+                                                      SemaRef.Context,
+                                                      D->getBeginLoc(),
+                                                      DecompType, PackSize);
+      // The binding itself is a superficial pack type.
+      NewBindingPack->setBinding(OldBD->getType(), NewResolvedPack);
+      // Now create/push the concrete bindings,
+      // and make the new pack contain them as well.
+      // Build a nested BindingDecl with a DeclRefExpr
+      for (Expr*& NestedExpr : llvm::MutableArrayRef<Expr*>(
+                                           NewResolvedPack->getExprs(),
+                                           NewResolvedPack->getNumExprs())) {
+        auto *NestedBD = BindingDecl::Create(
+                                           SemaRef.Context,
+                                           SemaRef.CurContext,
+                                           OldBD->getLocation(),
+                                           OldBD->getIdentifier(), QualType());
+
+        NewBindings.push_back(NestedBD);
+        // We won't know the type until later...
+        NestedExpr = SemaRef.BuildDeclRefExpr(NestedBD, SemaRef.Context.DependentTy,
+                                              VK_LValue, OldBD->getLocation());
+      }
+    } else {
+      //if (OldBD->isParameterPack() && !D->getInit())
+        // FIXME: This happens with range based for loops (ie pack with no init)
+        //        because the initializer is added much later.
+        //        We need to weigh the cost of expanding the ->bindings()
+        //        versus just visiting them when needed and allowing the
+        //        ResolvedUnexpandedPackExpr to continue living in the binding.
+        //        Alternatively, we could do the ImplicitTemplate thing inside
+        //        templates and reinstantiate the whole block-scope after it
+        //        completes the instantiation into a non-dependent context.
+
+      NewBindings.push_back(cast<BindingDecl>(VisitBindingDecl(OldBD)));
+    }
+  }
   ArrayRef<BindingDecl*> NewBindingArray = NewBindings;
 
   auto *NewDD = cast_or_null<DecompositionDecl>(
@@ -1169,6 +1241,23 @@ Decl *TemplateDeclInstantiator::VisitDecompositionDecl(DecompositionDecl *D) {
   if (!NewDD || NewDD->isInvalidDecl())
     for (auto *NewBD : NewBindings)
       NewBD->setInvalidDecl();
+
+  if (NewBindingPack)
+    NewBindingPack->setDecomposedDecl(NewDD);
+
+  if (NewResolvedPack) {
+    for (Expr*& NestedExpr : llvm::MutableArrayRef<Expr*>(
+                                             NewResolvedPack->getExprs(),
+                                             NewResolvedPack->getNumExprs())) {
+      // We need to update the type of the DeclRefExpr
+      auto* DRE = cast<DeclRefExpr>(NestedExpr);
+      auto* B = cast<BindingDecl>(DRE->getDecl());
+      // Hopefully our Binding had its type updated.
+      DRE->setType(B->getType().getNonReferenceType());
+      // Feels weird!
+      SemaRef.CurrentInstantiationScope->InstantiatedLocal(B, B);
+    }
+  }
 
   return NewDD;
 }
@@ -6036,6 +6125,8 @@ DeclContext *Sema::FindInstantiatedContext(SourceLocation Loc, DeclContext* DC,
   if (NamedDecl *D = dyn_cast<NamedDecl>(DC)) {
     Decl* ID = FindInstantiatedDecl(Loc, D, TemplateArgs, true);
     return cast_or_null<DeclContext>(ID);
+  } else if (isa<ImplicitTemplateDecl>(DC)) {
+    return DC->getParent();
   } else return DC;
 }
 
@@ -6083,6 +6174,7 @@ NamedDecl *Sema::FindInstantiatedDecl(SourceLocation Loc, NamedDecl *D,
   if (isa<ParmVarDecl>(D) || isa<NonTypeTemplateParmDecl>(D) ||
       isa<TemplateTypeParmDecl>(D) || isa<TemplateTemplateParmDecl>(D) ||
       (ParentDependsOnArgs && (ParentDC->isFunctionOrMethod() ||
+                               isa<ImplicitTemplateDecl>(ParentDC) ||
                                isa<OMPDeclareReductionDecl>(ParentDC) ||
                                isa<OMPDeclareMapperDecl>(ParentDC))) ||
       (isa<CXXRecordDecl>(D) && cast<CXXRecordDecl>(D)->isLambda() &&

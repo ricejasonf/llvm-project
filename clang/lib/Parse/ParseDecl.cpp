@@ -7234,15 +7234,16 @@ void Parser::ParseDecompositionDeclarator(Declarator &D) {
 
   // If this doesn't look like a structured binding, maybe it's a misplaced
   // array declarator.
-  if (!(Tok.is(tok::identifier) &&
+  if (!(Tok.isOneOf(tok::identifier, tok::ellipsis) &&
         NextToken().isOneOf(tok::comma, tok::r_square, tok::kw_alignas,
-                            tok::l_square)) &&
+                            tok::identifier, tok::l_square)) &&
       !(Tok.is(tok::r_square) &&
         NextToken().isOneOf(tok::equal, tok::l_brace))) {
     PA.Revert();
     return ParseMisplacedBracketDeclarator(D);
   }
 
+  bool HasEllipsis = false;
   SmallVector<DecompositionDeclarator::Binding, 32> Bindings;
   while (Tok.isNot(tok::r_square)) {
     if (!Bindings.empty()) {
@@ -7257,17 +7258,30 @@ void Parser::ParseDecompositionDeclarator(Declarator &D) {
           Diag(Tok, diag::err_expected_comma_or_rsquare);
         }
 
-        SkipUntil(tok::r_square, tok::comma, tok::identifier,
-                  StopAtSemi | StopBeforeMatch);
+        // I don't know why this skipping was here
+        //SkipUntil(tok::r_square, tok::comma, tok::identifier,
+        //          StopAtSemi | StopBeforeMatch);
         if (Tok.is(tok::comma))
           ConsumeToken();
-        else if (Tok.isNot(tok::identifier))
+        else if (Tok.is(tok::r_square))
           break;
       }
     }
 
     if (isCXX11AttributeSpecifier())
       DiagnoseAndSkipCXX11Attributes();
+
+    SourceLocation EllipsisLoc = {};
+    if (Tok.is(tok::ellipsis)) {
+      if (HasEllipsis) {
+        // FIXME use better error message
+        Diag(Tok, diag::err_lambda_capture_multiple_ellipses);
+        break;
+      }
+      HasEllipsis = true;
+      EllipsisLoc = Tok.getLocation();
+      ConsumeToken();
+    }
 
     if (Tok.isNot(tok::identifier)) {
       Diag(Tok, diag::err_expected) << tok::identifier;
@@ -7286,7 +7300,7 @@ void Parser::ParseDecompositionDeclarator(Declarator &D) {
       MaybeParseCXX11Attributes(Attrs);
     }
 
-    Bindings.push_back({II, Loc, std::move(Attrs)});
+    Bindings.push_back({II, Loc, std::move(Attrs), EllipsisLoc});
   }
 
   if (Tok.isNot(tok::r_square))

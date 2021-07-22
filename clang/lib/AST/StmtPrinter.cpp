@@ -49,6 +49,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -2487,6 +2488,16 @@ void StmtPrinter::VisitSizeOfPackExpr(SizeOfPackExpr *E) {
 
 void StmtPrinter::VisitPackIndexingExpr(PackIndexingExpr *E) {
   OS << E->getPackIdExpression() << "...[" << E->getIndexExpr() << "]";
+}
+
+void StmtPrinter::VisitResolvedUnexpandedPackExpr(
+    ResolvedUnexpandedPackExpr *E) {
+  // I don't think it is possible to get here
+  OS << "<<resolved pack(";
+  llvm::interleave(E->getExprs(), E->getExprs() + E->getNumExprs(),
+                   [this](auto* X) { PrintExpr(X); },
+                   [this]          { OS << ", "; });
+  OS << ")>>";
 }
 
 void StmtPrinter::VisitSubstNonTypeTemplateParmPackExpr(

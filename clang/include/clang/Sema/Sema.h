@@ -253,7 +253,8 @@ void threadSafetyCleanup(BeforeSet *Cache);
 
 // FIXME: No way to easily map from TemplateTypeParmTypes to
 // TemplateTypeParmDecls, so we have this horrible PointerUnion.
-typedef std::pair<llvm::PointerUnion<const TemplateTypeParmType *, NamedDecl *>,
+typedef std::pair<llvm::PointerUnion<const TemplateTypeParmType *, NamedDecl *,
+                                     ResolvedUnexpandedPackExpr *>,
                   SourceLocation>
     UnexpandedParameterPack;
 
@@ -6011,6 +6012,7 @@ public:
                                          RecordDecl *ClassDecl,
                                          const IdentifierInfo *Name);
 
+  unsigned GetDecompositionElementCount(QualType DecompType);
   void CheckCompleteDecompositionDeclaration(DecompositionDecl *DD);
 
   /// Stack containing information needed when in C++2a an 'auto' is encountered
@@ -12745,6 +12747,9 @@ public:
 
       /// We are instantiating a type alias template declaration.
       TypeAliasTemplateInstantiation,
+
+      /// We are instantiating an implicit template region.
+      ImplicitTemplateInstantiation,
     } Kind;
 
     /// Was the enclosing context a non-instantiation SFINAE context?
@@ -12964,6 +12969,11 @@ public:
     /// \brief Note that we are building deduction guides.
     InstantiatingTemplate(Sema &SemaRef, SourceLocation PointOfInstantiation,
                           TemplateDecl *Entity, BuildingDeductionGuidesTag,
+                          SourceRange InstantiationRange = SourceRange());
+
+    /// \brief Note that we are instantiating an implicit template region.
+    InstantiatingTemplate(Sema &SemaRef, SourceLocation PointOfInstantiation,
+                          ImplicitTemplateDecl *Entity,
                           SourceRange InstantiationRange = SourceRange());
 
     /// Note that we have finished instantiating this template.
@@ -14199,6 +14209,8 @@ public:
   /// This is intended for use when transforming 'sizeof...(Arg)' in order to
   /// avoid actually expanding the pack where possible.
   std::optional<unsigned> getFullyPackExpandedSize(TemplateArgument Arg);
+
+  StmtResult ActOnImplicitTemplateEnd(Scope* ParentScope, Stmt* S);
 
   /// Called when an expression computing the size of a parameter pack
   /// is parsed.
