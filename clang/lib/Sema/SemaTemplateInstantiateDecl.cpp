@@ -977,7 +977,7 @@ TemplateDeclInstantiator::VisitTypeAliasTemplateDecl(TypeAliasTemplateDecl *D) {
 
 Decl *TemplateDeclInstantiator::VisitBindingDecl(BindingDecl *D) {
   auto *NewBD = BindingDecl::Create(SemaRef.Context, Owner, D->getLocation(),
-                                    D->getIdentifier());
+                                    D->getIdentifier(), D->getType());
   NewBD->setReferenced(D->isReferenced());
   SemaRef.CurrentInstantiationScope->InstantiatedLocal(D, NewBD);
   return NewBD;
@@ -986,8 +986,13 @@ Decl *TemplateDeclInstantiator::VisitBindingDecl(BindingDecl *D) {
 Decl *TemplateDeclInstantiator::VisitDecompositionDecl(DecompositionDecl *D) {
   // Transform the bindings first.
   SmallVector<BindingDecl*, 16> NewBindings;
-  for (auto *OldBD : D->bindings())
+  ResolvedUnexpandedPackExpr *OldResolvedPack = nullptr;
+  for (auto *OldBD : D->bindings()) {
+    Expr *BindingExpr = OldBD->getBinding();
+    if (auto *RP = dyn_cast_or_null<ResolvedUnexpandedPackExpr>(BindingExpr))
+      OldResolvedPack = RP;
     NewBindings.push_back(cast<BindingDecl>(VisitBindingDecl(OldBD)));
+  }
   ArrayRef<BindingDecl*> NewBindingArray = NewBindings;
 
   auto *NewDD = cast_or_null<DecompositionDecl>(
@@ -996,6 +1001,33 @@ Decl *TemplateDeclInstantiator::VisitDecompositionDecl(DecompositionDecl *D) {
   if (!NewDD || NewDD->isInvalidDecl())
     for (auto *NewBD : NewBindings)
       NewBD->setInvalidDecl();
+
+  if (OldResolvedPack) {
+    // mark the holding vars (if any) in the pack as instantiated since
+    // they are created implicitly
+    auto Bindings = NewDD->bindings();
+    auto BPack = std::find_if(Bindings.begin(), Bindings.end(),
+          [](BindingDecl *D) -> bool { return D->isParameterPack(); });
+    auto* NewResolvedPack = cast<ResolvedUnexpandedPackExpr>((*BPack)->getBinding());
+    Expr** OldExprs = OldResolvedPack->getExprs();
+    Expr** NewExprs = NewResolvedPack->getExprs();
+    for (unsigned I = 0; I < OldResolvedPack->getNumExprs(); I++) {
+      DeclRefExpr* OldDRE = cast<DeclRefExpr>(OldExprs[I]);
+      BindingDecl* OldNestedBD = cast<BindingDecl>(OldDRE->getDecl());
+      DeclRefExpr* NewDRE = cast<DeclRefExpr>(NewExprs[I]);
+      BindingDecl* NewNestedBD = cast<BindingDecl>(NewDRE->getDecl());
+      SemaRef.CurrentInstantiationScope->InstantiatedLocal(OldNestedBD,
+                                                           NewNestedBD);
+#if 0 // FIXME we might not need to mess with holding vars
+               since the nested BindingDecls will be substituted
+      Decl* OldHoldingVar = BindingDecl::getHoldingVar(OldExprs[I]);
+      if (!OldHoldingVar) break;
+      Decl* NewHoldingVar = BindingDecl::getHoldingVar(NewExprs[I]);
+      SemaRef.CurrentInstantiationScope->InstantiatedLocal(OldHoldingVar,
+                                                           NewHoldingVar);
+#endif
+    }
+  }
 
   return NewDD;
 }
@@ -5903,6 +5935,8 @@ NamedDecl *Sema::FindInstantiatedDecl(SourceLocation Loc, NamedDecl *D,
       CurrentInstantiationScope->InstantiatedLocal(D, Inst);
       return cast<TypeDecl>(Inst);
     }
+
+    if (IsExpandingResolvedPacks) return D;
 
     // If we didn't find the decl, then we must have a label decl that hasn't
     // been found yet.  Lazily instantiate it and return it now.

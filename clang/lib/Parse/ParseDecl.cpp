@@ -6195,8 +6195,8 @@ void Parser::ParseDecompositionDeclarator(Declarator &D) {
   // array declarator.
   // FIXME: Consume the l_square first so we don't need extra lookahead for
   // this.
-  if (!(NextToken().is(tok::identifier) &&
-        GetLookAheadToken(2).isOneOf(tok::comma, tok::r_square)) &&
+  if (!(NextToken().isOneOf(tok::identifier, tok::ellipsis) &&
+        GetLookAheadToken(2).isOneOf(tok::comma, tok::r_square, tok::identifier)) &&
       !(NextToken().is(tok::r_square) &&
         GetLookAheadToken(2).isOneOf(tok::equal, tok::l_brace)))
     return ParseMisplacedBracketDeclarator(D);
@@ -6204,6 +6204,7 @@ void Parser::ParseDecompositionDeclarator(Declarator &D) {
   BalancedDelimiterTracker T(*this, tok::l_square);
   T.consumeOpen();
 
+  bool HasEllipsis = false;
   SmallVector<DecompositionDeclarator::Binding, 32> Bindings;
   while (Tok.isNot(tok::r_square)) {
     if (!Bindings.empty()) {
@@ -6218,13 +6219,26 @@ void Parser::ParseDecompositionDeclarator(Declarator &D) {
           Diag(Tok, diag::err_expected_comma_or_rsquare);
         }
 
-        SkipUntil(tok::r_square, tok::comma, tok::identifier,
-                  StopAtSemi | StopBeforeMatch);
+        // I don't know why this skipping was here
+        //SkipUntil(tok::r_square, tok::comma, tok::identifier,
+        //          StopAtSemi | StopBeforeMatch);
         if (Tok.is(tok::comma))
           ConsumeToken();
-        else if (Tok.isNot(tok::identifier))
+        else if (Tok.is(tok::r_square))
           break;
       }
+    }
+
+    SourceLocation EllipsisLoc = {};
+    if (Tok.is(tok::ellipsis)) {
+      if (HasEllipsis) {
+        // FIXME use better error message
+        Diag(Tok, diag::err_lambda_capture_multiple_ellipses);
+        break;
+      }
+      HasEllipsis = true;
+      EllipsisLoc = Tok.getLocation();
+      ConsumeToken();
     }
 
     if (Tok.isNot(tok::identifier)) {
@@ -6232,7 +6246,8 @@ void Parser::ParseDecompositionDeclarator(Declarator &D) {
       break;
     }
 
-    Bindings.push_back({Tok.getIdentifierInfo(), Tok.getLocation()});
+    Bindings.push_back({Tok.getIdentifierInfo(), Tok.getLocation(),
+                        EllipsisLoc});
     ConsumeToken();
   }
 

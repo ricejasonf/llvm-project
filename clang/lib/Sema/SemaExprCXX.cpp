@@ -8735,3 +8735,50 @@ Sema::ActOnRequiresExpr(SourceLocation RequiresKWLoc,
     return ExprError();
   return RE;
 }
+
+#if 0 // FIXME unused I think
+ExprResult
+Sema::BuildResolvedUnexpandedPackExpr(SourceLocation BeginLoc,
+                                      Expr* Pattern, 
+                                MultiLevelTemplateArgumentList TemplateArgs) {
+  bool ShouldExpand = true;
+  bool RetainExpansion = false;
+  Optional<unsigned> NumExpansions = None;
+  SmallVector<UnexpandedParameterPack, 2> Unexpanded;
+  SmallVector<Expr*, 12> ResultExprs;
+  collectUnexpandedParameterPacks(Pattern, Unexpanded);
+
+  if (CheckParameterPacksForExpansion(BeginLoc, Pattern->getSourceRange(),
+                                     Unexpanded, TemplateArgs, ShouldExpand,
+                                     RetainExpansion, NumExpansions))
+    return ExprError();
+
+  // Actually expand
+
+  assert(ShouldExpand && "pack should be resolved");
+  for (unsigned I = 0; I != *NumExpansions; ++I) {
+    Sema::ArgumentPackSubstitutionIndexRAII SubstIndex(*this, I);
+    ExprResult Out = SubstExpr(Pattern, TemplateArgs);
+    if (Out.isInvalid())
+      return ExprError();
+
+    assert(!Out.get()->containsUnexpandedParameterPack() &&
+           "pack contains nested pack");
+
+    ResultExprs.push_back(Out.get());
+  }
+
+  // Create the ResolvedUnexpandedPackExpr
+
+  TemplateTypeParmDecl *DummyTemplateParam =
+      TemplateTypeParmDecl::Create(
+          Context, Context.getTranslationUnitDecl(),
+          /*KeyLoc*/ SourceLocation(), /*NameLoc*/ SourceLocation(),
+          /*TemplateDepth*/ 0, /*AutoParameterPosition*/ 0,
+          /*Identifier*/ nullptr, false, /*IsParameterPack*/ true);
+
+  QualType T = Context.getPackExpansionType(QualType(), ResultExprs.size(),
+                                            /*ExpectsPackInType=*/ false);
+  return ResolvedUnexpandedPackExpr::Create(Context, BeginLoc, T, ResultExprs);
+}
+#endif

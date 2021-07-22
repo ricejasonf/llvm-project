@@ -1704,6 +1704,7 @@ public:
   struct Binding {
     IdentifierInfo *Name;
     SourceLocation NameLoc;
+    SourceLocation EllipsisLoc;
   };
 
 private:

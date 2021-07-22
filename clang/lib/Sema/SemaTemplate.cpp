@@ -915,6 +915,31 @@ ParsedTemplateArgument ParsedTemplateArgument::getTemplatePackExpansion(
   return Result;
 }
 
+static bool isResolvedPack(Sema &SemaRef, const ParsedTemplateArgument &Arg) {
+  switch (Arg.getKind()) {
+  case ParsedTemplateArgument::Type: {
+    QualType T = SemaRef.GetTypeFromParser(Arg.getAsType(),
+                                         /*TypeSourceInfo=*/nullptr);
+    return isa<PackExpansionType>(T) &&
+      SemaRef.containsAllResolvedPacks(
+          cast<PackExpansionType>(T)->getPattern());
+  }
+
+  case ParsedTemplateArgument::NonType: {
+    Expr *E = static_cast<Expr *>(Arg.getAsExpr());
+    return isa<PackExpansionExpr>(E) &&
+      SemaRef.containsAllResolvedPacks(
+          cast<PackExpansionExpr>(E)->getPattern());
+  }
+
+  case ParsedTemplateArgument::Template: {
+    return false;
+  }
+  }
+
+  return false;
+}
+
 static TemplateArgumentLoc translateTemplateArgument(Sema &SemaRef,
                                             const ParsedTemplateArgument &Arg) {
 
@@ -953,9 +978,16 @@ static TemplateArgumentLoc translateTemplateArgument(Sema &SemaRef,
 /// into template arguments used by semantic analysis.
 void Sema::translateTemplateArguments(const ASTTemplateArgsPtr &TemplateArgsIn,
                                       TemplateArgumentListInfo &TemplateArgs) {
- for (unsigned I = 0, Last = TemplateArgsIn.size(); I != Last; ++I)
-   TemplateArgs.addArgument(translateTemplateArgument(*this,
-                                                      TemplateArgsIn[I]));
+ for (unsigned I = 0, Last = TemplateArgsIn.size(); I != Last; ++I) {
+   if (isResolvedPack(*this, TemplateArgsIn[I])) {
+     TemplateArgumentLoc Arg = translateTemplateArgument(*this,
+                                                         TemplateArgsIn[I]);
+     Subst(&Arg, /*NumArgs=*/1, TemplateArgs, MultiLevelTemplateArgumentList{});
+   } else {
+     TemplateArgs.addArgument(translateTemplateArgument(*this,
+                                                        TemplateArgsIn[I]));
+   }
+ }
 }
 
 static void maybeDiagnoseTemplateParameterShadow(Sema &SemaRef, Scope *S,

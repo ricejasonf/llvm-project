@@ -2014,6 +2014,10 @@ void StmtProfiler::VisitSizeOfPackExpr(const SizeOfPackExpr *S) {
     ID.AddInteger(0);
   }
 }
+void StmtProfiler::VisitResolvedUnexpandedPackExpr(
+    const ResolvedUnexpandedPackExpr *S) {
+  VisitExpr(S);
+}
 
 void StmtProfiler::VisitSubstNonTypeTemplateParmPackExpr(
     const SubstNonTypeTemplateParmPackExpr *S) {

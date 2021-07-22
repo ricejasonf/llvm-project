@@ -2014,6 +2014,13 @@ void ASTStmtWriter::VisitSizeOfPackExpr(SizeOfPackExpr *E) {
   Code = serialization::EXPR_SIZEOF_PACK;
 }
 
+void ASTStmtWriter::VisitResolvedUnexpandedPackExpr(
+                                              ResolvedUnexpandedPackExpr *E) {
+  VisitExpr(E);
+  llvm_unreachable("TODO???");
+  //Code = serialization::EXPR_???;
+}
+
 void ASTStmtWriter::VisitSubstNonTypeTemplateParmExpr(
                                               SubstNonTypeTemplateParmExpr *E) {
   VisitExpr(E);

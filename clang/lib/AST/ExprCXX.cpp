@@ -1741,3 +1741,43 @@ CUDAKernelCallExpr *CUDAKernelCallExpr::CreateEmpty(const ASTContext &Ctx,
                            alignof(CUDAKernelCallExpr));
   return new (Mem) CUDAKernelCallExpr(NumArgs, HasFPFeatures, Empty);
 }
+
+ResolvedUnexpandedPackExpr::ResolvedUnexpandedPackExpr(SourceLocation BL, QualType QT,
+                                                       unsigned NumExprs)
+    : Expr(ResolvedUnexpandedPackExprClass, QT, VK_RValue, OK_Ordinary),
+      BeginLoc(BL),
+      NumExprs(NumExprs) {
+  setDependence(ExprDependence::TypeValueInstantiation |
+                ExprDependence::UnexpandedPack);
+}
+
+ResolvedUnexpandedPackExpr *
+ResolvedUnexpandedPackExpr::Create(ASTContext &Ctx, SourceLocation BL,
+                                   QualType T, unsigned NumExprs) {
+  void* Mem = Ctx.Allocate(totalSizeToAlloc<Stmt *>(NumExprs),
+                           alignof(ResolvedUnexpandedPackExpr));
+  ResolvedUnexpandedPackExpr *
+  New = new (Mem) ResolvedUnexpandedPackExpr(BL, T, NumExprs);
+
+  auto Exprs = llvm::makeMutableArrayRef(New->getExprs(), New->getNumExprs());
+  std::fill(Exprs.begin(), Exprs.end(), nullptr);
+
+  return New;
+}
+
+ResolvedUnexpandedPackExpr *
+ResolvedUnexpandedPackExpr::Create(ASTContext &Ctx, SourceLocation BL,
+                                   QualType T, ArrayRef<Expr*> Exprs) {
+  auto *New = Create(Ctx, BL, T, Exprs.size());
+  std::copy(Exprs.begin(), Exprs.end(), New->getExprs());
+  return New;
+}
+
+ResolvedUnexpandedPackExpr *ResolvedUnexpandedPackExpr::getFromDecl(Decl *D) {
+  // TODO P1858: Extend to VarDecls for P1858
+  if (auto* BD = dyn_cast<BindingDecl>(D)) {
+    return dyn_cast_or_null<ResolvedUnexpandedPackExpr>(BD->getBinding());
+  }
+  return nullptr;
+}
+

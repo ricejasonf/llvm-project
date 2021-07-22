@@ -2118,6 +2118,11 @@ void ASTStmtReader::VisitSizeOfPackExpr(SizeOfPackExpr *E) {
   }
 }
 
+void ASTStmtReader::VisitResolvedUnexpandedPackExpr(
+                                              ResolvedUnexpandedPackExpr *E) {
+  VisitExpr(E);
+}
+
 void ASTStmtReader::VisitSubstNonTypeTemplateParmExpr(
                                               SubstNonTypeTemplateParmExpr *E) {
   VisitExpr(E);

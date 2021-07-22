@@ -3170,12 +3170,13 @@ StaticAssertDecl *StaticAssertDecl::CreateDeserialized(ASTContext &C,
 void BindingDecl::anchor() {}
 
 BindingDecl *BindingDecl::Create(ASTContext &C, DeclContext *DC,
-                                 SourceLocation IdLoc, IdentifierInfo *Id) {
-  return new (C, DC) BindingDecl(DC, IdLoc, Id);
+                                 SourceLocation IdLoc, IdentifierInfo *Id,
+                                 QualType T) {
+  return new (C, DC) BindingDecl(DC, IdLoc, Id, T);
 }
 
 BindingDecl *BindingDecl::CreateDeserialized(ASTContext &C, unsigned ID) {
-  return new (C, ID) BindingDecl(nullptr, SourceLocation(), nullptr);
+  return new (C, ID) BindingDecl(nullptr, SourceLocation(), nullptr, QualType());
 }
 
 ValueDecl *BindingDecl::getDecomposedDecl() const {
@@ -3184,17 +3185,39 @@ ValueDecl *BindingDecl::getDecomposedDecl() const {
   return cast_or_null<ValueDecl>(Decomp.get(Source));
 }
 
-VarDecl *BindingDecl::getHoldingVar() const {
-  Expr *B = getBinding();
-  if (!B)
-    return nullptr;
-  auto *DRE = dyn_cast<DeclRefExpr>(B->IgnoreImplicit());
-  if (!DRE)
-    return nullptr;
+VarDecl *BindingDecl::getHoldingVar(Expr* E) {
+  auto *DRE = dyn_cast<DeclRefExpr>(E->IgnoreImplicit());
+  if (!DRE) return nullptr;
+  if (auto *BD = dyn_cast<BindingDecl>(DRE->getDecl())) {
+    DRE = dyn_cast<DeclRefExpr>(BD->getBinding());
+  }
+  if (!DRE) return nullptr;
 
   auto *VD = cast<VarDecl>(DRE->getDecl());
   assert(VD->isImplicit() && "holding var for binding decl not implicit");
   return VD;
+}
+
+void
+DecompositionDecl::VisitHoldingVars(
+                            llvm::function_ref<void(VarDecl*)> F) const {
+  for (BindingDecl* B : bindings()) {
+    Expr* BE = B->getBinding();
+    // All BindingDecls will contain holding vars or none will
+    if (!BE) return;
+
+    llvm::ArrayRef<Expr*> Exprs;
+    if (auto* RP = dyn_cast<ResolvedUnexpandedPackExpr>(BE))
+      Exprs = llvm::makeArrayRef(RP->getExprs(), RP->getNumExprs());
+    else
+      Exprs = BE;
+
+    for (Expr* E : Exprs) {
+      VarDecl* VD = BindingDecl::getHoldingVar(E);
+      if (!VD) return;
+      F(VD);
+    }
+  }
 }
 
 void DecompositionDecl::anchor() {}

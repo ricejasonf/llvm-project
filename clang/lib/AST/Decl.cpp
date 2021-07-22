@@ -2489,10 +2489,6 @@ bool VarDecl::checkForConstantInitialization(
   return Eval->HasConstantInitialization;
 }
 
-bool VarDecl::isParameterPack() const {
-  return isa<PackExpansionType>(getType());
-}
-
 template<typename DeclT>
 static DeclT *getDefinitionOrSelf(DeclT *D) {
   assert(D);
@@ -4795,6 +4791,13 @@ bool ValueDecl::isWeak() const {
   auto *MostRecent = getMostRecentDecl();
   return MostRecent->hasAttr<WeakAttr>() ||
          MostRecent->hasAttr<WeakRefAttr>() || isWeakImported();
+}
+
+bool ValueDecl::isParameterPack() const {
+  if (const auto *NTTP = dyn_cast<NonTypeTemplateParmDecl>(this))
+    return NTTP->isParameterPack();
+
+  return isa_and_nonnull<PackExpansionType>(getType().getTypePtrOrNull());
 }
 
 void ImplicitParamDecl::anchor() {}
