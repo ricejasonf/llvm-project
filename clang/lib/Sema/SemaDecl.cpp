@@ -9788,6 +9788,21 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
   QualType R = TInfo->getType();
 
   assert(R->isFunctionType());
+  bool NeedsExpansion = false;
+
+  // Check for all resolved packs in parameter types
+  // and substitute the whole function type.
+  if (auto* FTP = dyn_cast<FunctionProtoType>(R.getTypePtr())) {
+    for (QualType ParamType : FTP->getParamTypes()) {
+      if (auto* PT = dyn_cast<PackExpansionType>(ParamType.getTypePtr())) {
+        if (containsAllResolvedPacks(PT->getPattern())) {
+          NeedsExpansion = true;
+          break;
+        }
+      }
+    }
+  }
+
   if (R.getCanonicalType()->castAs<FunctionType>()->getCmseNSCallAttr())
     Diag(D.getIdentifierLoc(), diag::err_function_decl_cmse_ns_call);
 
@@ -10918,6 +10933,14 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
     case FunctionDefinitionKind::Definition:
       break;
     }
+
+  if (NeedsExpansion) {
+    CodeSynthesisContext SynthCtx{};
+    pushCodeSynthesisContext(SynthCtx);
+    NewFD = dyn_cast_or_null<FunctionDecl>(SubstDecl(NewFD, DC,
+        MultiLevelTemplateArgumentList{}));
+    popCodeSynthesisContext();
+  }
 
   return NewFD;
 }

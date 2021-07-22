@@ -905,7 +905,14 @@ Sema::ActOnDecompositionDeclarator(Scope *S, Declarator &D,
       Previous.clear();
     }
 
-    auto *BD = BindingDecl::Create(Context, DC, B.NameLoc, VarName);
+    QualType QT = Context.DependentTy;
+    if (B.EllipsisLoc.isValid()) {
+      QT = Context.getPackExpansionType(QT, std::nullopt,
+                                        /*ExpectsPackInType=*/ false);
+    }
+
+    auto *BD = BindingDecl::Create(Context, DC, B.NameLoc, B.Name, QT);
+
 
     // Find the shadowed declaration before filtering for scope.
     NamedDecl *ShadowedDecl = D.getCXXScopeSpec().isEmpty()
@@ -966,28 +973,135 @@ Sema::ActOnDecompositionDeclarator(Scope *S, Declarator &D,
   return New;
 }
 
+namespace {
+// CheckBindingsCount
+//  - Checks the arity of the structured bindings
+//  - Creates the resolved pack expr if there is
+//    one
+bool CheckBindingsCount(Sema &S,
+                        DecompositionDecl *DD,
+                        QualType DecompType,
+                        ArrayRef<BindingDecl *> Bindings,
+                        unsigned MemberCount) {
+  auto BindingWithPackItr = std::find_if(Bindings.begin(), Bindings.end(),
+        [](BindingDecl *D) -> bool { return D->isParameterPack(); });
+  bool HasPack = BindingWithPackItr != Bindings.end();
+  bool IsValid;
+  if (!HasPack) {
+    IsValid = Bindings.size() == MemberCount;
+  } else {
+    // there may not be more members than non-pack bindings
+    IsValid = MemberCount >= Bindings.size() - 1;
+  }
+
+  if (IsValid && HasPack) {
+    TemplateTypeParmDecl *DummyTemplateParam =
+      TemplateTypeParmDecl::Create(
+        S.Context, S.Context.getTranslationUnitDecl(),
+        /*KeyLoc*/ SourceLocation(), /*NameLoc*/ SourceLocation(),
+        /*TemplateDepth*/ 0, /*AutoParameterPosition*/ 0,
+        /*Identifier*/ nullptr, false, /*IsParameterPack*/ true);
+
+    // create the pack expr and assign it to the binding
+    unsigned PackSize = MemberCount - Bindings.size() + 1;
+    QualType PackType = S.Context.getPackExpansionType(
+        QualType(DummyTemplateParam->getTypeForDecl(), 0), PackSize);
+    (*BindingWithPackItr)->setBinding(PackType,
+      ResolvedUnexpandedPackExpr::Create(S.Context, DD->getBeginLoc(),
+                                         DecompType, PackSize));
+  }
+
+  if (IsValid) return false;
+
+  S.Diag(DD->getLocation(), diag::err_decomp_decl_wrong_number_bindings)
+      << DecompType << (unsigned)Bindings.size()
+      << MemberCount << MemberCount
+      << (MemberCount < Bindings.size());
+  return true;
+}
+
+// BindingInitWalker
+//  - This implements a forward iterating flattened view
+//    of structured bindings that may have a nested pack.
+//    It allows the user to set the init expr for either the
+//    BindingDecl or its ResolvedUnexpandedPackExpr
+struct BindingInitWalker {
+  using BindingItrTy  = typename ArrayRef<BindingDecl*>::iterator;
+  using PackExprItrTy = typename MutableArrayRef<Expr*>::iterator;
+  Sema& SemaRef;
+  ArrayRef<BindingDecl*> Bindings;
+  ResolvedUnexpandedPackExpr *PackExpr = nullptr;
+  MutableArrayRef<Expr*> PackExprNodes;
+  BindingItrTy  BindingItr;
+  PackExprItrTy PackExprItr;
+
+  BindingInitWalker(Sema &S, ArrayRef<BindingDecl*> Bs)
+    : SemaRef(S),
+      Bindings(Bs),
+      BindingItr(Bindings.begin())
+  { }
+
+  BindingDecl* get() {
+    return *BindingItr;
+  }
+
+  void commitAndAdvance(QualType T, Expr* E) {
+    BindingDecl* B = *BindingItr;
+    bool IsPackExpr = isa_and_nonnull<ResolvedUnexpandedPackExpr>(
+        B->getBinding());
+    if (IsPackExpr && !PackExpr) {
+      PackExpr = cast<ResolvedUnexpandedPackExpr>(B->getBinding());
+      PackExprNodes = llvm::MutableArrayRef(PackExpr->getExprs(),
+                                            PackExpr->getNumExprs());
+      PackExprItr = PackExprNodes.begin();
+    }
+
+    if (IsPackExpr) {
+      // Build a nested BindingDecl with a DeclRefExpr
+      auto *NestedBD = BindingDecl::Create(SemaRef.Context,
+                                           B->getDeclContext(),
+                                           B->getLocation(),
+                                           B->getIdentifier(), T);
+
+      NestedBD->setBinding(T, E);
+      auto *DE = SemaRef.BuildDeclRefExpr(NestedBD, T.getNonReferenceType(),
+                                          VK_LValue, B->getLocation());
+      *PackExprItr = DE;
+      if (++PackExprItr != PackExprNodes.end()) return;
+      // if we hit the end then of the pack exprs then
+      // continue to advance BindingItr
+    } else {
+      (*BindingItr)->setBinding(T, E);
+    }
+
+    ++BindingItr;
+  }
+};
+}
+
 static bool checkSimpleDecomposition(
     Sema &S, ArrayRef<BindingDecl *> Bindings, ValueDecl *Src,
-    QualType DecompType, const llvm::APSInt &NumElems, QualType ElemType,
+    QualType DecompType, const llvm::APSInt &NumElemsAPS, QualType ElemType,
     llvm::function_ref<ExprResult(SourceLocation, Expr *, unsigned)> GetInit) {
-  if ((int64_t)Bindings.size() != NumElems) {
-    S.Diag(Src->getLocation(), diag::err_decomp_decl_wrong_number_bindings)
-        << DecompType << (unsigned)Bindings.size()
-        << (unsigned)NumElems.getLimitedValue(UINT_MAX)
-        << toString(NumElems, 10) << (NumElems < Bindings.size());
+  unsigned NumElems = (unsigned)NumElemsAPS.getLimitedValue(UINT_MAX);
+
+  if (CheckBindingsCount(S, cast<DecompositionDecl>(Src), DecompType,
+                         Bindings, NumElems)) {
+
     return true;
   }
 
-  unsigned I = 0;
-  for (auto *B : Bindings) {
+  auto Walker = BindingInitWalker(S, Bindings);
+  for (unsigned I = 0; I < NumElems; I++) {
+    BindingDecl* B = Walker.get();
     SourceLocation Loc = B->getLocation();
     ExprResult E = S.BuildDeclRefExpr(Src, DecompType, VK_LValue, Loc);
     if (E.isInvalid())
       return true;
-    E = GetInit(Loc, E.get(), I++);
+    E = GetInit(Loc, E.get(), I);
     if (E.isInvalid())
       return true;
-    B->setBinding(ElemType, E.get());
+    Walker.commitAndAdvance(ElemType, E.get());
   }
 
   return false;
@@ -1225,11 +1339,9 @@ static bool checkTupleLikeDecomposition(Sema &S,
                                         ArrayRef<BindingDecl *> Bindings,
                                         VarDecl *Src, QualType DecompType,
                                         const llvm::APSInt &TupleSize) {
-  if ((int64_t)Bindings.size() != TupleSize) {
-    S.Diag(Src->getLocation(), diag::err_decomp_decl_wrong_number_bindings)
-        << DecompType << (unsigned)Bindings.size()
-        << (unsigned)TupleSize.getLimitedValue(UINT_MAX)
-        << toString(TupleSize, 10) << (TupleSize < Bindings.size());
+  unsigned NumElems = (unsigned)TupleSize.getLimitedValue(UINT_MAX);
+  if (CheckBindingsCount(S, cast<DecompositionDecl>(Src), DecompType,
+                         Bindings, NumElems)) {
     return true;
   }
 
@@ -1264,8 +1376,9 @@ static bool checkTupleLikeDecomposition(Sema &S,
     }
   }
 
-  unsigned I = 0;
-  for (auto *B : Bindings) {
+  auto Walker = BindingInitWalker(S, Bindings);
+  for (unsigned I = 0; I < NumElems; I++) {
+    BindingDecl* B = Walker.get();
     InitializingBinding InitContext(S, B);
     SourceLocation Loc = B->getLocation();
 
@@ -1351,8 +1464,7 @@ static bool checkTupleLikeDecomposition(Sema &S,
     if (E.isInvalid())
       return true;
 
-    B->setBinding(T, E.get());
-    I++;
+    Walker.commitAndAdvance(T, E.get());
   }
 
   return false;
@@ -1448,20 +1560,20 @@ static bool checkMemberDecomposition(Sema &S, ArrayRef<BindingDecl*> Bindings,
   QualType BaseType = S.Context.getQualifiedType(S.Context.getRecordType(RD),
                                                  DecompType.getQualifiers());
 
-  auto DiagnoseBadNumberOfBindings = [&]() -> bool {
-    unsigned NumFields = llvm::count_if(
-        RD->fields(), [](FieldDecl *FD) { return !FD->isUnnamedBitfield(); });
-    assert(Bindings.size() != NumFields);
-    S.Diag(Src->getLocation(), diag::err_decomp_decl_wrong_number_bindings)
-        << DecompType << (unsigned)Bindings.size() << NumFields << NumFields
-        << (NumFields < Bindings.size());
+  unsigned NumFields =
+      llvm::count_if(RD->fields(),
+                    [](FieldDecl *FD) { return !FD->isUnnamedBitfield(); });
+  if (CheckBindingsCount(S, cast<DecompositionDecl>(Src), DecompType,
+                         Bindings,
+                         NumFields)) {
     return true;
-  };
+  }
+
+  auto Walker = BindingInitWalker(S, Bindings);
 
   //   all of E's non-static data members shall be [...] well-formed
   //   when named as e.name in the context of the structured binding,
   //   E shall not have an anonymous union member, ...
-  unsigned I = 0;
   for (auto *FD : RD->fields()) {
     if (FD->isUnnamedBitfield())
       continue;
@@ -1486,9 +1598,7 @@ static bool checkMemberDecomposition(Sema &S, ArrayRef<BindingDecl*> Bindings,
     }
 
     // We have a real field to bind.
-    if (I >= Bindings.size())
-      return DiagnoseBadNumberOfBindings();
-    auto *B = Bindings[I++];
+    BindingDecl *B = Walker.get();
     SourceLocation Loc = B->getLocation();
 
     // The field must be accessible in the context of the structured binding.
@@ -1523,11 +1633,9 @@ static bool checkMemberDecomposition(Sema &S, ArrayRef<BindingDecl*> Bindings,
     Qualifiers Q = DecompType.getQualifiers();
     if (FD->isMutable())
       Q.removeConst();
-    B->setBinding(S.BuildQualifiedType(FD->getType(), Loc, Q), E.get());
+    Walker.commitAndAdvance(S.BuildQualifiedType(FD->getType(), Loc, Q),
+                            E.get());
   }
-
-  if (I != Bindings.size())
-    return DiagnoseBadNumberOfBindings();
 
   return false;
 }
@@ -1538,8 +1646,10 @@ void Sema::CheckCompleteDecompositionDeclaration(DecompositionDecl *DD) {
   // If the type of the decomposition is dependent, then so is the type of
   // each binding.
   if (DecompType->isDependentType()) {
-    for (auto *B : DD->bindings())
-      B->setType(Context.DependentTy);
+    for (auto *B : DD->bindings()) {
+      if (B->getType().isNull())
+        B->setType(Context.DependentTy);
+    }
     return;
   }
 

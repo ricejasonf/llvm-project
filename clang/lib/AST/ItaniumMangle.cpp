@@ -4735,6 +4735,7 @@ recurse:
   case Expr::AtomicExprClass:
   case Expr::SourceLocExprClass:
   case Expr::BuiltinBitCastExprClass:
+  case Expr::ResolvedUnexpandedPackExprClass:
   {
     NotPrimaryExpr();
     if (!NullOut) {

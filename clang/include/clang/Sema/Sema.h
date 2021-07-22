@@ -239,7 +239,8 @@ namespace threadSafety {
 
 // FIXME: No way to easily map from TemplateTypeParmTypes to
 // TemplateTypeParmDecls, so we have this horrible PointerUnion.
-typedef std::pair<llvm::PointerUnion<const TemplateTypeParmType *, NamedDecl *>,
+typedef std::pair<llvm::PointerUnion<const TemplateTypeParmType *, NamedDecl *,
+                                     ResolvedUnexpandedPackExpr *>,
                   SourceLocation>
     UnexpandedParameterPack;
 
@@ -9163,6 +9164,20 @@ public:
   /// This is intended for use when transforming 'sizeof...(Arg)' in order to
   /// avoid actually expanding the pack where possible.
   std::optional<unsigned> getFullyPackExpandedSize(TemplateArgument Arg);
+
+  // This flag indicates an non-dependent expression that contains
+  // only resolved packs is being expanded.
+  bool IsExpandingResolvedPacks = false;
+
+  // Returns true if Pattern contains unexpanded packs
+  // that are all ResolvedUnexpandedPackExpr
+  bool containsAllResolvedPacks(Expr* Pattern);
+  bool containsAllResolvedPacks(QualType Pattern);
+
+  bool TryExpandResolvedPackExpansion(PackExpansionExpr *Expansion,
+                                 SmallVectorImpl<Expr *> &Outputs);
+  bool TryExpandResolvedPackExpansion(const ParsedTemplateArgument &Arg,
+                           SmallVectorImpl<ParsedTemplateArgument> &ArgList);
 
   //===--------------------------------------------------------------------===//
   // C++ Template Argument Deduction (C++ [temp.deduct])

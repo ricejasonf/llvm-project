@@ -3567,6 +3567,11 @@ bool Parser::ParseExpressionList(SmallVectorImpl<Expr *> &Exprs,
       if (FailImmediatelyOnInvalidExpr)
         break;
       SkipUntil(tok::comma, tok::r_paren, StopBeforeMatch);
+    } else if (PackExpansionExpr *PE =
+        dyn_cast_or_null<PackExpansionExpr>(Expr.get())){
+        // expands a pack that is not dependent
+        SawError = SawError ||
+                   Actions.TryExpandResolvedPackExpansion(PE, Exprs);
     } else {
       Exprs.push_back(Expr.get());
     }
