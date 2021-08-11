@@ -339,6 +339,11 @@ private:
       // The continuation is handled by the run-time
       Context.Cont(ContValues);
       return {};
+    } else if (isa<GlobalOp>(Parent)) {
+      // mutable globals must be wrapped with a binding
+      assert(ContValues.size() == 1 &&
+          "GlobalOp should have only one result");
+      ContValues[0] = Context.CreateBinding(ContValues[0]);
     }
 
     SetContValues(Parent, ContValues);
@@ -413,7 +418,7 @@ private:
     mlir::ModuleOp M = Context.OpGen->getTopLevel();
     mlir::Operation* G = M.lookupSymbol(Op.name());
     assert(G && "symbol does not exist");
-    setValue(Op, getValue(G->getResult(0)));
+    setValue(Op, getBindingOrValue(G->getResult(0)));
     return next(Op);
   }
 

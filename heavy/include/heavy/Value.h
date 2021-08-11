@@ -1645,7 +1645,8 @@ Lambda::FunctionDataView Lambda::createFunctionDataView(F& Fn) {
     "F must be trivially_copyable");
   auto CallFn = [](void* Storage, Context& C, ValueRefs Values) -> Value {
     F& Func = *static_cast<F*>(Storage);
-    return Func(C, Values);
+    Func(C, Values);
+    return Undefined{};
   };
   llvm::StringRef Storage(reinterpret_cast<char const*>(&Fn), sizeof(F));
   return FunctionDataView{CallFn, Storage};

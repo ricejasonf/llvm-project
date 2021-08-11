@@ -36,6 +36,7 @@
 #define HEAVY_BASE_VAR__equal         HEAVY_BASE_LIB_(V5Sequalqu)
 #define HEAVY_BASE_VAR__eqv           HEAVY_BASE_LIB_(V3Seqvqu)
 #define HEAVY_BASE_VAR__eval          HEAVY_BASE_LIB_(V4Seval)
+#define HEAVY_BASE_VAR__callcc        HEAVY_BASE_LIB_(V4Scalldv2Scc)
 
 namespace mlir {
 
@@ -80,6 +81,7 @@ heavy::Value equal(Context& C, ValueRefs Args);
 heavy::Value eqv(Context& C, ValueRefs Args);
 heavy::Value list(Context& C, ValueRefs Args);
 heavy::Value append(Context& C, ValueRefs Args);
+heavy::Value callcc(Context& C, ValueRefs Args);
 
 }}
 
@@ -103,6 +105,7 @@ extern heavy::ExternFunction HEAVY_BASE_VAR(eq);
 extern heavy::ExternFunction HEAVY_BASE_VAR(equal);
 extern heavy::ExternFunction HEAVY_BASE_VAR(eqv);
 extern heavy::ExternFunction HEAVY_BASE_VAR(eval);
+extern heavy::ExternFunction HEAVY_BASE_VAR(callcc);
 
 extern bool HEAVY_BASE_IS_LOADED;
 
@@ -135,6 +138,7 @@ inline void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(equal)   = heavy::base::equal;
   HEAVY_BASE_VAR(eqv)     = heavy::base::eqv;
   HEAVY_BASE_VAR(eval)    = heavy::base::eval;
+  HEAVY_BASE_VAR(callcc)  = heavy::base::callcc;
 }
 
 // initializes the module and loads lookup information
@@ -163,7 +167,8 @@ inline void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"eq?",     HEAVY_BASE_VAR(eq)},
     {"equal?",  HEAVY_BASE_VAR(equal)},
     {"eqv?",    HEAVY_BASE_VAR(eqv)},
-    {"eval",    HEAVY_BASE_VAR(eval)}
+    {"eval",    HEAVY_BASE_VAR(eval)},
+    {"call/cc",  HEAVY_BASE_VAR(callcc)}
   });
 }
 }
