@@ -40,6 +40,7 @@ heavy::ExternFunction HEAVY_BASE_VAR(eq);
 heavy::ExternFunction HEAVY_BASE_VAR(equal);
 heavy::ExternFunction HEAVY_BASE_VAR(eqv);
 heavy::ExternFunction HEAVY_BASE_VAR(eval);
+heavy::ExternFunction HEAVY_BASE_VAR(callcc);
 
 namespace heavy { namespace base {
 
@@ -133,6 +134,13 @@ struct NumberOp {
 } // end namespace heavy
 
 namespace heavy { namespace base {
+heavy::Value callcc(Context& C, ValueRefs Args) {
+  unsigned Len = Args.size();
+  assert(Len == 1 && "Invalid arity to builtin `callcc`");
+  C.CallCC(Args[0]);
+  return Undefined{};
+}
+
 heavy::Value eval(Context& C, ValueRefs Args) {
   unsigned Len = Args.size();
   assert((Len == 1 || Len == 2) && "Invalid arity to builtin `eval`");
