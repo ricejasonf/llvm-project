@@ -222,12 +222,11 @@ public:
 
   //  RestoreStack
   //    - Restores the stack from a String that was saved by CallCC
-  void RestoreStack(heavy::String Buffer) {
+  void RestoreStack(heavy::String* Buffer) {
     // clear the current stack
     llvm_unreachable("TODO");
   }
 
-#if 0 // TODO finish
   //  CallCC
   //    - The lambda, its captures, and the entire stack buffer
   //      must be saved as an object on the heap as a new lambda
@@ -238,22 +237,20 @@ public:
     char* end = &(Storage.back());
     size_t size = end - begin;
 
-    // SavedStack is kept alive by the heavy::Lambda capture
-    Value SavedStack = Context.CreateString(llvm::StringRef(begin, size));
-    auto Fn = [this, SavedStack](Derived& C, ValueRefs Args) {
-      // TODO have this function unwind/wind the dynamic points
-
-      // TODO Make a way to include the callee in the function's parameters
-      //      Saving it twice isn't the end of the world
-      //      heavy::String SavedStack = Callee->getCapture(0);
+    auto Fn = [this](Derived& Ctx, ValueRefs Args) -> Value {
+      // TODO unwind/wind the dynamic points
+      Lambda* Callee = cast<Lambda>(Ctx.getCallee());
+      String* SavedStack = cast<String>(Callee->getCapture(0));
       this->RestoreStack(SavedStack);
       this->Cont(Args);
+      return Undefined{};
     };
 
-    PushCont(InputProc);
-    Cont(Context.CreateLambda(Fn, SavedStack));
+    // SavedStack is kept alive by the heavy::Lambda capture
+    Value SavedStack = Context.CreateString(llvm::StringRef(begin, size));
+    Value Proc = Context.CreateLambda(Fn, SavedStack);
+    Apply(InputProc, Proc);
   }
-#endif
 };
 
 }
