@@ -97,10 +97,11 @@ class ContinuationStack {
 
   void ApplyHelper(Value Callee, ValueRefs Args) {
     DidCallContinuation = true; // debug mode only
-    std::fill(ApplyArgs.begin(), ApplyArgs.end(), nullptr);
-    ApplyArgs.resize(Args.size() + 1);
+    if (Args.data() != ApplyArgs.data()) {
+      ApplyArgs.resize(Args.size() + 1);
+      std::copy(Args.begin(), Args.end(), ApplyArgs.begin() + 1);
+    }
     ApplyArgs[0] = Callee;
-    std::copy(Args.begin(), Args.end(), ApplyArgs.begin() + 1);
   }
 
 public:
@@ -223,8 +224,11 @@ public:
   //  RestoreStack
   //    - Restores the stack from a String that was saved by CallCC
   void RestoreStack(heavy::String* Buffer) {
-    // clear the current stack
-    llvm_unreachable("TODO");
+    char* begin = reinterpret_cast<char*>(Top);
+    char* end = &(Storage.back());
+    llvm::StringRef BufferView = Buffer->getView();
+    std::fill(begin, end, char(0));
+    std::copy(BufferView.begin(), BufferView.end(), begin);
   }
 
   //  CallCC
