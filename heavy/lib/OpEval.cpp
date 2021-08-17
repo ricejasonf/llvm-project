@@ -263,6 +263,7 @@ private:
   }
 
   BlockItrTy Visit(ApplyOp Op) {
+    // TODO if we are not in tail pos then return the initCont region
     heavy::SourceLocation CallLoc = getSourceLocation(Op.getLoc());
 
     llvm::SmallVector<heavy::Value, 8> ArgResults;
@@ -270,10 +271,12 @@ private:
     Value Callee = ArgResults[0];
     ValueRefs Args = ValueRefs(ArgResults).drop_front();
 
+#if 0
     if (Op.isTailPos()) {
       Context.Apply(CallLoc, Callee, Args);
       return BlockItrTy();
     }
+#endif
 
     // TODO Handle non-tail Apply which requires
     //      setting up a continuation
