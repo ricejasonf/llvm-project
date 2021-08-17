@@ -50,18 +50,40 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   //               non-isolated scopes (e.g. `let` syntax).
   struct LambdaScope {
     OpGen& O;
+    mlir::Operation* Op;
 
     LambdaScope(OpGen& O, mlir::Operation* Op)
-      : O(O)
+      : O(O),
+        Op(Op)
     {
       O.LambdaScopes.emplace_back(Op, O.BindingTable);
     }
 
     ~LambdaScope()
     {
-      O.LambdaScopes.pop_back();
+      // pop all intermediate continuation scopes
+      // and then our own lambda scope
+      while (O.LambdaScopes.size() > 0) {
+        mlir::Operation* CurOp = O.LambdaScopes.back().Op;
+        if (CurOp == Op) {
+          O.LambdaScopes.pop_back();
+          return;
+        } else {
+          O.PopContinuationScope();
+        }
+      }
+      llvm_unreachable("scope should be on stack");
     }
   };
+
+  // continuation scopes get popped by their containing
+  // lambda
+  void PushContinuationScope(mlir::Operation* Op) {
+    LambdaScopes.emplace_back(Op, BindingTable);
+  }
+
+  // pop the scope and build the PushContOp with its captures
+  void PopContinuationScope();
 
   struct LambdaScopeNode {
     mlir::Operation* Op;
