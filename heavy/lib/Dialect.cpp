@@ -48,13 +48,13 @@ heavy::Value HeavyValueAttr::getValue() const {
   return getImpl()->Val;
 }
 
+#if 0
 void ApplyOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                     mlir::Value Operator,
-                    llvm::ArrayRef<mlir::Value> Operands,
-                    bool IsTailPos) {
-  ApplyOp::build(B, OpState, B.getType<HeavyValue>(), Operator, Operands,
-                 B.getBoolAttr(IsTailPos));
+                    llvm::ArrayRef<mlir::Value> Operands) {
+  ApplyOp::build(B, OpState, B.getType<HeavyValue>(), Operator, Operands);
 }
+#endif
 
 void BindingOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                       mlir::Value Input) {
@@ -103,6 +103,17 @@ void LambdaOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
   LambdaOp::build(B, OpState, HeavyValueTy,
                   Name, Captures);
 }
+
+#if 0
+void PushContOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                       llvm::StringRef Name,
+                       llvm::ArrayRef<mlir::Value> Captures) {
+  mlir::Type HeavyValueTy = B.getType<HeavyValue>();
+
+  PushContOp::build(B, OpState, HeavyValueTy,
+                    Name, Captures);
+}
+#endif
 
 void LiteralOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                       heavy::Value V) {

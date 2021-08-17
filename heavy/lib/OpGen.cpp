@@ -129,6 +129,18 @@ mlir::Value OpGen::createLambda(Value Formals, Value Body,
   return create<LambdaOp>(Loc, MangledName, LS.Captures);
 }
 
+void OpGen::PopContinuationScope() {
+  mlir::OpBuilder::InsertionGuard IG(Builder);
+  LambdaScopeNode& LS = LambdaScopes.back();
+  mlir::Location Loc = LS.Op->getLoc();
+  Builder.setInsertionPointAfter(LS.Op);
+  llvm::StringRef MangledName = LS.Op->getAttrOfType<mlir::StringAttr>(
+                                  mlir::SymbolTable::getSymbolAttrName())
+                                  .getValue();
+  Builder.create<PushContOp>(Loc, MangledName, LS.Captures);
+  LambdaScopes.pop_back();
+}
+
 bool OpGen::isLocalDefineAllowed() {
   mlir::Block* Block = Builder.getInsertionBlock();
   if (!Block) return false;
@@ -387,13 +399,40 @@ mlir::Value OpGen::VisitBinding(Binding* B) {
 }
 
 mlir::Value OpGen::HandleCall(Pair* P) {
+  heavy::SourceLocation Loc = P->getSourceLocation();
   bool TailPos = isTailPos();
   IsTopLevel = false;
   mlir::Value Fn = Visit(P->Car);
   llvm::SmallVector<mlir::Value, 16> Args;
   HandleCallArgs(P->Cdr, Args);
-  return create<ApplyOp>(P->getSourceLocation(), Fn, Args,
-                         TailPos);
+  ApplyOp Op = create<ApplyOp>(Loc, Fn, Args);
+  if (TailPos) return mlir::Value();
+
+  // create the continuation
+  //
+  // TODO The current context should be able to tell us the arity
+  //      of the continuation defaulting to 1
+  // 
+  // TODO Detect if the continuation should simply discard effects,
+  //      accepting any arity
+  mlir::FunctionType FT = createFunctionType(/*Arity=*/1,
+                                             /*HasRestParam=*/false);
+  std::string MangledName = mangleFunctionName(llvm::StringRef());
+
+  Op.initCont();
+  mlir::Block* ContEntry = new mlir::Block();
+  Op.initCont().push_back(ContEntry);
+  Builder.setInsertionPointToStart(ContEntry);
+
+  // create the continuation's function
+  // subsequent operations will be nested within
+  // relying on previous insertion guards to pull us out
+  auto F = create<mlir::FuncOp>(Loc, MangledName, FT);
+  PushContinuationScope(F);
+  mlir::Block* FuncEntry = F.addEntryBlock();
+  Builder.setInsertionPointToStart(FuncEntry);
+  // FIXME return the value of the function argument
+  return mlir::Value();
 }
 
 void OpGen::HandleCallArgs(Value V,

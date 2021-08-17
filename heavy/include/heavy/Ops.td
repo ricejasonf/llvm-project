@@ -38,21 +38,18 @@ def HeavyValueAttr : Attr<CPred<"true">,
 class HeavyOp<string mnemonic, list<OpTrait> traits = []> :
     Op<HeavyDialect, mnemonic, traits>;
 
-def heavy_ApplyOp : HeavyOp<"apply"> {
+def heavy_ApplyOp : HeavyOp<"apply", [ReturnLike, Terminator]> {
   let summary = "apply";
   let description = [{
-    Dynamically applies a set of operands to an operator which can
-    be a user defined lambda, a builtin, or an FFI wrapper.
+    ApplyOp represents a function call whose results are passed to
+    a continuation. The initCont region should create a
+    closure object to be used as the continuation, or the region
+    should be empty in the case of non-tail calls.
   }];
 
-  let arguments = (ins HeavyValue:$fn, Variadic<HeavyValue>:$args,
-                       BoolAttr:$isTailPos);
-  let results   = (outs HeavyValue:$result);
-  let builders = [
-    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, "
-              "::mlir::Value, ArrayRef<::mlir::Value>, "
-              "bool IsTailPos">
-  ];
+  let regions   = (region AnyRegion:$initCont);
+  let arguments = (ins HeavyValue:$fn, Variadic<HeavyValue>:$args);
+  let results   = (outs);
 }
 
 def heavy_BindingOp : HeavyOp<"binding", [Symbol]> {
@@ -119,7 +116,7 @@ def heavy_CommandOp : HeavyOp<"command"> {
       return entry;
     }
   }];
-  
+
   let arguments = (ins /*none*/);
   let results   = (outs /*none*/);
 }
@@ -180,7 +177,7 @@ def heavy_IfOp : HeavyOp<"if", []> {
   let summary = "if";
   let description = [{
     IfOp handles branching to one of two regions based on an
-    input result.
+    input result. Neither regions may contain an ApplyOp.
   }];
 
   let arguments = (ins HeavyValue:$input);
@@ -192,6 +189,22 @@ def heavy_IfOp : HeavyOp<"if", []> {
     OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, "
               "::mlir::Value" >
   ];
+}
+
+def heavy_IfContOp : HeavyOp<"if_cont", [ReturnLike, Terminator]> {
+  let summary = "if_cont";
+  let description = [{
+    IfContOp represents branching where one or more of the branches
+    contain an ApplyOp so a continuation must be provided.
+    The initCont region behaves the same as ApplyOp and should be
+    empty if the operation is in tail position.
+  }];
+
+  let regions   = (region SizedRegion<1>:$thenRegion,
+                          SizedRegion<1>:$elseRegion,
+                          AnyRegion:$initCont);
+  let arguments = (ins HeavyValue:$input);
+  let results   = (outs);
 }
 
 def heavy_LambdaOp : HeavyOp<"lambda"> {
@@ -237,7 +250,7 @@ def heavy_LoadClosureOp : HeavyOp<"load_closure"> {
 
   let arguments = (ins HeavyLambda:$closure, UI32Attr:$index);
   let results   = (outs HeavyValue:$result);
-  
+
   let builders = [
     OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&,"
               "::mlir::Value Closure, uint32_t Index">
@@ -252,11 +265,24 @@ def heavy_LoadGlobalOp : HeavyOp<"load_global"> {
 
   let arguments = (ins FlatSymbolRefAttr:$name);
   let results   = (outs HeavyValue:$result);
-  
+
   let builders = [
     OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&,"
               "StringRef Name">
   ];
+}
+
+def heavy_PushContOp : HeavyOp<"push_cont", [ReturnLike, Terminator]> {
+  let summary = "push_cont";
+  let description = [{
+    Creates a closure for a continuation object to be
+    pushed to the continuation stack. This should only be
+    used to terminate an operation's initCont region.
+  }];
+
+  let arguments = (ins StrAttr:$name,
+                       Variadic<HeavyValue>:$captures);
+  let results   = (outs);
 }
 
 def heavy_SetOp : HeavyOp<"set"> {
