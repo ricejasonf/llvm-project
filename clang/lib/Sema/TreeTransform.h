@@ -10201,7 +10201,19 @@ ExprResult
 TreeTransform<Derived>::TransformOpaqueValueExpr(OpaqueValueExpr *E) {
   assert((!E->getSourceExpr() || getDerived().AlreadyTransformed(E->getType())) &&
          "opaque value expression requires transformation");
-  return E;
+
+  // Note that SourceExpr can be nullptr
+  ExprResult SourceExpr = TransformExpr(E->getSourceExpr());
+  if (SourceExpr.isInvalid()) return ExprError();
+  if (SourceExpr.get() == E->getSourceExpr() && !getDerived().AlwaysRebuild()) {
+    return E;
+  }
+
+  OpaqueValueExpr *New =
+    new (SemaRef.Context) OpaqueValueExpr(E->getExprLoc(), E->getType(),
+                                          E->getValueKind(), E->getObjectKind(),
+                                          SourceExpr.get());
+  return New;
 }
 
 template<typename Derived>

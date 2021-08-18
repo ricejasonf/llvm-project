@@ -8595,9 +8595,13 @@ ExprResult InitializationSequence::Perform(Sema &S,
 
     case SK_ArrayLoopIndex: {
       Expr *Cur = CurInit.get();
-      Expr *BaseExpr = new (S.Context)
-          OpaqueValueExpr(Cur->getExprLoc(), Cur->getType(),
-                          Cur->getValueKind(), Cur->getObjectKind(), Cur);
+      // prevent nested OpaqueValueExprs
+      Expr *BaseExpr = dyn_cast<OpaqueValueExpr>(Cur);
+      if (!BaseExpr) {
+        BaseExpr = new (S.Context)
+            OpaqueValueExpr(Cur->getExprLoc(), Cur->getType(),
+                            Cur->getValueKind(), Cur->getObjectKind(), Cur);
+      }
       Expr *IndexExpr =
           new (S.Context) ArrayInitIndexExpr(S.Context.getSizeType());
       CurInit = S.CreateBuiltinArraySubscriptExpr(
