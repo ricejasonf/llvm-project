@@ -34,7 +34,7 @@ namespace heavy {
 //      mlir:Operation* instead of mlir::Value
 //      since there can be multiple results.
 class OpGen : public ValueVisitor<OpGen, mlir::Value> {
-  friend class ValueVisitor<OpGen, mlir::Value>;
+  friend ValueVisitor;
   using BindingScopeTable = llvm::ScopedHashTable<
                                             heavy::Value,
                                             mlir::Value>;
@@ -137,6 +137,29 @@ public:
 
   mlir::ModuleOp getTopLevel();
 
+  mlir::ValueRange ExpandResults(mlir::Value Result) {
+    if (Result.isa<mlir::OpResult>()) {
+      return Result.getDefiningOp()->getResults();
+    }
+    else {
+      auto BlockArg = Result.cast<mlir::BlockArgument>();
+      return BlockArg.getOwner()->getArguments().drop_front();
+    }
+  }
+
+  // GetSingleResult
+  //  - visits a node expecting a single result
+  mlir::Value GetSingleResult(heavy::Value V) {
+    mlir::Value Result = Visit(V);
+    if (auto BlockArg = Result.dyn_cast<mlir::BlockArgument>()) {
+      // the size includes the closure object
+      if (BlockArg.getOwner()->getArguments().size() != 2) {
+        return SetError("invalid continuation arity", V);
+      }
+    }
+    return Result;
+  }
+
   void setModulePrefix(std::string&& Prefix) {
     ModulePrefix = std::move(Prefix);
   }
@@ -158,7 +181,7 @@ public:
     mlir::OpBuilder::InsertionGuard IG(Builder);
     Builder.clearInsertionPoint();
 
-    mlir::Value Result = Visit(V);
+    mlir::Value Result = GetSingleResult(V);
     assert(Result && "expecting a valid mlir value");
     mlir::Operation* Op = Result.getDefiningOp();
     if (isa<GlobalOp>(Op)) return Op;
@@ -196,23 +219,24 @@ public:
 
   mlir::Value createBody(SourceLocation Loc, Value Body);
   mlir::Value createSequence(SourceLocation Loc, Value Body);
+  mlir::Value createIf(SourceLocation Loc, Value Cond, Value Then,
+                            Value Else);
+  mlir::Value createContinuation(mlir::Region& initCont);
 
   mlir::FunctionType createFunctionType(unsigned Arity,
                                         bool HasRestParam);
   mlir::Value createLambda(Value Formals, Value Body,
-                           SourceLocation Loc,
-                           llvm::StringRef Name = {});
+                               SourceLocation Loc,
+                               llvm::StringRef Name = {});
 
   mlir::Value createBinding(Binding *B, mlir::Value Init);
   mlir::Value createDefine(Symbol* S, Value Args, Value OrigCall);
-  mlir::Value createIf(SourceLocation Loc, Value Cond, Value Then,
-                       Value Else);
   mlir::Value createTopLevelDefine(Symbol* S, Value Args, Value OrigCall);
   mlir::Value createUndefined();
   mlir::Value createSet(SourceLocation Loc, Value LHS, Value RHS);
 
   mlir::Value createEqual(Value V1, Value V2); // equal? for pattern matching
-  mlir::Value createLiteral(Value V) {
+  heavy::LiteralOp createLiteral(Value V) {
     return create<LiteralOp>(V.getSourceLocation(), V);
   }
 
@@ -240,6 +264,7 @@ private:
   }
 
   mlir::Value VisitOperation(mlir::Operation* Op) {
+    // what if the operation has no results?
     return Op->getResult(0);
   }
 
