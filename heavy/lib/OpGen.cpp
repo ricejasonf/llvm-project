@@ -25,6 +25,9 @@
 
 using namespace heavy;
 
+namespace {
+}
+
 OpGen::OpGen(heavy::Context& C)
   : Context(C),
     TopLevelBuilder(&(C.MlirContext)),
@@ -117,10 +120,7 @@ mlir::Value OpGen::createLambda(Value Formals, Value Body,
       createBinding(B, Arg);
     }
 
-    mlir::Value BodyVal = createBody(Loc, Body);
-
-    // Create terminator
-    Builder.create<ContOp>(BodyVal.getLoc(), BodyVal);
+    createBody(Loc, Body);
 
     Context.PopEnvFrame();
   }
@@ -296,45 +296,70 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
 }
 
 mlir::Value OpGen::createIf(SourceLocation Loc, Value Cond, Value Then,
-                            Value Else) {
+                                 Value Else) {
   // Cond
   mlir::Value CondResult;
   {
     TailPosScope TPS(*this);
     IsTailPos = false;
-    CondResult = Visit(Cond);
+    CondResult = GetSingleResult(Cond);
   }
 
-  auto IfOp = create<heavy::IfOp>(Loc, CondResult);
-  IfOp.thenRegion().push_back(new mlir::Block());
-  IfOp.elseRegion().push_back(new mlir::Block());
+  bool TailPos = isTailPos();
+  IsTopLevel = false;
+
+  mlir::Block* ThenBlock = new mlir::Block();
+  mlir::Block* ElseBlock = new mlir::Block();
+  bool RequiresContinuation = false;
 
   // Then
   {
     mlir::OpBuilder::InsertionGuard IG(Builder);
-    Builder.setInsertionPointToStart(&IfOp.thenRegion().front());
+    Builder.setInsertionPointToStart(ThenBlock);
     mlir::Value Result = Visit(Then);
-    create<ContOp>(Loc, Result);
+    if (isa<ApplyOp>(ThenBlock->back())) {
+      RequiresContinuation = true;
+    } else {
+      create<ContOp>(Loc, Result);
+    }
   }
 
   // Else
   {
     mlir::OpBuilder::InsertionGuard IG(Builder);
-    Builder.setInsertionPointToStart(&IfOp.elseRegion().front());
+    Builder.setInsertionPointToStart(ElseBlock);
     mlir::Value Result = Visit(Else);
-    create<ContOp>(Loc, Result);
+    if (isa<ApplyOp>(ElseBlock->back())) {
+      RequiresContinuation = true;
+    } else {
+      create<ContOp>(Loc, Result);
+    }
   }
 
-  return IfOp;
+  if (!RequiresContinuation) {
+    auto IfOp = create<heavy::IfOp>(Loc, CondResult);
+    IfOp.thenRegion().push_back(ThenBlock);
+    IfOp.elseRegion().push_back(ElseBlock);
+    return IfOp;
+  }
+
+  auto IfContOp = create<heavy::IfContOp>(Loc, CondResult);
+  IfContOp.thenRegion().push_back(ThenBlock);
+  IfContOp.elseRegion().push_back(ElseBlock);
+
+  if (TailPos) return mlir::Value();
+  return createContinuation(IfContOp.initCont());      
 }
 
 // LHS can be a symbol or a binding
 mlir::Value OpGen::createSet(SourceLocation Loc, Value LHS,
                                                  Value RHS) {
+  TailPosScope TPS(*this);
+  IsTailPos = false;
   assert((isa<Binding>(LHS) || isa<Symbol>(LHS)) &&
       "expects a Symbol or Binding for LHS");
-  mlir::Value BVal = Visit(LHS);
-  mlir::Value ExprVal = Visit(RHS);
+  mlir::Value BVal = GetSingleResult(LHS);
+  mlir::Value ExprVal = GetSingleResult(RHS);
   return create<SetOp>(Loc, BVal, ExprVal);
 }
 
@@ -351,7 +376,6 @@ mlir::Value OpGen::VisitDefineArgs(Value Args) {
     return createLambda(Formals, Body,
                         S->getSourceLocation(),
                         S->getVal());
-
   }
   if (isa<Symbol>(P->Car) && isa<Pair>(P->Cdr)) {
     return Visit(cast<Pair>(P->Cdr)->Car);
@@ -386,7 +410,7 @@ mlir::Value OpGen::VisitSymbol(Symbol* S) {
     }
   }
 
-  return Visit(Entry.Value);
+  return GetSingleResult(Entry.Value);
 }
 
 mlir::Value OpGen::VisitBinding(Binding* B) {
@@ -402,16 +426,21 @@ mlir::Value OpGen::HandleCall(Pair* P) {
   heavy::SourceLocation Loc = P->getSourceLocation();
   bool TailPos = isTailPos();
   IsTopLevel = false;
-  mlir::Value Fn = Visit(P->Car);
+  mlir::Value Fn = GetSingleResult(P->Car);
   llvm::SmallVector<mlir::Value, 16> Args;
   HandleCallArgs(P->Cdr, Args);
   ApplyOp Op = create<ApplyOp>(Loc, Fn, Args);
-  if (TailPos) return mlir::Value();
+  //if (TailPos) return mlir::Value();
+  if (TailPos) return createUndefined();
 
   // create the continuation
+  return createContinuation(Op.initCont());
+}
+
+mlir::Value OpGen::createContinuation(mlir::Region& initCont) {
   //
   // TODO The current context should be able to tell us the arity
-  //      of the continuation defaulting to 1
+  //      of the continuation defaulting to 1 (plus the closure arg)
   // 
   // TODO Detect if the continuation should simply discard effects,
   //      accepting any arity
@@ -419,20 +448,17 @@ mlir::Value OpGen::HandleCall(Pair* P) {
                                              /*HasRestParam=*/false);
   std::string MangledName = mangleFunctionName(llvm::StringRef());
 
-  Op.initCont();
-  mlir::Block* ContEntry = new mlir::Block();
-  Op.initCont().push_back(ContEntry);
-  Builder.setInsertionPointToStart(ContEntry);
+  Builder.createBlock(&initCont);
 
   // create the continuation's function
   // subsequent operations will be nested within
   // relying on previous insertion guards to pull us out
-  auto F = create<mlir::FuncOp>(Loc, MangledName, FT);
+  auto F = create<mlir::FuncOp>(heavy::SourceLocation(), MangledName, FT);
   PushContinuationScope(F);
   mlir::Block* FuncEntry = F.addEntryBlock();
   Builder.setInsertionPointToStart(FuncEntry);
-  // FIXME return the value of the function argument
-  return mlir::Value();
+  // Results drops the Closure arg at the front
+  return FuncEntry->getArguments()[1];
 }
 
 void OpGen::HandleCallArgs(Value V,
@@ -448,7 +474,7 @@ void OpGen::HandleCallArgs(Value V,
   {
     TailPosScope TPS(*this);
     IsTailPos = false;
-    Args.push_back(Visit(P->Car));
+    Args.push_back(GetSingleResult(P->Car));
   }
   HandleCallArgs(P->Cdr, Args);
 }
