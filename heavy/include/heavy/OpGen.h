@@ -40,6 +40,19 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
                                             mlir::Value>;
   using BindingScope = typename BindingScopeTable::ScopeTy;
 
+  struct LambdaScopeNode {
+    mlir::Operation* Op;
+    llvm::SmallVector<mlir::Value, 8> Captures;
+    BindingScope BindingScope_;
+
+    LambdaScopeNode(mlir::Operation* Op,
+          BindingScopeTable& Table)
+      : Op(Op),
+        Captures(),
+        BindingScope_(Table)
+    { }
+  };
+
   // LambdaScope - RAII object that pushes an operation that is
   //               FunctionLike to the scope stack along with a
   //               BindingScope where we can insert stack local
@@ -50,22 +63,20 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   //               non-isolated scopes (e.g. `let` syntax).
   struct LambdaScope {
     OpGen& O;
-    mlir::Operation* Op;
+    LambdaScopeNode& Node;
 
     LambdaScope(OpGen& O, mlir::Operation* Op)
       : O(O),
-        Op(Op)
-    {
-      O.LambdaScopes.emplace_back(Op, O.BindingTable);
-    }
+        Node((O.LambdaScopes.emplace_back(Op, O.BindingTable),
+              O.LambdaScopes.back()))
+    { }
 
-    ~LambdaScope()
-    {
+    ~LambdaScope() {
       // pop all intermediate continuation scopes
       // and then our own lambda scope
       while (O.LambdaScopes.size() > 0) {
         mlir::Operation* CurOp = O.LambdaScopes.back().Op;
-        if (CurOp == Op) {
+        if (CurOp == Node.Op) {
           O.LambdaScopes.pop_back();
           return;
         } else {
@@ -79,24 +90,13 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   // continuation scopes get popped by their containing
   // lambda
   void PushContinuationScope(mlir::Operation* Op) {
+  llvm::errs() << "pushing continuation scope\n";
     LambdaScopes.emplace_back(Op, BindingTable);
   }
 
   // pop the scope and build the PushContOp with its captures
   void PopContinuationScope();
 
-  struct LambdaScopeNode {
-    mlir::Operation* Op;
-    llvm::SmallVector<mlir::Value, 8> Captures;
-    BindingScope BindingScope_;
-
-    LambdaScopeNode(mlir::Operation* Op,
-          BindingScopeTable& Table)
-      : Op(Op),
-        Captures(),
-        BindingScope_(Table)
-    { }
-  };
   using LambdaScopeIterator = typename std::deque<LambdaScopeNode>
                                 ::reverse_iterator;
 
@@ -173,28 +173,10 @@ public:
     return ModulePrefix;
   }
 
-  mlir::Operation* VisitTopLevel(Value V) {
-    IsTopLevel = true;
-
-    // We use a null Builder to denote that we should
-    // insert into a lazily created CommandOp by default
-    mlir::OpBuilder::InsertionGuard IG(Builder);
-    Builder.clearInsertionPoint();
-
-    mlir::Value Result = GetSingleResult(V);
-    assert(Result && "expecting a valid mlir value");
-    mlir::Operation* Op = Result.getDefiningOp();
-    if (isa<GlobalOp>(Op)) return Op;
-    // The CommandOp was created lazily and should
-    // be the parent of the Result.
-    Op = Result.getDefiningOp()->getParentOp();
-    assert(isa<CommandOp>(Op) &&
-        "top level operation must be GlobalOp or CommandOp");
-    return Op;
-  }
+  mlir::Operation* VisitTopLevel(Value V);
 
   bool isTopLevel() { return IsTopLevel; }
-  bool isTailPos() { return IsTailPos && !IsTopLevel; }
+  bool isTailPos() { return IsTailPos; }
   bool isLocalDefineAllowed();
 
   std::string mangleFunctionName(llvm::StringRef Name);
