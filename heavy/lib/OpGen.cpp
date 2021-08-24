@@ -54,12 +54,42 @@ mlir::ModuleOp OpGen::getTopLevel() {
   return cast<mlir::ModuleOp>(TopLevel);
 }
 
+mlir::Operation* OpGen::VisitTopLevel(Value V) {
+  IsTopLevel = true;
+
+  // We use a null Builder to denote that we should
+  // insert into a lazily created CommandOp by default
+  mlir::OpBuilder::InsertionGuard IG(Builder);
+  Builder.clearInsertionPoint();
+
+  Visit(V);
+  mlir::Operation* Op = (TopLevelBuilder.getBlock()->back().getPrevNode());
+  assert((isa<CommandOp, GlobalOp>(Op)) &&
+      "top level operation must be CommandOp or GlobalOp");
+
+  // FIXME this may require a less ad hoc solution
+  if (heavy::CommandOp CommandOp = dyn_cast<heavy::CommandOp>(Op)) {
+    mlir::Block& Block = CommandOp.body().front();
+    assert(!Block.empty() && "command op must have body");
+    if (!Block.back().isKnownTerminator()) {
+      mlir::OpBuilder::InsertionGuard IG(Builder);
+      Builder.setInsertionPointToEnd(&Block);
+      create<ContOp>(heavy::SourceLocation(), createUndefined());
+    }
+  }
+
+  // pop continuation scopes to the TopLevel
+  while (LambdaScopes.size() > 0) {
+    if (LambdaScopes.back().Op == TopLevel) break;
+    PopContinuationScope();
+  }
+  return Op;
+}
+
 void OpGen::insertTopLevelCommandOp(SourceLocation Loc) {
   auto CommandOp = create<heavy::CommandOp>(TopLevelBuilder, Loc);
   mlir::Block& Block = *CommandOp.addEntryBlock();
   // overwrites Builder without reverting it
-  Builder.setInsertionPointToStart(&Block);
-  create<ContOp>(Loc, createUndefined());
   Builder.setInsertionPointToStart(&Block);
 }
 
@@ -102,7 +132,7 @@ mlir::Value OpGen::createLambda(Value Formals, Value Body,
   mlir::FunctionType FT = createFunctionType(Arity, HasRestParam);
 
   auto F = create<mlir::FuncOp>(Loc, MangledName, FT);
-  LambdaScope LScope(*this, F);
+  LambdaScope LS(*this, F);
 
   // Insert into the function body
   {
@@ -125,8 +155,7 @@ mlir::Value OpGen::createLambda(Value Formals, Value Body,
     Context.PopEnvFrame();
   }
 
-  LambdaScopeNode& LS = LambdaScopes.back();
-  return create<LambdaOp>(Loc, MangledName, LS.Captures);
+  return create<LambdaOp>(Loc, MangledName, LS.Node.Captures);
 }
 
 void OpGen::PopContinuationScope() {
@@ -138,6 +167,7 @@ void OpGen::PopContinuationScope() {
                                   mlir::SymbolTable::getSymbolAttrName())
                                   .getValue();
   Builder.create<PushContOp>(Loc, MangledName, LS.Captures);
+  llvm::errs() << "popping continuation scope\n";
   LambdaScopes.pop_back();
 }
 
@@ -430,8 +460,7 @@ mlir::Value OpGen::HandleCall(Pair* P) {
   llvm::SmallVector<mlir::Value, 16> Args;
   HandleCallArgs(P->Cdr, Args);
   ApplyOp Op = create<ApplyOp>(Loc, Fn, Args);
-  //if (TailPos) return mlir::Value();
-  if (TailPos) return createUndefined();
+  if (TailPos) return mlir::Value();
 
   // create the continuation
   return createContinuation(Op.initCont());
