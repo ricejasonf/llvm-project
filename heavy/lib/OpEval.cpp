@@ -179,6 +179,7 @@ private:
     else if (isa<SpliceOp>(Op))       return Visit(cast<SpliceOp>(Op));
     else if (isa<SetOp>(Op))          return Visit(cast<SetOp>(Op));
     else if (isa<CommandOp>(Op))      return Visit(cast<CommandOp>(Op));
+    else if (isa<PushContOp>(Op))     return Visit(cast<PushContOp>(Op));
     else if (isa<FuncOp>(Op))         return next(Op); // skip functions
     else if (isa<mlir::ModuleTerminatorOp>(Op)) return {};
     else if (UndefinedOp UndefOp = dyn_cast<UndefinedOp>(Op)) {
@@ -251,6 +252,9 @@ private:
   //  - Loads the values for the results of an Op
   //  - Used by ContOp and ApplyOp (since ApplyOp is dynamic)
   //  - Checks arity
+  //
+  // TODO I think this should be replaced with a ResultOp and
+  //      ContOp always call the current continuation
   void SetContValues(mlir::Operation* Op, ValueRefs ContValues) {
     auto Results = Op->getResults();
     assert((Results.empty() ||
@@ -263,39 +267,20 @@ private:
   }
 
   BlockItrTy Visit(ApplyOp Op) {
-    // TODO if we are not in tail pos then return the initCont region
-    heavy::SourceLocation CallLoc = getSourceLocation(Op.getLoc());
-
     llvm::SmallVector<heavy::Value, 8> ArgResults;
     LoadArgResults(Op, ArgResults);
     Value Callee = ArgResults[0];
     ValueRefs Args = ValueRefs(ArgResults).drop_front();
 
-#if 0
-    if (Op.isTailPos()) {
-      Context.Apply(CallLoc, Callee, Args);
-      return BlockItrTy();
-    }
-#endif
-
-    // TODO Handle non-tail Apply which requires
-    //      setting up a continuation
-    //      To make this work with call/cc we have
-    //      to actually capture the values via something
-    //      like a PushContOp
-    //
-    //      Right now we are just resuming with the next Op
-    Context.PushCont([this, Op](heavy::Context& C, ValueRefs ContValues) {
-      SetContValues(Op, ContValues);
-
-      BlockItrTy Itr = next(Op);
-      // When a call to Visit returns a null we defer
-      // execution to the continuation stack.
+    if (!Op.isTailPos()) {
+      // evaluate the initCont region which pushes
+      // a continuation
+      BlockItrTy Itr = Op.initCont().front().begin();
       while (Itr != BlockItrTy()) {
         Itr = Visit(&*Itr);
       }
-      return Undefined{};
-    }, llvm::None);
+    }
+
     Context.Apply(Callee, Args);
     return BlockItrTy();
   }
@@ -343,7 +328,7 @@ private:
       Context.Cont(ContValues);
       return {};
     } else if (isa<GlobalOp>(Parent)) {
-      // mutable globals must be wrapped with a binding
+      // Mutable globals must be wrapped with a binding
       assert(ContValues.size() == 1 &&
           "GlobalOp should have only one result");
       ContValues[0] = Context.CreateBinding(ContValues[0]);
@@ -367,25 +352,38 @@ private:
                             Op.elseRegion().front().begin();
   }
 
-  BlockItrTy Visit(LambdaOp Op) {
-    // We could use the symbol to lookup the function
-    // but here we just assume the FuncOp precedes the LambdaOp
-    // since they are always generated that way in OpGen
-    FuncOp F = cast<FuncOp>(Op.getOperation()->getPrevNode());
-    llvm::SmallVector<heavy::Value, 8> Captures;
-    for (mlir::Value Val : Op.captures()) {
+  auto createClosure(mlir::Operation* Op, mlir::ValueRange CaptureVals,
+                     llvm::SmallVectorImpl<heavy::Value>& Captures) {
+    for (mlir::Value Val : CaptureVals) {
       Captures.push_back(getBindingOrValue(Val));
     }
 
-    auto CallFn = [this, F](heavy::Context& C, ValueRefs Args) {
+    // We could use the symbol to lookup the function
+    // but here we just assume the FuncOp precedes the
+    // LambdaOp/PushContOp since they are always
+    // generated that way in OpGen
+    FuncOp F = cast<FuncOp>(Op->getPrevNode());
+    return [this, F](heavy::Context& C, ValueRefs Args) {
       this->CallFuncOp(F, Args);
       return heavy::Undefined();
     };
+  }
 
+  BlockItrTy Visit(LambdaOp Op) {
+    llvm::SmallVector<heavy::Value, 8> Captures;
+    auto CallFn = createClosure(Op, Op.captures(), Captures);
     Lambda* L = Context.CreateLambda(CallFn, Captures);
 
     setValue(Op.result(), L);
     return next(Op);
+  }
+
+  BlockItrTy Visit(PushContOp Op) {
+    llvm::SmallVector<heavy::Value, 8> Captures;
+    auto CallFn = createClosure(Op, Op.captures(), Captures);
+    Context.PushCont(CallFn, Captures);
+
+    return BlockItrTy();
   }
 
   BlockItrTy Visit(LiteralOp Op) {
