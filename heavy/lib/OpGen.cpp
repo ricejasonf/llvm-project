@@ -150,7 +150,11 @@ mlir::Value OpGen::createLambda(Value Formals, Value Body,
       createBinding(B, Arg);
     }
 
-    createBody(Loc, Body);
+    // If Result is null then it already
+    // has a terminator.
+    if (mlir::Value Result = createBody(Loc, Body)) {
+      Builder.create<ContOp>(Result.getLoc(), Result);
+    }
 
     Context.PopEnvFrame();
   }
@@ -167,7 +171,6 @@ void OpGen::PopContinuationScope() {
                                   mlir::SymbolTable::getSymbolAttrName())
                                   .getValue();
   Builder.create<PushContOp>(Loc, MangledName, LS.Captures);
-  llvm::errs() << "popping continuation scope\n";
   LambdaScopes.pop_back();
 }
 
@@ -298,6 +301,8 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
   // If the name already exists in the current module
   // then it behaves like `set!`
   if (Binding* B = dyn_cast_or_null<Binding>(Entry.Value)) {
+    TailPosScope TPS(*this);
+    IsTailPos = false;
     mlir::Value BVal = BindingTable.lookup(B);
     assert(BVal && "expecting BindingOp for Binding");
     mlir::Value Init = VisitDefineArgs(DefineArgs);
@@ -318,8 +323,9 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
     Binding* B = Context.CreateBinding(S, DefineArgs);
     BindingTable.insert(B, GlobalOp);
     Env->Insert(B);
-    mlir::Value Init = VisitDefineArgs(DefineArgs);
-    create<ContOp>(DefineLoc, Init);
+    if (mlir::Value Init = VisitDefineArgs(DefineArgs)) {
+      create<ContOp>(DefineLoc, Init);
+    }
   }
 
   return GlobalOp;
