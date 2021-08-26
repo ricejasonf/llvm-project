@@ -46,10 +46,16 @@ def heavy_ApplyOp : HeavyOp<"apply", [ReturnLike, Terminator]> {
     closure object to be used as the continuation, or the region
     should be empty in the case of non-tail calls.
   }];
-
   let regions   = (region AnyRegion:$initCont);
   let arguments = (ins HeavyValue:$fn, Variadic<HeavyValue>:$args);
   let results   = (outs);
+
+  let extraClassDeclaration = [{
+    bool isTailPos() {
+      return initCont().empty();
+    }
+  }];
+
 }
 
 def heavy_BindingOp : HeavyOp<"binding", [Symbol]> {

@@ -90,7 +90,6 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   // continuation scopes get popped by their containing
   // lambda
   void PushContinuationScope(mlir::Operation* Op) {
-  llvm::errs() << "pushing continuation scope\n";
     LambdaScopes.emplace_back(Op, BindingTable);
   }
 
