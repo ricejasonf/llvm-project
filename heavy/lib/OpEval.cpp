@@ -323,15 +323,10 @@ private:
 
     mlir::Operation* Parent = Op.getParentOp();
 
-    if (isa<FuncOp>(Parent)) {
+    if (isa<FuncOp, GlobalOp>(Parent)) {
       // The continuation is handled by the run-time
       Context.Cont(ContValues);
       return {};
-    } else if (isa<GlobalOp>(Parent)) {
-      // Mutable globals must be wrapped with a binding
-      assert(ContValues.size() == 1 &&
-          "GlobalOp should have only one result");
-      ContValues[0] = Context.CreateBinding(ContValues[0]);
     }
 
     SetContValues(Parent, ContValues);
@@ -361,7 +356,7 @@ private:
     // We could use the symbol to lookup the function
     // but here we just assume the FuncOp precedes the
     // LambdaOp/PushContOp since they are always
-    // generated that way in OpGen
+    // generated that way in OpGen.
     FuncOp F = cast<FuncOp>(Op->getPrevNode());
     return [this, F](heavy::Context& C, ValueRefs Args) {
       this->CallFuncOp(F, Args);
@@ -428,6 +423,16 @@ private:
     if (Op.isExternal()) return next(Op);
 
     push_scope();
+    Context.PushCont([Op](heavy::Context& C, ValueRefs Args) mutable {
+      pop_scope();
+      // TODO we could assert the depth of scopes here
+      assert(Args.size() == 1 && "invalid continuation arity");
+      // Mutable globals must be wrapped with a binding
+      heavy::Binding* Binding = C.CreateBinding(Args[0]);
+      C.OpEval.Impl->setValue(Op.result(), Binding);
+      C.Cont(Undefined());
+    }, ValueRefs());
+
     return Op.initializer().front().begin();
   }
 
