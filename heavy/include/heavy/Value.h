@@ -1643,8 +1643,9 @@ Lambda::FunctionDataView Lambda::createFunctionDataView(F& Fn) {
 
   static_assert(std::is_trivially_copyable<F>::value,
     "F must be trivially_copyable");
+  using FuncTy = std::remove_const_t<F>;
   auto CallFn = [](void* Storage, Context& C, ValueRefs Values) -> Value {
-    F& Func = *static_cast<F*>(Storage);
+    FuncTy& Func = *static_cast<FuncTy*>(Storage);
     Func(C, Values);
     return Undefined{};
   };
