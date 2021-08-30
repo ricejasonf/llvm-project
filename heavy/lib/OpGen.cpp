@@ -394,8 +394,10 @@ mlir::Value OpGen::createSet(SourceLocation Loc, Value LHS,
   IsTailPos = false;
   assert((isa<Binding>(LHS) || isa<Symbol>(LHS)) &&
       "expects a Symbol or Binding for LHS");
-  mlir::Value BVal = GetSingleResult(LHS);
+  // ExprVal must be evaluated first so
+  // the Binding will be in the continuation scope
   mlir::Value ExprVal = GetSingleResult(RHS);
+  mlir::Value BVal = GetSingleResult(LHS);
   return create<SetOp>(Loc, BVal, ExprVal);
 }
 

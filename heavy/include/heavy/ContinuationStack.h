@@ -224,10 +224,9 @@ public:
   //  RestoreStack
   //    - Restores the stack from a String that was saved by CallCC
   void RestoreStack(heavy::String* Buffer) {
-    char* begin = reinterpret_cast<char*>(Top);
-    char* end = &(Storage.back());
     llvm::StringRef BufferView = Buffer->getView();
-    std::fill(begin, end, char(0));
+    char* end = &(Storage.back());
+    char* begin = end - BufferView.size();
     std::copy(BufferView.begin(), BufferView.end(), begin);
   }
 

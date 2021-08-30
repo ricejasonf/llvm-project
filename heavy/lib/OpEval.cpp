@@ -68,7 +68,7 @@ class OpEvalImpl {
   }
 
   heavy::Value getBindingOrValue(mlir::Value M) {
-
+    assert(M && "lookup requires a valid value");
     heavy::Value V = ValueMap.lookup(M);
     if (!V && (M.getDefiningOp<UndefinedOp>() ||
                M.getDefiningOp<SetOp>())) {
@@ -424,8 +424,6 @@ private:
 
     push_scope();
     Context.PushCont([Op](heavy::Context& C, ValueRefs Args) mutable {
-      pop_scope();
-      // TODO we could assert the depth of scopes here
       assert(Args.size() == 1 && "invalid continuation arity");
       // Mutable globals must be wrapped with a binding
       heavy::Binding* Binding = C.CreateBinding(Args[0]);
