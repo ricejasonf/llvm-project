@@ -228,6 +228,7 @@ public:
     char* end = &(Storage.back());
     char* begin = end - BufferView.size();
     std::copy(BufferView.begin(), BufferView.end(), begin);
+    Top = reinterpret_cast<Lambda*>(begin);
   }
 
   //  CallCC
