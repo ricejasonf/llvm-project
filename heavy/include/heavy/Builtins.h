@@ -82,6 +82,7 @@ heavy::Value eqv(Context& C, ValueRefs Args);
 heavy::Value list(Context& C, ValueRefs Args);
 heavy::Value append(Context& C, ValueRefs Args);
 heavy::Value callcc(Context& C, ValueRefs Args);
+heavy::Value with_exception_handler(Context& C, ValueRefs Args);
 
 }}
 
@@ -106,6 +107,7 @@ extern heavy::ExternFunction HEAVY_BASE_VAR(equal);
 extern heavy::ExternFunction HEAVY_BASE_VAR(eqv);
 extern heavy::ExternFunction HEAVY_BASE_VAR(eval);
 extern heavy::ExternFunction HEAVY_BASE_VAR(callcc);
+extern heavy::ExternFunction HEAVY_BASE_VAR(with_exception_handler);
 
 extern bool HEAVY_BASE_IS_LOADED;
 
@@ -139,6 +141,8 @@ inline void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(eqv)     = heavy::base::eqv;
   HEAVY_BASE_VAR(eval)    = heavy::base::eval;
   HEAVY_BASE_VAR(callcc)  = heavy::base::callcc;
+  HEAVY_BASE_VAR(with_exception_handler)
+    = heavy::base::with_exception_handler;
 }
 
 // initializes the module and loads lookup information
@@ -168,7 +172,8 @@ inline void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"equal?",  HEAVY_BASE_VAR(equal)},
     {"eqv?",    HEAVY_BASE_VAR(eqv)},
     {"eval",    HEAVY_BASE_VAR(eval)},
-    {"call/cc",  HEAVY_BASE_VAR(callcc)}
+    {"call/cc", HEAVY_BASE_VAR(callcc)},
+    {"with-exception-handler", HEAVY_BASE_VAR(with_exception_handler)}
   });
 }
 }

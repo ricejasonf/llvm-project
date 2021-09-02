@@ -22,6 +22,7 @@
 #include "llvm/Support/TrailingObjects.h"
 #include <algorithm>
 #include <cassert>
+#include <initializer_list>
 #include <utility>
 
 #ifndef HEAVY_STACK_SIZE
@@ -29,6 +30,7 @@
 #endif
 
 namespace heavy {
+using CaptureList = std::initializer_list<Value>;
 
 // ContinuationStack
 //      - CRTP base class to add the "run-time" functionality
@@ -47,6 +49,26 @@ class ContinuationStack {
   llvm::SmallVector<Value, 8> ApplyArgs; // includes the callee
   heavy::Lambda* Top;
   heavy::Lambda* Bottom; // not a valid Lambda but still castable to Value
+
+  class DWind {
+    heavy::Vector* Vec = nullptr;
+  public:
+    DWind(Vector* V) : Vec(V) { }
+    DWind(Value V) : Vec(cast<Vector>(V)) { }
+    operator Value() { return Value(Vec); }
+
+    int getDepth() {
+      if (!Vec) return 0;
+      return Vec->get(0);
+    }
+    Value getBeforeFn() { return Vec->get(1); }
+    Value getAfterFn() { return Vec->get(2); }
+    Value getParent() { return Vec->get(3); }
+
+    bool operator==(DWind Other) const { return Vec == Other.Vec; }
+  };
+
+  DWind CurDW;
 
   bool DidCallContinuation = false; // debug info
 
@@ -104,6 +126,33 @@ class ContinuationStack {
     ApplyArgs[0] = Callee;
   }
 
+  // TraverseWindings
+  //  - Allows escape procedures to call their
+  //    dynamic-wind points when entering or exiting
+  //    a "dynamic extent".
+  //  - Do not modify CurDW in this function
+  //  - Inspired by travel-to-point!
+  void TraverseWindings(DWind Src, DWind Dest) {
+    Derived& C = getDerived();
+    if (Src == Dest) C.Cont(Undefined());
+    if (Src.getDepth() < Dest.getDepth()) {
+      C.PushCont([](Derived& C, ValueRefs) {
+        DWind Src  = C.getCapture(0);
+        DWind Dest = C.getCapture(1);
+        C.Apply(Dest.getBeforeFn(), llvm::None);
+      }, CaptureList{Src, Dest});
+      TraverseWindings(C, Src, Dest.getParent());
+    } else {
+      C.PushCont([](Derived& C, ValueRefs) {
+        DWind Src  = C.getCapture(0);
+        DWind Dest = C.getCapture(1);
+        TraverseWindings(C, Src.getParent(), Dest);
+      }, CaptureList{Src, Dest});
+      C.Apply(Src.getAfterFn(), llvm::None);
+    }
+  }
+
+
 public:
   ContinuationStack()
     : Storage(HEAVY_STACK_SIZE, 0),
@@ -118,6 +167,12 @@ public:
 
   heavy::Value getCallee() {
     return ApplyArgs[0];
+  }
+  ValueRefs getCaptures(unsigned I) {
+    return cast<Lambda>(ApplyArgs[0])->getCaptures();
+  }
+  heavy::Value getCapture(unsigned I) {
+    return cast<Lambda>(ApplyArgs[0])->getCapture(I);
   }
 
   // Yield
@@ -184,7 +239,7 @@ public:
   // PushCont
   //    - Creates and pushes a temporary closure to the stack
   template <typename Fn>
-  void PushCont(Fn const& F, ValueRefs Captures) {
+  void PushCont(Fn const& F, ValueRefs Captures = {}) {
     auto FnData = heavy::Lambda::createFunctionDataView(F);
     size_t size = Lambda::sizeToAlloc(FnData, Captures.size());
 
@@ -199,8 +254,7 @@ public:
 
   void PushCont(heavy::Value Callable) {
     PushCont([](Derived& Context, ValueRefs Args) {
-      Lambda* Self = cast<Lambda>(Context.getCallee());
-      heavy::Value Callable = Self->getCapture(0);
+      heavy::Value Callable = Context.getCapture(0);
       Context.Apply(Callable, Args.drop_front());
     }, Callable);
   }
@@ -240,20 +294,52 @@ public:
     char* begin = reinterpret_cast<char*>(Top);
     char* end = &(Storage.back());
     size_t size = end - begin;
+    Value SavedStack  = Context.CreateString(llvm::StringRef(begin, size));
+    Value SavedDW     = CurDW;
 
-    auto Fn = [this](Derived& Ctx, ValueRefs Args) -> Value {
-      // TODO unwind/wind the dynamic points
-      Lambda* Callee = cast<Lambda>(Ctx.getCallee());
-      String* SavedStack = cast<String>(Callee->getCapture(0));
-      this->RestoreStack(SavedStack);
-      this->Cont(Args);
-      return Undefined{};
-    };
+    Value Proc = Context.CreateLambda([this](Derived& Ctx, ValueRefs Args) {
+      Value SavedStack  = Ctx.getCapture(0);
+      DWind SavedDW     = Ctx.getCapture(1);
+      Value SavedArgs   = Ctx.CreateVector(Args);
+      PushCont([](Derived& Ctx, ValueRefs) {
+        String* SavedStack  = cast<String>(Ctx.getCapture(0));
+        Vector* SavedArgs   = cast<Vector>(Ctx.getCapture(1));
+        Ctx.RestoreStack(SavedStack);
+        Ctx.Cont(SavedArgs->getElements());
+        return Value();
+      }, CaptureList{SavedStack, SavedArgs});
+      CurDW = SavedDW;
+      Ctx.TraverseWindings(this->CurDW, SavedDW);
+      return Value();
+    }, CaptureList{SavedStack, SavedDW});
 
-    // SavedStack is kept alive by the heavy::Lambda capture
-    Value SavedStack = Context.CreateString(llvm::StringRef(begin, size));
-    Value Proc = Context.CreateLambda(Fn, SavedStack);
     Apply(InputProc, Proc);
+  }
+
+  void DynamicWind(Value Before, Value Thunk, Value After) {
+    Derived& Context = getDerived();
+    int Depth = CurDW.getDepth();
+    Value NewDW = Context.CreateVector(
+        std::initializer_list<Value>{Depth + 1, Before, After, CurDW});
+
+    // FIXME this should be written in scheme
+    PushCont([this](Derived& C, ValueRefs) {
+      Value Thunk = C.getCapture(0);
+      Value After = C.getCapture(1);
+      this->CurDW = C.getCapture(2);
+
+      PushCont([](Derived& C, ValueRefs ThunkResults) {
+        Value After = C.getCapture(0);
+
+        PushCont([](Derived& C, ValueRefs) {
+          ValueRefs ThunkResults = C.getCaptures();
+          C.Cont(ThunkResults);
+        }, /*Captures=*/ThunkResults); 
+        Apply(After, {});
+      }, CaptureList{After});
+      Apply(Thunk, {});
+    }, CaptureList{Thunk, After, NewDW});
+    Apply(Before, {});
   }
 };
 
