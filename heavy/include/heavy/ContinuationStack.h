@@ -51,15 +51,16 @@ class ContinuationStack {
   heavy::Lambda* Bottom; // not a valid Lambda but still castable to Value
 
   class DWind {
-    heavy::Vector* Vec = nullptr;
   public:
+    heavy::Vector* Vec = nullptr;
+    DWind() = default;
     DWind(Vector* V) : Vec(V) { }
-    DWind(Value V) : Vec(cast<Vector>(V)) { }
+    DWind(Value V) : Vec(cast_or_null<Vector>(V)) { }
     operator Value() { return Value(Vec); }
 
     int getDepth() {
       if (!Vec) return 0;
-      return Vec->get(0);
+      return cast<Int>(Vec->get(0));
     }
     Value getBeforeFn() { return Vec->get(1); }
     Value getAfterFn() { return Vec->get(2); }
@@ -133,21 +134,33 @@ class ContinuationStack {
   //  - Do not modify CurDW in this function
   //  - Inspired by travel-to-point!
   void TraverseWindings(DWind Src, DWind Dest) {
+#if HEAVY_DYNAMIC_WIND_DEBUG
+    llvm::errs() << "Src  depth: " << Src.getDepth()
+                 << " (Vector* " << reinterpret_cast<uintptr_t>(Src.Vec)
+                 << ")\n";
+    llvm::errs() << "Dest depth: " << Dest.getDepth()
+                 << " (Vector* " << reinterpret_cast<uintptr_t>(Dest.Vec)
+                 << ")\n";
+#endif
     Derived& C = getDerived();
-    if (Src == Dest) C.Cont(Undefined());
+    if (Src == Dest) {
+      C.Cont(Undefined());
+      return;
+    }
     if (Src.getDepth() < Dest.getDepth()) {
       C.PushCont([](Derived& C, ValueRefs) {
-        DWind Src  = C.getCapture(0);
-        DWind Dest = C.getCapture(1);
+        DWind Dest = C.getCapture(0);
+        llvm::errs() << "calling before\n";
         C.Apply(Dest.getBeforeFn(), llvm::None);
-      }, CaptureList{Src, Dest});
-      TraverseWindings(C, Src, Dest.getParent());
+      }, CaptureList{Dest});
+      C.TraverseWindings(Src, Dest.getParent());
     } else {
       C.PushCont([](Derived& C, ValueRefs) {
         DWind Src  = C.getCapture(0);
         DWind Dest = C.getCapture(1);
-        TraverseWindings(C, Src.getParent(), Dest);
+        C.TraverseWindings(Src.getParent(), Dest);
       }, CaptureList{Src, Dest});
+      llvm::errs() << "calling after\n";
       C.Apply(Src.getAfterFn(), llvm::None);
     }
   }
@@ -239,7 +252,7 @@ public:
   // PushCont
   //    - Creates and pushes a temporary closure to the stack
   template <typename Fn>
-  void PushCont(Fn const& F, ValueRefs Captures = {}) {
+  void PushCont(Fn const& F, llvm::ArrayRef<heavy::Value> Captures = {}) {
     auto FnData = heavy::Lambda::createFunctionDataView(F);
     size_t size = Lambda::sizeToAlloc(FnData, Captures.size());
 
