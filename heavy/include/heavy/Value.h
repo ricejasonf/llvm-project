@@ -522,6 +522,12 @@ inline T* dyn_cast_or_null(::heavy::Value V) {
   return (V && isa<T>(V)) ? cast<T>(V) : nullptr;
 }
 
+template <typename T>
+inline T* cast_or_null(::heavy::Value V) {
+  if (!V) return nullptr;
+  return cast<T>(V);
+}
+
 template <>
 struct DenseMapInfo<::heavy::Value> {
   static ::heavy::Value getEmptyKey() { 
