@@ -97,6 +97,7 @@ class Context : DialectRegisterer,
 public:
   std::unique_ptr<heavy::OpGen> OpGen;
   heavy::OpEval OpEval;
+  Value ExceptionHandlers = heavy::Empty();
 
   mlir::Operation* getModuleOp();
   void dumpModuleOp();

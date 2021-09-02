@@ -41,6 +41,7 @@ heavy::ExternFunction HEAVY_BASE_VAR(equal);
 heavy::ExternFunction HEAVY_BASE_VAR(eqv);
 heavy::ExternFunction HEAVY_BASE_VAR(eval);
 heavy::ExternFunction HEAVY_BASE_VAR(callcc);
+heavy::ExternFunction HEAVY_BASE_VAR(with_exception_handler);
 
 namespace heavy { namespace base {
 
@@ -271,6 +272,10 @@ heavy::Value list(Context& C, ValueRefs Args) {
 
 heavy::Value append(Context& C, ValueRefs Args) {
   llvm_unreachable("TODO append");
+}
+
+heavy::Value with_exception_handler(Context& C, ValueRefs Args) {
+  llvm_unreachable("TODO");
 }
 
 }} // end of namespace heavy::base
