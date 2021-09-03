@@ -15,6 +15,8 @@
 
 #include "heavy/Context.h"
 #include "heavy/Mangle.h"
+#include "heavy/Value.h"
+#include "heavy/ValueVisitor.h"
 #include "mlir/IR/Builders.h"
 #include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/Support/Casting.h"

@@ -17,6 +17,7 @@
 #include "heavy/Mangle.h"
 #include "heavy/Source.h"
 #include "heavy/Value.h"
+#include "heavy/ValueVisitor.h"
 #include "mlir/IR/Module.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
