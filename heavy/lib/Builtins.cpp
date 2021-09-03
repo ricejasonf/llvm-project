@@ -137,14 +137,13 @@ struct NumberOp {
 } // end namespace heavy
 
 namespace heavy { namespace base {
-heavy::Value callcc(Context& C, ValueRefs Args) {
+void callcc(Context& C, ValueRefs Args) {
   unsigned Len = Args.size();
   assert(Len == 1 && "Invalid arity to builtin `callcc`");
   C.CallCC(Args[0]);
-  return Undefined{};
 }
 
-heavy::Value eval(Context& C, ValueRefs Args) {
+void eval(Context& C, ValueRefs Args) {
   unsigned Len = Args.size();
   assert((Len == 1 || Len == 2) && "Invalid arity to builtin `eval`");
   unsigned i = 0;
@@ -165,144 +164,128 @@ heavy::Value eval(Context& C, ValueRefs Args) {
     EnvStack = C.CreatePair(E);
   }
 
+  // TODO this should raise errors properly and call the continuation
+  //      with the result
   mlir::Operation* Op = C.OpGen->VisitTopLevel(ExprOrDef);
-  if (!Op) return Undefined{};
+  if (!Op) return C.Cont(Undefined());
 
-  if (C.CheckError()) return C.CreateUndefined();
-  return opEval(C.OpEval, Op);
+  if (C.CheckError()) return C.Cont(Undefined());
+  opEval(C.OpEval, Op);
 }
 
-heavy::Value dump(Context& C, ValueRefs Args) {
-  if (Args.size() != 1) return C.SetError("invalid arity");
+void dump(Context& C, ValueRefs Args) {
+  if (Args.size() != 1) return C.RaiseError("invalid arity");
   Args[0].dump();
   C.Cont(heavy::Undefined());
-  return Undefined();
 }
 
 template <typename Op>
 heavy::Value operator_helper(Context& C, Value X, Value Y) {
-  if (!X.isNumber()) return C.SetInvalidKind(X);
-  if (!Y.isNumber()) return C.SetInvalidKind(Y);
+  if (C.CheckNumber(X)) return nullptr;
+  if (C.CheckNumber(X)) return nullptr;
   ValueKind CommonKind = Number::CommonKind(X, Y);
   switch (CommonKind) {
     case ValueKind::Float: {
       llvm_unreachable("TODO casting to float");
-      return nullptr;
     }
     case ValueKind::Int: {
       // we can assume they are both Int
       return Op::f(cast<Int>(X), cast<Int>(Y));
     }
     default:
-      llvm_unreachable("invalid arithmetic type");
+      llvm_unreachable("unsupported numeric type");
   }
 }
 
-heavy::Value add(Context& C, ValueRefs Args) {
+void add(Context& C, ValueRefs Args) {
   Value Temp = Args[0];
   for (heavy::Value X : Args.drop_front()) {
     Temp = operator_helper<NumberOp::Add>(C, Temp, X);
+    if (!Temp) return;
   }
   C.Cont(Temp);
-  return Temp;
 }
 
-heavy::Value mul(Context&C, ValueRefs Args) {
+void mul(Context&C, ValueRefs Args) {
   Value Temp = Args[0];
   for (heavy::Value X : Args.drop_front()) {
     Temp = operator_helper<NumberOp::Mul>(C, Temp, X);
+    if (!Temp) return;
   }
   C.Cont(Temp);
-  return Temp;
 }
 
-heavy::Value sub(Context&C, ValueRefs Args) {
+void sub(Context&C, ValueRefs Args) {
   Value Temp = Args[0];
   for (heavy::Value X : Args.drop_front()) {
     Temp = operator_helper<NumberOp::Sub>(C, Temp, X);
+    if (!Temp) return;
   }
   C.Cont(Temp);
-  return Temp;
 }
 
-heavy::Value div(Context& C, ValueRefs Args) {
+void div(Context& C, ValueRefs Args) {
   Value Temp = Args[0];
   for (heavy::Value X : Args.drop_front()) {
     if (Number::isExactZero(X)) {
-      C.SetError("divide by exact zero", X);
-      return X;
+      C.RaiseError("divide by exact zero", X);
+      return;
     }
     Temp = operator_helper<NumberOp::Div>(C, Temp, X);
+    if (!Temp) return;
   }
   C.Cont(Temp);
-  return Temp;
 }
 
-heavy::Value gt(Context& C, ValueRefs Args) {
+void gt(Context& C, ValueRefs Args) {
   llvm_unreachable("TODO");
-  return nullptr;
 }
 
-heavy::Value lt(Context& C, ValueRefs Args) {
+void lt(Context& C, ValueRefs Args) {
   llvm_unreachable("TODO");
-  return nullptr;
 }
 
-heavy::Value equal(Context& C, ValueRefs Args) {
-  if (Args.size() != 2) return C.SetError("invalid arity");
+void equal(Context& C, ValueRefs Args) {
+  if (Args.size() != 2) return C.RaiseError("invalid arity");
   Value V1 = Args[0];
   Value V2 = Args[1];
-  return Bool(::heavy::equal(V1, V2));
+  C.Cont(Bool(::heavy::equal(V1, V2)));
 }
 
-heavy::Value eqv(Context& C, ValueRefs Args) {
-  if (Args.size() != 2) return C.SetError("invalid arity");
+void eqv(Context& C, ValueRefs Args) {
+  if (Args.size() != 2) return C.RaiseError("invalid arity");
   Value V1 = Args[0];
   Value V2 = Args[1];
   C.Cont(Bool(::heavy::eqv(V1, V2)));
-  return Undefined();
 }
 
-heavy::Value list(Context& C, ValueRefs Args) {
+void list(Context& C, ValueRefs Args) {
   // Returns a *newly allocated* list of its arguments.
   heavy::Value List = C.CreateEmpty();
   for (heavy::Value Arg : Args) {
     List = C.CreatePair(Arg, List);
   }
-  return List;
+  C.Cont(List);
 }
 
-heavy::Value append(Context& C, ValueRefs Args) {
+void append(Context& C, ValueRefs Args) {
   llvm_unreachable("TODO append");
 }
 
-heavy::Value with_exception_handler(Context& C, ValueRefs Args) {
-  if (Args.size() != 2) return C.SetError("invalid arity");
+void with_exception_handler(Context& C, ValueRefs Args) {
+  if (Args.size() != 2) return C.RaiseError("invalid arity");
   C.WithExceptionHandler(Args[0], Args[1]);
-  return Value();
 }
 
-heavy::Value raise(Context& C, ValueRefs Args) {
-  if (Args.size() != 1) return C.SetError("invalid arity");
+void raise(Context& C, ValueRefs Args) {
+  if (Args.size() != 1) return C.RaiseError("invalid arity");
   C.Raise(Args[0]);
-  return Value();
 }
 
-heavy::Value error(Context& C, ValueRefs Args) {
-  if (Args.size() == 0) return C.SetError("invalid arity");
-  heavy::SourceLocation Loc;
-  if (Args.size() > 1) {
-    Loc = Args[1].getSourceLocation();
-  }
-  ValueRefs IrrArgs= Args.drop_front();
-  Value IrrList = Empty();
-  while (!IrrArgs.empty()) {
-    IrrList = C.CreatePair(IrrArgs.front(), IrrList);
-    IrrArgs = IrrArgs.drop_front();
-  }
-  Value Error = C.CreateError(Loc, Args[0], IrrList);
-  C.Raise(Error);
-  return Value();
+void error(Context& C, ValueRefs Args) {
+  if (Args.size() == 0) return C.RaiseError("invalid arity");
+  if (C.CheckKind<String>(Args[0])) return;
+  C.RaiseError(cast<String>(Args[0]), Args.drop_front());
 }
 
 }} // end of namespace heavy::base
