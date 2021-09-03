@@ -87,11 +87,9 @@ class Module;
 class ImportSet;
 class EnvFrame;
 using ValueRefs = llvm::MutableArrayRef<heavy::Value>;
-using ValueFnTy = heavy::Value (Context&, ValueRefs);
+using ValueFnTy = void (Context&, ValueRefs);
 using ValueFn   = ValueFnTy*;
-//using ValueFn   = heavy::Value (*)(Context&, ValueRefs);
 
-// TODO consider having this return an Operation*
 using SyntaxFn  = mlir::Value (*)(OpGen&, Pair*);
 
 enum class ValueKind {
@@ -143,10 +141,12 @@ public:
 // Value types that will be members of Value
 struct Undefined {
   static bool classof(Value);
+  static ValueKind getKind() { return ValueKind::Undefined; }
 };
 
 struct Empty {
   static bool classof(Value);
+  static ValueKind getKind() { return ValueKind::Empty; }
 };
 
 struct Int : llvm::PointerEmbeddedInt<int32_t> {
@@ -158,6 +158,7 @@ struct Int : llvm::PointerEmbeddedInt<int32_t> {
   Int(Base B) : Base(B) { }
 
   static bool classof(Value);
+  static ValueKind getKind() { return ValueKind::Int; }
 };
 
 struct Bool : llvm::PointerEmbeddedInt<bool> {
@@ -168,6 +169,7 @@ struct Bool : llvm::PointerEmbeddedInt<bool> {
   Bool(Base B) : Base(B) { }
 
   static bool classof(Value);
+  static ValueKind getKind() { return ValueKind::Bool; }
 };
 
 struct Char : llvm::PointerEmbeddedInt<uint32_t> {
@@ -178,6 +180,7 @@ struct Char : llvm::PointerEmbeddedInt<uint32_t> {
   Char(Base B) : Base(B) { }
 
   static bool classof(Value);
+  static ValueKind getKind() { return ValueKind::Char; }
 };
 
 }
@@ -590,6 +593,7 @@ public:
   static bool classof(Value V) {
     return V.getKind() == ValueKind::Error;
   }
+  static ValueKind getKind() { return ValueKind::Error; }
 };
 
 class Exception: public ValueBase {
@@ -603,6 +607,7 @@ public:
   static bool classof(Value V) {
     return V.getKind() == ValueKind::Exception;
   }
+  static ValueKind getKind() { return ValueKind::Exception; }
 };
 
 // Base class for Numeric types (other than Int)
@@ -652,6 +657,7 @@ public:
   static bool classof(Value V) {
     return V.getKind() == ValueKind::BigInt;
   }
+  static ValueKind getKind() { return ValueKind::BigInt; }
 };
 
 class Float : public ValueBase {
@@ -668,6 +674,7 @@ public:
   static bool classof(Value V) {
     return V.getKind() == ValueKind::Float;
   }
+  static ValueKind getKind() { return ValueKind::Float; }
 };
 
 inline ValueKind Number::CommonKind(Value X, Value Y) {
@@ -741,6 +748,7 @@ public:
   static bool classof(Value V) {
     return V.getKind() == ValueKind::String;
   }
+  static ValueKind getKind() { return ValueKind::String; }
 };
 
 // Symbol - Is an identifier with source information
@@ -771,6 +779,7 @@ public:
   static bool classof(Value V) {
     return V.getKind() == ValueKind::Symbol;
   }
+  static ValueKind getKind() { return ValueKind::Symbol; }
 };
 
 class Pair : public ValueBase {
@@ -794,6 +803,7 @@ public:
     return V.getKind() == ValueKind::Pair ||
            V.getKind() == ValueKind::PairWithSource;
   }
+  static ValueKind getKind() { return ValueKind::Pair; }
 };
 
 class PairWithSource : public Pair,
@@ -815,6 +825,7 @@ public:
   static bool classof(Value V) {
     return V.getKind() == ValueKind::PairWithSource;
   }
+  static ValueKind getKind() { return ValueKind::PairWithSource; }
 };
 
 class Builtin : public ValueBase {
@@ -829,6 +840,7 @@ public:
   static bool classof(Value V) {
     return V.getKind() == ValueKind::Builtin;
   }
+  static ValueKind getKind() { return ValueKind::Builtin; }
 };
 
 class BuiltinSyntax : public ValueBase {
@@ -843,6 +855,7 @@ public:
   static bool classof(Value V) {
     return V.getKind() == ValueKind::BuiltinSyntax;
   }
+  static ValueKind getKind() { return ValueKind::BuiltinSyntax; }
 };
 
 class Lambda final
@@ -907,6 +920,7 @@ public:
   static bool classof(Value V) {
     return V.getKind() == ValueKind::Lambda;
   }
+  static ValueKind getKind() { return ValueKind::Lambda; }
 
   static size_t sizeToAlloc(FunctionDataView const& FnData,
                             unsigned short NumCaptures) {
@@ -947,6 +961,7 @@ public:
   static bool classof(Value V) {
     return V.getKind() == ValueKind::Quote;
   }
+  static ValueKind getKind() { return ValueKind::Quote; }
 };
 
 // Syntax - A function that represents `syntax-rules` pattern matching
@@ -969,6 +984,7 @@ public:
   static bool classof(Value V) {
     return V.getKind() == ValueKind::Syntax;
   }
+  static ValueKind getKind() { return ValueKind::Syntax; }
 };
 
 class Vector final
@@ -1019,6 +1035,7 @@ public:
   static bool classof(Value V) {
     return V.getKind() == ValueKind::Vector;
   }
+  static ValueKind getKind() { return ValueKind::Vector; }
 
   static size_t sizeToAlloc(unsigned Length) {
     return totalSizeToAlloc<Value>(Length);
@@ -1081,6 +1098,7 @@ public:
   static bool classof(Value V) {
     return V.getKind() == ValueKind::Binding;
   }
+  static ValueKind getKind() { return ValueKind::Binding; }
 };
 
 // ForwardRef - used for garbage collection
@@ -1095,6 +1113,7 @@ public:
   static bool classof(Value V) {
     return V.getKind() == ValueKind::ForwardRef;
   }
+  static ValueKind getKind() { return ValueKind::ForwardRef; }
 };
 
 // ModuleLoadNamesFn - customization point for dynamically initializing a
@@ -1154,6 +1173,7 @@ public:
   static bool classof(Value V) {
     return V.getKind() == ValueKind::Module;
   }
+  static ValueKind getKind() { return ValueKind::Module; }
 
   class ValueIterator : public llvm::iterator_facade_base<
                                               ValueIterator,
@@ -1242,6 +1262,7 @@ public:
   static bool classof(Value V) {
     return V.getKind() == ValueKind::ImportSet;
   }
+  static ValueKind getKind() { return ValueKind::ImportSet; }
 
   bool isInIdentiferList(String* S) {
     Value Current = Specifier;
@@ -1378,6 +1399,7 @@ public:
   static bool classof(Value V) {
     return V.getKind() == ValueKind::Environment;
   }
+  static ValueKind getKind() { return ValueKind::Environment; }
 };
 
 // EnvFrame - Represents a local scope that introduces variables
@@ -1422,6 +1444,7 @@ public:
   static bool classof(Value V) {
     return V.getKind() == ValueKind::EnvFrame;
   }
+  static ValueKind getKind() { return ValueKind::EnvFrame; }
 };
 
 inline EnvEntry EnvFrame::Lookup(Symbol* Name) const {

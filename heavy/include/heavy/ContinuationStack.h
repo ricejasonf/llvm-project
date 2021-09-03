@@ -187,6 +187,10 @@ public:
   heavy::Value getCapture(unsigned I) {
     return cast<Lambda>(ApplyArgs[0])->getCapture(I);
   }
+  heavy::Value getCurrentResult() {
+    if (ApplyArgs.size() > 1) return ApplyArgs[1];
+    return Undefined{};
+  }
 
   // Yield
   //  - Breaks the run loop yielding a value to serve
@@ -211,9 +215,8 @@ public:
 
   // Begins evaluation by calling what is set
   // in ApplyArgs
-  heavy::Value Resume() {
+  void Resume() {
     Derived& Context = getDerived();
-    if (Context.CheckError()) return Undefined();
 
     while (Value Callee = ApplyArgs[0]) {
       if (Callee == Bottom) break;
@@ -240,14 +243,12 @@ public:
           "invalid operator for call expression: ",
           getKindName(Callee.getKind())
         );
-        return Context.SetError(Callee.getSourceLocation(), Msg, Callee);
+        Context.RaiseError(Msg, Callee);
       }
 
       // this means a C++ function was not written correctly
       assert(DidCallContinuation && "function failed to call continuation");
     }
-    if (ApplyArgs.size() > 1) return ApplyArgs[1];
-    return Undefined{};
   }
 
   // PushCont
