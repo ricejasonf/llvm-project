@@ -100,70 +100,10 @@ public:
   std::unique_ptr<heavy::OpGen> OpGen;
   heavy::OpEval OpEval;
 
-  void WithExceptionHandlers(Value NewHandlers, Value Thunk) {
-    Value PrevHandlers = ExceptionHandlers;
-    Value Before = CreateLambda([this](Context& C, ValueRefs) {
-      Value NewHandlers = C.getCapture(0);
-      this->ExceptionHandlers = NewHandlers;
-      C.Cont(Undefined());
-    }, {NewHandlers});
-    Value After = CreateLambda([this](Context& C, ValueRefs) {
-      Value PrevHandlers = C.getCapture(0);
-      this->ExceptionHandlers = PrevHandlers;
-      C.Cont(Undefined());
-    }, {PrevHandlers});
-    DynamicWind(Before, Thunk, After);
-  }
-
-  void WithExceptionHandler(Value Handler, Value Thunk) {
-    Value NewHandlers = CreatePair(Handler, ExceptionHandlers);
-    WithExceptionHandlers(NewHandlers, Thunk); 
-  }
-
-  void Raise(Value Obj) {
-    if (Pair* P = dyn_cast<Pair>(ExceptionHandlers)) {
-      Value Handler = P->Car;
-      Value PrevHandlers = P->Cdr;
-      WithExceptionHandlers(PrevHandlers,
-                            CreateLambda([](Context& C, ValueRefs) {
-        Value Handler = C.getCapture(0);
-        Value Obj = C.getCapture(1);
-        C.PushCont([](Context& C, ValueRefs Args) {
-          // FIXME this should be a run-time error
-          assert(Args.size() == 1 && "expecting a single argument");
-          Value Handler = C.getCapture(0);
-          C.Raise(C.CreateError(Handler.getSourceLocation(),
-                                "error handler returned",
-                                Handler));
-          return Value();
-        }, {Handler});
-        C.Apply(Handler, Obj);
-        return Value();
-      }, {Handler, Obj}));
-      return;
-    }
-    // TODO actually dump the value of the Obj in the msg
-    String* Msg = CreateString("uncaught object: ",
-                               getKindName(Obj.getKind()));
-    SetError(Msg, Obj);
-    ClearStack();
-    Cont(Undefined());
-  }
-
-  void RaiseError(String* Msg, llvm::ArrayRef<Value> IrrArgs) {
-    heavy::SourceLocation Loc = this->Loc;
-    Value IrrList = Empty();
-    while (!IrrArgs.empty()) {
-      Value Irr = IrrArgs.front();
-      if (!Loc.isValid()) {
-        Loc = Irr.getSourceLocation();
-      }
-      IrrList = CreatePair(Irr, IrrList);
-      IrrArgs = IrrArgs.drop_front();
-    }
-    Value Error = CreateError(Loc, Msg, IrrList);
-    Raise(Error);
-  }
+  void WithExceptionHandlers(Value NewHandlers, Value Thunk);
+  void WithExceptionHandler(Value Handler, Value Thunk);
+  void Raise(Value Obj);
+  void RaiseError(String* Msg, llvm::ArrayRef<Value> IrrArgs);
   void RaiseError(llvm::StringRef Msg, llvm::ArrayRef<Value> IrrArgs = {}) {
     RaiseError(CreateString(Msg), IrrArgs);
   }
