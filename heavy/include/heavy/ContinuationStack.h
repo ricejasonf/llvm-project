@@ -181,7 +181,7 @@ public:
   heavy::Value getCallee() {
     return ApplyArgs[0];
   }
-  ValueRefs getCaptures(unsigned I) {
+  ValueRefs getCaptures() {
     return cast<Lambda>(ApplyArgs[0])->getCaptures();
   }
   heavy::Value getCapture(unsigned I) {
@@ -193,17 +193,18 @@ public:
   //    as the result.
   //    (ie for a possibly nested call to eval)
   void Yield(ValueRefs Results) {
-    Apply(Bottom, Results);
+    getDerived().Apply(Bottom, Results);
   }
   void Yield(Value Result) {
-    Yield(ValueRefs(Result));
+    getDerived().Yield(ValueRefs(Result));
   }
 
   // PushBreak
   //  - Schedules a yield to be called so any
   //    evaluation that occurs on top can finish
   void PushBreak() {
-    PushCont([](Derived& C, ValueRefs Args) {
+    Derived& C = getDerived();
+    C.PushCont([](Derived& C, ValueRefs Args) {
       Yield(Args);
     });
   }
@@ -288,6 +289,14 @@ public:
   }
   void Cont(Value Arg) { Cont(ValueRefs(Arg)); }
 
+  // ClearStack
+  //  - Clear the stack effectively stopping execution after
+  //    the current function call and preventing any resumption
+  //    of the current continuation.
+  void ClearStack() {
+    Top = Bottom;
+  }
+
   //  RestoreStack
   //    - Restores the stack from a String that was saved by CallCC
   void RestoreStack(heavy::String* Buffer) {
@@ -303,56 +312,55 @@ public:
   //      must be saved as an object on the heap as a new lambda
   //      that when invoked restores the stack buffer.
   void CallCC(Value InputProc) {
-    Derived& Context = getDerived();
+    Derived& C = getDerived();
     char* begin = reinterpret_cast<char*>(Top);
     char* end = &(Storage.back());
     size_t size = end - begin;
-    Value SavedStack  = Context.CreateString(llvm::StringRef(begin, size));
+    Value SavedStack  = C.CreateString(llvm::StringRef(begin, size));
     Value SavedDW     = CurDW;
 
-    Value Proc = Context.CreateLambda([this](Derived& Ctx, ValueRefs Args) {
-      Value SavedStack  = Ctx.getCapture(0);
-      DWind SavedDW     = Ctx.getCapture(1);
-      Value SavedArgs   = Ctx.CreateVector(Args);
-      PushCont([](Derived& Ctx, ValueRefs) {
-        String* SavedStack  = cast<String>(Ctx.getCapture(0));
-        Vector* SavedArgs   = cast<Vector>(Ctx.getCapture(1));
-        Ctx.RestoreStack(SavedStack);
-        Ctx.Cont(SavedArgs->getElements());
+    Value Proc = C.CreateLambda([this](Derived& C, ValueRefs Args) {
+      Value SavedStack  = C.getCapture(0);
+      DWind SavedDW     = C.getCapture(1);
+      Value SavedArgs   = C.CreateVector(Args);
+      C.PushCont([](Derived& C, ValueRefs) {
+        String* SavedStack  = cast<String>(C.getCapture(0));
+        Vector* SavedArgs   = cast<Vector>(C.getCapture(1));
+        C.RestoreStack(SavedStack);
+        C.Cont(SavedArgs->getElements());
         return Value();
       }, CaptureList{SavedStack, SavedArgs});
       CurDW = SavedDW;
-      Ctx.TraverseWindings(this->CurDW, SavedDW);
+      C.TraverseWindings(this->CurDW, SavedDW);
       return Value();
     }, CaptureList{SavedStack, SavedDW});
 
-    Apply(InputProc, Proc);
+    C.Apply(InputProc, Proc);
   }
 
   void DynamicWind(Value Before, Value Thunk, Value After) {
-    Derived& Context = getDerived();
+    Derived& C = getDerived();
     int Depth = CurDW.getDepth();
-    Value NewDW = Context.CreateVector(
-        std::initializer_list<Value>{Depth + 1, Before, After, CurDW});
+    Value NewDW = C.CreateVector(
+        std::initializer_list<Value>{Int(Depth + 1), Before, After, CurDW});
 
-    // FIXME this should be written in scheme
-    PushCont([this](Derived& C, ValueRefs) {
+    C.PushCont([this](Derived& C, ValueRefs) {
       Value Thunk = C.getCapture(0);
       Value After = C.getCapture(1);
       this->CurDW = C.getCapture(2);
 
-      PushCont([](Derived& C, ValueRefs ThunkResults) {
+      C.PushCont([](Derived& C, ValueRefs ThunkResults) {
         Value After = C.getCapture(0);
 
-        PushCont([](Derived& C, ValueRefs) {
+        C.PushCont([](Derived& C, ValueRefs) {
           ValueRefs ThunkResults = C.getCaptures();
           C.Cont(ThunkResults);
         }, /*Captures=*/ThunkResults); 
-        Apply(After, {});
+        C.Apply(After, {});
       }, CaptureList{After});
-      Apply(Thunk, {});
+      C.Apply(Thunk, {});
     }, CaptureList{Thunk, After, NewDW});
-    Apply(Before, {});
+    C.Apply(Before, {});
   }
 };
 
