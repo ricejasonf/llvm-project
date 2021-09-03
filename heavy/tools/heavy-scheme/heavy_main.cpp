@@ -45,7 +45,7 @@ static cl::opt<ExecutionMode> InputMode(
                         "output mlir code"}),
   cl::init(ExecutionMode::repl));
 
-heavy::Value ProcessTopLevelExpr(heavy::Context& Context, heavy::ValueRefs Values) {
+void ProcessTopLevelExpr(heavy::Context& Context, heavy::ValueRefs Values) {
   assert(Values.size() == 1 && "Expecting single parse result");
   heavy::Value Val = Values[0];
   switch (InputMode.getValue()) {
@@ -61,8 +61,6 @@ heavy::Value ProcessTopLevelExpr(heavy::Context& Context, heavy::ValueRefs Value
   default:
     llvm_unreachable("Invalid execution mode for loop");
   }
-
-  return Val;
 }
 
 int main(int argc, char const** argv) {
