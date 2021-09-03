@@ -609,8 +609,9 @@ mlir::Value OpGen::LocalizeRec(heavy::Value B,
   return NewVal;
 }
 
-Value heavy::eval(Context& C, Value V, Value EnvStack) {
+heavy::Value heavy::eval(Context& C, Value V, Value EnvStack) {
   heavy::Value Args[2] = {V, EnvStack};
   int ArgCount = EnvStack ? 2 : 1;
-  return base::eval(C, ValueRefs(Args, ArgCount));
+  base::eval(C, ValueRefs(Args, ArgCount));
+  return C.getCurrentResult();
 }

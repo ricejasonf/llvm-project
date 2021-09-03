@@ -58,7 +58,7 @@ class Context;
 Value eval(Context&, Value V, Value EnvStack = nullptr);
 void write(llvm::raw_ostream&, Value);
 
-Value opEval(OpEval&, mlir::Operation*);
+void opEval(OpEval&, mlir::Operation*);
 
 class OpEvalImpl;
 struct OpEval {
@@ -150,16 +150,34 @@ public:
     Cont(Undefined());
   }
 
+  void RaiseError(String* Msg, llvm::ArrayRef<Value> IrrArgs) {
+    heavy::SourceLocation Loc = this->Loc;
+    Value IrrList = Empty();
+    while (!IrrArgs.empty()) {
+      Value Irr = IrrArgs.front();
+      if (!Loc.isValid()) {
+        Loc = Irr.getSourceLocation();
+      }
+      IrrList = CreatePair(Irr, IrrList);
+      IrrArgs = IrrArgs.drop_front();
+    }
+    Value Error = CreateError(Loc, Msg, IrrList);
+    Raise(Error);
+  }
+  void RaiseError(llvm::StringRef Msg, llvm::ArrayRef<Value> IrrArgs = {}) {
+    RaiseError(CreateString(Msg), IrrArgs);
+  }
+
   mlir::Operation* getModuleOp();
   void dumpModuleOp();
   void PushTopLevel(Value);
 
-  // Returns Error for a Value when
-  // the callers asserts its kind is invalid
-  Value SetInvalidKind(Value V) {
-    String* S = CreateString("invalid type ",
-                             getKindName(V.getKind()));
-    return SetError(S, V);
+  // Return true on invalid kind
+  bool CheckKind(ValueKind VK, Value V);
+  bool CheckNumber(Value V);
+  template <typename T>
+  bool CheckKind(Value V) {
+    return CheckKind(T::getKind(), V);
   }
 
   Value getEnvironment() {
