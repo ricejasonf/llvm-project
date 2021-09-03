@@ -13,6 +13,8 @@
 
 #include "heavy/Context.h"
 #include "heavy/OpGen.h"
+#include "heavy/Value.h"
+#include "heavy/ValueVisitor.h"
 #include "llvm/Support/Casting.h"
 
 namespace {
