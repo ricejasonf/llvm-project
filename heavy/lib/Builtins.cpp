@@ -42,6 +42,8 @@ heavy::ExternFunction HEAVY_BASE_VAR(eqv);
 heavy::ExternFunction HEAVY_BASE_VAR(eval);
 heavy::ExternFunction HEAVY_BASE_VAR(callcc);
 heavy::ExternFunction HEAVY_BASE_VAR(with_exception_handler);
+heavy::ExternFunction HEAVY_BASE_VAR(raise);
+heavy::ExternFunction HEAVY_BASE_VAR(error);
 
 namespace heavy { namespace base {
 
@@ -275,7 +277,32 @@ heavy::Value append(Context& C, ValueRefs Args) {
 }
 
 heavy::Value with_exception_handler(Context& C, ValueRefs Args) {
-  llvm_unreachable("TODO");
+  if (Args.size() != 2) return C.SetError("invalid arity");
+  C.WithExceptionHandler(Args[0], Args[1]);
+  return Value();
+}
+
+heavy::Value raise(Context& C, ValueRefs Args) {
+  if (Args.size() != 1) return C.SetError("invalid arity");
+  C.Raise(Args[0]);
+  return Value();
+}
+
+heavy::Value error(Context& C, ValueRefs Args) {
+  if (Args.size() == 0) return C.SetError("invalid arity");
+  heavy::SourceLocation Loc;
+  if (Args.size() > 1) {
+    Loc = Args[1].getSourceLocation();
+  }
+  ValueRefs IrrArgs= Args.drop_front();
+  Value IrrList = Empty();
+  while (!IrrArgs.empty()) {
+    IrrList = C.CreatePair(IrrArgs.front(), IrrList);
+    IrrArgs = IrrArgs.drop_front();
+  }
+  Value Error = C.CreateError(Loc, Args[0], IrrList);
+  C.Raise(Error);
+  return Value();
 }
 
 }} // end of namespace heavy::base
