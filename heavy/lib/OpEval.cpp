@@ -124,7 +124,7 @@ public:
       ValueMapScopes.pop();
   }
 
-  heavy::Value Eval(mlir::Operation* Op) {
+  void Eval(mlir::Operation* Op) {
     assert((isa<GlobalOp, CommandOp>(Op)) &&
           "eval expects a top level op");
     BlockItrTy Itr = Visit(Op);
@@ -134,7 +134,7 @@ public:
       Itr = Visit(&*Itr);
     }
 
-    return Context.Resume();
+    Context.Resume();
   }
 
 private:
@@ -485,8 +485,8 @@ private:
   }
 };
 
-heavy::Value opEval(OpEval& E, mlir::Operation* Op) {
-  return E.Impl->Eval(Op);
+void opEval(OpEval& E, mlir::Operation* Op) {
+  E.Impl->Eval(Op);
 }
 
 OpEval::OpEval(heavy::Context& C)

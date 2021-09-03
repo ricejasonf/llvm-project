@@ -68,23 +68,23 @@ mlir::Value import(OpGen& OG, Pair* P);
 
 
 // functions
-heavy::Value eval(Context& C, ValueRefs Args);
-heavy::Value dump(Context& C, ValueRefs Args);
-heavy::Value add(Context& C, ValueRefs Args);
-heavy::Value mul(Context&C, ValueRefs Args);
-heavy::Value sub(Context&C, ValueRefs Args);
-heavy::Value div(Context& C, ValueRefs Args);
-heavy::Value gt(Context& C, ValueRefs Args);
-heavy::Value lt(Context& C, ValueRefs Args);
-heavy::Value eq(Context& C, ValueRefs Args);
-heavy::Value equal(Context& C, ValueRefs Args);
-heavy::Value eqv(Context& C, ValueRefs Args);
-heavy::Value list(Context& C, ValueRefs Args);
-heavy::Value append(Context& C, ValueRefs Args);
-heavy::Value callcc(Context& C, ValueRefs Args);
-heavy::Value with_exception_handler(Context& C, ValueRefs Args);
-heavy::Value raise(Context& C, ValueRefs Args);
-heavy::Value error(Context& C, ValueRefs Args);
+void eval(Context& C, ValueRefs Args);
+void dump(Context& C, ValueRefs Args);
+void add(Context& C, ValueRefs Args);
+void mul(Context&C, ValueRefs Args);
+void sub(Context&C, ValueRefs Args);
+void div(Context& C, ValueRefs Args);
+void gt(Context& C, ValueRefs Args);
+void lt(Context& C, ValueRefs Args);
+void eq(Context& C, ValueRefs Args);
+void equal(Context& C, ValueRefs Args);
+void eqv(Context& C, ValueRefs Args);
+void list(Context& C, ValueRefs Args);
+void append(Context& C, ValueRefs Args);
+void callcc(Context& C, ValueRefs Args);
+void with_exception_handler(Context& C, ValueRefs Args);
+void raise(Context& C, ValueRefs Args);
+void error(Context& C, ValueRefs Args);
 
 }}
 

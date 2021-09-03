@@ -693,3 +693,23 @@ void heavy::initModule(heavy::Context& C, llvm::StringRef ModuleMangledName,
     }
   }
 }
+
+bool Context::CheckKind(ValueKind VK, Value V) {
+  if (V.getKind() == VK) return false;
+  String* S = CreateStringHelper(TrashHeap,
+      llvm::StringRef("invalid type "),
+      getKindName(V.getKind()),
+      llvm::StringRef(", expecting "),
+      getKindName(VK));
+  RaiseError(S, V);
+  return true;
+}
+bool Context::CheckNumber(Value V) {
+  if (V.isNumber()) return false;
+  String* S = CreateStringHelper(TrashHeap,
+      llvm::StringRef("invalid type "), 
+      getKindName(V.getKind()),
+      llvm::StringRef(", expecting number"));
+  RaiseError(S, V);
+  return true;
+}
