@@ -208,12 +208,15 @@ mlir::Value OpGen::createSequence(SourceLocation Loc, Value Body) {
 mlir::Value OpGen::createBody(SourceLocation Loc, Value Body) {
   mlir::OpBuilder::InsertionGuard IG(LocalInits);
   LocalInits = Builder;
+  IsTopLevel = false;
 
   // Each local "define" should update the LocalInits
   // insertion point
-
-  IsTopLevel = false;
-  mlir::Value Result = createSequence(Loc, Body);
+  while (Pair* P = dyn_cast<Pair>(Body)) {
+    Body = P;
+    if (P->Car != HEAVY_BASE_VAR(define)) break;
+    heavy::base::define(*this, P);
+  }
 
   // The BindingOps for the local defines have
   // been inserted by the `define` syntax. They are
@@ -250,7 +253,7 @@ mlir::Value OpGen::createBody(SourceLocation Loc, Value Body) {
     // Builder is restored to the end of the body block
   }
 
-  return Result;
+  return createSequence(Loc, Body);
 }
 
 mlir::Value OpGen::createBinding(Binding *B, mlir::Value Init) {
