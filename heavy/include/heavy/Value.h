@@ -589,6 +589,8 @@ public:
   { }
 
   llvm::StringRef getErrorMessage();
+  Value getMessage() { return Message; }
+  Value getIrritants() { return Irritants; }
 
   static bool classof(Value V) {
     return V.getKind() == ValueKind::Error;
