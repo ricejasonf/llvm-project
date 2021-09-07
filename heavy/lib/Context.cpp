@@ -353,6 +353,13 @@ private:
     OS << "()";
   }
 
+  void VisitError(Error* E) {
+    OS << "(error ";
+    Visit(E->getMessage());
+    OS << " ";
+    VisitCdr(E->getIrritants());
+  }
+
   void VisitInt(Int V) { OS << int32_t{V}; }
   void VisitFloat(Float* V) {
     llvm::SmallVector<char, 16> Buffer;
@@ -366,21 +373,24 @@ private:
     ++IndentationLevel;
     OS << '(';
     Visit(P->Car);
-    Value Cdr = P->Cdr;
-    while (isa<Pair>(Cdr)) {
+    VisitCdr(P->Cdr);
+    --IndentationLevel;
+  }
+
+  // VisitCdr - Print the rest of a list
+  void VisitCdr(Value Cdr) {
+    while (Pair* P = dyn_cast<Pair>(Cdr)) {
       OS << ' ';
       //PrintFormattedWhitespace();
-      P = cast<Pair>(Cdr);
       Visit(P->Car);
       Cdr = P->Cdr;
     };
 
-    if (!Empty::classof(Cdr)) {
+    if (!isa<Empty>(Cdr)) {
       OS << " . ";
       Visit(Cdr);
     }
     OS << ')';
-    --IndentationLevel;
   }
 
   void VisitQuote(Quote* Q) {
@@ -715,6 +725,18 @@ bool Context::CheckNumber(Value V) {
   return true;
 }
 
+void Context::SetErrorHandler(Value Handler) {
+  assert((isa<Empty>(ExceptionHandlers) ||
+          isa<Empty>(ExceptionHandlers.cdr())) &&
+    "error handler may only be set at the bottom of the handler stack");
+
+  if (Pair* P = dyn_cast<Pair>(ExceptionHandlers)) {
+    P->Car = Handler;
+  } else {
+    ExceptionHandlers = CreatePair(Handler);
+  }
+}
+
 void Context::WithExceptionHandlers(Value NewHandlers, Value Thunk) {
   Value PrevHandlers = ExceptionHandlers;
   Value Before = CreateLambda([this](Context& C, ValueRefs) {
@@ -736,33 +758,26 @@ void Context::WithExceptionHandler(Value Handler, Value Thunk) {
 }
 
 void Context::Raise(Value Obj) {
-  if (Pair* P = dyn_cast<Pair>(ExceptionHandlers)) {
-    Value Handler = P->Car;
-    Value PrevHandlers = P->Cdr;
-    WithExceptionHandlers(PrevHandlers,
-                          CreateLambda([](Context& C, ValueRefs) {
+  if (isa<Empty>(Obj)) return;
+  Pair* P = dyn_cast<Pair>(ExceptionHandlers);
+  Value Handler = P->Car;
+  Value PrevHandlers = P->Cdr;
+  WithExceptionHandlers(PrevHandlers,
+                        CreateLambda([](Context& C, ValueRefs) {
+    Value Handler = C.getCapture(0);
+    Value Obj = C.getCapture(1);
+    C.PushCont([](Context& C, ValueRefs Args) {
+      // FIXME this should be a run-time error
+      assert(Args.size() == 1 && "expecting a single argument");
       Value Handler = C.getCapture(0);
-      Value Obj = C.getCapture(1);
-      C.PushCont([](Context& C, ValueRefs Args) {
-        // FIXME this should be a run-time error
-        assert(Args.size() == 1 && "expecting a single argument");
-        Value Handler = C.getCapture(0);
-        C.Raise(C.CreateError(Handler.getSourceLocation(),
-                              "error handler returned",
-                              Handler));
-        return Value();
-      }, {Handler});
-      C.Apply(Handler, Obj);
+      C.Raise(C.CreateError(Handler.getSourceLocation(),
+                            "error handler returned",
+                            Handler));
       return Value();
-    }, {Handler, Obj}));
-    return;
-  }
-  // TODO actually dump the value of the Obj in the msg
-  String* Msg = CreateString("uncaught object: ",
-                             getKindName(Obj.getKind()));
-  SetError(Msg, Obj);
-  ClearStack();
-  Cont(Undefined());
+    }, {Handler});
+    C.Apply(Handler, Obj);
+    return Value();
+  }, {Handler, Obj}));
 }
 
 void Context::RaiseError(String* Msg, llvm::ArrayRef<Value> IrrArgs) {
