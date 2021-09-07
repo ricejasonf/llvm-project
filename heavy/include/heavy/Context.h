@@ -100,6 +100,7 @@ public:
   std::unique_ptr<heavy::OpGen> OpGen;
   heavy::OpEval OpEval;
 
+  void SetErrorHandler(Value Handler);
   void WithExceptionHandlers(Value NewHandlers, Value Thunk);
   void WithExceptionHandler(Value Handler, Value Thunk);
   void Raise(Value Obj);
@@ -193,10 +194,15 @@ public:
 
   void ClearError() { Err = nullptr; }
 
+  // SetError - Put the context into a hard error state. The stack
+  //            should be cleared, and subsequent calls to eval
+  //            should be a noop unless the error is cleared
+  //            by the user.
   Value SetError(Value E) {
     assert(isa<Error>(E) || isa<Exception>(E));
     Err = E;
-    Yield(Undefined()); // Break any run loop
+    ClearStack();
+    Yield(E);
     return CreateUndefined();
   }
 

@@ -95,24 +95,28 @@ bool HeavyScheme::ProcessTopLevelCommands(
     return true;
   }
 
-  heavy::ValueResult Result;
-  bool HasError = Context.CheckError();
-  while (true) {
-    Result = Parser.ParseTopLevelExpr();
-    if (!HasError && Context.CheckError()) {
-      HasError = true;
+  Context.SetErrorHandler(Context.CreateLambda(
+    [handleError](heavy::Context& C, ValueRefs Args) {
+      if (!C.CheckError()) {
+        Value Obj = Args[0];
+        std::string Msg;
+        llvm::raw_string_ostream Stream(Msg);
+        write(Stream << "uncaught object: ", Obj);
+        C.SetError(Msg, Obj);
+      }
       handleError();
-    }
-    // Keep parsing until we find the end
-    if (Parser.isFinished()) break;
-    if (HasError) continue;
+    }, /*Captures=*/{}));
+
+  heavy::ValueResult Result;
+  while (!Parser.isFinished()) {
+    Result = Parser.ParseTopLevelExpr();
     if (Result.isUsable()) {
       heavy::Value ResultVal = Result.get();
       ExprHandler(Context, ResultVal);
     }
   };
 
-  return HasError;
+  return Context.CheckError();
 }
 
 void HeavyScheme::RegisterModule(llvm::StringRef MangledName,
