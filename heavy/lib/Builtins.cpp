@@ -144,6 +144,7 @@ void callcc(Context& C, ValueRefs Args) {
 }
 
 void eval(Context& C, ValueRefs Args) {
+  if (C.CheckError()) return;
   unsigned Len = Args.size();
   assert((Len == 1 || Len == 2) && "Invalid arity to builtin `eval`");
   unsigned i = 0;
@@ -169,7 +170,7 @@ void eval(Context& C, ValueRefs Args) {
   mlir::Operation* Op = C.OpGen->VisitTopLevel(ExprOrDef);
   if (!Op) return C.Cont(Undefined());
 
-  if (C.CheckError()) return C.Cont(Undefined());
+  if (C.CheckError()) return;
   opEval(C.OpEval, Op);
 }
 
