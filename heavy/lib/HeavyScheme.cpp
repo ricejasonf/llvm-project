@@ -103,16 +103,21 @@ bool HeavyScheme::ProcessTopLevelCommands(
         llvm::raw_string_ostream Stream(Msg);
         write(Stream << "uncaught object: ", Obj);
         C.SetError(Msg, Obj);
+        return;
       }
       handleError();
+      C.Cont(Undefined());
     }, /*Captures=*/{}));
+
+  heavy::Lambda* Lambda = Context.CreateLambda(ExprHandler, {});
 
   heavy::ValueResult Result;
   while (!Parser.isFinished()) {
     Result = Parser.ParseTopLevelExpr();
     if (Result.isUsable()) {
       heavy::Value ResultVal = Result.get();
-      ExprHandler(Context, ResultVal);
+      Context.Apply(Lambda, ResultVal);
+      Context.Resume();
     }
   };
 
