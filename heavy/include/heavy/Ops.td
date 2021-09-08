@@ -55,7 +55,6 @@ def heavy_ApplyOp : HeavyOp<"apply", [ReturnLike, Terminator]> {
       return initCont().empty();
     }
   }];
-
 }
 
 def heavy_BindingOp : HeavyOp<"binding", [Symbol]> {
@@ -211,6 +210,12 @@ def heavy_IfContOp : HeavyOp<"if_cont", [ReturnLike, Terminator]> {
                           AnyRegion:$initCont);
   let arguments = (ins HeavyValue:$input);
   let results   = (outs);
+
+  let extraClassDeclaration = [{
+    bool isTailPos() {
+      return initCont().empty();
+    }
+  }];
 }
 
 def heavy_LambdaOp : HeavyOp<"lambda"> {

@@ -325,7 +325,7 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
 }
 
 mlir::Value OpGen::createIf(SourceLocation Loc, Value Cond, Value Then,
-                                 Value Else) {
+                            Value Else) {
   // Cond
   mlir::Value CondResult;
   {
@@ -341,27 +341,35 @@ mlir::Value OpGen::createIf(SourceLocation Loc, Value Cond, Value Then,
   mlir::Block* ElseBlock = new mlir::Block();
   bool RequiresContinuation = false;
 
-  // Then
   {
-    mlir::OpBuilder::InsertionGuard IG(Builder);
-    Builder.setInsertionPointToStart(ThenBlock);
-    mlir::Value Result = Visit(Then);
-    if (isa<ApplyOp>(ThenBlock->back())) {
-      RequiresContinuation = true;
-    } else {
-      create<ContOp>(Loc, Result);
-    }
-  }
+    // Treat then/else regions as tail position since if there is
+    // any ApplyOp contained therein the whole operation becomes
+    // an IfContOp which is a terminator with its own initCont region.
+    TailPosScope TPS(*this);
+    IsTailPos = true;
 
-  // Else
-  {
-    mlir::OpBuilder::InsertionGuard IG(Builder);
-    Builder.setInsertionPointToStart(ElseBlock);
-    mlir::Value Result = Visit(Else);
-    if (isa<ApplyOp>(ElseBlock->back())) {
-      RequiresContinuation = true;
-    } else {
-      create<ContOp>(Loc, Result);
+    // Then
+    {
+      mlir::OpBuilder::InsertionGuard IG(Builder);
+      Builder.setInsertionPointToStart(ThenBlock);
+      mlir::Value Result = Visit(Then);
+      if (isa<ApplyOp>(ThenBlock->back())) {
+        RequiresContinuation = true;
+      } else {
+        create<ContOp>(Loc, Result);
+      }
+    }
+
+    // Else
+    {
+      mlir::OpBuilder::InsertionGuard IG(Builder);
+      Builder.setInsertionPointToStart(ElseBlock);
+      mlir::Value Result = Visit(Else);
+      if (isa<ApplyOp>(ElseBlock->back())) {
+        RequiresContinuation = true;
+      } else {
+        create<ContOp>(Loc, Result);
+      }
     }
   }
 
@@ -584,6 +592,9 @@ mlir::Value OpGen::LocalizeRec(heavy::Value B,
 
   if (auto S = Op->getAttrOfType<mlir::StringAttr>(SymName)) {
     NewVal = create<LoadGlobalOp>(Loc, S.getValue());
+  } else if (auto LG = dyn_cast<LoadGlobalOp>(Op)) {
+    // Just make a new load global with the same name.
+    NewVal = create<LoadGlobalOp>(Loc, LG.name()); 
   } else {
     mlir::Value ParentLocal = LocalizeRec(B, Op, Owner, ++Itr);
 
