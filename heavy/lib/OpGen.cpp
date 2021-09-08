@@ -205,55 +205,42 @@ mlir::Value OpGen::createSequence(SourceLocation Loc, Value Body) {
   return Visit(Rest);
 }
 
+// walkDefineInits
+//  - The BindingOps for the local defines have
+//    been inserted by the `define` syntax. They are
+//    initialized to "undefined" and their corresponding
+//    heavy::Bindings placed in the EnvStack.
+//    Walk the EnvStack up to the nearest EnvFrame and
+//    collect these and insert the lazy initializers via SetOp
+//    in the lexical order that they were defined.
+void OpGen::walkDefineInits(Value Env) {
+  Pair* P = cast<Pair>(Env);
+  if (isa<EnvFrame>(P->Car)) return;
+  walkDefineInits(P->Cdr);
+  Binding* B = cast<Binding>(P->Car);
+  mlir::Value BVal = BindingTable.lookup(B);
+  mlir::Value Init = VisitDefineArgs(B->getValue());
+  SourceLocation Loc = B->getValue().getSourceLocation();
+  assert(BVal && "BindingTable should have an entry for local define");
+  create<SetOp>(Loc, BVal, Init);
+}
+
 mlir::Value OpGen::createBody(SourceLocation Loc, Value Body) {
-  mlir::OpBuilder::InsertionGuard IG(LocalInits);
-  LocalInits = Builder;
   IsTopLevel = false;
-
-  // Each local "define" should update the LocalInits
-  // insertion point
-  while (Pair* P = dyn_cast<Pair>(Body)) {
-    Body = P;
-    Symbol* S = dyn_cast_or_null<Symbol>(P->Car.car());
-    Value LookupResult = S ? Context.Lookup(S).Value : Value();
-    if (LookupResult != HEAVY_BASE_VAR(define)) break;
-    heavy::base::define(*this, cast<Pair>(P->Car));
-    Body = P->Cdr;
-  }
-
-  // The BindingOps for the local defines have
-  // been inserted by the `define` syntax. They are
-  // initialized to "undefined" and their corresponding
-  // heavy::Bindings placed in the EnvStack.
-  // Walk the EnvStack to collect these and insert the lazy
-  // initializers via SetOp
-
   {
-    mlir::Block* Block = LocalInits.getInsertionBlock();
-    mlir::Block::iterator Itr = LocalInits.getInsertionPoint();
-    if (Block && Itr != Block->end() && isa<BindingOp>(*Itr)) {
-      BindingOp LastBindingOp = cast<BindingOp>(*Itr);
-      LocalInits.setInsertionPointAfter(LastBindingOp);
+    TailPosScope TPS(*this);
+    IsTailPos = false;
+    // Handle local defines.
+    while (Pair* P = dyn_cast<Pair>(Body)) {
+      Body = P;
+      Symbol* S = dyn_cast_or_null<Symbol>(P->Car.car());
+      Value LookupResult = S ? Context.Lookup(S).Value : Value();
+      if (LookupResult != HEAVY_BASE_VAR(define)) break;
+      heavy::base::define(*this, cast<Pair>(P->Car));
+      Body = P->Cdr;
     }
-  }
-  {
-    mlir::OpBuilder::InsertionGuard IG2(Builder);
-    Builder = LocalInits;
 
-    Value Env = Context.EnvStack;
-    while (Pair* EnvPair = dyn_cast<Pair>(Env)) {
-      Binding* B = dyn_cast<Binding>(EnvPair->Car);
-      // We should eventually hit the EnvFrame that wraps this local scope
-      if (!B) break;
-      mlir::Value BVal = BindingTable.lookup(B);
-      mlir::Value Init = VisitDefineArgs(B->getValue());
-      SourceLocation Loc = B->getValue().getSourceLocation();
-      assert(BVal && "BindingTable should have an entry for local define");
-
-      create<SetOp>(Loc, BVal, Init);
-      Env = EnvPair->Cdr;
-    }
-    // Builder is restored to the end of the body block
+    walkDefineInits(Context.EnvStack);
   }
 
   return createSequence(Loc, Body);
@@ -390,7 +377,7 @@ mlir::Value OpGen::createIf(SourceLocation Loc, Value Cond, Value Then,
   IfContOp.elseRegion().push_back(ElseBlock);
 
   if (TailPos) return mlir::Value();
-  return createContinuation(IfContOp.initCont());      
+  return createContinuation(IfContOp.initCont());
 }
 
 // LHS can be a symbol or a binding
@@ -484,7 +471,7 @@ mlir::Value OpGen::createContinuation(mlir::Region& initCont) {
   //
   // TODO The current context should be able to tell us the arity
   //      of the continuation defaulting to 1 (plus the closure arg)
-  // 
+  //
   // TODO Detect if the continuation should simply discard effects,
   //      accepting any arity
   mlir::FunctionType FT = createFunctionType(/*Arity=*/1,
