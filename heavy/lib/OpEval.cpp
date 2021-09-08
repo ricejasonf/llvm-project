@@ -175,6 +175,7 @@ private:
     else if (isa<LoadGlobalOp>(Op))   return Visit(cast<LoadGlobalOp>(Op));
     else if (isa<LambdaOp>(Op))       return Visit(cast<LambdaOp>(Op));
     else if (isa<IfOp>(Op))           return Visit(cast<IfOp>(Op));
+    else if (isa<IfContOp>(Op))       return Visit(cast<IfContOp>(Op));
     else if (isa<ConsOp>(Op))         return Visit(cast<ConsOp>(Op));
     else if (isa<SpliceOp>(Op))       return Visit(cast<SpliceOp>(Op));
     else if (isa<SetOp>(Op))          return Visit(cast<SetOp>(Op));
@@ -342,6 +343,23 @@ private:
 
   BlockItrTy Visit(IfOp Op) {
     Value Input = getValue(Op.input());
+    push_scope();
+    return Input.isTrue() ? Op.thenRegion().front().begin() :
+                            Op.elseRegion().front().begin();
+  }
+
+  BlockItrTy Visit(IfContOp Op) {
+    Value Input = getValue(Op.input());
+
+    if (!Op.isTailPos()) {
+      // evaluate the initCont region which pushes
+      // a continuation
+      BlockItrTy Itr = Op.initCont().front().begin();
+      while (Itr != BlockItrTy()) {
+        Itr = Visit(&*Itr);
+      }
+    }
+
     push_scope();
     return Input.isTrue() ? Op.thenRegion().front().begin() :
                             Op.elseRegion().front().begin();
