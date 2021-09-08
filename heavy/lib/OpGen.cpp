@@ -184,7 +184,7 @@ bool OpGen::isLocalDefineAllowed() {
 // processSequence creates a sequence of operations in the current block
 mlir::Value OpGen::createSequence(SourceLocation Loc, Value Body) {
   if (!isa<Pair>(Body)) {
-    SetError(Loc, "sequence must contain an expression", Body);
+    return SetError(Loc, "sequence must contain an expression", Body);
   }
 
   Value Rest = Body;
@@ -214,8 +214,11 @@ mlir::Value OpGen::createBody(SourceLocation Loc, Value Body) {
   // insertion point
   while (Pair* P = dyn_cast<Pair>(Body)) {
     Body = P;
-    if (P->Car != HEAVY_BASE_VAR(define)) break;
-    heavy::base::define(*this, P);
+    Symbol* S = dyn_cast_or_null<Symbol>(P->Car.car());
+    Value LookupResult = S ? Context.Lookup(S).Value : Value();
+    if (LookupResult != HEAVY_BASE_VAR(define)) break;
+    heavy::base::define(*this, cast<Pair>(P->Car));
+    Body = P->Cdr;
   }
 
   // The BindingOps for the local defines have

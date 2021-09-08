@@ -144,7 +144,8 @@ void callcc(Context& C, ValueRefs Args) {
 }
 
 void eval(Context& C, ValueRefs Args) {
-  if (C.CheckError()) return;
+  // noop if there is already an error
+  if (C.CheckError()) return C.Cont();
   unsigned Len = Args.size();
   assert((Len == 1 || Len == 2) && "Invalid arity to builtin `eval`");
   unsigned i = 0;
@@ -165,13 +166,12 @@ void eval(Context& C, ValueRefs Args) {
     EnvStack = C.CreatePair(E);
   }
 
-  // TODO this should raise errors properly and call the continuation
-  //      with the result
   mlir::Operation* Op = C.OpGen->VisitTopLevel(ExprOrDef);
-  if (!Op) return C.Cont(Undefined());
-
   if (C.CheckError()) return;
+  if (!Op) return C.RaiseError("compilation failed");
+
   opEval(C.OpEval, Op);
+  C.Cont(Undefined());
 }
 
 void dump(Context& C, ValueRefs Args) {
