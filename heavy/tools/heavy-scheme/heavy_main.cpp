@@ -51,7 +51,7 @@ void ProcessTopLevelExpr(heavy::Context& Context, heavy::ValueRefs Values) {
   switch (InputMode.getValue()) {
   case ExecutionMode::repl:
     Val = heavy::eval(Context, Val);
-    break;
+    return;
   case ExecutionMode::read:
     if (!Context.CheckError()) Val.dump();
     break;
@@ -61,6 +61,7 @@ void ProcessTopLevelExpr(heavy::Context& Context, heavy::ValueRefs Values) {
   default:
     llvm_unreachable("Invalid execution mode for loop");
   }
+  Context.Cont();
 }
 
 int main(int argc, char const** argv) {

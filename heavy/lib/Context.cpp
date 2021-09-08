@@ -725,6 +725,13 @@ bool Context::CheckNumber(Value V) {
   return true;
 }
 
+Value Context::SetError(Value E) {
+  assert(isa<Error>(E) || isa<Exception>(E));
+  Err = E;
+  Raise(E);
+  return CreateUndefined();
+}
+
 void Context::SetErrorHandler(Value Handler) {
   assert((isa<Empty>(ExceptionHandlers) ||
           isa<Empty>(ExceptionHandlers.cdr())) &&
@@ -758,7 +765,10 @@ void Context::WithExceptionHandler(Value Handler, Value Thunk) {
 }
 
 void Context::Raise(Value Obj) {
-  if (isa<Empty>(Obj)) return;
+  if (isa<Empty>(ExceptionHandlers)) {
+    ClearStack();
+    return Cont(Undefined());
+  }
   Pair* P = dyn_cast<Pair>(ExceptionHandlers);
   Value Handler = P->Car;
   Value PrevHandlers = P->Cdr;
@@ -770,6 +780,7 @@ void Context::Raise(Value Obj) {
       // FIXME this should be a run-time error
       assert(Args.size() == 1 && "expecting a single argument");
       Value Handler = C.getCapture(0);
+      // FIXME this could be a call to RaiseError
       C.Raise(C.CreateError(Handler.getSourceLocation(),
                             "error handler returned",
                             Handler));

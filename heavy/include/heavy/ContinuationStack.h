@@ -109,13 +109,18 @@ class ContinuationStack {
   // PopCont
   //  - Note that a call to PushCont will invalidate
   //    the returned Lambda*
-  Lambda* PopCont() {
+  Value PopCont() {
     if (Top == Bottom) return Bottom;
+    assert(Top < Bottom && "top is out of bounds");
     Lambda* OldTop = Top;
-    char* begin = reinterpret_cast<char*>(Top);
-    char* end = begin + Top->getObjectSize();
+    uintptr_t begin = reinterpret_cast<uintptr_t>(Top);
+    unsigned size = Top->getObjectSize();
+    uintptr_t end = begin + size;
+    unsigned A = alignof(Lambda);
+    unsigned AlignmentPadding = (A - (end % A)) % A;
+    end += AlignmentPadding;
     Top = reinterpret_cast<Lambda*>(end);
-    return OldTop;
+    return Value(OldTop);
   }
 
   void ApplyHelper(Value Callee, ValueRefs Args) {
@@ -265,6 +270,8 @@ public:
 
     Lambda* New = new (Mem) Lambda(FnData, Captures);
     Top = New;
+    // cast to Value to check pointer alignment
+    (void)Value(New);
   }
 
   void PushCont(heavy::Value Callable) {
@@ -289,6 +296,7 @@ public:
     ApplyHelper(PopCont(), Args);
   }
   void Cont(Value Arg) { Cont(ValueRefs(Arg)); }
+  void Cont() { Cont(Undefined()); }
 
   // ClearStack
   //  - Clear the stack effectively stopping execution after
@@ -306,6 +314,7 @@ public:
     char* begin = end - BufferView.size();
     std::copy(BufferView.begin(), BufferView.end(), begin);
     Top = reinterpret_cast<Lambda*>(begin);
+    (void)Value(Top);
   }
 
   //  CallCC

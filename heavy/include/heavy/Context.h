@@ -153,7 +153,7 @@ public:
   Builtin* GetBuiltin(StringRef Name);
 
   // Lookup
-  //  - Takes a Symbol or nullptr
+  //  - Takes a Symbol
   //  - Returns a matching Binder or nullptr
   EnvEntry Lookup(Symbol* Name, Value Stack);
   EnvEntry Lookup(Symbol* Name) {
@@ -198,31 +198,20 @@ public:
   //            should be cleared, and subsequent calls to eval
   //            should be a noop unless the error is cleared
   //            by the user.
-  Value SetError(Value E) {
-    assert(isa<Error>(E) || isa<Exception>(E));
-    Err = E;
-    ClearStack();
-    Yield(E);
-    return CreateUndefined();
-  }
-
+  Value SetError(Value E);
   Value SetError(SourceLocation Loc, String* S, Value V) {
     return SetError(CreateError(Loc, S, CreatePair(V)));
   }
-
   Value SetError(String* S, Value V) {
     SourceLocation Loc = V.getSourceLocation();
     return SetError(CreateError(Loc, S, CreatePair(V)));
   }
-
   Value SetError(StringRef S, Value V) {
     return SetError(CreateString(S), V);
   }
-
   Value SetError(StringRef S) {
     return SetError(S, CreateUndefined());
   }
-
   Value SetError(SourceLocation Loc, StringRef S, Value V) {
     return SetError(Loc, CreateString(S), V);
   }
