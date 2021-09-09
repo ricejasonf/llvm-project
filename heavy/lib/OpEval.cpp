@@ -324,7 +324,7 @@ private:
 
     mlir::Operation* Parent = Op.getParentOp();
 
-    if (isa<FuncOp, GlobalOp>(Parent)) {
+    if (isa<FuncOp, GlobalOp, IfContOp>(Parent)) {
       // The continuation is handled by the run-time
       Context.Cont(ContValues);
       return {};
