@@ -353,7 +353,7 @@ mlir::Value OpGen::createIf(SourceLocation Loc, Value Cond, Value Then,
       mlir::OpBuilder::InsertionGuard IG(Builder);
       Builder.setInsertionPointToStart(ThenBlock);
       mlir::Value Result = Visit(Then);
-      if (isa<ApplyOp>(ThenBlock->back())) {
+      if (!ThenBlock->empty() && isa<ApplyOp>(ThenBlock->back())) {
         RequiresContinuation = true;
       } else {
         create<ContOp>(Loc, Result);
@@ -365,7 +365,7 @@ mlir::Value OpGen::createIf(SourceLocation Loc, Value Cond, Value Then,
       mlir::OpBuilder::InsertionGuard IG(Builder);
       Builder.setInsertionPointToStart(ElseBlock);
       mlir::Value Result = Visit(Else);
-      if (isa<ApplyOp>(ElseBlock->back())) {
+      if (!ElseBlock->empty() && isa<ApplyOp>(ElseBlock->back())) {
         RequiresContinuation = true;
       } else {
         create<ContOp>(Loc, Result);
