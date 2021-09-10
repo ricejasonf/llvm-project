@@ -100,6 +100,8 @@ public:
   std::unique_ptr<heavy::OpGen> OpGen;
   heavy::OpEval OpEval;
 
+  // SetErrorHandler - Set the bottom most exception handler to handle
+  //                   hard errors including uncaught exceptions.
   void SetErrorHandler(Value Handler);
   void WithExceptionHandlers(Value NewHandlers, Value Thunk);
   void WithExceptionHandler(Value Handler, Value Thunk);
@@ -198,21 +200,21 @@ public:
   //            should be cleared, and subsequent calls to eval
   //            should be a noop unless the error is cleared
   //            by the user.
-  Value SetError(Value E);
-  Value SetError(SourceLocation Loc, String* S, Value V) {
+  void SetError(Value E);
+  void SetError(SourceLocation Loc, String* S, Value V) {
     return SetError(CreateError(Loc, S, CreatePair(V)));
   }
-  Value SetError(String* S, Value V) {
+  void SetError(String* S, Value V) {
     SourceLocation Loc = V.getSourceLocation();
     return SetError(CreateError(Loc, S, CreatePair(V)));
   }
-  Value SetError(StringRef S, Value V) {
+  void SetError(StringRef S, Value V) {
     return SetError(CreateString(S), V);
   }
-  Value SetError(StringRef S) {
+  void SetError(StringRef S) {
     return SetError(S, CreateUndefined());
   }
-  Value SetError(SourceLocation Loc, StringRef S, Value V) {
+  void SetError(SourceLocation Loc, StringRef S, Value V) {
     return SetError(Loc, CreateString(S), V);
   }
 
