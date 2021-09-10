@@ -97,14 +97,7 @@ bool HeavyScheme::ProcessTopLevelCommands(
 
   Context.SetErrorHandler(Context.CreateLambda(
     [handleError](heavy::Context& C, ValueRefs Args) {
-      if (!C.CheckError()) {
-        Value Obj = Args[0];
-        std::string Msg;
-        llvm::raw_string_ostream Stream(Msg);
-        write(Stream << "uncaught object: ", Obj);
-        C.SetError(Msg, Obj);
-        return;
-      }
+      assert(C.CheckError() && "expecting hard error");
       handleError();
       C.Cont(Undefined());
     }, /*Captures=*/{}));
