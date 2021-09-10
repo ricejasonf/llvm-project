@@ -61,7 +61,8 @@ public:
 private:
 
   heavy::Value setError(llvm::StringRef S, heavy::Value V) {
-    return OpGen.getContext().SetError(S, V);
+    OpGen.getContext().SetError(S, V);
+    return Undefined();
   }
 
   heavy::LiteralOp createLiteralOp(Value V) {
