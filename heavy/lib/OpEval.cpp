@@ -152,11 +152,23 @@ private:
     return ++BlockItrTy(Op);
   }
 
-  template <typename T>
-  BlockItrTy SetError(SourceLocation Loc, T Str, Value V) {
-    Context.SetError(Loc, Str, V);
+  template <typename Message, typename Irritants>
+  BlockItrTy RaiseError(Message M, Irritants Irrs) {
+    Context.RaiseError(M, Irrs);
 
-    // TODO unwinding stuff
+    // TODO use DynamicWind to create/destroy ValueMapScopes
+    while (!ValueMapScopes.empty()) {
+      ValueMapScopes.pop();
+    }
+
+    return BlockItrTy();
+  }
+
+  template <typename ...Args>
+  BlockItrTy SetError(Args... args) {
+    Context.SetError(args...);
+
+    // TODO use DynamicWind to create/destroy ValueMapScopes
     while (!ValueMapScopes.empty()) {
       ValueMapScopes.pop();
     }
@@ -431,6 +443,9 @@ private:
   BlockItrTy Visit(LoadGlobalOp Op) {
     mlir::ModuleOp M = Context.OpGen->getTopLevel();
     mlir::Operation* G = M.lookupSymbol(Op.name());
+    if (!G) {
+      return SetError("unbound symbol", Value(Op.getOperation()));
+    }
     assert(G && "symbol does not exist");
     setValue(Op, getBindingOrValue(G->getResult(0)));
     return next(Op);

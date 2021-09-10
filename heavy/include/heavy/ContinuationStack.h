@@ -124,6 +124,8 @@ class ContinuationStack {
   }
 
   void ApplyHelper(Value Callee, ValueRefs Args) {
+    assert(!DidCallContinuation &&
+        "continuation should be specified only once");
     DidCallContinuation = true; // debug mode only
     if (Args.data() != ApplyArgs.data()) {
       ApplyArgs.resize(Args.size() + 1);
@@ -184,6 +186,7 @@ public:
   ContinuationStack(ContinuationStack const&) = delete;
 
   heavy::Value getCallee() {
+    assert(ApplyArgs[0] && "callee must not be null");
     return ApplyArgs[0];
   }
   ValueRefs getCaptures() {
@@ -218,13 +221,17 @@ public:
     });
   }
 
+  bool isFinished() {
+    return getCallee() == Bottom;
+  }
+
   // Begins evaluation by calling what is set
   // in ApplyArgs
   void Resume() {
     Derived& Context = getDerived();
 
-    while (Value Callee = ApplyArgs[0]) {
-      if (Callee == Bottom) break;
+    while (Value Callee = getCallee()) {
+      if (isFinished()) break;
 
       // debug mode only
       DidCallContinuation = false;
@@ -254,6 +261,7 @@ public:
       // this means a C++ function was not written correctly
       assert(DidCallContinuation && "function failed to call continuation");
     }
+    DidCallContinuation = false;
   }
 
   // PushCont
