@@ -427,9 +427,10 @@ mlir::Value OpGen::VisitSymbol(Symbol* S) {
   SourceLocation Loc = S->getSourceLocation();
 
   if (!Entry) {
-    String* Msg = Context.CreateString("unbound symbol '",
-                                       S->getVal(), "'");
-    return SetError(Msg, S);
+    // Default to the name of a global
+    heavy::Mangler Mangler(Context);
+    std::string MangledName = Mangler.mangleVariable(getModulePrefix(), S);
+    return create<LoadGlobalOp>(Loc, MangledName); 
   }
 
   if (Entry.MangledName) {
@@ -523,10 +524,7 @@ mlir::Value OpGen::VisitPair(Pair* P) {
   if (Symbol* Name = dyn_cast<Symbol>(Operator)) {
     EnvEntry Entry = Context.Lookup(Name);
     if (!Entry) {
-      // this makes it fail before the operands do
-      String* Msg = Context.CreateString("unbound symbol '",
-                                         Name->getVal(), "'");
-      return SetError(Msg, Name);
+      Operator = Undefined();
     } else if (Binding* B = dyn_cast<Binding>(Entry.Value)) {
       Operator = B->getValue();
     } else {

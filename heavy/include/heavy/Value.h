@@ -868,7 +868,7 @@ public:
   friend class llvm::TrailingObjects<Lambda, Value, char>;
   friend Context;
 
-  using FnPtrTy = Value(*)(void*, Context&, ValueRefs);
+  using FnPtrTy = void(*)(void*, Context&, ValueRefs);
 
 private:
   FnPtrTy FnPtr;
@@ -938,7 +938,7 @@ public:
     return totalSizeToAlloc<Value, char>(NumCaptures, StorageLen);
   }
 
-  Value call(Context& C, ValueRefs Args) {
+  void call(Context& C, ValueRefs Args) {
     return FnPtr(getStoragePtr(), C, Args);
   }
 
@@ -1583,11 +1583,10 @@ Lambda::FunctionDataView Lambda::createFunctionDataView(F& Fn) {
   static_assert(std::is_trivially_copyable<F>::value,
     "F must be trivially_copyable");
   using FuncTy = std::remove_const_t<F>;
-  auto CallFn = [](void* Storage, Context& C, ValueRefs Values) -> Value {
+  auto CallFn = [](void* Storage, Context& C, ValueRefs Values) {
     FuncTy& Func = *static_cast<FuncTy*>(Storage);
     // llvm::errs() << "Func: " << __PRETTY_FUNCTION__ << '\n';
     Func(C, Values);
-    return Undefined{};
   };
   llvm::StringRef Storage(reinterpret_cast<char const*>(&Fn), sizeof(Fn));
   return FunctionDataView{CallFn, Storage};

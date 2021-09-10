@@ -725,11 +725,10 @@ bool Context::CheckNumber(Value V) {
   return true;
 }
 
-Value Context::SetError(Value E) {
+void Context::SetError(Value E) {
   assert(isa<Error>(E) || isa<Exception>(E));
   Err = E;
   Raise(E);
-  return CreateUndefined();
 }
 
 void Context::SetErrorHandler(Value Handler) {
@@ -737,11 +736,7 @@ void Context::SetErrorHandler(Value Handler) {
           isa<Empty>(ExceptionHandlers.cdr())) &&
     "error handler may only be set at the bottom of the handler stack");
 
-  if (Pair* P = dyn_cast<Pair>(ExceptionHandlers)) {
-    P->Car = Handler;
-  } else {
-    ExceptionHandlers = CreatePair(Handler);
-  }
+  ExceptionHandlers = Handler;
 }
 
 void Context::WithExceptionHandlers(Value NewHandlers, Value Thunk) {
@@ -769,7 +764,16 @@ void Context::Raise(Value Obj) {
     ClearStack();
     return Cont(Undefined());
   }
-  Pair* P = dyn_cast<Pair>(ExceptionHandlers);
+  if (!isa<Pair>(ExceptionHandlers)) {
+    if (!CheckError()) {
+      std::string Msg;
+      llvm::raw_string_ostream Stream(Msg);
+      write(Stream << "uncaught object: ", Obj);
+      return SetError(Msg, Obj);
+    }
+    return Apply(ExceptionHandlers, Obj);
+  }
+  Pair* P = cast<Pair>(ExceptionHandlers);
   Value Handler = P->Car;
   Value PrevHandlers = P->Cdr;
   WithExceptionHandlers(PrevHandlers,
@@ -777,17 +781,11 @@ void Context::Raise(Value Obj) {
     Value Handler = C.getCapture(0);
     Value Obj = C.getCapture(1);
     C.PushCont([](Context& C, ValueRefs Args) {
-      // FIXME this should be a run-time error
       assert(Args.size() == 1 && "expecting a single argument");
       Value Handler = C.getCapture(0);
-      // FIXME this could be a call to RaiseError
-      C.Raise(C.CreateError(Handler.getSourceLocation(),
-                            "error handler returned",
-                            Handler));
-      return Value();
+      C.RaiseError("error handler returned", Handler);
     }, {Handler});
     C.Apply(Handler, Obj);
-    return Value();
   }, {Handler, Obj}));
 }
 
