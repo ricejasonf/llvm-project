@@ -131,6 +131,7 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
 
   void insertTopLevelCommandOp(SourceLocation Loc);
   void walkDefineInits(Value Env);
+  heavy::Value transformSyntax(Value V);
 
 public:
   explicit OpGen(heavy::Context& C);
