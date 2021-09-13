@@ -69,7 +69,7 @@ protected:
   VISIT_FN(Quote)
   VISIT_FN(String)
   VISIT_FN(Symbol)
-  VISIT_FN(Syntax)
+  VISIT_FN(Transformer)
   VISIT_FN(Vector)
 
   template <typename ...Args>
@@ -84,7 +84,7 @@ public:
     case ValueKind::Undefined:      DISPATCH(Undefined);
     case ValueKind::BigInt:         DISPATCH(BigInt);
     case ValueKind::Binding:        DISPATCH(Binding);
-    case ValueKind::Bool:        DISPATCH(Bool);
+    case ValueKind::Bool:           DISPATCH(Bool);
     case ValueKind::Builtin:        DISPATCH(Builtin);
     case ValueKind::BuiltinSyntax:  DISPATCH(BuiltinSyntax);
     case ValueKind::Char:           DISPATCH(Char);
@@ -105,7 +105,7 @@ public:
     case ValueKind::Quote:          DISPATCH(Quote);
     case ValueKind::String:         DISPATCH(String);
     case ValueKind::Symbol:         DISPATCH(Symbol);
-    case ValueKind::Syntax:         DISPATCH(Syntax);
+    case ValueKind::Transformer:    DISPATCH(Transformer);
     case ValueKind::Vector:         DISPATCH(Vector);
     default:
       llvm_unreachable("Invalid Value Kind");
