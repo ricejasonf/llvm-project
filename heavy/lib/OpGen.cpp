@@ -225,6 +225,20 @@ void OpGen::walkDefineInits(Value Env) {
   create<SetOp>(Loc, BVal, Init);
 }
 
+// transformSyntax - Iteratively transform an expression if it is
+//                   a syntax call to a syntax transformer. Nested
+//                   AST is not necessarily transformed.
+heavy::Value OpGen::transformSyntax(Value V) {
+  while (auto *P = dyn_cast<Pair>(V)) {
+    if (auto* T = dyn_cast<Transformer>(P->Car)) {
+      V = T->call(Context, P);
+    } else {
+     break;
+    } 
+  }
+  return V;
+}
+
 mlir::Value OpGen::createBody(SourceLocation Loc, Value Body) {
   IsTopLevel = false;
   {
@@ -232,11 +246,11 @@ mlir::Value OpGen::createBody(SourceLocation Loc, Value Body) {
     IsTailPos = false;
     // Handle local defines.
     while (Pair* P = dyn_cast<Pair>(Body)) {
-      Body = P;
-      Symbol* S = dyn_cast_or_null<Symbol>(P->Car.car());
+      Value Node = transformSyntax(P->Car);
+      Symbol* S = dyn_cast_or_null<Symbol>(Node.car());
       Value LookupResult = S ? Context.Lookup(S).Value : Value();
       if (LookupResult != HEAVY_BASE_VAR(define)) break;
-      heavy::base::define(*this, cast<Pair>(P->Car));
+      heavy::base::define(*this, cast<Pair>(Node));
       Body = P->Cdr;
     }
 
@@ -537,7 +551,7 @@ mlir::Value OpGen::VisitPair(Pair* P) {
       BuiltinSyntax* BS = cast<BuiltinSyntax>(Operator);
       return BS->Fn(*this, P);
     }
-    case ValueKind::Syntax:
+    case ValueKind::Transformer:
       llvm_unreachable("TODO");
       return mlir::Value();
     default: {

@@ -86,11 +86,11 @@ class Environment;
 class Module;
 class ImportSet;
 class EnvFrame;
-using ValueRefs = llvm::MutableArrayRef<heavy::Value>;
-using ValueFnTy = void (Context&, ValueRefs);
-using ValueFn   = ValueFnTy*;
-
-using SyntaxFn  = mlir::Value (*)(OpGen&, Pair*);
+using ValueRefs   = llvm::MutableArrayRef<heavy::Value>;
+using ValueFnTy   = void (Context&, ValueRefs);
+using ValueFn     = ValueFnTy*;
+using SyntaxFn    = mlir::Value (*)(OpGen&, Pair*);
+using TransformFn = Value (*)(Context&, Pair*);
 
 enum class ValueKind {
   Undefined = 0,
@@ -117,7 +117,7 @@ enum class ValueKind {
   Quote,
   String,
   Symbol,
-  Syntax,
+  Transformer,
   Vector,
 };
 
@@ -966,27 +966,22 @@ public:
   static ValueKind getKind() { return ValueKind::Quote; }
 };
 
-// Syntax - A function that represents `syntax-rules` pattern matching
-//          and template substitution.
-//
-//          TODO
-//          Generate a function to find a pattern match AND
-//          perform template substitution with pattern variables and everything.
-//          This would eliminate the need to store the patterns and perhaps
-//          there is a chance to optimize nested syntax calls.
-class Syntax : public ValueBase {
-
-  mlir::Operation* Op;
+// Transformer - A macro function that transforms AST
+class Transformer : public ValueBase {
+  TransformFn Fn;
 
 public:
-  Syntax(mlir::Operation* Op)
-    : ValueBase(ValueKind::Syntax),
-      Op(Op)
+  Transformer(TransformFn Fn)
+    : ValueBase(ValueKind::Transformer),
+      Fn(Fn)
   { }
+
+  Value call(Context& C, Pair* P) { return Fn(C, P); }
+
   static bool classof(Value V) {
-    return V.getKind() == ValueKind::Syntax;
+    return V.getKind() == ValueKind::Transformer;
   }
-  static ValueKind getKind() { return ValueKind::Syntax; }
+  static ValueKind getKind() { return ValueKind::Transformer; }
 };
 
 class Vector final
@@ -1092,7 +1087,7 @@ public:
   }
 
   bool isSyntactic() {
-    return Val.getKind() == ValueKind::Syntax ||
+    return Val.getKind() == ValueKind::Transformer ||
            Val.getKind() == ValueKind::BuiltinSyntax;
   }
 
@@ -1546,7 +1541,7 @@ inline llvm::StringRef getKindName(heavy::ValueKind Kind) {
   GET_KIND_NAME_CASE(Quote)
   GET_KIND_NAME_CASE(String)
   GET_KIND_NAME_CASE(Symbol)
-  GET_KIND_NAME_CASE(Syntax)
+  GET_KIND_NAME_CASE(Transformer)
   GET_KIND_NAME_CASE(Vector)
   default:
     return llvm::StringRef("?????");
