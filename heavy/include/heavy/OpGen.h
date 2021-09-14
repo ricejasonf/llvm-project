@@ -19,6 +19,7 @@
 #include "heavy/ValueVisitor.h"
 #include "mlir/IR/Builders.h"
 #include "llvm/ADT/ScopedHashTable.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/Casting.h"
 #include <deque>
 #include <string>
@@ -130,7 +131,7 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   };
 
   void insertTopLevelCommandOp(SourceLocation Loc);
-  void walkDefineInits(Value Env);
+  bool walkDefineInits(Value Env, llvm::SmallPtrSetImpl<String*>& LocalNames);
   heavy::Value transformSyntax(Value V);
 
 public:
