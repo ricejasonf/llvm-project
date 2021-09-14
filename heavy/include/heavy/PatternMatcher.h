@@ -26,8 +26,6 @@ namespace heavy {
 
 // stuff to handle
 
-TransformerSpec
-SyntaxRule
 Pattern
 Template
 TemplateElement
@@ -44,10 +42,11 @@ public:
   using KeywordsTy = llvm::ArrayRef<std::pair<Symbol*, Binding*>>>;
 private:
 
+  heavy::OpGen& OpGen;
   Symbol* Ellipsis;
   Value Keywords; // literal identifiers (list)
   // PatternVars - maps symbols to input nodes
-  llvm::StringMap<Value> PatternVars;
+  llvm::SmallVector<PatternVars;
 
   // P - the pattern node
   // E - the input to match
@@ -65,15 +64,12 @@ public:
     std::tie(std::ignore, Inserted) = PatternVars.insert({S->getView(), E})
     if (Inserted) return true;
 
-    // TODO set error cuz pattern variable was used twice
-    llvm_unreachable("TODO");
-    return false;
+    return OG.setError("pattern variable appears twice");
   }
 
   mlir::Value VisitValue(Value P, mlir::Value E) {
-    // TODO set error invalid pattern node
-    llvm_unreachable("TODO");
-    return false;
+    // FIXME should this be an assert?
+    return OG.setError("invalid pattern node");
   }
 
   mlir::Value VisitPair(Pair* P, mlir::Value E) {
@@ -117,9 +113,7 @@ public:
     }
     // <ellipsis>
     if (P->equals(Ellipsis)) {
-      llvm_unreachable("TODO");
-      // this is an error as <ellipsis> is not
-      // a valid pattern by itself
+      return OpGen.setError("<ellipsis> is not a valid pattern");
     }
     // everything else is a pattern variable
     return bindPatternVar(P, E);
@@ -127,22 +121,23 @@ public:
 
   mlir::Value VisitString(String* P, mlir::Value E) {
     // <pattern datum> -> <string>
-    return createEqual(createLiteral(P), E);
+    return OpGen.createEqual(OpGen.createLiteral(P), E);
   }
 
   mlir::Value VisitBool(Bool P, mlir::Value E) {
     // <pattern datum> -> <boolean>
-    return createEqual(createLiteral(P), E);
+    return OpGen.createEqual(createLiteral(P), E);
   }
 
   mlir::Value VisitInt(Int P, mlir::Value E) {
     // <pattern datum> -> <number>
-    return createEqual(createLiteral(P), E);
+    return OpGen.createEqual(OpGen.createLiteral(P), E);
   }
 
   mlir::Value VisitFloat(Float* P, mlir::Value E) {
     // <pattern datum> -> <number>
-    return createEqual(createLiteral(P), E);
+    return OpGen.createEqual(OpGen.createLiteral(P), E);
+
   }
 };
 

@@ -19,6 +19,7 @@
 #include "mlir/IR/Module.h"
 #include "mlir/IR/Value.h"
 #include "llvm/ADT/ScopeExit.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include <memory>
@@ -213,16 +214,30 @@ mlir::Value OpGen::createSequence(SourceLocation Loc, Value Body) {
 //    Walk the EnvStack up to the nearest EnvFrame and
 //    collect these and insert the lazy initializers via SetOp
 //    in the lexical order that they were defined.
-void OpGen::walkDefineInits(Value Env) {
+bool OpGen::walkDefineInits(Value Env,
+                            llvm::SmallPtrSetImpl<String*>& LocalNames) {
   Pair* P = cast<Pair>(Env);
-  if (isa<EnvFrame>(P->Car)) return;
-  walkDefineInits(P->Cdr);
+  if (isa<EnvFrame>(P->Car)) return false;
+  if (walkDefineInits(P->Cdr, LocalNames)) return true;
+
+  // Check for duplicate names.
   Binding* B = cast<Binding>(P->Car);
+  Symbol* Name = B->getName();
+  String* Identifier = Name->getString();
+  bool IsNameInserted;
+  std::tie(std::ignore, IsNameInserted) = LocalNames.insert(Identifier);
+  if (!IsNameInserted) {
+    SetError("local variable has duplicate definitions", Name);
+    return true;
+  }
+
+  // Insert the binding initializer.
   mlir::Value BVal = BindingTable.lookup(B);
   mlir::Value Init = VisitDefineArgs(B->getValue());
   SourceLocation Loc = B->getValue().getSourceLocation();
   assert(BVal && "BindingTable should have an entry for local define");
   create<SetOp>(Loc, BVal, Init);
+  return false;
 }
 
 // transformSyntax - Iteratively transform an expression if it is
@@ -254,7 +269,9 @@ mlir::Value OpGen::createBody(SourceLocation Loc, Value Body) {
       Body = P->Cdr;
     }
 
-    walkDefineInits(Context.EnvStack);
+    llvm::SmallPtrSet<String*, 8> LocalNames;
+    if (walkDefineInits(Context.EnvStack, LocalNames))
+      return createUndefined();
   }
 
   return createSequence(Loc, Body);
