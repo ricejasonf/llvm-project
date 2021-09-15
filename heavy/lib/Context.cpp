@@ -308,6 +308,15 @@ void Context::dumpModuleOp() {
   OpGen->getTopLevel().dump();
 }
 
+void Context::verifyModule() {
+  mlir::ModuleOp ModuleOp = OpGen->getTopLevel();
+  if (mlir::failed(ModuleOp.verify())) {
+    llvm::errs() << "FAIL\n";
+  } else {
+    llvm::errs() << "PASSED\n";
+  }
+}
+
 void Context::PushTopLevel(heavy::Value V) {
   OpGen->VisitTopLevel(V);
 }

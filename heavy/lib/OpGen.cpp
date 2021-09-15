@@ -55,6 +55,27 @@ mlir::ModuleOp OpGen::getTopLevel() {
   return cast<mlir::ModuleOp>(TopLevel);
 }
 
+mlir::Value OpGen::GetSingleResult(heavy::Value V) {
+  mlir::Value Result = Visit(V);
+  if (auto BlockArg = Result.dyn_cast<mlir::BlockArgument>()) {
+    // the size includes the closure object
+    if (BlockArg.getOwner()->getArguments().size() != 2) {
+      return SetError("invalid continuation arity", V);
+    }
+  }
+  return Result;
+}
+
+mlir::ValueRange OpGen::ExpandResults(mlir::Value Result) {
+  if (Result.isa<mlir::OpResult>()) {
+    return Result.getDefiningOp()->getResults();
+  }
+  else {
+    auto BlockArg = Result.cast<mlir::BlockArgument>();
+    return BlockArg.getOwner()->getArguments().drop_front();
+  }
+}
+
 mlir::Operation* OpGen::VisitTopLevel(Value V) {
   IsTopLevel = true;
 
@@ -495,15 +516,30 @@ mlir::Value OpGen::VisitBinding(Binding* B) {
 
 mlir::Value OpGen::HandleCall(Pair* P) {
   heavy::SourceLocation Loc = P->getSourceLocation();
-  bool TailPos = isTailPos();
-  IsTopLevel = false;
-  mlir::Value Fn = GetSingleResult(P->Car);
-  llvm::SmallVector<mlir::Value, 16> Args;
-  HandleCallArgs(P->Cdr, Args);
-  ApplyOp Op = create<ApplyOp>(Loc, Fn, Args);
-  if (TailPos) return mlir::Value();
+  ApplyOp Op;
 
-  // create the continuation
+  {
+    TailPosScope TPS(*this);
+    IsTailPos = false;
+    IsTopLevel = false;
+
+    mlir::Value Fn = GetSingleResult(P->Car);
+    llvm::SmallVector<mlir::Value, 16> Args;
+
+    Value V = P->Cdr;
+    while (auto* P2 = dyn_cast<Pair>(V)) {
+      mlir::Value Arg = GetSingleResult(P2->Car);
+      Args.push_back(Arg);
+      V = P2->Cdr;
+    }
+    if (!isa<Empty>(V)) {
+      return SetError("improper list as call expression", V);
+    }
+
+    Op = create<ApplyOp>(Loc, Fn, Args);
+  }
+
+  if (IsTailPos) return mlir::Value();
   return createContinuation(Op.initCont());
 }
 
@@ -529,24 +565,6 @@ mlir::Value OpGen::createContinuation(mlir::Region& initCont) {
   Builder.setInsertionPointToStart(FuncEntry);
   // Results drops the Closure arg at the front
   return FuncEntry->getArguments()[1];
-}
-
-void OpGen::HandleCallArgs(Value V,
-                    llvm::SmallVectorImpl<mlir::Value>& Args) {
-  if (isa<Empty>(V)) return;
-  if (!isa<Pair>(V)) {
-    SetError("improper list as call expression", V);
-    return;
-  }
-  // FIXME this would probably be
-  // better as a loop
-  Pair* P = cast<Pair>(V);
-  {
-    TailPosScope TPS(*this);
-    IsTailPos = false;
-    Args.push_back(GetSingleResult(P->Car));
-  }
-  HandleCallArgs(P->Cdr, Args);
 }
 
 mlir::Value OpGen::VisitPair(Pair* P) {
@@ -598,6 +616,7 @@ mlir::Value OpGen::VisitVector(Vector* V) {
 //                 here too.
 //
 mlir::Value OpGen::LocalizeValue(heavy::Value B, mlir::Value V) {
+  //return V; // REMOVE
   mlir::Operation* Op = V.getDefiningOp();
   assert(Op && "value should be an operation result");
 

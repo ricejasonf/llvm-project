@@ -114,6 +114,7 @@ public:
 
   mlir::Operation* getModuleOp();
   void dumpModuleOp();
+  void verifyModule();
   void PushTopLevel(Value);
 
   // Return true on invalid kind
