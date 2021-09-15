@@ -141,28 +141,10 @@ public:
 
   mlir::ModuleOp getTopLevel();
 
-  mlir::ValueRange ExpandResults(mlir::Value Result) {
-    if (Result.isa<mlir::OpResult>()) {
-      return Result.getDefiningOp()->getResults();
-    }
-    else {
-      auto BlockArg = Result.cast<mlir::BlockArgument>();
-      return BlockArg.getOwner()->getArguments().drop_front();
-    }
-  }
-
   // GetSingleResult
   //  - visits a node expecting a single result
-  mlir::Value GetSingleResult(heavy::Value V) {
-    mlir::Value Result = Visit(V);
-    if (auto BlockArg = Result.dyn_cast<mlir::BlockArgument>()) {
-      // the size includes the closure object
-      if (BlockArg.getOwner()->getArguments().size() != 2) {
-        return SetError("invalid continuation arity", V);
-      }
-    }
-    return Result;
-  }
+  mlir::Value GetSingleResult(heavy::Value V);
+  mlir::ValueRange ExpandResults(mlir::Value Result);
 
   void setModulePrefix(std::string&& Prefix) {
     ModulePrefix = std::move(Prefix);
@@ -262,8 +244,6 @@ private:
   mlir::Value VisitBinding(Binding* B);
 
   mlir::Value HandleCall(Pair* P);
-  void HandleCallArgs(Value V,
-                      llvm::SmallVectorImpl<mlir::Value>& Args);
 
   mlir::Value VisitPair(Pair* P);
   // TODO mlir::Value VisitVector(Vector* V);
