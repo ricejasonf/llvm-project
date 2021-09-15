@@ -97,6 +97,7 @@ int main(int argc, char const** argv) {
   bool HasErrors = HeavyScheme.ProcessTopLevelCommands(Lexer, ProcessTopLevelExpr, OnError);
 
   if (InputMode.getValue() == ExecutionMode::mlir) {
+    HeavyScheme.getContext().verifyModule();
     HeavyScheme.getContext().dumpModuleOp();
     llvm::errs() << "\n";
   }
