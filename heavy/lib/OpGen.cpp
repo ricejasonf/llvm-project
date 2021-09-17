@@ -16,7 +16,7 @@
 #include "heavy/Mangle.h"
 #include "heavy/OpGen.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/Module.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Value.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -93,7 +93,7 @@ mlir::Operation* OpGen::VisitTopLevel(Value V) {
   if (heavy::CommandOp CommandOp = dyn_cast<heavy::CommandOp>(Op)) {
     mlir::Block& Block = CommandOp.body().front();
     assert(!Block.empty() && "command op must have body");
-    if (!Block.back().isKnownTerminator()) {
+    if (!Block.back().hasTrait<mlir::OpTrait::IsTerminator>()) {
       mlir::OpBuilder::InsertionGuard IG(Builder);
       Builder.setInsertionPointToEnd(&Block);
       create<ContOp>(heavy::SourceLocation(), createUndefined());

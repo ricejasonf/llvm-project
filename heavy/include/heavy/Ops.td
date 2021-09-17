@@ -68,18 +68,7 @@ def heavy_BindingOp : HeavyOp<"binding", [Symbol]> {
 
   let arguments = (ins HeavyValue:$input);
   let results   = (outs HeavyValue:$result);
-  let builders = [
-    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, "
-              "::mlir::Value input">
-  ];
-
-  let extraClassDeclaration = [{
-    bool isOptionalSymbol() { return true; }
-    bool isSymbol() {
-      return static_cast<bool>(getAttr(
-        ::mlir::SymbolTable::getSymbolAttrName()));
-    }
-  }];
+  let builders  = [OpBuilder<(ins "::mlir::Value":$input)>];
 }
 
 def heavy_BuiltinOp : HeavyOp<"builtin"> {
@@ -97,8 +86,7 @@ def heavy_BuiltinOp : HeavyOp<"builtin"> {
   let arguments = (ins HeavyValueAttr:$builtinFn);
   let results   = (outs HeavyValue:$result);
   let builders  = [
-    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, "
-              "heavy::Builtin*">
+    OpBuilder<(ins "::heavy::Builtin*":$builtinFn)>
   ];
 }
 
@@ -114,9 +102,9 @@ def heavy_CommandOp : HeavyOp<"command"> {
 
   let regions = (region AnyRegion:$body);
   let extraClassDeclaration = [{
-    Block* addEntryBlock() {
+    mlir::Block* addEntryBlock() {
       assert(body().empty() && "CommandOp already has an entry block");
-      Block* entry = new Block();
+      mlir::Block* entry = new mlir::Block();
       body().push_back(entry);
       return entry;
     }
@@ -135,8 +123,7 @@ def heavy_ConsOp : HeavyOp<"cons"> {
   let arguments = (ins HeavyValue:$a, HeavyValue:$b);
   let results   = (outs HeavyValue:$result);
   let builders = [
-    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, "
-              "::mlir::Value A, ::mlir::Value B">
+    OpBuilder<(ins "::mlir::Value":$a, "::mlir::Value":$b)>
   ];
 }
 
@@ -162,9 +149,9 @@ def heavy_GlobalOp : HeavyOp<"global", [Symbol]> {
   let regions = (region AnyRegion:$initializer);
   let extraClassDeclaration = [{
     bool isExternal() { return initializer().empty(); }
-    Block* addEntryBlock() {
+    mlir::Block* addEntryBlock() {
       assert(initializer().empty() && "GlobalOp already has an entry block");
-      Block* entry = new Block();
+      mlir::Block* entry = new mlir::Block();
       initializer().push_back(entry);
       return entry;
     }
@@ -173,8 +160,7 @@ def heavy_GlobalOp : HeavyOp<"global", [Symbol]> {
   let arguments = (ins StrAttr:$sym_name);
   let results   = (outs HeavyValue:$result);
   let builders = [
-    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&,"
-              "StringRef Name">
+    OpBuilder<(ins "::llvm::StringRef":$sym_name)>
   ];
 }
 
@@ -190,10 +176,7 @@ def heavy_IfOp : HeavyOp<"if", []> {
 
   let regions   = (region SizedRegion<1>:$thenRegion,
                           SizedRegion<1>:$elseRegion);
-  let builders = [
-    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, "
-              "::mlir::Value" >
-  ];
+  let builders  = [OpBuilder<(ins "::mlir::Value":$input)>];
 }
 
 def heavy_IfContOp : HeavyOp<"if_cont", [ReturnLike, Terminator]> {
@@ -230,9 +213,8 @@ def heavy_LambdaOp : HeavyOp<"lambda"> {
   let results = (outs HeavyValue:$result);
 
   let builders = [
-    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, "
-              "::llvm::StringRef Name, "
-              "::llvm::ArrayRef<::mlir::Value> Captures">
+    OpBuilder<(ins "::llvm::StringRef":$name,
+              "::llvm::ArrayRef<::mlir::Value>":$captures)>
   ];
 }
 
@@ -249,7 +231,7 @@ def heavy_LiteralOp : HeavyOp<"literal", [NoSideEffect]> {
   let arguments = (ins HeavyValueAttr:$input);
   let results   = (outs HeavyValue:$result);
   let builders = [
-    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, ::heavy::Value">
+    OpBuilder<(ins "::heavy::Value":$input)>
   ];
 }
 
@@ -263,8 +245,7 @@ def heavy_LoadClosureOp : HeavyOp<"load_closure"> {
   let results   = (outs HeavyValue:$result);
 
   let builders = [
-    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&,"
-              "::mlir::Value Closure, uint32_t Index">
+    OpBuilder<(ins "::mlir::Value":$closure, "uint32_t":$index)>
   ];
 }
 
@@ -278,8 +259,7 @@ def heavy_LoadGlobalOp : HeavyOp<"load_global"> {
   let results   = (outs HeavyValue:$result);
 
   let builders = [
-    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&,"
-              "StringRef Name">
+    OpBuilder<(ins "::llvm::StringRef":$name)>
   ];
 }
 
@@ -307,8 +287,7 @@ def heavy_SetOp : HeavyOp<"set"> {
   let arguments = (ins HeavyValue:$binding, HeavyValue:$input);
   let results   = (outs HeavyValue:$result);
   let builders = [
-    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, "
-              "::mlir::Value binding, ::mlir::Value input">
+    OpBuilder<(ins "::mlir::Value":$binding, "::mlir::Value":$input)>
   ];
 }
 
@@ -323,8 +302,7 @@ def heavy_SpliceOp : HeavyOp<"splice"> {
   let arguments = (ins HeavyValue:$a, HeavyValue:$b);
   let results   = (outs HeavyValue:$result);
   let builders = [
-    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&, "
-              "::mlir::Value A, ::mlir::Value B">
+    OpBuilder<(ins "::mlir::Value":$a, "::mlir::Value":$b)>
   ];
 }
 
@@ -336,9 +314,8 @@ def heavy_UndefinedOp : HeavyOp<"undefined", [NoSideEffect]> {
 
   let arguments = (ins);
   let results   = (outs HeavyValue:$result);
-
   let builders = [
-    OpBuilder<"::mlir::OpBuilder&, ::mlir::OperationState&">
+    OpBuilder<(ins)>
   ];
 }
 

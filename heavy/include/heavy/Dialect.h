@@ -14,17 +14,13 @@
 #define HEAVY_DIALECT_H
 
 #include "heavy/Value.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Dialect.h"
-#include "mlir/IR/Function.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/PointerLikeTypeTraits.h"
-
-// Kinds go away with an August 2020 MLIR commit in `main`
-#define HEAVY_VALUE_KIND \
-  mlir::Attribute::Kind::FIRST_PRIVATE_EXPERIMENTAL_0_ATTR
 
 // In Value we assume Operation* has the same alignment as ValueBase*.
 // (which should be 8 bytes)
@@ -51,7 +47,9 @@ struct Dialect : public mlir::Dialect {
 
 struct DialectRegisterer {
   DialectRegisterer() {
+#if 0 // FIXME not sure how this works now
     mlir::registerDialect<Dialect>();
+#endif
   }
 };
 
@@ -60,12 +58,6 @@ struct HeavyValue : public mlir::Type::TypeBase<
                             mlir::Type,
                             mlir::TypeStorage> {
   using Base::Base;
-
-
-  // This will go away
-  static HeavyValue get(mlir::MLIRContext* C) {
-    return Base::get(C, HEAVY_VALUE_KIND);
-  }
 };
 
 struct HeavyRest : public mlir::Type::TypeBase<
@@ -73,12 +65,6 @@ struct HeavyRest : public mlir::Type::TypeBase<
                             mlir::Type,
                             mlir::TypeStorage> {
   using Base::Base;
-
-
-  // This will go away
-  static HeavyRest get(mlir::MLIRContext* C) {
-    return Base::get(C, HEAVY_VALUE_KIND);
-  }
 };
 
 struct HeavyLambda : public mlir::Type::TypeBase<
@@ -86,12 +72,6 @@ struct HeavyLambda : public mlir::Type::TypeBase<
                             mlir::Type,
                             mlir::TypeStorage> {
   using Base::Base;
-
-
-  // This will go away
-  static HeavyLambda get(mlir::MLIRContext* C) {
-    return Base::get(C, HEAVY_VALUE_KIND);
-  }
 };
 
 struct HeavyValueAttrStorage : public mlir::AttributeStorage {
@@ -121,20 +101,13 @@ class HeavyValueAttr : public mlir::Attribute::AttrBase<
 
 public:
   heavy::Value getValue() const;
-
-  static bool kindof(unsigned K) {
-    return K == HEAVY_VALUE_KIND;
-  }
-
-  static HeavyValueAttr get(MLIRContext* C, heavy::Value V) {
-    return Base::get(C, HEAVY_VALUE_KIND, V);
-  }
 };
+
+}
+}
 
 #define GET_OP_CLASSES
 #include "heavy/Ops.h.inc"
-}
-}
 
 namespace heavy {
   using namespace mlir::heavy_mlir;
