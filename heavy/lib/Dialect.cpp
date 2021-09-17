@@ -12,16 +12,16 @@
 
 #include "heavy/Dialect.h"
 #include "heavy/Context.h"
-
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpImplementation.h"
-#include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/TypeUtilities.h"
 
-using namespace mlir::heavy_mlir;
+//using namespace mlir::heavy_mlir;
+using namespace heavy;
 
-Dialect::Dialect(mlir::MLIRContext* Ctx) : mlir::Dialect("heavy", Ctx) {
+Dialect::Dialect(mlir::MLIRContext* Ctx)
+  : mlir::Dialect("heavy", Ctx, mlir::TypeID::get<Dialect>()) {
   addTypes<HeavyLambda, HeavyRest, HeavyValue>();
   addAttributes<HeavyValueAttr>();
 

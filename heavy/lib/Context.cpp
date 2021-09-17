@@ -18,7 +18,6 @@
 #include "heavy/Source.h"
 #include "heavy/Value.h"
 #include "heavy/ValueVisitor.h"
-#include "mlir/IR/Module.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/SmallVector.h"
@@ -82,17 +81,17 @@ static String* CreateStringHelper(Allocator& Alloc, StringRefs ...S) {
 }
 
 String* Context::CreateString(llvm::StringRef S) {
-  return CreateStringHelper(TrashHeap, S);
+  return CreateStringHelper(getAllocator(), S);
 }
 
 String* Context::CreateString(llvm::StringRef S1, StringRef S2) {
-  return CreateStringHelper(TrashHeap, S1, S2);
+  return CreateStringHelper(getAllocator(), S1, S2);
 }
 
 String* Context::CreateString(llvm::StringRef S1,
                               llvm::StringRef S2,
                               llvm::StringRef S3) {
-  return CreateStringHelper(TrashHeap, S1, S2, S3);
+  return CreateStringHelper(getAllocator(), S1, S2, S3);
 }
 
 String* Context::CreateIdTableEntry(llvm::StringRef S) {
@@ -716,7 +715,7 @@ void heavy::initModule(heavy::Context& C, llvm::StringRef ModuleMangledName,
 
 bool Context::CheckKind(ValueKind VK, Value V) {
   if (V.getKind() == VK) return false;
-  String* S = CreateStringHelper(TrashHeap,
+  String* S = CreateStringHelper(getAllocator(),
       llvm::StringRef("invalid type "),
       getKindName(V.getKind()),
       llvm::StringRef(", expecting "),
@@ -726,7 +725,7 @@ bool Context::CheckKind(ValueKind VK, Value V) {
 }
 bool Context::CheckNumber(Value V) {
   if (V.isNumber()) return false;
-  String* S = CreateStringHelper(TrashHeap,
+  String* S = CreateStringHelper(getAllocator(),
       llvm::StringRef("invalid type "), 
       getKindName(V.getKind()),
       llvm::StringRef(", expecting number"));
