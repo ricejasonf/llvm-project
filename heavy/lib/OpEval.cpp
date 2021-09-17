@@ -15,7 +15,6 @@
 
 #include "heavy/Context.h"
 #include "heavy/OpGen.h"
-#include "mlir/IR/Module.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/Support/Casting.h"
@@ -194,7 +193,6 @@ private:
     else if (isa<CommandOp>(Op))      return Visit(cast<CommandOp>(Op));
     else if (isa<PushContOp>(Op))     return Visit(cast<PushContOp>(Op));
     else if (isa<FuncOp>(Op))         return next(Op); // skip functions
-    else if (isa<mlir::ModuleTerminatorOp>(Op)) return {};
     else if (UndefinedOp UndefOp = dyn_cast<UndefinedOp>(Op)) {
       setValue(UndefOp, Context.CreateUndefined());
       return next(Op);
@@ -334,7 +332,7 @@ private:
 
     pop_scope();
 
-    mlir::Operation* Parent = Op.getParentOp();
+    mlir::Operation* Parent = Op->getParentOp();
 
     if (isa<FuncOp, GlobalOp, IfContOp>(Parent)) {
       // The continuation is handled by the run-time
@@ -421,7 +419,7 @@ private:
   BlockItrTy Visit(LoadClosureOp Op) {
     // get the Lambda object and get its
     // closure value and set it to the value
-    uint32_t Index = Op.index().getZExtValue();
+    uint32_t Index = Op.index();
 
     // We are assuming we will only ever get a
     // closure element from the current callee.

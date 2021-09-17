@@ -78,6 +78,7 @@ class Context : DialectRegisterer,
                          ModuleInitListTy InitList);
   AllocatorTy TrashHeap;
 
+  llvm::AllocatorBase<AllocatorTy>& getAllocator() { return TrashHeap; }
   llvm::StringMap<String*> IdTable = {};
   llvm::StringMap<std::unique_ptr<Module>> Modules;
   // TODO probably move EmbeddedEnvs to class HeavyScheme
@@ -298,7 +299,7 @@ public:
   template <typename F>
   Lambda* CreateLambda(F Fn, llvm::ArrayRef<heavy::Value> Captures) {
     auto FnData = Lambda::createFunctionDataView(Fn);
-    void* Mem = Lambda::allocate(TrashHeap, FnData, Captures);
+    void* Mem = Lambda::allocate(getAllocator(), FnData, Captures);
     Lambda* New = new (Mem) Lambda(FnData, Captures);
 
     return New;
