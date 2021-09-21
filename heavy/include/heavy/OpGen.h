@@ -103,15 +103,17 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
                                 ::reverse_iterator;
 
   heavy::Context& Context;
-  mlir::OpBuilder TopLevelBuilder;
+  mlir::OpBuilder ModuleBuilder;
   mlir::OpBuilder Builder;
   mlir::OpBuilder LocalInits;
   BindingScopeTable BindingTable;
   std::deque<LambdaScopeNode> LambdaScopes;
-  mlir::Operation* TopLevel;
+  mlir::Operation* ModuleOp;
+  // TopLevelOp The current top level operation being generated.
+  //          It may be either CommandOp, GlobalOp, nullptr.
+  mlir::Operation* TopLevelOp = nullptr;
   std::string ModulePrefix = {};
   unsigned LambdaNameCount = 0;
-  bool IsTopLevel = false;
   bool IsTailPos = true;
 
   struct TailPosScope {
@@ -139,7 +141,7 @@ public:
 
   heavy::Context& getContext() { return Context; }
 
-  mlir::ModuleOp getTopLevel();
+  mlir::ModuleOp getModuleOp();
 
   // GetSingleResult
   //  - visits a node expecting a single result
@@ -161,7 +163,7 @@ public:
 
   mlir::Operation* VisitTopLevel(Value V);
 
-  bool isTopLevel() { return IsTopLevel; }
+  bool isTopLevel() { return TopLevelOp == nullptr; }
   bool isTailPos() { return IsTailPos; }
   bool isLocalDefineAllowed();
 

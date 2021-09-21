@@ -31,16 +31,17 @@ namespace {
 
 OpGen::OpGen(heavy::Context& C)
   : Context(C),
-    TopLevelBuilder(&(C.MlirContext)),
+    ModuleBuilder(&(C.MlirContext)),
     Builder(&(C.MlirContext)),
     LocalInits(&(C.MlirContext)),
     BindingTable()
 {
-  mlir::ModuleOp TL =  Builder.create<mlir::ModuleOp>(
-      Builder.getUnknownLoc());
-  TopLevelBuilder.setInsertionPointToStart(TL.getBody());
-  TopLevel = TL;
-  LambdaScopes.emplace_back(TL, BindingTable);
+  // TODO OpGen should own MlirContext
+  C.MlirContext.loadDialect<heavy::Dialect>();
+  mlir::ModuleOp M = Builder.create<mlir::ModuleOp>(Builder.getUnknownLoc());
+  ModuleOp = M;
+  ModuleBuilder.setInsertionPointToStart(M.getBody());
+  LambdaScopes.emplace_back(ModuleOp, BindingTable);
 }
 
 std::string OpGen::mangleFunctionName(llvm::StringRef Name) {
@@ -51,8 +52,8 @@ std::string OpGen::mangleFunctionName(llvm::StringRef Name) {
   return Mangler.mangleFunction(getModulePrefix(), Name);
 }
 
-mlir::ModuleOp OpGen::getTopLevel() {
-  return cast<mlir::ModuleOp>(TopLevel);
+mlir::ModuleOp OpGen::getModuleOp() {
+  return cast<mlir::ModuleOp>(ModuleOp);
 }
 
 mlir::Value OpGen::GetSingleResult(heavy::Value V) {
@@ -77,7 +78,15 @@ mlir::ValueRange OpGen::ExpandResults(mlir::Value Result) {
 }
 
 mlir::Operation* OpGen::VisitTopLevel(Value V) {
-  IsTopLevel = true;
+  mlir::Operation* PrevTopLevelOp = TopLevelOp;
+  auto ScopeExit = llvm::make_scope_exit([&] {
+    TopLevelOp = PrevTopLevelOp;
+    // pop continuation scopes to the ModuleOp
+    while (LambdaScopes.size() > 0) {
+      if (LambdaScopes.back().Op == ModuleOp) break;
+      PopContinuationScope();
+    }
+  });
 
   // We use a null Builder to denote that we should
   // insert into a lazily created CommandOp by default
@@ -85,12 +94,13 @@ mlir::Operation* OpGen::VisitTopLevel(Value V) {
   Builder.clearInsertionPoint();
 
   Visit(V);
-  mlir::Operation* Op = (TopLevelBuilder.getBlock()->back().getPrevNode());
-  assert((isa<CommandOp, GlobalOp>(Op)) &&
+
+  if (!TopLevelOp) return nullptr;
+  assert((isa<CommandOp, GlobalOp>(TopLevelOp)) &&
       "top level operation must be CommandOp or GlobalOp");
 
-  // FIXME this may require a less ad hoc solution
-  if (heavy::CommandOp CommandOp = dyn_cast<heavy::CommandOp>(Op)) {
+  if (heavy::CommandOp CommandOp =
+        dyn_cast<heavy::CommandOp>(TopLevelOp)) {
     mlir::Block& Block = CommandOp.body().front();
     assert(!Block.empty() && "command op must have body");
     if (!Block.back().hasTrait<mlir::OpTrait::IsTerminator>()) {
@@ -100,16 +110,12 @@ mlir::Operation* OpGen::VisitTopLevel(Value V) {
     }
   }
 
-  // pop continuation scopes to the TopLevel
-  while (LambdaScopes.size() > 0) {
-    if (LambdaScopes.back().Op == TopLevel) break;
-    PopContinuationScope();
-  }
-  return Op;
+  return TopLevelOp;
 }
 
 void OpGen::insertTopLevelCommandOp(SourceLocation Loc) {
-  auto CommandOp = create<heavy::CommandOp>(TopLevelBuilder, Loc);
+  auto CommandOp = create<heavy::CommandOp>(ModuleBuilder, Loc);
+  TopLevelOp = CommandOp.getOperation();
   mlir::Block& Block = *CommandOp.addEntryBlock();
   // overwrites Builder without reverting it
   Builder.setInsertionPointToStart(&Block);
@@ -142,8 +148,6 @@ mlir::FunctionType OpGen::createFunctionType(unsigned Arity,
 mlir::Value OpGen::createLambda(Value Formals, Value Body,
                                 SourceLocation Loc,
                                 llvm::StringRef Name) {
-  IsTopLevel = false;
-
   std::string MangledName = mangleFunctionName(Name);
 
   bool HasRestParam = false;
@@ -276,7 +280,6 @@ heavy::Value OpGen::transformSyntax(Value V) {
 }
 
 mlir::Value OpGen::createBody(SourceLocation Loc, Value Body) {
-  IsTopLevel = false;
   {
     TailPosScope TPS(*this);
     IsTailPos = false;
@@ -356,8 +359,9 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
 
   heavy::Mangler Mangler(Context);
   std::string MangledName = Mangler.mangleVariable(getModulePrefix(), S);
-  auto GlobalOp = create<heavy::GlobalOp>(TopLevelBuilder, DefineLoc,
+  auto GlobalOp = create<heavy::GlobalOp>(ModuleBuilder, DefineLoc,
                                           MangledName);
+  TopLevelOp = GlobalOp.getOperation();
   mlir::Block& Block = *GlobalOp.addEntryBlock();
 
   {
@@ -387,7 +391,6 @@ mlir::Value OpGen::createIf(SourceLocation Loc, Value Cond, Value Then,
   }
 
   bool TailPos = isTailPos();
-  IsTopLevel = false;
 
   mlir::Block* ThenBlock = new mlir::Block();
   mlir::Block* ElseBlock = new mlir::Block();
@@ -488,7 +491,7 @@ mlir::Value OpGen::VisitSymbol(Symbol* S) {
   if (Entry.MangledName) {
     {
       llvm::StringRef SymName = Entry.MangledName->getView();
-      mlir::ModuleOp M = Context.OpGen->getTopLevel();
+      mlir::ModuleOp M = Context.OpGen->getModuleOp();
       Operation* G = M.lookupSymbol(SymName);
       if (!G) {
         // Lazily insert extern GlobalOps
@@ -521,7 +524,6 @@ mlir::Value OpGen::HandleCall(Pair* P) {
   {
     TailPosScope TPS(*this);
     IsTailPos = false;
-    IsTopLevel = false;
 
     mlir::Value Fn = GetSingleResult(P->Car);
     llvm::SmallVector<mlir::Value, 16> Args;
