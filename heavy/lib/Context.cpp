@@ -301,18 +301,16 @@ EnvEntry Context::Lookup(Symbol* Name, Value Stack) {
 }
 
 mlir::Operation* Context::getModuleOp() {
-  return OpGen->getTopLevel();
+  return OpGen->getModuleOp();
 }
 void Context::dumpModuleOp() {
-  OpGen->getTopLevel().dump();
+  OpGen->getModuleOp().dump();
 }
 
 void Context::verifyModule() {
-  mlir::ModuleOp ModuleOp = OpGen->getTopLevel();
+  mlir::ModuleOp ModuleOp = OpGen->getModuleOp();
   if (mlir::failed(ModuleOp.verify())) {
-    llvm::errs() << "FAIL\n";
-  } else {
-    llvm::errs() << "PASSED\n";
+    llvm::errs() << "error: verfication failed\n";
   }
 }
 

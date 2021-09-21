@@ -107,7 +107,7 @@ mlir::Value import(OpGen& OG, Pair* P) {
     }
     Current = Current.cdr();
   }
-  return OG.createUndefined();
+  return mlir::Value();
 }
 
 }} // end of namespace heavy::base
@@ -168,9 +168,11 @@ void eval(Context& C, ValueRefs Args) {
 
   mlir::Operation* Op = C.OpGen->VisitTopLevel(ExprOrDef);
   if (C.CheckError()) return;
-  if (!Op) return C.RaiseError("compilation failed");
+  //if (!Op) return C.RaiseError("compilation failed");
 
-  opEval(C.OpEval, Op);
+  if (Op) {
+    opEval(C.OpEval, Op);
+  }
   C.Cont(Undefined());
 }
 

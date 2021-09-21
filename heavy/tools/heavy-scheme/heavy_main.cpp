@@ -85,7 +85,7 @@ int main(int argc, char const** argv) {
 
   auto OnError = [](llvm::StringRef Err, heavy::FullSourceLocation) {
     // TODO display error location
-    llvm::errs() << "\nerror: "
+    llvm::errs() << "error: "
                  << Err
                  << "\n\n";
   };
@@ -99,7 +99,6 @@ int main(int argc, char const** argv) {
   if (InputMode.getValue() == ExecutionMode::mlir) {
     HeavyScheme.getContext().verifyModule();
     HeavyScheme.getContext().dumpModuleOp();
-    llvm::errs() << "\n";
   }
   if (HasErrors) std::exit(1);
 }
