@@ -18,6 +18,7 @@
 #include "heavy/Source.h"
 #include "heavy/Value.h"
 #include "heavy/ValueVisitor.h"
+#include "mlir/IR/Verifier.h" // TODO move to OpGen
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/SmallVector.h"
@@ -309,7 +310,7 @@ void Context::dumpModuleOp() {
 
 void Context::verifyModule() {
   mlir::ModuleOp ModuleOp = OpGen->getModuleOp();
-  if (mlir::failed(ModuleOp.verify())) {
+  if (mlir::failed(mlir::verify(ModuleOp))) {
     llvm::errs() << "error: verfication failed\n";
   }
 }

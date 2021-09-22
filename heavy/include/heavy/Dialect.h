@@ -31,10 +31,6 @@ static_assert(llvm::PointerLikeTypeTraits<heavy::Operation*>::NumLowBitsAvailabl
 
 namespace heavy {
 using mlir::FuncOp;
-}
-
-namespace mlir {
-namespace heavy_mlir {
 
 struct Dialect : public mlir::Dialect {
   explicit Dialect(mlir::MLIRContext* Ctx);
@@ -48,27 +44,14 @@ struct Dialect : public mlir::Dialect {
 struct DialectRegisterer {
   DialectRegisterer() {
 #if 0 // FIXME not sure how this works now
+    // TODO Remove this
     mlir::registerDialect<Dialect>();
 #endif
   }
 };
 
-struct HeavyValue : public mlir::Type::TypeBase<
-                            HeavyValue,
-                            mlir::Type,
-                            mlir::TypeStorage> {
-  using Base::Base;
-};
-
-struct HeavyRest : public mlir::Type::TypeBase<
-                            HeavyRest,
-                            mlir::Type,
-                            mlir::TypeStorage> {
-  using Base::Base;
-};
-
-struct HeavyLambda : public mlir::Type::TypeBase<
-                            HeavyLambda,
+struct HeavyValueTy : public mlir::Type::TypeBase<
+                            HeavyValueTy,
                             mlir::Type,
                             mlir::TypeStorage> {
   using Base::Base;
@@ -104,13 +87,8 @@ public:
 };
 
 }
-}
 
 #define GET_OP_CLASSES
 #include "heavy/Ops.h.inc"
-
-namespace heavy {
-  using namespace mlir::heavy_mlir;
-}
 
 #endif
