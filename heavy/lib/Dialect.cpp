@@ -12,6 +12,7 @@
 
 #include "heavy/Dialect.h"
 #include "heavy/Context.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpImplementation.h"
@@ -22,7 +23,7 @@ using namespace heavy;
 
 Dialect::Dialect(mlir::MLIRContext* Ctx)
   : mlir::Dialect("heavy", Ctx, mlir::TypeID::get<Dialect>()) {
-  addTypes<HeavyLambda, HeavyRest, HeavyValue>();
+  addTypes<HeavyValueTy>();
   addAttributes<HeavyValueAttr>();
 
   addOperations<
@@ -40,8 +41,14 @@ void Dialect::printAttribute(
 }
 void Dialect::printType(mlir::Type Type,
                         mlir::DialectAsmPrinter& P) const {
-  // All types are HeavyValue
-  P.getStream() << "HeavyValue";
+  char const* Name;
+  if (Type.isa<HeavyValueTy>()) {
+    Name = "value";
+  } else {
+    llvm_unreachable("no other types in dialect");
+  }
+
+  P.getStream() << Name;
 }
 
 heavy::Value HeavyValueAttr::getValue() const {
@@ -52,55 +59,55 @@ heavy::Value HeavyValueAttr::getValue() const {
 void ApplyOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                     mlir::Value Operator,
                     llvm::ArrayRef<mlir::Value> Operands) {
-  ApplyOp::build(B, OpState, B.getType<HeavyValue>(), Operator, Operands);
+  ApplyOp::build(B, OpState, B.getType<HeavyValueTy>(), Operator, Operands);
 }
 #endif
 
 void BindingOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                       mlir::Value Input) {
-  BindingOp::build(B, OpState, B.getType<HeavyValue>(), Input);
+  BindingOp::build(B, OpState, B.getType<HeavyValueTy>(), Input);
 }
 
 void BuiltinOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                       heavy::Builtin* Builtin) {
   // TODO eventually we need to have a "symbol" to the externally
   //      linked function
-  BuiltinOp::build(B, OpState, B.getType<HeavyValue>(),
+  BuiltinOp::build(B, OpState, B.getType<HeavyValueTy>(),
       HeavyValueAttr::get(B.getContext(), Builtin));
 }
 
 #if 0
 void CommandOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                    mlir::Value X) {
-  mlir::Type HeavyValueTy = B.getType<HeavyValue>();
+  mlir::Type HeavyValueTy = B.getType<HeavyValueTy>();
   CommandOp::build(B, OpState, HeavyValueTy, X);
 }
 #endif
 
 void ConsOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                    mlir::Value X, mlir::Value Y) {
-  mlir::Type HeavyValueTy = B.getType<HeavyValue>();
+  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
   // TODO return type should be Pair
-  ConsOp::build(B, OpState, HeavyValueTy, X, Y);
+  ConsOp::build(B, OpState, HeavyValueT, X, Y);
 }
 
 void GlobalOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                      llvm::StringRef SymName) {
-  mlir::Type HeavyValueTy = B.getType<HeavyValue>();
-  GlobalOp::build(B, OpState, HeavyValueTy, SymName);
+  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
+  GlobalOp::build(B, OpState, HeavyValueT, SymName);
 }
 
 void IfOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                  mlir::Value Input) {
-  IfOp::build(B, OpState, B.getType<HeavyValue>(), Input);
+  IfOp::build(B, OpState, B.getType<HeavyValueTy>(), Input);
 }
 
 void LambdaOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                      llvm::StringRef Name,
                      llvm::ArrayRef<mlir::Value> Captures) {
-  mlir::Type HeavyValueTy = B.getType<HeavyValue>();
+  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
 
-  LambdaOp::build(B, OpState, HeavyValueTy,
+  LambdaOp::build(B, OpState, HeavyValueT,
                   Name, Captures);
 }
 
@@ -108,9 +115,9 @@ void LambdaOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
 void PushContOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                        llvm::StringRef Name,
                        llvm::ArrayRef<mlir::Value> Captures) {
-  mlir::Type HeavyValueTy = B.getType<HeavyValue>();
+  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
 
-  PushContOp::build(B, OpState, HeavyValueTy,
+  PushContOp::build(B, OpState, HeavyValueT,
                     Name, Captures);
 }
 #endif
@@ -118,37 +125,37 @@ void PushContOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
 void LiteralOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                       heavy::Value V) {
   // create a HeavyValueAttr from heavy::Value
-  LiteralOp::build(B, OpState, B.getType<HeavyValue>(),
+  LiteralOp::build(B, OpState, B.getType<HeavyValueTy>(),
                    HeavyValueAttr::get(B.getContext(), V));
 }
 
 void LoadClosureOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                           mlir::Value Closure, uint32_t Index) {
-  mlir::Type HeavyValueTy = B.getType<HeavyValue>();
-  LoadClosureOp::build(B, OpState, HeavyValueTy, Closure,
+  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
+  LoadClosureOp::build(B, OpState, HeavyValueT, Closure,
                        B.getUI32IntegerAttr(Index));
 }
 
 void LoadGlobalOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                          llvm::StringRef SymName) {
-  mlir::Type HeavyValueTy = B.getType<HeavyValue>();
-  LoadGlobalOp::build(B, OpState, HeavyValueTy, SymName);
+  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
+  LoadGlobalOp::build(B, OpState, HeavyValueT, SymName);
 }
 
 void SetOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                      mlir::Value Binding, mlir::Value Input) {
-  SetOp::build(B, OpState, B.getType<HeavyValue>(), Binding, Input);
+  SetOp::build(B, OpState, B.getType<HeavyValueTy>(), Binding, Input);
 }
 
 void SpliceOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                    mlir::Value X, mlir::Value Y) {
-  mlir::Type HeavyValueTy = B.getType<HeavyValue>();
-  SpliceOp::build(B, OpState, HeavyValueTy, X, Y);
+  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
+  SpliceOp::build(B, OpState, HeavyValueT, X, Y);
 }
 
 
 void UndefinedOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState) {
-  UndefinedOp::build(B, OpState, B.getType<HeavyValue>());
+  UndefinedOp::build(B, OpState, B.getType<HeavyValueTy>());
 }
 
 using namespace mlir;
