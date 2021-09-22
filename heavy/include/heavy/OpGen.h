@@ -99,6 +99,13 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   // pop the scope and build the PushContOp with its captures
   void PopContinuationScope();
 
+  void setTopLevelOp(mlir::Operation* Op) {
+    assert(LambdaScopes.size() == 2 &&
+        "TopLevelOp should be at module scope with a LambdaScope");
+    TopLevelOp = Op;
+    LambdaScopes[1].Op = Op;
+  }
+
   using LambdaScopeIterator = typename std::deque<LambdaScopeNode>
                                 ::reverse_iterator;
 

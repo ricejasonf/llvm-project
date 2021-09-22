@@ -79,12 +79,21 @@ mlir::ValueRange OpGen::ExpandResults(mlir::Value Result) {
 
 mlir::Operation* OpGen::VisitTopLevel(Value V) {
   mlir::Operation* PrevTopLevelOp = TopLevelOp;
+  TopLevelOp = nullptr;
+  LambdaScopes.emplace_back(nullptr, BindingTable);
   auto ScopeExit = llvm::make_scope_exit([&] {
-    TopLevelOp = PrevTopLevelOp;
-    // pop continuation scopes to the ModuleOp
+    // Pop continuation scopes to the TopLevelOp.
     while (LambdaScopes.size() > 0) {
-      if (LambdaScopes.back().Op == ModuleOp) break;
-      PopContinuationScope();
+      if (LambdaScopes.back().Op == TopLevelOp) {
+        // Pop the TopLevelOp.
+        TopLevelOp = PrevTopLevelOp;
+        LambdaScopes.pop_back();
+        break;
+      } else if (LambdaScopes.back().Op == ModuleOp) {
+        break;
+      } else {
+        PopContinuationScope();
+      }
     }
   });
 
@@ -115,7 +124,7 @@ mlir::Operation* OpGen::VisitTopLevel(Value V) {
 
 void OpGen::insertTopLevelCommandOp(SourceLocation Loc) {
   auto CommandOp = create<heavy::CommandOp>(ModuleBuilder, Loc);
-  TopLevelOp = CommandOp.getOperation();
+  setTopLevelOp(CommandOp.getOperation());
   mlir::Block& Block = *CommandOp.addEntryBlock();
   // overwrites Builder without reverting it
   Builder.setInsertionPointToStart(&Block);
@@ -127,22 +136,22 @@ mlir::Value OpGen::createUndefined() {
 
 mlir::FunctionType OpGen::createFunctionType(unsigned Arity,
                                              bool HasRestParam) {
-  mlir::Type HeavyLambdaTy  = Builder.getType<HeavyLambda>();
-  mlir::Type HeavyRestTy    = Builder.getType<HeavyRest>();
-  mlir::Type HeavyValueTy   = Builder.getType<HeavyValue>();
+  mlir::Type ClosureT   = Builder.getType<HeavyValueTy>();
+  mlir::Type ValueT     = Builder.getType<HeavyValueTy>();
+  mlir::Type RestT      = Builder.getType<HeavyValueTy>();
 
   llvm::SmallVector<mlir::Type, 16> Types{};
-  Types.push_back(HeavyLambdaTy);
+  // push the closure type
+  Types.push_back(ClosureT);
   if (Arity > 0) {
     for (unsigned i = 0; i < Arity - 1; i++) {
-      Types.push_back(HeavyValueTy);
+      Types.push_back(ValueT);
     }
-    mlir::Type LastParamTy = HasRestParam ? HeavyValueTy :
-                                            HeavyRestTy;
-    Types.push_back(LastParamTy);
+    mlir::Type LastParamT = HasRestParam ? ValueT : RestT;
+    Types.push_back(LastParamT);
   }
 
-  return Builder.getFunctionType(Types, HeavyValueTy);
+  return Builder.getFunctionType(Types, ValueT);
 }
 
 mlir::Value OpGen::createLambda(Value Formals, Value Body,
@@ -192,6 +201,7 @@ void OpGen::PopContinuationScope() {
   mlir::OpBuilder::InsertionGuard IG(Builder);
   LambdaScopeNode& LS = LambdaScopes.back();
   mlir::Location Loc = LS.Op->getLoc();
+  assert(isa<FuncOp>(LS.Op) && "expecting a function scope");
   Builder.setInsertionPointAfter(LS.Op);
   llvm::StringRef MangledName = LS.Op->getAttrOfType<mlir::StringAttr>(
                                   mlir::SymbolTable::getSymbolAttrName())
@@ -361,7 +371,7 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
   std::string MangledName = Mangler.mangleVariable(getModulePrefix(), S);
   auto GlobalOp = create<heavy::GlobalOp>(ModuleBuilder, DefineLoc,
                                           MangledName);
-  TopLevelOp = GlobalOp.getOperation();
+  setTopLevelOp(GlobalOp.getOperation());
   mlir::Block& Block = *GlobalOp.addEntryBlock();
 
   {
@@ -370,7 +380,9 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
     Builder.setInsertionPointToStart(&Block);
 
     Binding* B = Context.CreateBinding(S, DefineArgs);
-    BindingTable.insert(B, GlobalOp);
+    // Insert into the module level scope
+    BindingTable.insertIntoScope(&LambdaScopes[0].BindingScope_, B,
+                                 GlobalOp);
     Env->Insert(B);
     if (mlir::Value Init = VisitDefineArgs(DefineArgs)) {
       create<ContOp>(DefineLoc, Init);
@@ -485,6 +497,8 @@ mlir::Value OpGen::VisitSymbol(Symbol* S) {
     // Default to the name of a global
     heavy::Mangler Mangler(Context);
     std::string MangledName = Mangler.mangleVariable(getModulePrefix(), S);
+    // TODO Check for an existing LoadGlobalOp in this scope.
+    //      (We have no value to localize)
     return create<LoadGlobalOp>(Loc, MangledName); 
   }
 
@@ -501,7 +515,9 @@ mlir::Value OpGen::VisitSymbol(Symbol* S) {
         Builder.setInsertionPointToStart(M.getBody());
         G = create<GlobalOp>(Loc, SymName).getOperation();
       }
-      return LocalizeValue(Entry.Value, G->getResult(0));
+      mlir::Value LocalV = BindingTable.lookup(Entry.Value);
+      mlir::Value V = LocalV ? LocalV : G->getResult(0);
+      return LocalizeValue(Entry.Value, V);
     }
   }
 
@@ -618,7 +634,6 @@ mlir::Value OpGen::VisitVector(Vector* V) {
 //                 here too.
 //
 mlir::Value OpGen::LocalizeValue(heavy::Value B, mlir::Value V) {
-  //return V; // REMOVE
   mlir::Operation* Op = V.getDefiningOp();
   assert(Op && "value should be an operation result");
 
@@ -637,11 +652,10 @@ mlir::Value OpGen::LocalizeRec(heavy::Value B,
   if (LS.Op == Owner) return Op->getResult(0);
 
   heavy::SourceLocation Loc = {};
-  llvm::StringRef SymName = mlir::SymbolTable::getSymbolAttrName();
   mlir::Value NewVal;
 
-  if (auto S = Op->getAttrOfType<mlir::StringAttr>(SymName)) {
-    NewVal = create<LoadGlobalOp>(Loc, S.getValue());
+  if (auto G = dyn_cast<GlobalOp>(Op)) {
+    NewVal = create<LoadGlobalOp>(Loc, G.getName());
   } else if (auto LG = dyn_cast<LoadGlobalOp>(Op)) {
     // Just make a new load global with the same name.
     NewVal = create<LoadGlobalOp>(Loc, LG.name()); 
