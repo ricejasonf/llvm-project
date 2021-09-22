@@ -267,8 +267,8 @@ bool OpGen::walkDefineInits(Value Env,
   }
 
   // Insert the binding initializer.
-  mlir::Value BVal = BindingTable.lookup(B);
   mlir::Value Init = VisitDefineArgs(B->getValue());
+  mlir::Value BVal = LocalizeValue(B, BindingTable.lookup(B));
   SourceLocation Loc = B->getValue().getSourceLocation();
   assert(BVal && "BindingTable should have an entry for local define");
   create<SetOp>(Loc, BVal, Init);
