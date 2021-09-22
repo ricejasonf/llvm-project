@@ -21,17 +21,12 @@ def HeavyDialect : Dialect {
   let name = "heavy";
 }
 
-def HeavyLambda   : OpaqueType<"heavy", "HeavyLambda",
-                               "Same as heavy::Lambda*">;
-def HeavyRest     : OpaqueType<"heavy", "HeavyRest",
-                               "Same as heavy::Value but "
-                               "denotes a rest parameter">;
-def HeavyValue    : OpaqueType<"heavy", "HeavyValue",
-                               "Same as heavy::Value">;
+def HeavyValue : Type<CPred<"$_self.isa<::heavy::HeavyValueTy>()">,
+                  "value", "::heavy::Value">;
 
 def HeavyValueAttr : Attr<CPred<"true">,
                           "Any Attribute convertible to heavy::Value"> {
-  let storageType = "::mlir::heavy_mlir::HeavyValueAttr";
+  let storageType = "::heavy::HeavyValueAttr";
   let returnType = "::heavy::Value";
 }
 
@@ -57,7 +52,7 @@ def heavy_ApplyOp : HeavyOp<"apply", [ReturnLike, Terminator]> {
   }];
 }
 
-def heavy_BindingOp : HeavyOp<"binding", [Symbol]> {
+def heavy_BindingOp : HeavyOp<"binding"> {
   let summary = "binding";
   let description = [{
     BindingOp creates a value wrapper (heavy::Binding) that allows
@@ -90,7 +85,7 @@ def heavy_BuiltinOp : HeavyOp<"builtin"> {
   ];
 }
 
-def heavy_CommandOp : HeavyOp<"command"> {
+def heavy_CommandOp : HeavyOp<"command", [IsolatedFromAbove]> {
   let summary = "command";
   let description = [{
     Command is a node in a sequence that represents
@@ -139,7 +134,7 @@ def heavy_ContOp : HeavyOp<"cont", [ReturnLike, Terminator]> {
   let results   = (outs); // no result
 }
 
-def heavy_GlobalOp : HeavyOp<"global", [Symbol]> {
+def heavy_GlobalOp : HeavyOp<"global", [Symbol, IsolatedFromAbove]> {
   let summary = "global";
   let description = [{
     This indicates a module top level variable providing
@@ -241,7 +236,7 @@ def heavy_LoadClosureOp : HeavyOp<"load_closure"> {
     Read an element from lambda's capture list.
   }];
 
-  let arguments = (ins HeavyLambda:$closure, UI32Attr:$index);
+  let arguments = (ins HeavyValue:$closure, UI32Attr:$index);
   let results   = (outs HeavyValue:$result);
 
   let builders = [
