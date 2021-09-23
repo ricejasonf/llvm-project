@@ -18,6 +18,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Value.h"
+#include "mlir/IR/Verifier.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -268,7 +269,7 @@ bool OpGen::walkDefineInits(Value Env,
 
   // Insert the binding initializer.
   mlir::Value Init = VisitDefineArgs(B->getValue());
-  mlir::Value BVal = LocalizeValue(B, BindingTable.lookup(B));
+  mlir::Value BVal = LocalizeValue(BindingTable.lookup(B), B);
   SourceLocation Loc = B->getValue().getSourceLocation();
   assert(BVal && "BindingTable should have an entry for local define");
   create<SetOp>(Loc, BVal, Init);
@@ -361,9 +362,9 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
   if (Binding* B = dyn_cast_or_null<Binding>(Entry.Value)) {
     TailPosScope TPS(*this);
     IsTailPos = false;
-    mlir::Value BVal = BindingTable.lookup(B);
-    assert(BVal && "expecting BindingOp for Binding");
     mlir::Value Init = VisitDefineArgs(DefineArgs);
+    mlir::Value BVal = LocalizeValue(BindingTable.lookup(B), B);
+    assert(BVal && "expecting BindingOp for Binding");
     return create<SetOp>(DefineLoc, BVal, Init);
   }
 
@@ -517,7 +518,7 @@ mlir::Value OpGen::VisitSymbol(Symbol* S) {
       }
       mlir::Value LocalV = BindingTable.lookup(Entry.Value);
       mlir::Value V = LocalV ? LocalV : G->getResult(0);
-      return LocalizeValue(Entry.Value, V);
+      return LocalizeValue(V, Entry.Value);
     }
   }
 
@@ -530,7 +531,7 @@ mlir::Value OpGen::VisitBinding(Binding* B) {
   // BindingOps are created in the `define` syntax
 
   assert(V && "binding must exist in BindingTable");
-  return LocalizeValue(B, V);
+  return LocalizeValue(V, B);
 }
 
 mlir::Value OpGen::HandleCall(Pair* P) {
@@ -554,6 +555,11 @@ mlir::Value OpGen::HandleCall(Pair* P) {
       return SetError("improper list as call expression", V);
     }
 
+    // Localize all of the operands
+    Fn = LocalizeValue(Fn);
+    for (mlir::Value& Arg : Args) {
+      Arg = LocalizeValue(Arg);
+    }
     Op = create<ApplyOp>(Loc, Fn, Args);
   }
 
@@ -633,9 +639,13 @@ mlir::Value OpGen::VisitVector(Vector* V) {
 //                 Tracking of captures for nested scopes is handled
 //                 here too.
 //
-mlir::Value OpGen::LocalizeValue(heavy::Value B, mlir::Value V) {
+mlir::Value OpGen::LocalizeValue(mlir::Value V, heavy::Value B) {
   mlir::Operation* Op = V.getDefiningOp();
-  assert(Op && "value should be an operation result");
+  if (!Op) {
+    assert(Builder.getBlock() == V.cast<mlir::BlockArgument>().getOwner() &&
+        "expecting local block argument");
+    return V;
+  }
 
   mlir::Operation* Owner = Op
     ->getParentWithTrait<mlir::OpTrait::IsIsolatedFromAbove>();
@@ -673,7 +683,9 @@ mlir::Value OpGen::LocalizeRec(heavy::Value B,
     NewVal = create<LoadClosureOp>(Loc, Closure, Index);
   }
 
-  BindingTable.insertIntoScope(&LS.BindingScope_, B, NewVal);
+  if (B) {
+    BindingTable.insertIntoScope(&LS.BindingScope_, B, NewVal);
+  }
   return NewVal;
 }
 
