@@ -257,7 +257,7 @@ private:
   mlir::Value VisitPair(Pair* P);
   // TODO mlir::Value VisitVector(Vector* V);
 
-  mlir::Value LocalizeValue(heavy::Value B, mlir::Value V);
+  mlir::Value LocalizeValue(mlir::Value V, heavy::Value B = nullptr);
   mlir::Value LocalizeRec(heavy::Value B,
                           mlir::Operation* Op,
                           mlir::Operation* Owner,
