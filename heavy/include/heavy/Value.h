@@ -117,6 +117,7 @@ enum class ValueKind {
   Quote,
   String,
   Symbol,
+  SyntaxClosure,
   Transformer,
   Vector,
 };
@@ -966,6 +967,28 @@ public:
   static ValueKind getKind() { return ValueKind::Quote; }
 };
 
+// SyntaxClosure - Wraps an AST node with a captured environment
+//                 to lookup names when compiling.
+//                 Objects of this type are meant to be
+//                 ephemeral and used only during syntax
+//                 transformation.
+class SyntaxClosure : public ValueBase {
+public:
+  Value Env;
+  Value Node;
+
+  SyntaxClosure(Value Env, Value Node)
+    : ValueBase(ValueKind::SyntaxClosure),
+      Env(Env),
+      Node(Node)
+  { }
+
+  static bool classof(Value V) {
+    return V.getKind() == ValueKind::SyntaxClosure;
+  }
+  static ValueKind getKind() { return ValueKind::SyntaxClosure; }
+};
+
 // Transformer - A macro function that transforms AST
 class Transformer : public ValueBase {
   TransformFn Fn;
@@ -1541,6 +1564,7 @@ inline llvm::StringRef getKindName(heavy::ValueKind Kind) {
   GET_KIND_NAME_CASE(Quote)
   GET_KIND_NAME_CASE(String)
   GET_KIND_NAME_CASE(Symbol)
+  GET_KIND_NAME_CASE(SyntaxClosure)
   GET_KIND_NAME_CASE(Transformer)
   GET_KIND_NAME_CASE(Vector)
   default:
