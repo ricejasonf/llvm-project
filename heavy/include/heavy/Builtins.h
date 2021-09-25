@@ -59,6 +59,8 @@ namespace heavy { namespace base {
 
 // syntax
 mlir::Value define(OpGen& OG, Pair* P);
+mlir::Value define_syntax(OpGen& OG, Pair* P);
+mlir::Value syntax_rules(OpGen& OG, Pair* P);
 mlir::Value if_(OpGen& OG, Pair* P);
 mlir::Value lambda(OpGen& OG, Pair* P);
 mlir::Value quasiquote(OpGen& C, Pair* P); // lib/Quasiquote.cpp
@@ -89,6 +91,8 @@ void error(Context& C, ValueRefs Args);
 }}
 
 extern heavy::ExternSyntax   HEAVY_BASE_VAR(define);
+extern heavy::ExternSyntax   HEAVY_BASE_VAR(define_syntax);
+extern heavy::ExternSyntax   HEAVY_BASE_VAR(syntax_rules);
 extern heavy::ExternSyntax   HEAVY_BASE_VAR(if);
 extern heavy::ExternSyntax   HEAVY_BASE_VAR(lambda);
 extern heavy::ExternSyntax   HEAVY_BASE_VAR(quasiquote);
@@ -123,12 +127,14 @@ inline void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_IS_LOADED = true;
 
   // syntax
-  HEAVY_BASE_VAR(define)      = heavy::base::define;
-  HEAVY_BASE_VAR(if)          = heavy::base::if_;
-  HEAVY_BASE_VAR(lambda)      = heavy::base::lambda;
-  HEAVY_BASE_VAR(quasiquote)  = heavy::base::quasiquote;
-  HEAVY_BASE_VAR(quote)       = heavy::base::quote;
-  HEAVY_BASE_VAR(set)         = heavy::base::set;
+  HEAVY_BASE_VAR(define)        = heavy::base::define;
+  HEAVY_BASE_VAR(define_syntax) = heavy::base::define_syntax;
+  HEAVY_BASE_VAR(syntax_rules)  = heavy::base::syntax_rules;
+  HEAVY_BASE_VAR(if)            = heavy::base::if_;
+  HEAVY_BASE_VAR(lambda)        = heavy::base::lambda;
+  HEAVY_BASE_VAR(quasiquote)    = heavy::base::quasiquote;
+  HEAVY_BASE_VAR(quote)         = heavy::base::quote;
+  HEAVY_BASE_VAR(set)           = heavy::base::set;
 
   // functions
   HEAVY_BASE_VAR(add)     = heavy::base::add;
@@ -157,12 +163,14 @@ inline void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
   HEAVY_BASE_INIT(Context);
   heavy::initModule(Context, HEAVY_BASE_LIB_STR, {
     // syntax
-    {"define",      HEAVY_BASE_VAR(define)},
-    {"if",          HEAVY_BASE_VAR(if)},
-    {"lambda",      HEAVY_BASE_VAR(lambda)},
-    {"quasiquote",  HEAVY_BASE_VAR(quasiquote)},
-    {"quote",       HEAVY_BASE_VAR(quote)},
-    {"set!",        HEAVY_BASE_VAR(set)},
+    {"define",        HEAVY_BASE_VAR(define)},
+    {"define_syntax", HEAVY_BASE_VAR(define_syntax)},
+    {"syntax_rules",  HEAVY_BASE_VAR(syntax_rules)},
+    {"if",            HEAVY_BASE_VAR(if)},
+    {"lambda",        HEAVY_BASE_VAR(lambda)},
+    {"quasiquote",    HEAVY_BASE_VAR(quasiquote)},
+    {"quote",         HEAVY_BASE_VAR(quote)},
+    {"set!",          HEAVY_BASE_VAR(set)},
 
     // functions
     {"+",       HEAVY_BASE_VAR(add)},
