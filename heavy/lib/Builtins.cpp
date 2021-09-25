@@ -21,6 +21,8 @@ bool HEAVY_BASE_IS_LOADED = false;
 heavy::ExternSyntax HEAVY_BASE_VAR(import);
 
 heavy::ExternSyntax HEAVY_BASE_VAR(define);
+heavy::ExternSyntax HEAVY_BASE_VAR(define_syntax);
+heavy::ExternSyntax HEAVY_BASE_VAR(syntax_rules);
 heavy::ExternSyntax HEAVY_BASE_VAR(if);
 heavy::ExternSyntax HEAVY_BASE_VAR(lambda);
 heavy::ExternSyntax HEAVY_BASE_VAR(quasiquote);
@@ -59,6 +61,14 @@ mlir::Value define(OpGen& OG, Pair* P) {
   }
   if (!S) return OG.SetError("invalid define syntax", P);
   return OG.createDefine(S, P2, P);
+}
+
+mlir::Value define_syntax(OpGen& OG, Pair* P) {
+  llvm_unreachable("TODO");
+}
+
+mlir::Value syntax_rules(OpGen& OG, Pair* P) {
+  llvm_unreachable("TODO");
 }
 
 mlir::Value lambda(OpGen& OG, Pair* P) {
