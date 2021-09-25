@@ -312,6 +312,10 @@ public:
     return new (TrashHeap) BuiltinSyntax(Fn);
   }
 
+  SyntaxClosure* CreateSyntaxClosure(Value Node) {
+    return new (TrashHeap) SyntaxClosure(EnvStack, Node);
+  }
+
   Error* CreateError(SourceLocation Loc, Value Message, Value Irritants) {
     return new (TrashHeap) Error(Loc, Message, Irritants);
   }

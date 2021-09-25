@@ -258,6 +258,41 @@ def heavy_LoadGlobalOp : HeavyOp<"load_global"> {
   ];
 }
 
+def heavy_MatchOp : HeavyOp<"match"> {
+  let summary = "match";
+  let description = [{
+    As a component of pattern matching, this checks if a value
+    is equal (in terms of `equal?`) to the input attribute. This
+    attribute should be a leaf constant value.
+    These operations implicitly chain with subsequent
+    matching operations and some final set of operations that will
+    likely be template substitution.
+  }];
+
+  let arguments = (ins HeavyValueAttr:$val, HeavyValue:$input);
+  let results   = (outs);
+
+  let builders = [
+    OpBuilder<(ins "::heavy::Value":$val, "::mlir::Value":$input)>
+  ];
+}
+
+def heavy_MatchPairOp : HeavyOp<"match_pair"> {
+  let summary = "match_pair";
+  let description = [{
+    As a component of pattern matching, this checks if a value
+    is a pair and destructures it. These should have the same
+    implicit chaining as MatchOp.
+  }];
+
+  let arguments = (ins HeavyValue:$input);
+  let results   = (outs HeavyValue:$car, HeavyValue:$cdr);
+
+  let builders = [
+    OpBuilder<(ins "::mlir::Value":$input)>
+  ];
+}
+
 def heavy_PushContOp : HeavyOp<"push_cont", [ReturnLike, Terminator]> {
   let summary = "push_cont";
   let description = [{
