@@ -76,14 +76,6 @@ void BuiltinOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
       HeavyValueAttr::get(B.getContext(), Builtin));
 }
 
-#if 0
-void CommandOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
-                   mlir::Value X) {
-  mlir::Type HeavyValueTy = B.getType<HeavyValueTy>();
-  CommandOp::build(B, OpState, HeavyValueTy, X);
-}
-#endif
-
 void ConsOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                    mlir::Value X, mlir::Value Y) {
   mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
@@ -111,17 +103,6 @@ void LambdaOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                   Name, Captures);
 }
 
-#if 0
-void PushContOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
-                       llvm::StringRef Name,
-                       llvm::ArrayRef<mlir::Value> Captures) {
-  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
-
-  PushContOp::build(B, OpState, HeavyValueT,
-                    Name, Captures);
-}
-#endif
-
 void LiteralOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                       heavy::Value V) {
   // create a HeavyValueAttr from heavy::Value
@@ -140,6 +121,22 @@ void LoadGlobalOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                          llvm::StringRef SymName) {
   mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
   LoadGlobalOp::build(B, OpState, HeavyValueT, SymName);
+}
+
+void MatchOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                    heavy::Value val, mlir::Value input) {
+  assert((!isa<Pair, Vector>(val)) && "expected non-structural constant");
+  auto ValAttr = HeavyValueAttr::get(B.getContext(), val);
+  MatchOp::build(B, OpState, ValAttr, input);
+}
+
+void MatchPairOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                        mlir::Value input) {
+  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
+  MatchPairOp::build(B, OpState,
+                     /*car=*/HeavyValueT,
+                     /*cdr=*/HeavyValueT,
+                     input);
 }
 
 void SetOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
