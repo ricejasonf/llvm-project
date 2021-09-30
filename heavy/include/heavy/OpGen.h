@@ -250,6 +250,7 @@ private:
   }
 
   mlir::Value VisitSymbol(Symbol* S);
+  mlir::Value VisitEnvEntry(heavy::SourceLocation Loc, EnvEntry Entry);
   mlir::Value VisitBinding(Binding* B);
 
   mlir::Value HandleCall(Pair* P);

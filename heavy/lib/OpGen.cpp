@@ -502,7 +502,10 @@ mlir::Value OpGen::VisitSymbol(Symbol* S) {
     //      (We have no value to localize)
     return create<LoadGlobalOp>(Loc, MangledName); 
   }
+  return VisitEnvEntry(Loc, Entry);
+}
 
+mlir::Value OpGen::VisitEnvEntry(heavy::SourceLocation Loc, EnvEntry Entry) {
   if (Entry.MangledName) {
     {
       llvm::StringRef SymName = Entry.MangledName->getView();
