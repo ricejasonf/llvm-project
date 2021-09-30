@@ -13,6 +13,7 @@
 #define LLVM_HEAVY_OPS_TD
 
 include "mlir/IR/OpBase.td"
+include "mlir/IR/RegionKindInterface.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
@@ -264,9 +265,8 @@ def heavy_MatchOp : HeavyOp<"match"> {
     As a component of pattern matching, this checks if a value
     is equal (in terms of `equal?`) to the input attribute. This
     attribute should be a leaf constant value.
-    These operations implicitly chain with subsequent
-    matching operations and some final set of operations that will
-    likely be template substitution.
+    Matching operations should be members of a graph region contained
+    within a PatternOp.
   }];
 
   let arguments = (ins HeavyValueAttr:$val, HeavyValue:$input);
@@ -281,8 +281,9 @@ def heavy_MatchPairOp : HeavyOp<"match_pair"> {
   let summary = "match_pair";
   let description = [{
     As a component of pattern matching, this checks if a value
-    is a pair and destructures it. These should have the same
-    implicit chaining as MatchOp.
+    is a pair and destructures it.
+    Matching operations should be members of a graph region contained
+    within a PatternOp.
   }];
 
   let arguments = (ins HeavyValue:$input);
@@ -291,6 +292,22 @@ def heavy_MatchPairOp : HeavyOp<"match_pair"> {
   let builders = [
     OpBuilder<(ins "::mlir::Value":$input)>
   ];
+}
+
+def heavy_PatternOp : HeavyOp<"pattern", [HasOnlyGraphRegion,
+                                          NoTerminator]> {
+  let description = [{
+    PatternOp represents the pattern in a pattern/template
+    pair as part of the syntax-rules transform specifier. The contained
+    graph region should contain matching operations on the input syntax.
+    It should be possible to inline nested syntaxes and possibly bypass
+    generating intermediate AST altogether if all of the inputs that would
+    affect code generation are known.
+  }];
+
+  let arguments = (ins);
+  let results   = (outs HeavyValue:$result);
+  let regions   = (region SizedRegion<1>:$region);
 }
 
 def heavy_PushContOp : HeavyOp<"push_cont", [ReturnLike, Terminator]> {
@@ -336,6 +353,21 @@ def heavy_SpliceOp : HeavyOp<"splice"> {
   ];
 }
 
+def heavy_SyntaxClosureOp : HeavyOp<"syntax_closure"> {
+  let summary = "syntax_closure";
+  let description = [{
+    SyntaxClosureOp captures a syntax node with the current
+    environment. This supports generating code during hygienic
+    macro expansion.
+  }];
+
+  let arguments = (ins HeavyValue:$input);
+  let results   = (outs HeavyValue:$result);
+  let builders  = [
+    OpBuilder<(ins "::mlir::Value":$input)>
+  ];
+}
+
 def heavy_UndefinedOp : HeavyOp<"undefined", [NoSideEffect]> {
   let summary = "undefined";
   let description = [{
@@ -348,7 +380,5 @@ def heavy_UndefinedOp : HeavyOp<"undefined", [NoSideEffect]> {
     OpBuilder<(ins)>
   ];
 }
-
-
 
 #endif

@@ -18,7 +18,6 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/TypeUtilities.h"
 
-//using namespace mlir::heavy_mlir;
 using namespace heavy;
 
 Dialect::Dialect(mlir::MLIRContext* Ctx)
@@ -148,6 +147,12 @@ void SpliceOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                    mlir::Value X, mlir::Value Y) {
   mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
   SpliceOp::build(B, OpState, HeavyValueT, X, Y);
+}
+
+void SyntaxClosureOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                            mlir::Value input) {
+  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
+  SyntaxClosureOp::build(B, OpState, HeavyValueT, input);
 }
 
 
