@@ -55,7 +55,6 @@ mlir::Value define(OpGen& OG, Pair* P) {
   if (!P2) return OG.SetError("invalid define syntax", P);
   if (Pair* LambdaSpec = dyn_cast<Pair>(P2->Car)) {
     S = dyn_cast<Symbol>(LambdaSpec->Car);
-
   } else {
     S = dyn_cast<Symbol>(P2->Car);
   }
@@ -64,6 +63,8 @@ mlir::Value define(OpGen& OG, Pair* P) {
 }
 
 mlir::Value define_syntax(OpGen& OG, Pair* P) {
+  // the result should be a syntax object
+  // call the PatternMatcher thingy
   llvm_unreachable("TODO");
 }
 
