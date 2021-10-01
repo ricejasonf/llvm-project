@@ -32,10 +32,6 @@ namespace mlir {
 }
 
 namespace heavy {
-
-// TODO The visitor functions should return
-//      mlir:Operation* instead of mlir::Value
-//      since there can be multiple results.
 class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   friend ValueVisitor;
   using BindingScopeTable = llvm::ScopedHashTable<
@@ -194,6 +190,27 @@ public:
     return create<Op>(Builder, Loc, std::forward<Args>(args)...);
   }
 
+  static mlir::Value toValue(heavy::Value V) {
+    if (mlir::Operation* Op = V.get<::heavy::ValueSumType::Operation>()) {
+      return VisitOperation(Op);
+    }
+    if (heavy::ContArg* Arg = V.get<::heavy::ValueSumType::ContArg>()) {
+      return VisitContArg(Arg);
+    }
+    return mlir::Value();
+  }
+
+  static heavy::Value fromValue(mlir::Value V) {
+    if (auto OpResult = V.dyn_cast<mlir::OpResult>()) {
+      return heavy::Value(OpResult.getOwner());
+    }
+    if (auto BlockArg = V.dyn_cast<mlir::BlockArgument>()) {
+      mlir::Block* B = BlockArg.getOwner();
+      return heavy::Value(reinterpret_cast<heavy::ContArg*>(B));
+    }
+    return heavy::Value();
+  }
+
   mlir::Value createBody(SourceLocation Loc, Value Body);
   mlir::Value createSequence(SourceLocation Loc, Value Body);
   mlir::Value createIf(SourceLocation Loc, Value Cond, Value Then,
@@ -233,16 +250,32 @@ public:
     return createUndefined();
   }
 
+  mlir::Value LocalizeValue(mlir::Value V, heavy::Value B = nullptr);
+
 private:
+  mlir::Value LocalizeRec(heavy::Value B,
+                          mlir::Operation* Op,
+                          mlir::Operation* Owner,
+                          LambdaScopeIterator Itr);
+
   mlir::Value VisitDefineArgs(Value Args);
 
   mlir::Value VisitValue(Value V) {
     return createLiteral(V);
   }
 
-  mlir::Value VisitOperation(mlir::Operation* Op) {
-    // what if the operation has no results?
+  // VisitOperation and VisitContArg are both idempotent
+  // so they are declared static for reuse in the static
+  // value conversion functions.
+  static mlir::Value VisitOperation(mlir::Operation* Op) {
+    assert(Op->getNumResults() == 1 && "expecting a single value");
     return Op->getResult(0);
+  }
+  static mlir::Value VisitContArg(heavy::ContArg* Arg) {
+    mlir::Block* B = reinterpret_cast<mlir::Block*>(Arg);
+    // There should be two args including the closure object.
+    assert(B->getNumArguments() == 2 && "expecting a single value");
+    return B->getArgument(1);
   }
 
   mlir::Value VisitBuiltin(Builtin* B) {
@@ -257,12 +290,6 @@ private:
 
   mlir::Value VisitPair(Pair* P);
   // TODO mlir::Value VisitVector(Vector* V);
-
-  mlir::Value LocalizeValue(mlir::Value V, heavy::Value B = nullptr);
-  mlir::Value LocalizeRec(heavy::Value B,
-                          mlir::Operation* Op,
-                          mlir::Operation* Owner,
-                          LambdaScopeIterator Itr);
 };
 
 }

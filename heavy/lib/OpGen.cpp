@@ -58,6 +58,8 @@ mlir::ModuleOp OpGen::getModuleOp() {
 }
 
 mlir::Value OpGen::GetSingleResult(heavy::Value V) {
+  TailPosScope TPS(*this);
+  IsTailPos = false;
   mlir::Value Result = Visit(V);
   if (auto BlockArg = Result.dyn_cast<mlir::BlockArgument>()) {
     // the size includes the closure object
@@ -111,6 +113,17 @@ mlir::Operation* OpGen::VisitTopLevel(Value V) {
 
   if (heavy::CommandOp CommandOp =
         dyn_cast<heavy::CommandOp>(TopLevelOp)) {
+    // Ensure current function body (if any) has a terminator.
+    if (auto F = dyn_cast_or_null<FuncOp>(LambdaScopes.back().Op)) {
+      mlir::Block& Block = F.getBody().back();
+      if (!Block.back().hasTrait<mlir::OpTrait::IsTerminator>()) {
+        mlir::OpBuilder::InsertionGuard IG(Builder);
+        Builder.setInsertionPointToEnd(&Block);
+        create<ContOp>(heavy::SourceLocation(), createUndefined());
+      }
+    }
+
+    // Ensure the CommandOp body has a terminator.
     mlir::Block& Block = CommandOp.body().front();
     assert(!Block.empty() && "command op must have body");
     if (!Block.back().hasTrait<mlir::OpTrait::IsTerminator>()) {
