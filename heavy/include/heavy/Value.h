@@ -45,6 +45,7 @@ using llvm::dyn_cast_or_null;
 using llvm::isa;
 using llvm::isa_and_nonnull;
 using mlir::Operation;
+struct ContArg { ContArg() = delete; };
 
 // ExternValue - Stores a concrete value in an aligned storage
 //               with a Value that points to it. Via StandardLayout,
@@ -100,6 +101,7 @@ enum class ValueKind {
   Builtin,
   BuiltinSyntax,
   Char,
+  ContArg,
   Empty,
   EnvFrame,
   Environment,
@@ -237,6 +239,7 @@ struct ValueSumType {
     Empty,
     Undefined,
     Operation,
+    ContArg,
   };
 
   // mlir::Operation* is incomplete so we have to assume
@@ -253,6 +256,18 @@ struct ValueSumType {
       llvm::detail::ConstantLog2<alignof(void*)>::value;
   };
 
+  struct ContArgTraits {
+    static inline void *getAsVoidPointer(heavy::ContArg* P) {
+      return reinterpret_cast<void *>(P);
+    }
+    static inline heavy::ContArg* getFromVoidPointer(void *P) {
+      return reinterpret_cast<heavy::ContArg*>(P);
+    }
+
+    static constexpr int NumLowBitsAvailable =
+      llvm::detail::ConstantLog2<alignof(void*)>::value;
+  };
+
   using type = llvm::PointerSumType<SumKind,
     llvm::PointerSumTypeMember<ValueBase,  heavy::ValueBase*>,
     llvm::PointerSumTypeMember<Int,        heavy::Int>,
@@ -260,7 +275,8 @@ struct ValueSumType {
     llvm::PointerSumTypeMember<Char,       heavy::Char>,
     llvm::PointerSumTypeMember<Empty,      heavy::Empty>,
     llvm::PointerSumTypeMember<Undefined,  heavy::Undefined>,
-    llvm::PointerSumTypeMember<Operation,  mlir::Operation*, OperationTraits>>;
+    llvm::PointerSumTypeMember<Operation,  mlir::Operation*, OperationTraits>,
+    llvm::PointerSumTypeMember<ContArg,    heavy::ContArg*, ContArgTraits>>;
 };
 
 using ValuePtrBase = typename ValueSumType::type;
@@ -303,6 +319,12 @@ public:
 
   Value(Char C)
     : ValuePtrBase(create<ValueSumType::Char>(C))
+  {
+    assert(*this);
+  }
+
+  Value(ContArg* C)
+    : ValuePtrBase(create<ValueSumType::ContArg>(C))
   {
     assert(*this);
   }
@@ -355,6 +377,8 @@ public:
       return ValueKind::Undefined;
     case ValueSumType::Operation:
       return ValueKind::Operation;
+    case ValueSumType::ContArg:
+      return ValueKind::ContArg;
     }
     llvm_unreachable("cannot get here");
   }
@@ -432,6 +456,13 @@ struct isa_impl<::mlir::Operation, ::heavy::Value> {
   }
 };
 
+template <>
+struct isa_impl<::heavy::ContArg, ::heavy::Value> {
+  static inline bool doit(::heavy::Value V) {
+    return V.is<::heavy::ValueSumType::ContArg>();
+  }
+};
+
 template <typename T>
 struct cast_retty_impl<T, ::heavy::Value> {
   using ret_type = std::conditional_t<
@@ -441,6 +472,11 @@ struct cast_retty_impl<T, ::heavy::Value> {
 template <>
 struct cast_retty_impl<::mlir::Operation, ::heavy::Value> {
   using ret_type = ::mlir::Operation*;
+};
+
+template <>
+struct cast_retty_impl<::heavy::ContArg, ::heavy::Value> {
+  using ret_type = ::heavy::ContArg*;
 };
 
 template <typename T>
@@ -458,6 +494,14 @@ struct cast_convert_val<mlir::Operation, ::heavy::Value,
                                          ::heavy::Value> {
   static mlir::Operation* doit(::heavy::Value V) {
     return V.get<heavy::ValueSumType::Operation>();
+  }
+};
+
+template <>
+struct cast_convert_val<::heavy::ContArg, ::heavy::Value,
+                                          ::heavy::Value> {
+  static ::heavy::ContArg* doit(::heavy::Value V) {
+    return V.get<heavy::ValueSumType::ContArg>();
   }
 };
 
