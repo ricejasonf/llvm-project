@@ -52,13 +52,18 @@ public:
     // <quasiquotation 1>
     heavy::Value Result = Visit(Input, Rebuilt, /*Depth=*/1);
 
-    if (mlir::Operation* Op = dyn_cast<Operation>(Result)) {
-      return Op->getResult(0);
-    }
-    return createLiteralOp(Result);
+    return createValue(Result);
   }
 
 private:
+  // createValue - Create a mlir::Value from its stored
+  //               representation in heavy::Value or wrap
+  //               it in a LiteralOp.
+  mlir::Value createValue(heavy::Value V) {
+    mlir::Value Val = OpGen::toValue(V);
+    if (Val) return OpGen.LocalizeValue(Val);
+    return createLiteralOp(V);
+  }
 
   heavy::Value setError(llvm::StringRef S, heavy::Value V) {
     OpGen.getContext().SetError(S, V);
@@ -69,44 +74,27 @@ private:
     return OpGen.create<LiteralOp>(V.getSourceLocation(), V);
   }
 
-  heavy::Value createLiteral(Value V) {
-    // OpGen does not support a LiteralOp of () at the end of
-    // a list when it looks at syntax/call expressions. It is
-    // extraneous to make an operation wrapper for it anyways.
-    if (isa<Empty>(V)) return V;
-    return createLiteralOp(V).getOperation();
-  }
-
   mlir::Operation* createList(SourceLocation Loc, heavy::Value X,
                               heavy::Value Y) {
-    mlir::Operation* OpX = dyn_cast<Operation>(X);
-    mlir::Operation* OpY = dyn_cast<Operation>(Y);
-    if (!OpX) OpX = createLiteralOp(X);
-    if (!OpY) OpY = createLiteralOp(Y);
-
+    mlir::Value ValX = createValue(X);
+    mlir::Value ValY = createValue(Y);
     mlir::Value Empty = createLiteralOp(heavy::Empty{});
-    return OpGen.create<ConsOp>(Loc, OpX->getResult(0),
-        OpGen.create<ConsOp>(Loc, OpY->getResult(0), Empty));
+    return OpGen.create<ConsOp>(Loc, ValX,
+        OpGen.create<ConsOp>(Loc, ValY, Empty));
   }
 
   mlir::Operation* createCons(SourceLocation Loc, heavy::Value X,
                                                   heavy::Value Y) {
-    mlir::Operation* OpX = dyn_cast<Operation>(X);
-    mlir::Operation* OpY = dyn_cast<Operation>(Y);
-    if (!OpX) OpX = createLiteralOp(X);
-    if (!OpY) OpY = createLiteralOp(Y);
-    return OpGen.create<ConsOp>(Loc, OpX->getResult(0),
-                                     OpY->getResult(0));
+    mlir::Value ValX = createValue(X);
+    mlir::Value ValY = createValue(Y);
+    return OpGen.create<ConsOp>(Loc, ValX, ValY);
   }
 
   mlir::Operation* createSplice(SourceLocation Loc, heavy::Value X,
                                 heavy::Value Y) {
-    mlir::Operation* OpX = dyn_cast<Operation>(X);
-    mlir::Operation* OpY = dyn_cast<Operation>(Y);
-    if (!OpX) OpX = createLiteralOp(X);
-    if (!OpY) OpY = createLiteralOp(Y);
-    return OpGen.create<SpliceOp>(Loc, OpX->getResult(0),
-                                       OpY->getResult(0));
+    mlir::Value ValX = createValue(X);
+    mlir::Value ValY = createValue(Y);
+    return OpGen.create<SpliceOp>(Loc, ValX, ValY);
   }
 
   heavy::Value VisitValue(Value V, bool& Rebuilt, int Depth) {
@@ -119,8 +107,9 @@ private:
     if (Depth < 1) {
       // Unquoting requires parents to be rebuilt
       Rebuilt = true;
-      // Note that OpGen.Visit is idempotent for operations
-      return OpGen.Visit(V).getDefiningOp();
+      // Note that OpGen.Visit is idempotent for operations and
+      // block arguments (ContArg).
+      return OpGen::fromValue(OpGen.GetSingleResult(V));
     }
     return Visit(V, Rebuilt, Depth);
   }
@@ -132,10 +121,8 @@ private:
     if (!Input) return setError("invalid quasiquote syntax", P);
     heavy::Value Result = Visit(Input, Rebuilt, Depth);
     if (!Rebuilt) return P;
-    mlir::Operation* Op = dyn_cast<Operation>(Result);
-    if (!Op) Op = createLiteralOp(Result);
     auto Loc = P->getSourceLocation();
-    return createList(Loc, P->Car, Op);
+    return createList(Loc, P->Car, Result);
   }
 
   // <unquotation D>
@@ -180,31 +167,16 @@ private:
   heavy::Value HandlePair(Pair* P, bool& Rebuilt, int Depth) {
     assert(Depth > 0 && "Depth cannot be zero here.");
 
-    bool CarRebuilt = false;
+    // Call Cdr first as it prevents stacking up captures.
+    // (and avoids capturing block arguments which isn't
+    //  currently supported.)
     bool CdrRebuilt = false;
-    heavy::Value Car = Visit(P->Car, CarRebuilt, Depth);
+    bool CarRebuilt = false;
     heavy::Value Cdr = Visit(P->Cdr, CdrRebuilt, Depth);
+    heavy::Value Car = Visit(P->Car, CarRebuilt, Depth);
 
     Rebuilt = CarRebuilt || CdrRebuilt;
     if (!Rebuilt) return P;
-
-    mlir::Value CarVal;
-    mlir::Value CdrVal;
-
-#if 0
-    // Portions that are not rebuilt are always literal
-    // '<qq template D>
-    if (!CarRebuilt && CdrRebuilt) {
-      CarVal = createLiteralOp(Car);
-      CdrVal = OpGen.Visit(Cdr);
-    } else if (!CdrRebuilt && CarRebuilt) {
-      CarVal = OpGen.Visit(Car);
-      CdrVal = createLiteralOp(Cdr);
-    } else {
-      CarVal = OpGen.Visit(Car);
-      CdrVal = OpGen.Visit(Cdr);
-    }
-#endif
 
     SourceLocation Loc = P->getSourceLocation();
     return createCons(Loc, Car, Cdr);

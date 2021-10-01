@@ -52,6 +52,7 @@ protected:
   VISIT_FN(Builtin)
   VISIT_FN(BuiltinSyntax)
   VISIT_FN(Char)
+  VISIT_FN(ContArg)
   VISIT_FN(Empty)
   VISIT_FN(EnvFrame)
   VISIT_FN(Environment)
@@ -59,8 +60,8 @@ protected:
   VISIT_FN(Exception)
   VISIT_FN(Float)
   VISIT_FN(ForwardRef)
-  VISIT_FN(Int)
   VISIT_FN(ImportSet)
+  VISIT_FN(Int)
   VISIT_FN(Lambda)
   VISIT_FN(Module)
   VISIT_FN(Operation)
@@ -89,6 +90,7 @@ public:
     case ValueKind::Builtin:        DISPATCH(Builtin);
     case ValueKind::BuiltinSyntax:  DISPATCH(BuiltinSyntax);
     case ValueKind::Char:           DISPATCH(Char);
+    case ValueKind::ContArg:        DISPATCH(ContArg);
     case ValueKind::Empty:          DISPATCH(Empty);
     case ValueKind::EnvFrame:       DISPATCH(EnvFrame);
     case ValueKind::Environment:    DISPATCH(Environment);
@@ -96,8 +98,8 @@ public:
     case ValueKind::Exception:      DISPATCH(Exception);
     case ValueKind::Float:          DISPATCH(Float);
     case ValueKind::ForwardRef:     DISPATCH(ForwardRef);
-    case ValueKind::Int:            DISPATCH(Int);
     case ValueKind::ImportSet:      DISPATCH(ImportSet);
+    case ValueKind::Int:            DISPATCH(Int);
     case ValueKind::Lambda:         DISPATCH(Lambda);
     case ValueKind::Module:         DISPATCH(Module);
     case ValueKind::Operation:      DISPATCH(Operation);
