@@ -167,9 +167,6 @@ private:
   heavy::Value HandlePair(Pair* P, bool& Rebuilt, int Depth) {
     assert(Depth > 0 && "Depth cannot be zero here.");
 
-    // Call Cdr first as it prevents stacking up captures.
-    // (and avoids capturing block arguments which isn't
-    //  currently supported.)
     bool CdrRebuilt = false;
     bool CarRebuilt = false;
     heavy::Value Cdr = Visit(P->Cdr, CdrRebuilt, Depth);
