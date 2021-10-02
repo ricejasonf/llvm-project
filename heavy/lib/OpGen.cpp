@@ -656,48 +656,58 @@ mlir::Value OpGen::VisitVector(Vector* V) {
 //                 here too.
 //
 mlir::Value OpGen::LocalizeValue(mlir::Value V, heavy::Value B) {
-  mlir::Operation* Op = V.getDefiningOp();
-  if (!Op) {
-    assert(Builder.getBlock() == V.cast<mlir::BlockArgument>().getOwner() &&
-        "expecting local block argument");
-    return V;
+  mlir::Operation* Owner;
+  LambdaScopeIterator LSI = LambdaScopes.rbegin();
+
+  if (mlir::Operation* Op = V.getDefiningOp()) {
+    heavy::SourceLocation Loc = {};
+    mlir::Value NewVal;
+    if (auto G = dyn_cast<GlobalOp>(Op)) {
+      NewVal = create<LoadGlobalOp>(Loc, G.getName());
+    } else if (auto LG = dyn_cast<LoadGlobalOp>(Op)) {
+      // Just make a new load global with the same name.
+      NewVal = create<LoadGlobalOp>(Loc, LG.name()); 
+    }
+    if (NewVal) {
+      if (B) {
+        // Prevent duplicate LoadGlobalOps in the same scope.
+        LambdaScopeNode& LS = *LSI;
+        BindingTable.insertIntoScope(&LS.BindingScope_, B, NewVal);
+      }
+      return NewVal;
+    }
+    Owner = Op->getParentWithTrait<mlir::OpTrait::IsIsolatedFromAbove>();
+  } else {
+    mlir::BlockArgument BlockArg = V.cast<mlir::BlockArgument>();
+    Owner = BlockArg.getOwner()->getParentOp();
   }
 
-  mlir::Operation* Owner = Op
-    ->getParentWithTrait<mlir::OpTrait::IsIsolatedFromAbove>();
-
-  return LocalizeRec(B, Op, Owner, LambdaScopes.rbegin());
+  // Non-globals must be captured in every closure up to the scope
+  // where they were created.
+  return LocalizeRec(B, V, Owner, LSI);
 }
 
 mlir::Value OpGen::LocalizeRec(heavy::Value B,
-                               mlir::Operation* Op,
+                               mlir::Value V,
                                mlir::Operation* Owner,
-                               LambdaScopeIterator Itr) {
-  assert(Itr != LambdaScopes.rend() && "value must be in a scope");
-  LambdaScopeNode& LS = *Itr;
-  if (LS.Op == Owner) return Op->getResult(0);
+                               LambdaScopeIterator LSI) {
+  assert(LSI != LambdaScopes.rend() && "value must be in a scope");
+  LambdaScopeNode& LS = *LSI;
+  if (LS.Op == Owner) return V;
 
   heavy::SourceLocation Loc = {};
-  mlir::Value NewVal;
 
-  if (auto G = dyn_cast<GlobalOp>(Op)) {
-    NewVal = create<LoadGlobalOp>(Loc, G.getName());
-  } else if (auto LG = dyn_cast<LoadGlobalOp>(Op)) {
-    // Just make a new load global with the same name.
-    NewVal = create<LoadGlobalOp>(Loc, LG.name()); 
-  } else {
-    mlir::Value ParentLocal = LocalizeRec(B, Op, Owner, ++Itr);
+  mlir::Value ParentLocal = LocalizeRec(B, V, Owner, ++LSI);
 
-    mlir::OpBuilder::InsertionGuard IG(Builder);
-    auto FuncOp = cast<mlir::FuncOp>(LS.Op);
-    mlir::Block& Block = FuncOp.getBody().front();
-    Builder.setInsertionPointToStart(&Block);
-
-    LS.Captures.push_back(ParentLocal);
-    uint32_t Index = LS.Captures.size() - 1;
-    mlir::Value Closure = Block.getArguments().front();
-    NewVal = create<LoadClosureOp>(Loc, Closure, Index);
-  }
+  // Capture V for use in the current function scope.
+  mlir::OpBuilder::InsertionGuard IG(Builder);
+  auto FuncOp = cast<mlir::FuncOp>(LS.Op);
+  mlir::Block& Block = FuncOp.getBody().front();
+  Builder.setInsertionPointToStart(&Block);
+  LS.Captures.push_back(ParentLocal);
+  uint32_t Index = LS.Captures.size() - 1;
+  mlir::Value Closure = Block.getArguments().front();
+  mlir::Value NewVal = create<LoadClosureOp>(Loc, Closure, Index);
 
   if (B) {
     BindingTable.insertIntoScope(&LS.BindingScope_, B, NewVal);
