@@ -254,7 +254,7 @@ public:
 
 private:
   mlir::Value LocalizeRec(heavy::Value B,
-                          mlir::Operation* Op,
+                          mlir::Value V,
                           mlir::Operation* Owner,
                           LambdaScopeIterator Itr);
 
