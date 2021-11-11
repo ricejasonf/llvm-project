@@ -135,6 +135,27 @@ def heavy_ContOp : HeavyOp<"cont", [ReturnLike, Terminator]> {
   let results   = (outs); // no result
 }
 
+def heavy_EvalOp : HeavyOp<"eval", [Terminator]> {
+  let summary = "eval";
+  let description = [{
+    EvalOp is the same as the scheme procedure eval except that
+    its environment defaults to the current one not including locals.
+    Hygienic macros can use this by capturing locals via SyntaxClosureOp.
+    This operation is equivalent to ApplyOp with `eval` as the operator.
+
+    Currently there is no argument for the environment specifier.
+  }];
+
+  let regions   = (region AnyRegion:$initCont);
+  let arguments = (ins HeavyValue:$input);
+  let results   = (outs);
+  let extraClassDeclaration = [{
+    bool isTailPos() {
+      return initCont().empty();
+    }
+  }];
+}
+
 def heavy_GlobalOp : HeavyOp<"global", [Symbol, IsolatedFromAbove]> {
   let summary = "global";
   let description = [{

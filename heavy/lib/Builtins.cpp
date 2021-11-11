@@ -63,12 +63,23 @@ mlir::Value define(OpGen& OG, Pair* P) {
 }
 
 mlir::Value define_syntax(OpGen& OG, Pair* P) {
-  // the result should be a syntax object
-  // call the PatternMatcher thingy
+  Pair* P2 = dyn_cast<Pair>(P->Cdr);
+  if (!P2) return OG.SetError("invalid define-syntax syntax", P);
+  Symbol* S = dyn_cast<Symbol>(P2->Car);
+  if (!S) return OG.SetError("expecting name for define-syntax", P);
+
+  // expect an expression that results in a syntax object
+
   llvm_unreachable("TODO");
+  return OG.createDefine(S, P2, P);
 }
 
 mlir::Value syntax_rules(OpGen& OG, Pair* P) {
+  // check for optional ellipsis identifier
+
+  // expect list of literal identifiers
+
+  // expect a list of at least one pattern/template
   llvm_unreachable("TODO");
 }
 
