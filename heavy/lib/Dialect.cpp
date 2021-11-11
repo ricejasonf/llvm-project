@@ -54,14 +54,6 @@ heavy::Value HeavyValueAttr::getValue() const {
   return getImpl()->Val;
 }
 
-#if 0
-void ApplyOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
-                    mlir::Value Operator,
-                    llvm::ArrayRef<mlir::Value> Operands) {
-  ApplyOp::build(B, OpState, B.getType<HeavyValueTy>(), Operator, Operands);
-}
-#endif
-
 void BindingOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                       mlir::Value Input) {
   BindingOp::build(B, OpState, B.getType<HeavyValueTy>(), Input);

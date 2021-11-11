@@ -1450,7 +1450,7 @@ public:
     return EnvMap.insert(X).second;
   }
 
-  // Insert - Adds a named mutable location. Overwriting
+  // Insert - Add a named mutable location. Overwriting
   //          with a new object is okay here if it is mutable
   void Insert(Binding* B) {
     String* Name = B->getName()->getString();
@@ -1458,6 +1458,11 @@ public:
     assert(!Entry.MangledName &&
         "insert may not modify immutable locations");
     Entry.Value = B;
+  }
+
+  // SetSyntax - Extend the syntactic environment.
+  void SetSyntax(String* Name, Syntax* S) {
+    EnvMap[Name] = Value(S);
   }
 
   static bool classof(Value V) {

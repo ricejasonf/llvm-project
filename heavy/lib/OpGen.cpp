@@ -351,6 +351,12 @@ mlir::Value OpGen::createDefine(Symbol* S, Value DefineArgs,
   return BVal;
 }
 
+mlir::Value OpGen::createDefineSyntax(Symbol* S, Value SyntaxDef,
+                                                 Value OrigCall) {
+  // TODO process SyntaxDef
+  if (isTopLevel()) return createTopLevelDefine(S, DefineArgs, OrigCall);
+}
+
 mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
                                         Value OrigCall) {
   SourceLocation DefineLoc = OrigCall.getSourceLocation();
@@ -364,6 +370,15 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
     return SetError("define used in immutable environment", OrigCall);
   }
 #endif
+
+  // If DefineArgs is a syntax object then just extend
+  // the syntactic environment.
+  if (Syntax* Syn = dyn_cast<Syntax>(DefineArgs)) {
+    Env->SetSyntax(B);
+    // FIXME Ensure that we  prevent an operation from being
+    //       created similar to the `import` syntax.
+    return Value();
+  }
 
   EnvEntry Entry = Env->Lookup(S);
   if (Entry.Value && Entry.MangledName) {
@@ -581,6 +596,13 @@ mlir::Value OpGen::HandleCall(Pair* P) {
 
   if (IsTailPos) return mlir::Value();
   return createContinuation(Op.initCont());
+}
+
+mlir::Value OpGen::createEval(mlir::Value Input) {
+  // Currently default to the current environment.
+  auto EvalOp = create<heavy::EvalOp>(Input);
+  if (IsTailPos) return mlir::Value();
+  return createContinuation(EvalOp.initCont());
 }
 
 mlir::Value OpGen::createContinuation(mlir::Region& initCont) {

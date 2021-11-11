@@ -8,9 +8,11 @@
 //
 //  Define heavy::PatternTemplate mapping heavy::Value to mlir::Value
 //  for user defined syntax transformations via the `syntax-rules` syntax.
+//  This file is provided as header-only to support OpGen.cpp.
 //
 //===----------------------------------------------------------------------===//
 
+#include "TemplateGen.h"
 #include "heavy/Context.h"
 #include "heavy/OpGen.h"
 #include "heavy/Value.h"
@@ -21,8 +23,10 @@
 namespace heavy {
 
 // PatternTemplate
-//    - Generate code to match pattern and bind pattern variables
+//    - Generate code to match patterns and bind pattern variables
 //      See R7RS 4.3.2 Pattern Language.
+//    - Generate code for templates by visiting them with OpGen with
+//      the pattern variables as SyntacticClosures
 class PatternTemplate : ValueVisitor<PatternTemplate, mlir::Value> {
   heavy::OpGen& OpGen;
   Symbol* Ellipsis;
@@ -59,13 +63,18 @@ public:
     }
   }
 
-  void VisitPatternTemplate(heavy::Pair* Pattern, heavy::Pair* Template) {
+  // VisitPatternTemplate should be called with OpGen's insertion point in
+  // the body of the function.
+  mlir::Value VisitPatternTemplate(heavy::Pair* Pattern, heavy::Pair* Template) {
+    mlir::OpBuilder::InsertionGuard IG(Builder);
     auto PatternOp = OpGen.create<heavy::PatternOp>();
     Block& B = PatternOp.region().emplaceBlock();
+    Builder.setInsertionPointToStart(B);
     Visit(Pattern);
-    // TODO We need another visitor similar to Quasiquoter to create consOps
-    //      with the bindings that we create
-    // OpGen.Visit(Template);
+
+    PatternTemplate PT(PatternVars);
+    PT.VisitTemplate(Template);
+
   }
 
   // returns true if insertion was successful
@@ -74,12 +83,12 @@ public:
     std::tie(std::ignore, Inserted) = PatternVars.insert(S->getString())
     if (!Inserted) {
       OG.setError(S->getSourceLocation(),
-                  "pattern variable name used multiple times");
+                  "pattern variable name appears in pattern multiple times");
     }
     // Create a local variable with a SyntaxClosure of E as the initializer.
     auto SynClo = OpGen->create<SyntaxClosureOp>(E);
     Context.PushLocalBinding(B);
-    return createBinding(B, SynClo);
+    return OpGen.createBinding(B, SynClo);
   }
 
   mlir::Value VisitValue(Value P, mlir::Value E) {

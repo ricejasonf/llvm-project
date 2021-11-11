@@ -56,6 +56,18 @@ public:
   }
 
 private:
+#if 0 // TODO Refactor Visit* to use isRebuilt instead passing
+      //      a reference to bool for every node.
+  bool isRebuilt(heavy::Value V) {
+    return (V.is<ValueSumType::Operation>() ||
+            V.is<ValueSumType::ContArg>());
+  }
+
+  bool isRebuilt(heavy::Value V1, heavy::Value V2) {
+    return isRebuilt(V1) || isRebuilt(V2);
+  }
+#endif
+
   // createValue - Create a mlir::Value from its stored
   //               representation in heavy::Value or wrap
   //               it in a LiteralOp.

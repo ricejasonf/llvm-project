@@ -164,8 +164,8 @@ inline void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
   heavy::initModule(Context, HEAVY_BASE_LIB_STR, {
     // syntax
     {"define",        HEAVY_BASE_VAR(define)},
-    {"define_syntax", HEAVY_BASE_VAR(define_syntax)},
-    {"syntax_rules",  HEAVY_BASE_VAR(syntax_rules)},
+    {"define-syntax", HEAVY_BASE_VAR(define_syntax)},
+    {"syntax-rules",  HEAVY_BASE_VAR(syntax_rules)},
     {"if",            HEAVY_BASE_VAR(if)},
     {"lambda",        HEAVY_BASE_VAR(lambda)},
     {"quasiquote",    HEAVY_BASE_VAR(quasiquote)},
