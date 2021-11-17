@@ -25,6 +25,12 @@ Dialect::Dialect(mlir::MLIRContext* Ctx)
   addTypes<HeavyValueTy>();
   addAttributes<HeavyValueAttr>();
 
+  addTypes<HeavyPairTy>();
+
+  addTypes<HeavySyntaxTy>();
+  addTypes<HeavyOpGenTy>();
+  addTypes<HeavyMlirValueTy>();
+
   addOperations<
 #define GET_OP_LIST
 #include "heavy/Ops.cpp.inc"
@@ -43,6 +49,14 @@ void Dialect::printType(mlir::Type Type,
   char const* Name;
   if (Type.isa<HeavyValueTy>()) {
     Name = "value";
+  } else if (Type.isa<HeavyPairTy>) {
+    Name = "pair";
+  } else if (Type.isa<HeavySyntaxTy>) {
+    Name = "syntax";
+  } else if (Type.isa<HeavyOpGenTy>) {
+    Name = "OpGen&";
+  } else if (Type.isa<HeavyMlirValueTy>) {
+    Name = "MlirValue";
   } else {
     llvm_unreachable("no other types in dialect");
   }
@@ -147,6 +161,11 @@ void SyntaxClosureOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
   SyntaxClosureOp::build(B, OpState, HeavyValueT, input);
 }
 
+void SyntaxOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                     mlir::Value input) {
+  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
+  SyntaxOp::build(B, OpState, HeavyValueT, input);
+}
 
 void UndefinedOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState) {
   UndefinedOp::build(B, OpState, B.getType<HeavyValueTy>());

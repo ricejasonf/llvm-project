@@ -22,6 +22,13 @@ def HeavyDialect : Dialect {
   let name = "heavy";
 }
 
+// HeavyValueBase - Use for any type that is an alternative
+//                  of Value and derives from ValueBase which
+//                  implies the need for garbage collection.
+class HeavyValueBase<string name> : Type<
+  CPred<!strconcat("$_self.isa<::heavy::Heavy", name, "Ty>()")>,
+  name, !strconcat("::heavy::", name)>;
+
 def HeavyValue : Type<CPred<"$_self.isa<::heavy::HeavyValueTy>()">,
                   "value", "::heavy::Value">;
 
@@ -30,6 +37,15 @@ def HeavyValueAttr : Attr<CPred<"true">,
   let storageType = "::heavy::HeavyValueAttr";
   let returnType = "::heavy::Value";
 }
+
+// Additional Types
+def HeavyPair : HeavyValueBase<"Pair">;
+def HeavySyntax : HeavyValueBase<"Syntax">;
+
+def HeavyOpGen : Type<CPred<"$_self.isa<::heavy::HeavyOpGenTy>()">,
+                  "OpGen", "::heavy::OpGen&">;
+def HeavyMlirValue : Type<CPred<"$_self.isa<::heavy::HeavyMlirValueTy>()">,
+                  "MlirValue", "::mlir::Value">;
 
 class HeavyOp<string mnemonic, list<OpTrait> traits = []> :
     Op<HeavyDialect, mnemonic, traits>;
@@ -280,7 +296,7 @@ def heavy_LoadGlobalOp : HeavyOp<"load_global"> {
   ];
 }
 
-def heavy_MatchOp : HeavyOp<"match"> {
+def heavy_MatchOp : HeavyOp<"match", [HasParent<"pattern">]> {
   let summary = "match";
   let description = [{
     As a component of pattern matching, this checks if a value
@@ -298,7 +314,7 @@ def heavy_MatchOp : HeavyOp<"match"> {
   ];
 }
 
-def heavy_MatchPairOp : HeavyOp<"match_pair"> {
+def heavy_MatchPairOp : HeavyOp<"match_pair", [HasParent<"pattern">]> {
   let summary = "match_pair";
   let description = [{
     As a component of pattern matching, this checks if a value
@@ -320,14 +336,16 @@ def heavy_PatternOp : HeavyOp<"pattern", [HasOnlyGraphRegion,
   let description = [{
     PatternOp represents the pattern in a pattern/template
     pair as part of the syntax-rules transform specifier. The contained
-    graph region should contain matching operations on the input syntax.
+    graph region should contain matching operations on the input syntax,
+    as well as ConsOps for the template, and an EvalOp on the constructed AST.
+
     It should be possible to inline nested syntaxes and possibly bypass
     generating intermediate AST altogether if all of the inputs that would
     affect code generation are known.
   }];
 
   let arguments = (ins);
-  let results   = (outs HeavyValue:$result);
+  let results   = (outs);
   let regions   = (region SizedRegion<1>:$region);
 }
 
@@ -387,6 +405,22 @@ def heavy_SyntaxClosureOp : HeavyOp<"syntax_closure"> {
   let builders  = [
     OpBuilder<(ins "::mlir::Value":$input)>
   ];
+}
+
+def heavy_SyntaxOp: HeavyOp<"syntax", [NoTerminator]> {
+  let summary = "syntax";
+  let description = [{
+    SyntaxOp contains a linearly overloaded sequence of PatternOps that
+    operate on the input AST.
+    Any PatternOp that guarantees it cannot match can be removed.
+    Any PatternOp that guarantees a match statically can have subsequent
+    matches removed.
+    A SyntaxOp must contain at least one PatternOp.
+    Semantics are implied for chaining and failure to find a match.
+  }];
+
+  let arguments = (ins HeavyValue:$input);
+  let results = (outs HeavySyntax:$result);
 }
 
 def heavy_UndefinedOp : HeavyOp<"undefined", [NoSideEffect]> {
