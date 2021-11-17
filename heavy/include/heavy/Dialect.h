@@ -86,6 +86,19 @@ public:
   heavy::Value getValue() const;
 };
 
+// Additional Types
+#define HEAVY_TYPE(NAME) \
+struct Heavy##NAME##Ty : public mlir::Type::TypeBase< \
+Heavy##NAME##Ty, mlir::Type, mlir::TypeStorage> { using Base::Base; }
+
+HEAVY_TYPE(Pair);
+
+HEAVY_TYPE(Syntax);
+HEAVY_TYPE(OpGen);
+HEAVY_TYPE(MlirValue);
+
+
+#undef HEAVY_TYPE
 }
 
 #define GET_OP_CLASSES
