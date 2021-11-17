@@ -168,6 +168,15 @@ mlir::FunctionType OpGen::createFunctionType(unsigned Arity,
   return Builder.getFunctionType(Types, ValueT);
 }
 
+mlir::FunctionType OpGen::createSyntaxFunctionType() {
+  mlir::Type OpGenT     = Builder.getType<HeavyOpGenTy>();
+  mlir::Type PairT      = Builder.getType<HeavyPairTy>();
+  mlir::Type MlirValueT = Builder.getType<HeavyMlirValueTy>();
+
+  // mlir::Value (*)(OpGen&, Pair*);
+  return Builder.getFunctionType({OpGenTy, PairTy}, MlirValueTy);
+}
+
 mlir::Value OpGen::createLambda(Value Formals, Value Body,
                                 SourceLocation Loc,
                                 llvm::StringRef Name) {
@@ -229,6 +238,89 @@ bool OpGen::isLocalDefineAllowed() {
   if (!Block) return false;
   return (Block->empty() ||
           isa<BindingOp>(Block->back()));
+}
+
+mlir::Value OpGen::createSyntax(Symbol* S, Value SyntaxDef, Value OrigCall) {
+  auto* Syntax = dyn_cast<heavy::Syntax>(OpGen.GetSingleResult(SyntaxDef))
+  if (!Syntax) {
+    return SetError("expecting syntax object");
+  }
+
+  if (isTopLevel()) {
+    Environment* Env = cast<Environment>(Context.EnvStack);
+    Env->SetSyntax(Syntax);
+  } else {
+    Binding* B = Context.CreateBinding(S, Syntax);
+    Context.PushLocalBinding(B);
+  }
+  // No operation should be created.
+  return Value();
+}
+
+mlir::Value OpGen::createSyntaxRules(llvm::StringRef Name,
+                                     Symbol* Ellipsis, 
+                                     heavy::Value KeywordList,
+                                     heavy::Value SyntaxDef) {
+  // Expect list of unique literal identifiers.
+  llvm::SmallPtrSet<String*, 4> Keywords;
+  auto insertKeyword = [&](Value V) -> bool {
+    Symbol* S = dyn_cast<Symbol>(V);
+    if (!S) {
+      return OG.setError("expecting keyword literal");
+    }
+    if (S->equals(Ellipsis)) {
+      return OG.setError(S->getSourceLocation(),
+        "keyword literal cannot be same as ellipsis");
+    }
+    bool Inserted;
+    std::tie(std::ignore, Inserted) = Keywords.insert(S->getString());
+    if (!Inserted) {
+      return OG.setError(S->getSourceLocation(),
+                  "keyword specified multiple times");
+    }
+  };
+  Value IdList = P2->Car;
+  while (Pair* X = dyn_cast<Pair>(IdList)) {
+    Context.setLoc(X);
+    if (insertKeyword(IdList->Car)) {
+      return OG.Error();
+    }
+    IdList = X->Cdr;
+  }
+  if (!isa<Empty>(IdList)) {
+    return OG.SetError("expecting keyword list", P2);
+  }
+  Value PTList = P2->Cdr;
+  
+  while (Pair* X = dyn_cast<Pair>(PTList)) {
+    if (insertKeyword(X->Car)) {
+      return OG.Error();
+    }
+    IdList = X->Cdr;
+  }
+  return createSyntaxRules(Name, Ellipsis, Keywords, SyntaxDef);
+}
+
+mlir::Value OpGen::createSyntaxRules(
+                              heavy::Value Ellipsis,
+                              llvm::SmallPtrSetImpl<heavy::Value>& Keywords,
+                              heavy::Value SyntaxDef) {
+  auto Syntax = create<heavy::Syntax>(Loc);
+  mlir::Block& Block = Syntax.region().emplaceBlock();
+  Builder.setInsertionPointToStart(Block);
+
+  // iterate through each pattern/template pair
+  while (Pair* X = dyn_cast<Pair>(SyntaxDef)) {
+    Pair* Y = dyn_cast<Pair>(X.Car):
+    if (!Y || !isa<Pair>(Y.Car) || !isa<Pair>(Y.Cdr) ||
+        !isa<Empty>(cast<Pair>(Y.Cdr).Cdr)) {
+      return OG.SetError("expecting pattern template pair");
+    }
+    Pair* Z = cast<Pair>(Y.Cdr);
+    PatternTemplate PT(OpGen, Ellipsis, Keywords);
+    PT.VisitPatternTemplate(Y.Car, Z.Car);
+  }
+  return Syntax.result();
 }
 
 // processSequence creates a sequence of operations in the current block
@@ -350,13 +442,6 @@ mlir::Value OpGen::createDefine(Symbol* S, Value DefineArgs,
   assert(isLocalDefineAllowed() && "define should still be allowed");
   return BVal;
 }
-
-mlir::Value OpGen::createDefineSyntax(Symbol* S, Value SyntaxDef,
-                                                 Value OrigCall) {
-  // TODO process SyntaxDef
-  if (isTopLevel()) return createTopLevelDefine(S, DefineArgs, OrigCall);
-}
-
 mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
                                         Value OrigCall) {
   SourceLocation DefineLoc = OrigCall.getSourceLocation();
@@ -370,15 +455,6 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
     return SetError("define used in immutable environment", OrigCall);
   }
 #endif
-
-  // If DefineArgs is a syntax object then just extend
-  // the syntactic environment.
-  if (Syntax* Syn = dyn_cast<Syntax>(DefineArgs)) {
-    Env->SetSyntax(B);
-    // FIXME Ensure that we  prevent an operation from being
-    //       created similar to the `import` syntax.
-    return Value();
-  }
 
   EnvEntry Entry = Env->Lookup(S);
   if (Entry.Value && Entry.MangledName) {

@@ -28,10 +28,10 @@ class TemplateGen : TemplateBase, ValueVisitor<TemplateGen, heavy::Value> {
   friend ValueVisitor<TemplateGen, heavy::Value>;
 
   Symbol* Ellipsis;
-  SmallPtrSetImpl<String*>& PatternVarNames;
+  NameSet& PatternVarNames;
 
 public:
-  TemplateGen(OpGen& O, SmallPtrSetImpl<String*>& PVNames,
+  TemplateGen(heavy::OpGen& O, NameSet& PVNames,
               Symbol* Ellipsis)
     : Templatebase(O),
       Ellipsis(Ellipsis),

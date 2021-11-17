@@ -68,19 +68,21 @@ mlir::Value define_syntax(OpGen& OG, Pair* P) {
   Symbol* S = dyn_cast<Symbol>(P2->Car);
   if (!S) return OG.SetError("expecting name for define-syntax", P);
 
-  // expect an expression that results in a syntax object
-
-  llvm_unreachable("TODO");
-  return OG.createDefine(S, P2, P);
+  return OG.createSyntax(S, P2->Cdr, P);
 }
 
 mlir::Value syntax_rules(OpGen& OG, Pair* P) {
+  Pair* P2 = dyn_cast<Pair>(P->Cdr);
+  if (!P2) return OG.SetError("invalid syntax-rules syntax", P);
   // check for optional ellipsis identifier
-
-  // expect list of literal identifiers
-
-  // expect a list of at least one pattern/template
-  llvm_unreachable("TODO");
+  Symbol* Ellipsis = dyn_cast<Symbol>(P2->Car);
+  if (Ellipsis) {
+    P2 = dyn_cast<Pair>(P2->Cdr);
+    if (!P2) return OG.SetError("invalid syntax-rules syntax", P);
+  } else {
+    Ellipsis = OpGen.getContext().CreateSymbol("...");
+  }
+  return OG.createSyntaxRules(Ellipsis, P2->Car, P2->Cdr);
 }
 
 mlir::Value lambda(OpGen& OG, Pair* P) {
