@@ -32,6 +32,8 @@ namespace mlir {
 }
 
 namespace heavy {
+using NameSet = llvm::SmallPtrSetImpl<String*>;
+
 class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   friend ValueVisitor;
   using BindingScopeTable = llvm::ScopedHashTable<
@@ -136,7 +138,7 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   };
 
   void insertTopLevelCommandOp(SourceLocation Loc);
-  bool walkDefineInits(Value Env, llvm::SmallPtrSetImpl<String*>& LocalNames);
+  bool walkDefineInits(Value Env, NameSet& LocalNames);
   heavy::Value transformSyntax(Value V);
 
 public:
@@ -213,6 +215,13 @@ public:
 
   mlir::Value createBody(SourceLocation Loc, Value Body);
   mlir::Value createSequence(SourceLocation Loc, Value Body);
+  mlir::Value createSyntax(Symbol* S, Value SyntaxDef, Value OrigCall);
+  mlir::Value createSyntaxRules(Value Ellipsis,
+                                Value KeywordList,
+                                Value SyntaxDef);
+  mlir::Value createSyntaxRules(Value Ellipsis,
+                                NameSet& Keywords,
+                                Value SyntaxDef);
   mlir::Value createIf(SourceLocation Loc, Value Cond, Value Then,
                             Value Else);
   mlir::Value createContinuation(mlir::Region& initCont);

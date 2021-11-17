@@ -30,38 +30,21 @@ namespace heavy {
 class PatternTemplate : ValueVisitor<PatternTemplate, mlir::Value> {
   heavy::OpGen& OpGen;
   Symbol* Ellipsis;
-
-  //Value Keywords; // literal identifiers (list)
-  llvm::SmallPtrSet<String*, 4> Keywords;
+  NameSet& Keywords,
   llvm::SmallPtrSet<String*, 4> PatternVars;
 
   // P - the pattern node
   // E - the input to match
 
-  void insertKeyword(Symbol* S) {
-    if (S->equals(Ellipsis)) {
-      OG.setError(S->getSourceLocation
-    }
-    bool Inserted;
-    std::tie(std::ignore, Inserted) = Keywords.insert(S->getString());
-    if (!Inserted) {
-      OG.setError(S->getSourceLocation(),
-                  "keyword specified multiple times");
-    }
-  }
-
 public:
-  PatternTemplate(Symbol* Ellipsis,
-                  Value Ks)
-    : OpGen(OpGen),
+  PatternTemplate(heavy::OpGen& O,
+                  heavy::Symbol* Ellipsis,
+                  NameSet& Keywords)
+    : OpGen(O),
       Ellipsis(Ellipsis),
-      Keywords(),
+      Keywords(Keywords),
       PatternVars()
-  {
-    for (Symbol* S : Keywords) {
-      insertKeyword(S);
-    }
-  }
+  { }
 
   // VisitPatternTemplate should be called with OpGen's insertion point in
   // the body of the function.
@@ -72,9 +55,10 @@ public:
     Builder.setInsertionPointToStart(B);
     Visit(Pattern);
 
-    PatternTemplate PT(PatternVars);
-    PT.VisitTemplate(Template);
+    TemplateGen TG(OpGen, PatternVars);
+    TG.VisitTemplate(Template);
 
+    return mlir::Value();
   }
 
   // returns true if insertion was successful
@@ -112,13 +96,11 @@ public:
   mlir::Value VisitSymbol(Symbol* P, mlir::Value E) {
     // <pattern identifier> (literal identifier)
     if (Keywords.contains(P->getString())) {
-      // TODO matched keyword so just skip??
       return mlir::Value();
     }
 
     // <underscore>
     if (P->equals("_")) {
-      // TODO I'm pretty sure we can just ignore this
       return mlir::Value(); 
     }
 
