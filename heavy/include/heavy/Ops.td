@@ -296,7 +296,7 @@ def heavy_LoadGlobalOp : HeavyOp<"load_global"> {
   ];
 }
 
-def heavy_MatchOp : HeavyOp<"match", [HasParent<"pattern">]> {
+def heavy_MatchOp : HeavyOp<"match", [HasParent<"PatternOp">]> {
   let summary = "match";
   let description = [{
     As a component of pattern matching, this checks if a value
@@ -314,7 +314,7 @@ def heavy_MatchOp : HeavyOp<"match", [HasParent<"pattern">]> {
   ];
 }
 
-def heavy_MatchPairOp : HeavyOp<"match_pair", [HasParent<"pattern">]> {
+def heavy_MatchPairOp : HeavyOp<"match_pair", [HasParent<"PatternOp">]> {
   let summary = "match_pair";
   let description = [{
     As a component of pattern matching, this checks if a value
@@ -332,7 +332,8 @@ def heavy_MatchPairOp : HeavyOp<"match_pair", [HasParent<"pattern">]> {
 }
 
 def heavy_PatternOp : HeavyOp<"pattern", [HasOnlyGraphRegion,
-                                          NoTerminator]> {
+                                          NoTerminator,
+                                          HasParent<"SyntaxOp">]> {
   let description = [{
     PatternOp represents the pattern in a pattern/template
     pair as part of the syntax-rules transform specifier. The contained

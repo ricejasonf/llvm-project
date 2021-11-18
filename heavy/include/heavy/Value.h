@@ -119,6 +119,7 @@ enum class ValueKind {
   Quote,
   String,
   Symbol,
+  Syntax,
   SyntaxClosure,
   Transformer,
   Vector,
@@ -1011,6 +1012,56 @@ public:
   static ValueKind getKind() { return ValueKind::Quote; }
 };
 
+class Syntax final
+  : public ValueBase,
+    private llvm::TrailingObjects<Syntax, char> {
+  friend class llvm::TrailingObjects<Syntax, char>;
+  friend Context;
+  using FnPtrTy = void(*)(void*, OpGen&, Value Input);
+
+  FnPtrTy FnPtr;
+  unsigned StorageLen;
+
+  Syntax(FnPtrTy Fn, unsigned short StorageLen)
+    : ValueBase(ValueKind::Syntax)
+    , FnPtr(Fn)
+    , StorageLen(StorageLen)
+  { }
+
+  void* getStoragePtr() { return getTrailingObjects<char>(); }
+
+public:
+  struct FunctionDataView {
+    FnPtrTy CallFn;
+    llvm::StringRef Storage;
+  };
+
+  template <typename F>
+  static FunctionDataView createFunctionDataView(F& Fn);
+
+  Syntax(FunctionDataView FnData)
+    : Syntax(FnData.CallFn, FnData.Storage.size())
+  {
+    // Storage
+    void const* OrigStorage = FnData.Storage.data();
+    size_t StorageLen       = FnData.Storage.size();
+    void* StoragePtr = getStoragePtr();
+    std::memcpy(StoragePtr, OrigStorage, StorageLen);
+  }
+
+  static size_t sizeToAlloc(FunctionDataView const& FnData) {
+    return totalSizeToAlloc<char>(FnData.Storage.size());
+  }
+
+  template <typename Allocator>
+  static void* allocate(Allocator& Alloc, FunctionDataView);
+
+  static bool classof(Value V) {
+    return V.getKind() == ValueKind::Syntax;
+  }
+  static ValueKind getKind() { return ValueKind::Syntax; }
+};
+
 // SyntaxClosure - Wraps an AST node with a captured environment
 //                 to lookup names when compiling.
 //                 Objects of this type are meant to be
@@ -1462,7 +1513,7 @@ public:
 
   // SetSyntax - Extend the syntactic environment.
   void SetSyntax(String* Name, Syntax* S) {
-    EnvMap[Name] = Value(S);
+    EnvMap[Name] = EnvEntry{Value(S)};
   }
 
   static bool classof(Value V) {
@@ -1613,6 +1664,7 @@ inline llvm::StringRef getKindName(heavy::ValueKind Kind) {
   GET_KIND_NAME_CASE(Quote)
   GET_KIND_NAME_CASE(String)
   GET_KIND_NAME_CASE(Symbol)
+  GET_KIND_NAME_CASE(Syntax)
   GET_KIND_NAME_CASE(SyntaxClosure)
   GET_KIND_NAME_CASE(Transformer)
   GET_KIND_NAME_CASE(Vector)
@@ -1665,6 +1717,26 @@ void* Lambda::allocate(Allocator& Alloc, Lambda::FunctionDataView FnData,
                        llvm::ArrayRef<heavy::Value> Captures) {
   size_t size = Lambda::sizeToAlloc(FnData, Captures.size());
   return heavy::allocate(Alloc, size, alignof(Lambda));
+}
+
+template <typename F>
+Syntax::FunctionDataView Syntax::createFunctionDataView(F& Fn) {
+  static_assert(std::is_trivially_copyable<F>::value,
+    "F must be trivially_copyable");
+  using FuncTy = std::remove_const_t<F>;
+  auto CallFn = [](void* Storage, heavy::OpGen& OpGen, Value Input) {
+    FuncTy& Func = *static_cast<FuncTy*>(Storage);
+    // llvm::errs() << "Func: " << __PRETTY_FUNCTION__ << '\n';
+    Func(OpGen, Input);
+  };
+  llvm::StringRef Storage(reinterpret_cast<char const*>(&Fn), sizeof(Fn));
+  return FunctionDataView{CallFn, Storage};
+}
+
+template <typename Allocator>
+void* Syntax::allocate(Allocator& Alloc, Syntax::FunctionDataView FnData) {
+  size_t size = Syntax::sizeToAlloc(FnData);
+  return heavy::allocate(Alloc, size, alignof(Syntax));
 }
 
 template <size_t StorageLen, size_t Alignment>
