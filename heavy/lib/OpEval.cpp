@@ -27,38 +27,9 @@ class OpEvalImpl {
   using ValueMapTy = llvm::ScopedHashTable<mlir::Value, heavy::Value>;
   using ValueMapScope = typename ValueMapTy::ScopeTy;
 
-  // FunctionEntryPointTy - Allows IR (not compiled) functions to affect
-  //                        control flow.
-  //
-  class FunctionEntryPointTy {
-    BlockItrTy Inst;
-    bool IsSet = false;
-
-    public:
-    operator bool() const {
-      return IsSet;
-    }
-
-    void operator=(BlockItrTy B) {
-      Inst = B;
-      IsSet = true;
-    }
-
-    // Gets the instruction and clears the state
-    BlockItrTy flush() {
-      assert(IsSet && "instruction must be set");
-      BlockItrTy Result = Inst;
-      Inst = BlockItrTy();
-      IsSet = false;
-      return Result;
-    }
-  };
-
   heavy::Context& Context;
-  BlockItrTy LastIp; // the last op evaluated
   ValueMapTy ValueMap;
   std::stack<ValueMapScope> ValueMapScopes;
-  FunctionEntryPointTy FunctionEntryPoint = {};
 
   void setValue(mlir::Value M, heavy::Value H) {
     assert(M && "must be set to a valid value");
@@ -109,7 +80,6 @@ class OpEvalImpl {
 public:
   OpEvalImpl(heavy::Context& C)
     : Context(C),
-      LastIp(),
       ValueMap(),
       ValueMapScopes()
   {
@@ -513,6 +483,55 @@ private:
     heavy::Value Result = Dummy.Cdr ? Dummy.Cdr : Empty{};
     setValue(Op, Result);
     return next(Op);
+  }
+
+  BlockItrTy Visit(SyntaxOp Op) {
+    mlir::Block& Body = Op.region().front();
+    BlockItrTy Itr = Body.begin();
+    // Enter the first pattern.
+    push_scope();
+    auto PatternOp = cast<heavy::PatternOp>(*Itr);
+    return PatternOp.region().front().begin();
+  }
+
+  BlockItrTy gotoNextPattern(mlir::Operation* O) {
+    // We should currently be in the scope of a PatternOp
+    assert((isa<MatchOp, MatchPairOp>(O)) &&
+        "Operation must be a pattern matcher");
+    // Abort the current pattern's scope
+    pop_scope();
+    mlir::Operation* Parent = O->getParentOp();
+    assert(isa<PatternOp>(Parent) && "Parent should be a  PatternOp");
+    BlockItrTy Itr = ++BlockItrTy(Parent);
+    if (O->getBlock()->end() == Itr) {
+      heavy::SourceLocation Loc = getSourceLocation(O->getLoc());
+      Context.OpGen->SetError(Loc, "no matching pattern for syntax",
+                              Undefined());
+      return BlockItrTy();
+    }
+
+    // Enter the next pattern
+    push_scope();
+    return cast<PatternOp>(*Itr).region().front().begin();
+  }
+
+  BlockItrTy Visit(MatchOp Op) {
+    heavy::Value P = Op.val();
+    heavy::Value E = getValue(Op.input());
+    if (equal(P, E)) {
+      return next(Op);
+    }
+    gotoNextPattern(Op);
+  }
+
+  BlockItrTy Visit(MatchPairOp Op) {
+    heavy::Value E = getValue(Op.input());
+    if (auto* Pair = dyn_cast<heavy::Pair>(E)) {
+      setValue(Op.car(), Pair->Car);
+      setValue(Op.cdr(), Pair->Cdr);
+      return next(Op);
+    }
+    gotoNextPattern(Op);
   }
 };
 

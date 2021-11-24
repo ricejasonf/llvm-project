@@ -234,6 +234,8 @@ public:
     return V;
   }
 
+  SourceLocation getLoc() const { return Loc; }
+
   SourceLocation getErrorLocation() {
     assert(Err && "requires an error be set");
     SourceLocation L = Err.getSourceLocation();
@@ -298,9 +300,17 @@ public:
 
   template <typename F>
   Lambda* CreateLambda(F Fn, llvm::ArrayRef<heavy::Value> Captures) {
-    auto FnData = Lambda::createFunctionDataView(Fn);
+    auto FnData = createOpaqueFn(Fn);
     void* Mem = Lambda::allocate(getAllocator(), FnData, Captures);
     Lambda* New = new (Mem) Lambda(FnData, Captures);
+
+    return New;
+  }
+  template <typename F>
+  Syntax* CreateSyntax(F Fn) {
+    auto FnData = createOpaqueFn(Fn);
+    void* Mem = Syntax::allocate(getAllocator(), FnData);
+    Syntax* New = new (Mem) Syntax(FnData);
 
     return New;
   }

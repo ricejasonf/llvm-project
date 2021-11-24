@@ -74,15 +74,17 @@ mlir::Value define_syntax(OpGen& OG, Pair* P) {
 mlir::Value syntax_rules(OpGen& OG, Pair* P) {
   Pair* P2 = dyn_cast<Pair>(P->Cdr);
   if (!P2) return OG.SetError("invalid syntax-rules syntax", P);
-  // check for optional ellipsis identifier
+  // Check for optional ellipsis identifier.
   Symbol* Ellipsis = dyn_cast<Symbol>(P2->Car);
   if (Ellipsis) {
     P2 = dyn_cast<Pair>(P2->Cdr);
     if (!P2) return OG.SetError("invalid syntax-rules syntax", P);
   } else {
-    Ellipsis = OpGen.getContext().CreateSymbol("...");
+    Ellipsis = OG.getContext().CreateSymbol("...");
   }
-  return OG.createSyntaxRules(Ellipsis, P2->Car, P2->Cdr);
+  // FIXME We have to give SyntaxOp an input mlir::Value.
+  return OG.createSyntaxRules(P->getSourceLocation(), Ellipsis, P2->Car,
+                              P2->Cdr);
 }
 
 mlir::Value lambda(OpGen& OG, Pair* P) {

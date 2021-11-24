@@ -15,9 +15,7 @@
 #include "heavy/Context.h"
 #include "heavy/OpGen.h"
 #include "heavy/Value.h"
-#include "heavy/ValueVisitor.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/SmallVector.h"
 
 namespace heavy {
 
@@ -27,17 +25,13 @@ namespace heavy {
 //      utility functions for creating operations that build
 //      literals interspersed with values.
 template <typename Derived>
-class TemplateBase : ValueVisitor<Derived, heavy::Value> {
+class TemplateBase {
 protected:
-  using Base = ValueVisitor<Derived, heavy::Value>;
-
   heavy::OpGen& OpGen;
 
-  TemplateBase(OpGen& O)
+  TemplateBase(heavy::OpGen& O)
     : OpGen(O)
   { }
-
-  using Base::getDerived;
 
   bool isRebuilt(heavy::Value V) {
     return (V.is<ValueSumType::Operation>() ||
@@ -62,11 +56,11 @@ protected:
     return Undefined();
   }
 
-  mlir::Operation* createLiteral(Value V) {
+  heavy::LiteralOp createLiteral(Value V) {
     return OpGen.create<LiteralOp>(V.getSourceLocation(), V);
   }
 
-  mlir::Operation* createList(SourceLocation Loc, heavy::Value X,
+  heavy::ConsOp createList(SourceLocation Loc, heavy::Value X,
                               heavy::Value Y) {
     mlir::Value ValX = createValue(X);
     mlir::Value ValY = createValue(Y);
@@ -75,14 +69,14 @@ protected:
         OpGen.create<ConsOp>(Loc, ValY, Empty));
   }
 
-  mlir::Operation* createCons(SourceLocation Loc, heavy::Value X,
+  heavy::ConsOp createCons(SourceLocation Loc, heavy::Value X,
                                                   heavy::Value Y) {
     mlir::Value ValX = createValue(X);
     mlir::Value ValY = createValue(Y);
     return OpGen.create<ConsOp>(Loc, ValX, ValY);
   }
 
-  mlir::Operation* createSplice(SourceLocation Loc, heavy::Value X,
+  heavy::SpliceOp createSplice(SourceLocation Loc, heavy::Value X,
                                 heavy::Value Y) {
     mlir::Value ValX = createValue(X);
     mlir::Value ValY = createValue(Y);

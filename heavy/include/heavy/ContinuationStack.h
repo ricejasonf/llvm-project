@@ -268,7 +268,7 @@ public:
   //    - Creates and pushes a temporary closure to the stack
   template <typename Fn>
   void PushCont(Fn const& F, llvm::ArrayRef<heavy::Value> Captures = {}) {
-    auto FnData = heavy::Lambda::createFunctionDataView(F);
+    auto FnData = heavy::createOpaqueFn(F);
     size_t size = Lambda::sizeToAlloc(FnData, Captures.size());
 
     void* Mem = allocate(size);
