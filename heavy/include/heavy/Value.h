@@ -92,6 +92,14 @@ using ValueFnTy   = void (Context&, ValueRefs);
 using ValueFn     = ValueFnTy*;
 using SyntaxFn    = mlir::Value (*)(OpGen&, Pair*);
 using TransformFn = Value (*)(Context&, Pair*);
+using OpaqueFnPtrTy = void(*)(void*, Context&, ValueRefs);
+struct OpaqueFn {
+  OpaqueFnPtrTy CallFn;
+  llvm::StringRef Storage;
+};
+template <typename F>
+static OpaqueFn createOpaqueFn(F& Fn);
+
 
 enum class ValueKind {
   Undefined = 0,
@@ -914,10 +922,8 @@ public:
   friend class llvm::TrailingObjects<Lambda, Value, char>;
   friend Context;
 
-  using FnPtrTy = void(*)(void*, Context&, ValueRefs);
-
 private:
-  FnPtrTy FnPtr;
+  OpaqueFnPtrTy FnPtr;
   unsigned short NumCaptures;
   unsigned short StorageLen;
 
@@ -931,25 +937,12 @@ private:
 
   void* getStoragePtr() { return getTrailingObjects<char>(); }
 
-  Lambda(FnPtrTy Fn, unsigned short NumCaptures,
-                     unsigned short StorageLen)
-    : ValueBase(ValueKind::Lambda)
-    , FnPtr(Fn)
-    , NumCaptures(NumCaptures)
-    , StorageLen(StorageLen)
-  { }
-
 public:
-  struct FunctionDataView {
-    Lambda::FnPtrTy CallFn;
-    llvm::StringRef Storage;
-  };
-
-  template <typename F>
-  static FunctionDataView createFunctionDataView(F& Fn);
-
-  Lambda(FunctionDataView FnData, llvm::ArrayRef<Value> Captures)
-    : Lambda(FnData.CallFn, Captures.size(), FnData.Storage.size())
+  Lambda(OpaqueFn FnData, llvm::ArrayRef<Value> Captures)
+    : ValueBase(ValueKind::Lambda),
+      FnPtr(FnData.CallFn),
+      NumCaptures(Captures.size()),
+      StorageLen(FnData.Storage.size())
   {
     // Storage
     void const* OrigStorage = FnData.Storage.data();
@@ -970,14 +963,14 @@ public:
   }
   static ValueKind getKind() { return ValueKind::Lambda; }
 
-  static size_t sizeToAlloc(FunctionDataView const& FnData,
+  static size_t sizeToAlloc(OpaqueFn const& FnData,
                             unsigned short NumCaptures) {
     return totalSizeToAlloc<Value, char>(NumCaptures,
                                          FnData.Storage.size());
   }
 
   template <typename Allocator>
-  static void* allocate(Allocator& Alloc, FunctionDataView,
+  static void* allocate(Allocator& Alloc, OpaqueFn,
                         llvm::ArrayRef<heavy::Value> Captures);
 
   size_t getObjectSize() {
@@ -1017,30 +1010,17 @@ class Syntax final
     private llvm::TrailingObjects<Syntax, char> {
   friend class llvm::TrailingObjects<Syntax, char>;
   friend Context;
-  using FnPtrTy = void(*)(void*, OpGen&, Value Input);
 
-  FnPtrTy FnPtr;
+  OpaqueFnPtrTy FnPtr;
   unsigned StorageLen;
-
-  Syntax(FnPtrTy Fn, unsigned short StorageLen)
-    : ValueBase(ValueKind::Syntax)
-    , FnPtr(Fn)
-    , StorageLen(StorageLen)
-  { }
 
   void* getStoragePtr() { return getTrailingObjects<char>(); }
 
 public:
-  struct FunctionDataView {
-    FnPtrTy CallFn;
-    llvm::StringRef Storage;
-  };
-
-  template <typename F>
-  static FunctionDataView createFunctionDataView(F& Fn);
-
-  Syntax(FunctionDataView FnData)
-    : Syntax(FnData.CallFn, FnData.Storage.size())
+  Syntax(OpaqueFn FnData)
+    : ValueBase(ValueKind::Syntax),
+      FnPtr(FnData.CallFn),
+      StorageLen(FnData.Storage.size())
   {
     // Storage
     void const* OrigStorage = FnData.Storage.data();
@@ -1049,12 +1029,12 @@ public:
     std::memcpy(StoragePtr, OrigStorage, StorageLen);
   }
 
-  static size_t sizeToAlloc(FunctionDataView const& FnData) {
+  static size_t sizeToAlloc(OpaqueFn const& FnData) {
     return totalSizeToAlloc<char>(FnData.Storage.size());
   }
 
   template <typename Allocator>
-  static void* allocate(Allocator& Alloc, FunctionDataView);
+  static void* allocate(Allocator& Alloc, OpaqueFn);
 
   static bool classof(Value V) {
     return V.getKind() == ValueKind::Syntax;
@@ -1512,8 +1492,8 @@ public:
   }
 
   // SetSyntax - Extend the syntactic environment.
-  void SetSyntax(String* Name, Syntax* S) {
-    EnvMap[Name] = EnvEntry{Value(S)};
+  void SetSyntax(Symbol* Name, Syntax* S) {
+    EnvMap[Name->getString()] = EnvEntry{Value(S)};
   }
 
   static bool classof(Value V) {
@@ -1691,7 +1671,7 @@ inline bool equal(Value V1, Value V2) {
 }
 
 template <typename F>
-Lambda::FunctionDataView Lambda::createFunctionDataView(F& Fn) {
+OpaqueFn createOpaqueFn(F& Fn) {
   // The way the llvm::TrailingObjects<Lambda, Value, char> works
   // is that the storage pointer (via char) has the same alignment as
   // its previous trailing objects' type `Value` which is pointer-like.
@@ -1709,32 +1689,18 @@ Lambda::FunctionDataView Lambda::createFunctionDataView(F& Fn) {
     Func(C, Values);
   };
   llvm::StringRef Storage(reinterpret_cast<char const*>(&Fn), sizeof(Fn));
-  return FunctionDataView{CallFn, Storage};
+  return OpaqueFn{CallFn, Storage};
 }
 
 template <typename Allocator>
-void* Lambda::allocate(Allocator& Alloc, Lambda::FunctionDataView FnData,
+void* Lambda::allocate(Allocator& Alloc, OpaqueFn FnData,
                        llvm::ArrayRef<heavy::Value> Captures) {
   size_t size = Lambda::sizeToAlloc(FnData, Captures.size());
   return heavy::allocate(Alloc, size, alignof(Lambda));
 }
 
-template <typename F>
-Syntax::FunctionDataView Syntax::createFunctionDataView(F& Fn) {
-  static_assert(std::is_trivially_copyable<F>::value,
-    "F must be trivially_copyable");
-  using FuncTy = std::remove_const_t<F>;
-  auto CallFn = [](void* Storage, heavy::OpGen& OpGen, Value Input) {
-    FuncTy& Func = *static_cast<FuncTy*>(Storage);
-    // llvm::errs() << "Func: " << __PRETTY_FUNCTION__ << '\n';
-    Func(OpGen, Input);
-  };
-  llvm::StringRef Storage(reinterpret_cast<char const*>(&Fn), sizeof(Fn));
-  return FunctionDataView{CallFn, Storage};
-}
-
 template <typename Allocator>
-void* Syntax::allocate(Allocator& Alloc, Syntax::FunctionDataView FnData) {
+void* Syntax::allocate(Allocator& Alloc, OpaqueFn FnData) {
   size_t size = Syntax::sizeToAlloc(FnData);
   return heavy::allocate(Alloc, size, alignof(Syntax));
 }
@@ -1757,7 +1723,7 @@ struct ExternLambda : public ExternValue<
   // it as a type-erased Scheme lambda
   template <typename F>
   void operator=(F f) {
-    auto FnData = Lambda::createFunctionDataView(f);
+    auto FnData = createOpaqueFn(f);
     void* Mem = Lambda::allocate(*this, FnData, /*Captures=*/{});
     Lambda* New = new (Mem) Lambda(FnData, /*Captures=*/{});
 

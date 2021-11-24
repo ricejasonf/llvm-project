@@ -153,6 +153,9 @@ public:
   mlir::Value GetSingleResult(heavy::Value V);
   mlir::ValueRange ExpandResults(mlir::Value Result);
 
+  // GetPatternVar - Get a SyntacticClosureOp by its name.
+  mlir::Value GetPatternVar(heavy::Symbol* S);
+
   void setModulePrefix(std::string&& Prefix) {
     ModulePrefix = std::move(Prefix);
   }
@@ -213,14 +216,12 @@ public:
     return heavy::Value();
   }
 
+  mlir::Value createEval(SourceLocation Loc, mlir::Value Input);
   mlir::Value createBody(SourceLocation Loc, Value Body);
   mlir::Value createSequence(SourceLocation Loc, Value Body);
   mlir::Value createSyntax(Symbol* S, Value SyntaxDef, Value OrigCall);
-  mlir::Value createSyntaxRules(Value Ellipsis,
-                                Value KeywordList,
-                                Value SyntaxDef);
-  mlir::Value createSyntaxRules(Value Ellipsis,
-                                NameSet& Keywords,
+  mlir::Value createSyntaxRules(SourceLocation Loc, mlir::Value Input,
+                                Symbol* Ellipsis, Value KeywordList,
                                 Value SyntaxDef);
   mlir::Value createIf(SourceLocation Loc, Value Cond, Value Then,
                             Value Else);
@@ -260,8 +261,8 @@ public:
   }
 
   mlir::Value LocalizeValue(mlir::Value V, heavy::Value B = nullptr);
+  mlir::Value VisitEnvEntry(heavy::SourceLocation Loc, EnvEntry Entry);
 
-private:
   mlir::Value LocalizeRec(heavy::Value B,
                           mlir::Value V,
                           mlir::Operation* Owner,
@@ -292,13 +293,13 @@ private:
   }
 
   mlir::Value VisitSymbol(Symbol* S);
-  mlir::Value VisitEnvEntry(heavy::SourceLocation Loc, EnvEntry Entry);
   mlir::Value VisitBinding(Binding* B);
-
-  mlir::Value HandleCall(Pair* P);
 
   mlir::Value VisitPair(Pair* P);
   // TODO mlir::Value VisitVector(Vector* V);
+
+private:
+  mlir::Value HandleCall(Pair* P);
 };
 
 }

@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "PatternTemplate.h"
 #include "heavy/Builtins.h"
 #include "heavy/Context.h"
 #include "heavy/Dialect.h"
@@ -61,6 +62,12 @@ mlir::Value OpGen::GetSingleResult(heavy::Value V) {
   TailPosScope TPS(*this);
   IsTailPos = false;
   mlir::Value Result = Visit(V);
+  // mlir::Value() is only returned for expressions in tail position
+  //               or syntax that should not be used outside proper
+  //               context such as `import`, `define-syntax`, etc.
+  if (!Result) {
+      return SetError("expecting expression", V);
+  }
   if (auto BlockArg = Result.dyn_cast<mlir::BlockArgument>()) {
     // the size includes the closure object
     if (BlockArg.getOwner()->getArguments().size() != 2) {
@@ -78,6 +85,14 @@ mlir::ValueRange OpGen::ExpandResults(mlir::Value Result) {
     auto BlockArg = Result.cast<mlir::BlockArgument>();
     return BlockArg.getOwner()->getArguments().drop_front();
   }
+}
+
+mlir::Value OpGen::GetPatternVar(heavy::Symbol* S) {
+  heavy::Value SC = Context.Lookup(S).Value;
+  assert(isa<SyntaxClosure>(SC) && "expecting syntax closure");
+  mlir::Value SCV = BindingTable.lookup(SC);
+  assert(SCV && "syntax closure not found in binding table");
+  return SCV;
 }
 
 mlir::Operation* OpGen::VisitTopLevel(Value V) {
@@ -168,15 +183,6 @@ mlir::FunctionType OpGen::createFunctionType(unsigned Arity,
   return Builder.getFunctionType(Types, ValueT);
 }
 
-mlir::FunctionType OpGen::createSyntaxFunctionType() {
-  mlir::Type OpGenT     = Builder.getType<HeavyOpGenTy>();
-  mlir::Type PairT      = Builder.getType<HeavyPairTy>();
-  mlir::Type MlirValueT = Builder.getType<HeavyMlirValueTy>();
-
-  // mlir::Value (*)(OpGen&, Pair*);
-  return Builder.getFunctionType({OpGenTy, PairTy}, MlirValueTy);
-}
-
 mlir::Value OpGen::createLambda(Value Formals, Value Body,
                                 SourceLocation Loc,
                                 llvm::StringRef Name) {
@@ -241,86 +247,90 @@ bool OpGen::isLocalDefineAllowed() {
 }
 
 mlir::Value OpGen::createSyntax(Symbol* S, Value SyntaxDef, Value OrigCall) {
-  auto* Syntax = dyn_cast<heavy::Syntax>(OpGen.GetSingleResult(SyntaxDef))
-  if (!Syntax) {
-    return SetError("expecting syntax object");
+  auto Result = GetSingleResult(SyntaxDef);
+  auto SyntaxOp = Result.getDefiningOp<heavy::SyntaxOp>();
+  if (!SyntaxOp) {
+    return SetError("expecting syntax object", SyntaxDef);
   }
+  auto Fn = [SyntaxOp](heavy::Context& C, ValueRefs Args) -> void {
+    heavy::Value Input = Args[0];
+    heavy::Value Result = eval(C, Input);
+    C.Cont(Result);
+  };
+  heavy::Syntax* Syntax = Context.CreateSyntax(Fn);
 
   if (isTopLevel()) {
     Environment* Env = cast<Environment>(Context.EnvStack);
-    Env->SetSyntax(Syntax);
+    Env->SetSyntax(S, Syntax);
   } else {
     Binding* B = Context.CreateBinding(S, Syntax);
     Context.PushLocalBinding(B);
   }
-  // No operation should be created.
-  return Value();
+  return mlir::Value();
 }
 
-mlir::Value OpGen::createSyntaxRules(llvm::StringRef Name,
+mlir::Value OpGen::createSyntaxRules(SourceLocation Loc,
+                                     mlir::Value Input,
                                      Symbol* Ellipsis, 
                                      heavy::Value KeywordList,
-                                     heavy::Value SyntaxDef) {
+                                     heavy::Value PatternDefs) {
   // Expect list of unique literal identifiers.
   llvm::SmallPtrSet<String*, 4> Keywords;
   auto insertKeyword = [&](Value V) -> bool {
     Symbol* S = dyn_cast<Symbol>(V);
     if (!S) {
-      return OG.setError("expecting keyword literal");
+      SetError("expecting keyword literal", V);
+      return true;
     }
     if (S->equals(Ellipsis)) {
-      return OG.setError(S->getSourceLocation(),
-        "keyword literal cannot be same as ellipsis");
+      SetError("keyword literal cannot be same as ellipsis", S);
+      return true;
     }
     bool Inserted;
     std::tie(std::ignore, Inserted) = Keywords.insert(S->getString());
     if (!Inserted) {
-      return OG.setError(S->getSourceLocation(),
-                  "keyword specified multiple times");
+      SetError("keyword specified multiple times", S);
+      return true;
     }
   };
-  Value IdList = P2->Car;
-  while (Pair* X = dyn_cast<Pair>(IdList)) {
+  while (Pair* X = dyn_cast<Pair>(KeywordList)) {
     Context.setLoc(X);
-    if (insertKeyword(IdList->Car)) {
-      return OG.Error();
-    }
-    IdList = X->Cdr;
-  }
-  if (!isa<Empty>(IdList)) {
-    return OG.SetError("expecting keyword list", P2);
-  }
-  Value PTList = P2->Cdr;
-  
-  while (Pair* X = dyn_cast<Pair>(PTList)) {
     if (insertKeyword(X->Car)) {
-      return OG.Error();
+      return Error();
     }
-    IdList = X->Cdr;
+    KeywordList = X->Cdr;
   }
-  return createSyntaxRules(Name, Ellipsis, Keywords, SyntaxDef);
-}
+  if (!isa<Empty>(KeywordList)) {
+    return SetError("expecting keyword list", KeywordList);
+  }
 
-mlir::Value OpGen::createSyntaxRules(
-                              heavy::Value Ellipsis,
-                              llvm::SmallPtrSetImpl<heavy::Value>& Keywords,
-                              heavy::Value SyntaxDef) {
-  auto Syntax = create<heavy::Syntax>(Loc);
-  mlir::Block& Block = Syntax.region().emplaceBlock();
-  Builder.setInsertionPointToStart(Block);
+  // Create the SyntaxOp
+  auto SyntaxOp = create<heavy::SyntaxOp>(Loc, Input);
+  mlir::Block& Block = SyntaxOp.region().emplaceBlock();
+  Builder.setInsertionPointToStart(&Block);
 
   // iterate through each pattern/template pair
-  while (Pair* X = dyn_cast<Pair>(SyntaxDef)) {
-    Pair* Y = dyn_cast<Pair>(X.Car):
-    if (!Y || !isa<Pair>(Y.Car) || !isa<Pair>(Y.Cdr) ||
-        !isa<Empty>(cast<Pair>(Y.Cdr).Cdr)) {
-      return OG.SetError("expecting pattern template pair");
+  while (Pair* X = dyn_cast<Pair>(PatternDefs)) {
+    heavy::Pair* Pattern = dyn_cast<Pair>(X->Car);
+    heavy::Pair* Template = dyn_cast<Pair>(X->Cdr.car());
+    bool IsProperPT = isa<Empty>(X->Cdr.cdr());
+    if (!Pattern || !Template || !IsProperPT) {
+      return SetError("expecting pattern template pair", X);
     }
-    Pair* Z = cast<Pair>(Y.Cdr);
-    PatternTemplate PT(OpGen, Ellipsis, Keywords);
-    PT.VisitPatternTemplate(Y.Car, Z.Car);
+
+    mlir::OpBuilder::InsertionGuard IG(Builder);
+    auto PatternOp = create<heavy::PatternOp>(Pattern->getSourceLocation());
+    mlir::Block& B = PatternOp.region().emplaceBlock();
+    Builder.setInsertionPointToStart(&B);
+    PatternTemplate PT(*this, Ellipsis, Keywords);
+
+    PT.VisitPatternTemplate(Pattern, Template, SyntaxOp.input());
+    PatternDefs = X->Cdr;
   }
-  return Syntax.result();
+  if (!isa<Empty>(PatternDefs) || Block.empty()) {
+    return SetError("expecting list of pattern templates pairs", PatternDefs);
+  }
+  return SyntaxOp.result();
 }
 
 // processSequence creates a sequence of operations in the current block
@@ -611,22 +621,20 @@ mlir::Value OpGen::VisitSymbol(Symbol* S) {
 
 mlir::Value OpGen::VisitEnvEntry(heavy::SourceLocation Loc, EnvEntry Entry) {
   if (Entry.MangledName) {
-    {
-      llvm::StringRef SymName = Entry.MangledName->getView();
-      mlir::ModuleOp M = Context.OpGen->getModuleOp();
-      Operation* G = M.lookupSymbol(SymName);
-      if (!G) {
-        // Lazily insert extern GlobalOps
-        // at the beginning of the module.
-        // Note that OpEval will never visit these.
-        mlir::OpBuilder::InsertionGuard IG(Builder);
-        Builder.setInsertionPointToStart(M.getBody());
-        G = create<GlobalOp>(Loc, SymName).getOperation();
-      }
-      mlir::Value LocalV = BindingTable.lookup(Entry.Value);
-      mlir::Value V = LocalV ? LocalV : G->getResult(0);
-      return LocalizeValue(V, Entry.Value);
+    llvm::StringRef SymName = Entry.MangledName->getView();
+    mlir::ModuleOp M = Context.OpGen->getModuleOp();
+    Operation* G = M.lookupSymbol(SymName);
+    if (!G) {
+      // Lazily insert extern GlobalOps
+      // at the beginning of the module.
+      // Note that OpEval will never visit these.
+      mlir::OpBuilder::InsertionGuard IG(Builder);
+      Builder.setInsertionPointToStart(M.getBody());
+      G = create<GlobalOp>(Loc, SymName).getOperation();
     }
+    mlir::Value LocalV = BindingTable.lookup(Entry.Value);
+    mlir::Value V = LocalV ? LocalV : G->getResult(0);
+    return LocalizeValue(V, Entry.Value);
   }
 
   return GetSingleResult(Entry.Value);
@@ -674,9 +682,9 @@ mlir::Value OpGen::HandleCall(Pair* P) {
   return createContinuation(Op.initCont());
 }
 
-mlir::Value OpGen::createEval(mlir::Value Input) {
+mlir::Value OpGen::createEval(SourceLocation Loc, mlir::Value Input) {
   // Currently default to the current environment.
-  auto EvalOp = create<heavy::EvalOp>(Input);
+  auto EvalOp = create<heavy::EvalOp>(Loc, Input);
   if (IsTailPos) return mlir::Value();
   return createContinuation(EvalOp.initCont());
 }
