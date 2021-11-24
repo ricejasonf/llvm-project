@@ -49,13 +49,13 @@ void Dialect::printType(mlir::Type Type,
   char const* Name;
   if (Type.isa<HeavyValueTy>()) {
     Name = "value";
-  } else if (Type.isa<HeavyPairTy>) {
+  } else if (Type.isa<HeavyPairTy>()) {
     Name = "pair";
-  } else if (Type.isa<HeavySyntaxTy>) {
+  } else if (Type.isa<HeavySyntaxTy>()) {
     Name = "syntax";
-  } else if (Type.isa<HeavyOpGenTy>) {
+  } else if (Type.isa<HeavyOpGenTy>()) {
     Name = "OpGen&";
-  } else if (Type.isa<HeavyMlirValueTy>) {
+  } else if (Type.isa<HeavyMlirValueTy>()) {
     Name = "MlirValue";
   } else {
     llvm_unreachable("no other types in dialect");
@@ -163,6 +163,7 @@ void SyntaxClosureOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
 
 void SyntaxOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                      mlir::Value input) {
+  // FIXME This should have a return type of HeavySyntax
   mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
   SyntaxOp::build(B, OpState, HeavyValueT, input);
 }

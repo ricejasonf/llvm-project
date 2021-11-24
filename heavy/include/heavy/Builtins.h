@@ -165,12 +165,12 @@ inline void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     // syntax
     {"define",        HEAVY_BASE_VAR(define)},
     {"define-syntax", HEAVY_BASE_VAR(define_syntax)},
-    {"syntax-rules",  HEAVY_BASE_VAR(syntax_rules)},
     {"if",            HEAVY_BASE_VAR(if)},
     {"lambda",        HEAVY_BASE_VAR(lambda)},
     {"quasiquote",    HEAVY_BASE_VAR(quasiquote)},
     {"quote",         HEAVY_BASE_VAR(quote)},
     {"set!",          HEAVY_BASE_VAR(set)},
+    {"syntax-rules",  HEAVY_BASE_VAR(syntax_rules)},
 
     // functions
     {"+",       HEAVY_BASE_VAR(add)},

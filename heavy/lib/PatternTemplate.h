@@ -18,7 +18,6 @@
 #include "heavy/Value.h"
 #include "heavy/ValueVisitor.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/SmallVector.h"
 
 namespace heavy {
 
@@ -26,15 +25,20 @@ namespace heavy {
 //    - Generate code to match patterns and bind pattern variables
 //      See R7RS 4.3.2 Pattern Language.
 //    - Generate code for templates by visiting them with OpGen with
-//      the pattern variables as SyntacticClosures
+//      the pattern variables as SyntacticClosures (in TemplateGen)
 class PatternTemplate : ValueVisitor<PatternTemplate, mlir::Value> {
+  friend ValueVisitor<PatternTemplate, mlir::Value>;
   heavy::OpGen& OpGen;
   Symbol* Ellipsis;
-  NameSet& Keywords,
+  NameSet& Keywords;
   llvm::SmallPtrSet<String*, 4> PatternVars;
 
   // P - the pattern node
   // E - the input to match
+
+  SourceLocation getLoc() {
+    return OpGen.getContext().getLoc();
+  }
 
 public:
   PatternTemplate(heavy::OpGen& O,
@@ -47,15 +51,12 @@ public:
   { }
 
   // VisitPatternTemplate should be called with OpGen's insertion point in
-  // the body of the function.
-  mlir::Value VisitPatternTemplate(heavy::Pair* Pattern, heavy::Pair* Template) {
-    mlir::OpBuilder::InsertionGuard IG(Builder);
-    auto PatternOp = OpGen.create<heavy::PatternOp>();
-    Block& B = PatternOp.region().emplaceBlock();
-    Builder.setInsertionPointToStart(B);
-    Visit(Pattern);
-
-    TemplateGen TG(OpGen, PatternVars);
+  // the body of PatternOp
+  mlir::Value VisitPatternTemplate(heavy::Pair* Pattern,
+                                   heavy::Pair* Template, 
+                                   mlir::Value E) {
+    Visit(Pattern, E);
+    TemplateGen TG(OpGen, PatternVars, Ellipsis);
     TG.VisitTemplate(Template);
 
     return mlir::Value();
@@ -64,21 +65,24 @@ public:
   // returns true if insertion was successful
   mlir::Value bindPatternVar(Symbol* S, mlir::Value E) {
     bool Inserted;
-    std::tie(std::ignore, Inserted) = PatternVars.insert(S->getString())
+    std::tie(std::ignore, Inserted) = PatternVars.insert(S->getString());
     if (!Inserted) {
-      OG.setError(S->getSourceLocation(),
-                  "pattern variable name appears in pattern multiple times");
+      OpGen.SetError(
+        "pattern variable name appears in pattern multiple times", S);
     }
     // Create a local variable with a SyntaxClosure of E as the initializer.
-    auto SynClo = OpGen->create<SyntaxClosureOp>(E);
-    Context.PushLocalBinding(B);
+    heavy::SourceLocation Loc = S->getSourceLocation();
+    auto SynClo = OpGen.create<SyntaxClosureOp>(Loc, E);
+    heavy::Context& C = OpGen.getContext();
+    Binding* B = C.CreateBinding(S, SynClo.getOperation());
+    OpGen.getContext().PushLocalBinding(B);
     return OpGen.createBinding(B, SynClo);
   }
 
   mlir::Value VisitValue(Value P, mlir::Value E) {
     // Disallow nodes that aren't explicitly allowed
     // in the specification. (r7rs 4.3.2)
-    return OG.setError("invalid pattern node");
+    return OpGen.SetError("invalid pattern node", P);
   }
 
   mlir::Value VisitPair(Pair* P, mlir::Value E) {
@@ -94,25 +98,35 @@ public:
   }
 
   mlir::Value VisitSymbol(Symbol* P, mlir::Value E) {
-    // <pattern identifier> (literal identifier)
-    if (Keywords.contains(P->getString())) {
-      return mlir::Value();
-    }
-
     // <underscore>
     if (P->equals("_")) {
+      // Since _ always matches anything, there is
+      // nothing to check.
       return mlir::Value(); 
+    }
+
+    // <pattern identifier> (literal identifier)
+    if (Keywords.contains(P->getString())) {
+      SourceLocation Loc = P->getSourceLocation();
+      EnvEntry Entry = OpGen.getContext().Lookup(P);
+      if (!Entry) {
+        // If the symbol is unbound just use the symbol.
+        OpGen.create<heavy::MatchOp>(Loc, P, E);
+        return mlir::Value();
+      } else {
+        // FIXME This will create captures for local syntax which
+        //       never need this. Exported syntax always refer to
+        //       globals.
+        // Match against the binding or instance of value itself.
+        mlir::Value PV = OpGen.VisitEnvEntry(Loc, Entry);
+        OpGen.create<heavy::MatchIdOp>(Loc, PV, E);
+        return mlir::Value();
+      }
     }
 
     // <ellipsis>
     if (P->equals(Ellipsis)) {
-      return OpGen.setError("<ellipsis> is not a valid pattern");
-    }
-
-    // free variables
-    EnvEntry Entry = OpGen.Context.Lookup(P);
-    if (Entry) {
-      return OpGen.VisitEnvEntry(Loc, Entry);
+      return OpGen.SetError("<ellipsis> is not a valid pattern", P);
     }
 
     // everything else is a pattern variable
@@ -124,25 +138,25 @@ public:
 
   mlir::Value VisitString(String* P, mlir::Value E) {
     // <pattern datum> -> <string>
-    OpGen.create<heavy::MatchOp>(P, E);
+    OpGen.create<heavy::MatchOp>(getLoc(), P, E);
     return mlir::Value();
   }
 
   mlir::Value VisitBool(Bool P, mlir::Value E) {
     // <pattern datum> -> <boolean>
-    OpGen.create<heavy::MatchOp>(P, E);
+    OpGen.create<heavy::MatchOp>(getLoc(), P, E);
     return mlir::Value();
   }
 
   mlir::Value VisitInt(Int P, mlir::Value E) {
     // <pattern datum> -> <number>
-    OpGen.create<heavy::MatchOp>(P, E);
+    OpGen.create<heavy::MatchOp>(getLoc(), P, E);
     return mlir::Value();
   }
 
   mlir::Value VisitFloat(Float* P, mlir::Value E) {
     // <pattern datum> -> <number>
-    OpGen.create<heavy::MatchOp>(P, E);
+    OpGen.create<heavy::MatchOp>(getLoc(), P, E);
     return mlir::Value();
   }
 };
