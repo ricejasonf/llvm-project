@@ -300,13 +300,27 @@ def heavy_MatchOp : HeavyOp<"match", [HasParent<"PatternOp">]> {
   let summary = "match";
   let description = [{
     As a component of pattern matching, this checks if a value
-    is equal (in terms of `equal?`) to the input attribute. This
-    attribute should be a leaf constant value.
-    Matching operations should be members of a graph region contained
-    within a PatternOp.
+    is equal (in terms of `equal?`) to the input attribute.
+    For scheme 'symbols', MatchOp will check for equivalent bindings.
+    This attribute should be a leaf constant value.
   }];
 
   let arguments = (ins HeavyValueAttr:$val, HeavyValue:$input);
+  let results   = (outs);
+
+  let builders = [
+    OpBuilder<(ins "::heavy::Value":$val, "::mlir::Value":$input)>
+  ];
+}
+
+def heavy_MatchIdOp : HeavyOp<"match-id", [HasParent<"PatternOp">]> {
+  let summary = "match-id";
+  let description = [{
+    Perform matching of a non-static value and input value such that they
+    have the same binding or pointer address.
+  }];
+
+  let arguments = (ins HeavyValue:$val, HeavyValue:$input);
   let results   = (outs);
 
   let builders = [
@@ -319,8 +333,6 @@ def heavy_MatchPairOp : HeavyOp<"match_pair", [HasParent<"PatternOp">]> {
   let description = [{
     As a component of pattern matching, this checks if a value
     is a pair and destructures it.
-    Matching operations should be members of a graph region contained
-    within a PatternOp.
   }];
 
   let arguments = (ins HeavyValue:$input);
@@ -331,18 +343,13 @@ def heavy_MatchPairOp : HeavyOp<"match_pair", [HasParent<"PatternOp">]> {
   ];
 }
 
-def heavy_PatternOp : HeavyOp<"pattern", [HasOnlyGraphRegion,
-                                          NoTerminator,
-                                          HasParent<"SyntaxOp">]> {
+def heavy_PatternOp : HeavyOp<"pattern", [HasParent<"SyntaxOp">]> {
   let description = [{
     PatternOp represents the pattern in a pattern/template
-    pair as part of the syntax-rules transform specifier. The contained
-    graph region should contain matching operations on the input syntax,
-    as well as ConsOps for the template, and an EvalOp on the constructed AST.
-
-    It should be possible to inline nested syntaxes and possibly bypass
-    generating intermediate AST altogether if all of the inputs that would
-    affect code generation are known.
+    pair as part of the syntax-rules transform specifier. The 
+    region should contain matching operations on the input syntax,
+    as well as ConsOps for the template, terminating with an EvalOp
+    on the constructed AST.
   }];
 
   let arguments = (ins);
@@ -420,8 +427,12 @@ def heavy_SyntaxOp: HeavyOp<"syntax", [NoTerminator]> {
     Semantics are implied for chaining and failure to find a match.
   }];
 
+  let regions   = (region SizedRegion<1>:$region);
   let arguments = (ins HeavyValue:$input);
-  let results = (outs HeavySyntax:$result);
+  let results   = (outs HeavySyntax:$result);
+  let builders  = [
+    OpBuilder<(ins "::mlir::Value":$input)>
+  ];
 }
 
 def heavy_UndefinedOp : HeavyOp<"undefined", [NoSideEffect]> {
