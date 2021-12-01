@@ -29,8 +29,9 @@ namespace heavy {
 class PatternTemplate : ValueVisitor<PatternTemplate, mlir::Value> {
   friend ValueVisitor<PatternTemplate, mlir::Value>;
   heavy::OpGen& OpGen;
+  Symbol* Keyword;
   Symbol* Ellipsis;
-  NameSet& Keywords;
+  NameSet& Literals;
   llvm::SmallPtrSet<String*, 4> PatternVars;
 
   // P - the pattern node
@@ -42,22 +43,39 @@ class PatternTemplate : ValueVisitor<PatternTemplate, mlir::Value> {
 
 public:
   PatternTemplate(heavy::OpGen& O,
+                  heavy::Symbol* Keyword,
                   heavy::Symbol* Ellipsis,
-                  NameSet& Keywords)
+                  NameSet& Literals)
     : OpGen(O),
+      Keyword(Keyword),
       Ellipsis(Ellipsis),
-      Keywords(Keywords),
+      Literals(Literals),
       PatternVars()
   { }
 
   // VisitPatternTemplate should be called with OpGen's insertion point in
   // the body of PatternOp
-  mlir::Value VisitPatternTemplate(heavy::Pair* Pattern,
-                                   heavy::Pair* Template, 
+  mlir::Value VisitPatternTemplate(heavy::Value Pattern,
+                                   heavy::Value Template, 
                                    mlir::Value E) {
-    Visit(Pattern, E);
-    TemplateGen TG(OpGen, PatternVars, Ellipsis);
-    TG.VisitTemplate(Template);
+    heavy::SourceLocation Loc = Pattern.getSourceLocation();
+    heavy::Context& C = OpGen.getContext();
+    if (isa_and_nonnull<Symbol>(Pattern.car())) {
+      // Ignore the initial keyword.
+      // FIXME We don't actually check name, but other
+      //       implementations simply ignore the first
+      //       element altogether.
+      Pair* P = cast<Pair>(Pattern);
+      auto MatchPairOp = OpGen.create<heavy::MatchPairOp>(Loc, E);
+      Visit(P->Cdr, MatchPairOp.cdr());
+    } else {
+      Visit(Pattern, E);
+    }
+
+    if (!C.CheckError()) {
+      TemplateGen TG(OpGen, PatternVars, Ellipsis);
+      TG.VisitTemplate(Template);
+    }
 
     return mlir::Value();
   }
@@ -75,7 +93,7 @@ public:
     auto SynClo = OpGen.create<SyntaxClosureOp>(Loc, E);
     heavy::Context& C = OpGen.getContext();
     Binding* B = C.CreateBinding(S, SynClo.getOperation());
-    OpGen.getContext().PushLocalBinding(B);
+    C.PushLocalBinding(B);
     return OpGen.createBinding(B, SynClo);
   }
 
@@ -91,8 +109,12 @@ public:
     heavy::SourceLocation Loc = P->getSourceLocation();
     auto MatchPairOp = OpGen.create<heavy::MatchPairOp>(Loc, E);
 
+    heavy::Context& C = OpGen.getContext();
+
     Visit(P->Car, MatchPairOp.car());
-    Visit(P->Cdr, MatchPairOp.cdr());
+    if (!C.CheckError()) {
+      Visit(P->Cdr, MatchPairOp.cdr());
+    }
 
     return mlir::Value();
   }
@@ -106,7 +128,7 @@ public:
     }
 
     // <pattern identifier> (literal identifier)
-    if (Keywords.contains(P->getString())) {
+    if (Literals.contains(P->getString())) {
       SourceLocation Loc = P->getSourceLocation();
       EnvEntry Entry = OpGen.getContext().Lookup(P);
       if (!Entry) {
@@ -135,6 +157,11 @@ public:
 
   // Note: MatchOp is an implicitly chaining operation so
   // it has no result.
+
+  mlir::Value VisitEmpty(Empty P, mlir::Value E) {
+    OpGen.create<heavy::MatchOp>(getLoc(), P, E);
+    return mlir::Value();
+  }
 
   mlir::Value VisitString(String* P, mlir::Value E) {
     // <pattern datum> -> <string>
