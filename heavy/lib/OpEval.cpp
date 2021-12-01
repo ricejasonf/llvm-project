@@ -106,6 +106,21 @@ public:
     Context.Resume();
   }
 
+  // InvokeSyntax - There is no operation to invoke syntax
+  //                so provide an interface to functions
+  //                to wrap non-compiled SyntaxOps.
+  void InvokeSyntax(SyntaxOp Op, Value Input) {
+    mlir::Block& Body = Op.region().front();
+    BlockItrTy Itr = Body.begin();
+    // Enter the first pattern.
+    auto PatternOp = cast<heavy::PatternOp>(*Itr);
+    push_scope();
+    Itr = PatternOp.region().front().begin();
+    while (Itr != BlockItrTy()) {
+      Itr = Visit(&*Itr);
+    }
+  }
+
 private:
   void push_scope() {
     ValueMapScopes.emplace(ValueMap);
@@ -163,6 +178,7 @@ private:
     else if (isa<CommandOp>(Op))      return Visit(cast<CommandOp>(Op));
     else if (isa<PushContOp>(Op))     return Visit(cast<PushContOp>(Op));
     else if (isa<FuncOp>(Op))         return next(Op); // skip functions
+    else if (isa<SyntaxOp>(Op))       return next(Op); // skip syntax fns
     else if (UndefinedOp UndefOp = dyn_cast<UndefinedOp>(Op)) {
       setValue(UndefOp, Context.CreateUndefined());
       return next(Op);
@@ -485,15 +501,6 @@ private:
     return next(Op);
   }
 
-  BlockItrTy Visit(SyntaxOp Op) {
-    mlir::Block& Body = Op.region().front();
-    BlockItrTy Itr = Body.begin();
-    // Enter the first pattern.
-    push_scope();
-    auto PatternOp = cast<heavy::PatternOp>(*Itr);
-    return PatternOp.region().front().begin();
-  }
-
   BlockItrTy gotoNextPattern(mlir::Operation* O) {
     // We should currently be in the scope of a PatternOp
     assert((isa<MatchOp, MatchPairOp>(O)) &&
@@ -537,6 +544,13 @@ private:
 
 void opEval(OpEval& E, mlir::Operation* Op) {
   E.Impl->Eval(Op);
+}
+
+void invokeSyntaxOp(heavy::Context& C, mlir::Operation* Op,
+                    heavy::Value Value) {
+  OpEval E(C);
+  auto SyntaxOp = cast<heavy::SyntaxOp>(Op);
+  E.Impl->InvokeSyntax(SyntaxOp, Value);
 }
 
 OpEval::OpEval(heavy::Context& C)

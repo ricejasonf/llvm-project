@@ -60,6 +60,8 @@ Value eval(Context&, Value V, Value EnvStack = nullptr);
 void write(llvm::raw_ostream&, Value);
 
 void opEval(OpEval&, mlir::Operation*);
+void invokeSyntaxOp(heavy::Context& C, mlir::Operation* Op,
+                    heavy::Value Value);
 
 class OpEvalImpl;
 struct OpEval {
