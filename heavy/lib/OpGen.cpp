@@ -28,9 +28,6 @@
 
 using namespace heavy;
 
-namespace {
-}
-
 OpGen::OpGen(heavy::Context& C)
   : Context(C),
     ModuleBuilder(&(C.MlirContext)),
@@ -300,8 +297,8 @@ mlir::Value OpGen::createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall) {
 
   auto Fn = [SyntaxOp](heavy::Context& C, ValueRefs Args) -> void {
     heavy::Value Input = Args[0];
-    heavy::Value Result = eval(C, Input);
-    C.Cont(Result);
+    invokeSyntaxOp(C, SyntaxOp, Input);
+    C.Cont();
   };
   heavy::Syntax* Syntax = Context.CreateSyntax(Fn);
 
