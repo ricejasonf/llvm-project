@@ -89,10 +89,15 @@ mlir::ValueRange OpGen::ExpandResults(mlir::Value Result) {
 
 mlir::Value OpGen::GetPatternVar(heavy::Symbol* S) {
   heavy::Value SC = Context.Lookup(S).Value;
-  assert(isa<SyntaxClosure>(SC) && "expecting syntax closure");
-  mlir::Value SCV = BindingTable.lookup(SC);
-  assert(SCV && "syntax closure not found in binding table");
-  return SCV;
+  if (Binding* B = dyn_cast<Binding>(SC)) {
+    SC = B->getValue();
+  }
+  if (auto* Op = dyn_cast<mlir::Operation>(SC)) {
+    return cast<SyntaxClosureOp>(Op);
+  }
+  llvm_unreachable("syntax closure not found in binding table");
+  //mlir::Value SCV = BindingTable.lookup(SC);
+  //return SCV;
 }
 
 mlir::Operation* OpGen::VisitTopLevel(Value V) {
@@ -246,12 +251,53 @@ bool OpGen::isLocalDefineAllowed() {
           isa<BindingOp>(Block->back()));
 }
 
-mlir::Value OpGen::createSyntax(Symbol* S, Value SyntaxDef, Value OrigCall) {
-  auto Result = GetSingleResult(SyntaxDef);
+// createSyntaxSpec
+//  - SyntaxSpec is the full <Keyword> <TransformerSpec> pair
+//    that is passed to the syntax function.
+//  - OrigCall is likely (define-syntax ...) or (let-syntax ...)
+mlir::Value OpGen::createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall) {
+  mlir::Value Result;
+
+  Symbol* Keyword = dyn_cast<Symbol>(SyntaxSpec->Car);
+  if (!Keyword) return SetError("expecting syntax spec keyword", SyntaxSpec);
+  Pair* TransformerSpec = dyn_cast<Pair>(SyntaxSpec->Cdr.car());
+  if (!TransformerSpec || !isa<Empty>(SyntaxSpec->Cdr.cdr())) {
+    return SetError("invalid syntax spec", SyntaxSpec);
+  }
+  if (Symbol* TS = dyn_cast_or_null<Symbol>(TransformerSpec->Car)) {
+    // Operator is typically syntax-rules here.
+    if (Value Operator = Context.Lookup(TS).Value) {
+      // Invoke the syntax with the entire SyntaxSpec
+      // so syntax-rules et al. can know the Keyword.
+      switch (Operator.getKind()) {
+      case ValueKind::BuiltinSyntax: {
+        BuiltinSyntax* BS = cast<BuiltinSyntax>(Operator);
+        Result = BS->Fn(*this, SyntaxSpec);
+        break;
+      }
+      case ValueKind::Syntax: {
+        Value Input = SyntaxSpec;
+        Context.Run(Operator, ValueRefs(Input));
+        Result = toValue(Context.getCurrentResult());
+        break;
+      }
+      default: {
+        Result = mlir::Value();
+        break;
+      }}
+    }
+  }
+
+  if (Context.CheckError()) return Result;
+  if (!Result) {
+    return SetError("expecting syntax object", SyntaxSpec);
+  }
+
   auto SyntaxOp = Result.getDefiningOp<heavy::SyntaxOp>();
   if (!SyntaxOp) {
-    return SetError("expecting syntax object", SyntaxDef);
+    return SetError("expecting syntax object", SyntaxSpec);
   }
+
   auto Fn = [SyntaxOp](heavy::Context& C, ValueRefs Args) -> void {
     heavy::Value Input = Args[0];
     heavy::Value Result = eval(C, Input);
@@ -261,22 +307,23 @@ mlir::Value OpGen::createSyntax(Symbol* S, Value SyntaxDef, Value OrigCall) {
 
   if (isTopLevel()) {
     Environment* Env = cast<Environment>(Context.EnvStack);
-    Env->SetSyntax(S, Syntax);
+    Env->SetSyntax(Keyword, Syntax);
   } else {
-    Binding* B = Context.CreateBinding(S, Syntax);
+    Binding* B = Context.CreateBinding(Keyword, Syntax);
     Context.PushLocalBinding(B);
   }
+
   return mlir::Value();
 }
 
 mlir::Value OpGen::createSyntaxRules(SourceLocation Loc,
-                                     mlir::Value Input,
+                                     Symbol* Keyword,
                                      Symbol* Ellipsis, 
-                                     heavy::Value KeywordList,
+                                     heavy::Value LiteralList,
                                      heavy::Value PatternDefs) {
   // Expect list of unique literal identifiers.
-  llvm::SmallPtrSet<String*, 4> Keywords;
-  auto insertKeyword = [&](Value V) -> bool {
+  llvm::SmallPtrSet<String*, 4> Literals;
+  auto insertLiteral = [&](Value V) -> bool {
     Symbol* S = dyn_cast<Symbol>(V);
     if (!S) {
       SetError("expecting keyword literal", V);
@@ -287,45 +334,52 @@ mlir::Value OpGen::createSyntaxRules(SourceLocation Loc,
       return true;
     }
     bool Inserted;
-    std::tie(std::ignore, Inserted) = Keywords.insert(S->getString());
+    std::tie(std::ignore, Inserted) = Literals.insert(S->getString());
     if (!Inserted) {
       SetError("keyword specified multiple times", S);
       return true;
     }
+    return false;
   };
-  while (Pair* X = dyn_cast<Pair>(KeywordList)) {
+  while (Pair* X = dyn_cast<Pair>(LiteralList)) {
     Context.setLoc(X);
-    if (insertKeyword(X->Car)) {
+    if (insertLiteral(X->Car)) {
       return Error();
     }
-    KeywordList = X->Cdr;
+    LiteralList = X->Cdr;
   }
-  if (!isa<Empty>(KeywordList)) {
-    return SetError("expecting keyword list", KeywordList);
+  if (!isa<Empty>(LiteralList)) {
+    return SetError("expecting keyword list", LiteralList);
   }
 
   // Create the SyntaxOp
-  auto SyntaxOp = create<heavy::SyntaxOp>(Loc, Input);
+  auto SyntaxOp = create<heavy::SyntaxOp>(Loc);
   mlir::Block& Block = SyntaxOp.region().emplaceBlock();
+
+  // TODO create anonymous function name for SyntaxOp symbol
+  mlir::BlockArgument Arg = Block.addArgument(
+                                    Builder.getType<HeavyValueTy>());
   Builder.setInsertionPointToStart(&Block);
 
-  // iterate through each pattern/template pair
-  while (Pair* X = dyn_cast<Pair>(PatternDefs)) {
-    heavy::Pair* Pattern = dyn_cast<Pair>(X->Car);
-    heavy::Pair* Template = dyn_cast<Pair>(X->Cdr.car());
-    bool IsProperPT = isa<Empty>(X->Cdr.cdr());
-    if (!Pattern || !Template || !IsProperPT) {
+  // Iterate through each pattern/template pair.
+  assert(!Context.CheckError() && "should not have errors here");
+  while (Pair* I = dyn_cast<Pair>(PatternDefs)) {
+    heavy::Pair* X        = dyn_cast<Pair>(I->Car);
+    heavy::Value Pattern  = X->Car;
+    heavy::Value Template = X->Cdr.car();
+    bool IsProperPT = isa_and_nonnull<Empty>(X->Cdr.cdr());
+    if (!IsProperPT) {
       return SetError("expecting pattern template pair", X);
     }
 
     mlir::OpBuilder::InsertionGuard IG(Builder);
-    auto PatternOp = create<heavy::PatternOp>(Pattern->getSourceLocation());
+    auto PatternOp = create<heavy::PatternOp>(Pattern.getSourceLocation());
     mlir::Block& B = PatternOp.region().emplaceBlock();
     Builder.setInsertionPointToStart(&B);
-    PatternTemplate PT(*this, Ellipsis, Keywords);
+    PatternTemplate PT(*this, Keyword, Ellipsis, Literals);
 
-    PT.VisitPatternTemplate(Pattern, Template, SyntaxOp.input());
-    PatternDefs = X->Cdr;
+    PT.VisitPatternTemplate(Pattern, Template, Arg);
+    PatternDefs = I->Cdr;
   }
   if (!isa<Empty>(PatternDefs) || Block.empty()) {
     return SetError("expecting list of pattern templates pairs", PatternDefs);
@@ -732,9 +786,11 @@ mlir::Value OpGen::VisitPair(Pair* P) {
       BuiltinSyntax* BS = cast<BuiltinSyntax>(Operator);
       return BS->Fn(*this, P);
     }
-    case ValueKind::Transformer:
-      llvm_unreachable("TODO");
-      return mlir::Value();
+    case ValueKind::Syntax: {
+      Value Input = P;
+      Context.Run(Operator, ValueRefs(Input));
+      return toValue(Context.getCurrentResult());
+    }
     default: {
       return HandleCall(P);
     }
