@@ -67,24 +67,28 @@ mlir::Value define_syntax(OpGen& OG, Pair* P) {
   if (!P2) return OG.SetError("invalid define-syntax syntax", P);
   Symbol* S = dyn_cast<Symbol>(P2->Car);
   if (!S) return OG.SetError("expecting name for define-syntax", P);
+  
 
-  return OG.createSyntax(S, P2->Cdr, P);
+  return OG.createSyntaxSpec(P2, P);
 }
 
 mlir::Value syntax_rules(OpGen& OG, Pair* P) {
-  Pair* P2 = dyn_cast<Pair>(P->Cdr);
-  if (!P2) return OG.SetError("invalid syntax-rules syntax", P);
+  // The input is the <Syntax Spec> (Keyword (syntax-rules ...))
+  // <Syntax Spec> has its own checks in createSyntaxSpec
+  Symbol* Keyword = dyn_cast<Symbol>(P->Car);
+  Pair* SpecInput = dyn_cast<Pair>(P->Cdr.car().cdr());
+  if (!SpecInput) return OG.SetError("invalid syntax-rules syntax", P);
   // Check for optional ellipsis identifier.
-  Symbol* Ellipsis = dyn_cast<Symbol>(P2->Car);
+  Symbol* Ellipsis = dyn_cast<Symbol>(SpecInput->Car);
   if (Ellipsis) {
-    P2 = dyn_cast<Pair>(P2->Cdr);
-    if (!P2) return OG.SetError("invalid syntax-rules syntax", P);
+    Pair* Temp = dyn_cast<Pair>(SpecInput->Cdr);
+    if (!Temp) return OG.SetError("invalid syntax-rules syntax.", SpecInput);
+    SpecInput = Temp;
   } else {
     Ellipsis = OG.getContext().CreateSymbol("...");
   }
-  // FIXME We have to give SyntaxOp an input mlir::Value.
-  return OG.createSyntaxRules(P->getSourceLocation(), Ellipsis, P2->Car,
-                              P2->Cdr);
+  return OG.createSyntaxRules(P->getSourceLocation(), Keyword, Ellipsis,
+                              SpecInput->Car, SpecInput->Cdr);
 }
 
 mlir::Value lambda(OpGen& OG, Pair* P) {

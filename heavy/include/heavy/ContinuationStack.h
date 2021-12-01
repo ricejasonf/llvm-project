@@ -217,13 +217,25 @@ public:
   void PushBreak() {
     Derived& C = getDerived();
     C.PushCont([](Derived& C, ValueRefs Args) {
-      Yield(Args);
+      C.Yield(Args);
     });
   }
 
   bool isFinished() {
     return getCallee() == Bottom;
   }
+
+  // Run - Call a function and run the continuation
+  //       loop breaking once the function or any
+  //       called escape procedure is complete.
+  //       This is used for nested calls in C++.
+  void Run(Value Callee, ValueRefs Args) {
+    PushBreak();
+    Apply(Callee, Args);
+    Resume();
+    // return the result??
+  }
+
 
   // Begins evaluation by calling what is set
   // in ApplyArgs
@@ -233,7 +245,7 @@ public:
     while (Value Callee = getCallee()) {
       if (isFinished()) break;
 
-      // debug mode only
+      // Debug mode only
       DidCallContinuation = false;
 
       ValueRefs Args = ValueRefs(ApplyArgs).drop_front();
@@ -250,6 +262,11 @@ public:
         F->Fn(Context, Args);
         break;
       }
+      case ValueKind::Syntax: {
+        Syntax* S = cast<Syntax>(Callee);
+        S->call(Context, Args);
+        break;
+      }
       default:
         String* Msg = Context.CreateString(
           "invalid operator for call expression: ",
@@ -258,7 +275,7 @@ public:
         Context.RaiseError(Msg, Callee);
       }
 
-      // this means a C++ function was not written correctly
+      // This means a C++ function was not written correctly.
       assert(DidCallContinuation && "function failed to call continuation");
     }
     DidCallContinuation = false;

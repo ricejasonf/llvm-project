@@ -70,7 +70,7 @@ private:
       return OpGen.GetPatternVar(P).getDefiningOp();
     }
     mlir::Value Result = OpGen.VisitSymbol(P);
-    assert(isa<mlir::OpResult>(Result) && "expecting operation result");
+    assert(Result.isa<mlir::OpResult>() && "expecting operation result");
     return OpGen.Visit(P).getDefiningOp();
   }
 };

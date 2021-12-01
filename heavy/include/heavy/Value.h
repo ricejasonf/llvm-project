@@ -1029,6 +1029,10 @@ public:
     std::memcpy(StoragePtr, OrigStorage, StorageLen);
   }
 
+  void call(Context& C, ValueRefs Args) {
+    return FnPtr(getStoragePtr(), C, Args);
+  }
+
   static size_t sizeToAlloc(OpaqueFn const& FnData) {
     return totalSizeToAlloc<char>(FnData.Storage.size());
   }

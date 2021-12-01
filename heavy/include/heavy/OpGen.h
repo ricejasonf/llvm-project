@@ -219,8 +219,8 @@ public:
   mlir::Value createEval(SourceLocation Loc, mlir::Value Input);
   mlir::Value createBody(SourceLocation Loc, Value Body);
   mlir::Value createSequence(SourceLocation Loc, Value Body);
-  mlir::Value createSyntax(Symbol* S, Value SyntaxDef, Value OrigCall);
-  mlir::Value createSyntaxRules(SourceLocation Loc, mlir::Value Input,
+  mlir::Value createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall);
+  mlir::Value createSyntaxRules(SourceLocation Loc, Symbol* Keyword, 
                                 Symbol* Ellipsis, Value KeywordList,
                                 Value SyntaxDef);
   mlir::Value createIf(SourceLocation Loc, Value Cond, Value Then,

@@ -428,11 +428,9 @@ def heavy_SyntaxOp: HeavyOp<"syntax", [NoTerminator]> {
   }];
 
   let regions   = (region SizedRegion<1>:$region);
-  let arguments = (ins HeavyValue:$input);
+  let arguments = (ins);
   let results   = (outs HeavySyntax:$result);
-  let builders  = [
-    OpBuilder<(ins "::mlir::Value":$input)>
-  ];
+  let builders  = [OpBuilder<(ins)>];
 }
 
 def heavy_UndefinedOp : HeavyOp<"undefined", [NoSideEffect]> {
