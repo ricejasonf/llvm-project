@@ -252,6 +252,10 @@ bool OpGen::isLocalDefineAllowed() {
 //  - OrigCall is likely (define-syntax ...) or (let-syntax ...)
 mlir::Value OpGen::createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall) {
   mlir::Value Result;
+  Environment* TopLevelEnv = nullptr;
+  if (isTopLevel()) {
+    TopLevelEnv = cast<Environment>(Context.EnvStack);
+  }
 
   Symbol* Keyword = dyn_cast<Symbol>(SyntaxSpec->Car);
   if (!Keyword) return SetError("expecting syntax spec keyword", SyntaxSpec);
@@ -300,9 +304,8 @@ mlir::Value OpGen::createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall) {
   };
   heavy::Syntax* Syntax = Context.CreateSyntax(Fn);
 
-  if (isTopLevel()) {
-    Environment* Env = cast<Environment>(Context.EnvStack);
-    Env->SetSyntax(Keyword, Syntax);
+  if (TopLevelEnv) {
+    TopLevelEnv->SetSyntax(Keyword, Syntax);
   } else {
     Binding* B = Context.CreateBinding(Keyword, Syntax);
     Context.PushLocalBinding(B);
@@ -683,7 +686,8 @@ mlir::Value OpGen::VisitExternName(ExternName* EN) {
 }
 
 mlir::Value OpGen::VisitSyntaxClosure(SyntaxClosure* SC) {
-  llvm_unreachable("TODO Create EnvRAII and conitnue visitation.");
+  heavy::EnvRAII EnvRAII(Context, SC->Env);
+  return Visit(SC->Node);
 }
 
 mlir::Value OpGen::VisitSymbol(Symbol* S) {
