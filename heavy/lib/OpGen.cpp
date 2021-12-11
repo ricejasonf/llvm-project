@@ -655,9 +655,10 @@ mlir::Value OpGen::VisitDefineArgs(Value Args) {
 
 // createGlobal - Create or load a global idempotently.
 //                Prevent duplicate Ops in an isolated scope.
-mlir::Value createGlobal(SourceLocation Loc, llvm::StringRef MangledName) {
-  Operation* G = M.lookupSymbol(SymName);
-  assert(isa<GlobalOp>(G) && "symbol should point to global");
+mlir::Value OpGen::createGlobal(SourceLocation Loc,
+                                llvm::StringRef MangledName) {
+  mlir::ModuleOp M = getModuleOp();
+  Operation* G = M.lookupSymbol(MangledName);
 
   if (!G) {
     // Lazily insert extern GlobalOps
@@ -665,12 +666,14 @@ mlir::Value createGlobal(SourceLocation Loc, llvm::StringRef MangledName) {
     // Note that OpEval will never visit these.
     mlir::OpBuilder::InsertionGuard IG(Builder);
     Builder.setInsertionPointToStart(M.getBody());
-    G = create<GlobalOp>(Loc, SymName).getOperation();
+    G = create<GlobalOp>(Loc, MangledName).getOperation();
   }
 
+  assert(isa<GlobalOp>(G) && "symbol should point to global");
+
   // Localize globals by the GlobalOp's Operation*
-  auto CanonicalValue = heavy::Value(G.getOperation());
-  mlir::Value LocalV = BindingTable.lookup();
+  auto CanonicalValue = heavy::Value(G);
+  mlir::Value LocalV = BindingTable.lookup(CanonicalValue);
   mlir::Value V = LocalV ? LocalV : G->getResult(0);
   return LocalizeValue(V, CanonicalValue);
 }
