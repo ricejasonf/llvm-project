@@ -93,8 +93,6 @@ mlir::Value OpGen::GetPatternVar(heavy::Symbol* S) {
     return cast<SyntaxClosureOp>(Op);
   }
   llvm_unreachable("syntax closure not found in binding table");
-  //mlir::Value SCV = BindingTable.lookup(SC);
-  //return SCV;
 }
 
 mlir::Operation* OpGen::VisitTopLevel(Value V) {
@@ -298,7 +296,7 @@ mlir::Value OpGen::createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall) {
   auto Fn = [SyntaxOp](heavy::Context& C, ValueRefs Args) -> void {
     heavy::Value Input = Args[0];
     invokeSyntaxOp(C, SyntaxOp, Input);
-    C.Cont();
+    // The contained OpGenOp will call C.Apply(...).
   };
   heavy::Syntax* Syntax = Context.CreateSyntax(Fn);
 
@@ -655,6 +653,36 @@ mlir::Value OpGen::VisitDefineArgs(Value Args) {
   return SetError("invalid define syntax", P);
 }
 
+// createGlobal - Create or load a global idempotently.
+//                Prevent duplicate Ops in an isolated scope.
+mlir::Value createGlobal(SourceLocation Loc, llvm::StringRef MangledName) {
+  Operation* G = M.lookupSymbol(SymName);
+  assert(isa<GlobalOp>(G) && "symbol should point to global");
+
+  if (!G) {
+    // Lazily insert extern GlobalOps
+    // at the beginning of the module.
+    // Note that OpEval will never visit these.
+    mlir::OpBuilder::InsertionGuard IG(Builder);
+    Builder.setInsertionPointToStart(M.getBody());
+    G = create<GlobalOp>(Loc, SymName).getOperation();
+  }
+
+  // Localize globals by the GlobalOp's Operation*
+  auto CanonicalValue = heavy::Value(G.getOperation());
+  mlir::Value LocalV = BindingTable.lookup();
+  mlir::Value V = LocalV ? LocalV : G->getResult(0);
+  return LocalizeValue(V, CanonicalValue);
+}
+
+mlir::Value OpGen::VisitExternName(ExternName* EN) {
+  return createGlobal(EN->getSourceLocation(), EN->getView());
+}
+
+mlir::Value OpGen::VisitSyntaxClosure(SyntaxClosure* SC) {
+  llvm_unreachable("TODO Create EnvRAII and conitnue visitation.");
+}
+
 mlir::Value OpGen::VisitSymbol(Symbol* S) {
   EnvEntry Entry = Context.Lookup(S);
   SourceLocation Loc = S->getSourceLocation();
@@ -663,9 +691,7 @@ mlir::Value OpGen::VisitSymbol(Symbol* S) {
     // Default to the name of a global
     heavy::Mangler Mangler(Context);
     std::string MangledName = Mangler.mangleVariable(getModulePrefix(), S);
-    // TODO Check for an existing LoadGlobalOp in this scope.
-    //      (We have no value to localize)
-    return create<LoadGlobalOp>(Loc, MangledName); 
+    return createGlobal(Loc, MangledName);
   }
   return VisitEnvEntry(Loc, Entry);
 }
@@ -673,19 +699,7 @@ mlir::Value OpGen::VisitSymbol(Symbol* S) {
 mlir::Value OpGen::VisitEnvEntry(heavy::SourceLocation Loc, EnvEntry Entry) {
   if (Entry.MangledName) {
     llvm::StringRef SymName = Entry.MangledName->getView();
-    mlir::ModuleOp M = Context.OpGen->getModuleOp();
-    Operation* G = M.lookupSymbol(SymName);
-    if (!G) {
-      // Lazily insert extern GlobalOps
-      // at the beginning of the module.
-      // Note that OpEval will never visit these.
-      mlir::OpBuilder::InsertionGuard IG(Builder);
-      Builder.setInsertionPointToStart(M.getBody());
-      G = create<GlobalOp>(Loc, SymName).getOperation();
-    }
-    mlir::Value LocalV = BindingTable.lookup(Entry.Value);
-    mlir::Value V = LocalV ? LocalV : G->getResult(0);
-    return LocalizeValue(V, Entry.Value);
+    return createGlobal(Loc, SymName);
   }
 
   return GetSingleResult(Entry.Value);
@@ -733,11 +747,11 @@ mlir::Value OpGen::HandleCall(Pair* P) {
   return createContinuation(Op.initCont());
 }
 
-mlir::Value OpGen::createEval(SourceLocation Loc, mlir::Value Input) {
+mlir::Value OpGen::createOpGen(SourceLocation Loc, mlir::Value Input) {
   // Currently default to the current environment.
-  auto EvalOp = create<heavy::EvalOp>(Loc, Input);
+  auto OpGenOp = create<heavy::OpGenOp>(Loc, Input);
   if (IsTailPos) return mlir::Value();
-  return createContinuation(EvalOp.initCont());
+  return createContinuation(OpGenOp.initCont());
 }
 
 mlir::Value OpGen::createContinuation(mlir::Region& initCont) {
@@ -820,6 +834,10 @@ mlir::Value OpGen::LocalizeValue(mlir::Value V, heavy::Value B) {
 
   if (mlir::Operation* Op = V.getDefiningOp()) {
     heavy::SourceLocation Loc = {};
+    LambdaScopeNode& LS = *LSI;
+    Owner = Op->getParentWithTrait<mlir::OpTrait::IsIsolatedFromAbove>();
+    if (LS.Op == Owner) return V;
+
     mlir::Value NewVal;
     if (auto G = dyn_cast<GlobalOp>(Op)) {
       NewVal = create<LoadGlobalOp>(Loc, G.getName());
@@ -829,13 +847,13 @@ mlir::Value OpGen::LocalizeValue(mlir::Value V, heavy::Value B) {
     }
     if (NewVal) {
       if (B) {
-        // Prevent duplicate LoadGlobalOps in the same scope.
+        // Prevent duplicate LoadGlobalOps in the same scope
+        // by shadowing them in the BindingTable.
         LambdaScopeNode& LS = *LSI;
         BindingTable.insertIntoScope(&LS.BindingScope_, B, NewVal);
       }
       return NewVal;
     }
-    Owner = Op->getParentWithTrait<mlir::OpTrait::IsIsolatedFromAbove>();
   } else {
     mlir::BlockArgument BlockArg = V.cast<mlir::BlockArgument>();
     Owner = BlockArg.getOwner()->getParentOp();
