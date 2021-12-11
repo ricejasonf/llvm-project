@@ -179,26 +179,33 @@ void eval(Context& C, ValueRefs Args) {
   unsigned Len = Args.size();
   assert((Len == 1 || Len == 2) && "Invalid arity to builtin `eval`");
   unsigned i = 0;
-  Value EnvStack = (Len == 2) ? Args[i++] : nullptr;
+  Value EnvSpec = (Len == 2) ? Args[i++] : nullptr;
   Value ExprOrDef = Args[i];
+  mlir::Operation* Op = nullptr;
 
-  // TODO We need to be able to pass a ModuleOp for insertion
-  //      or create a temporary one if the Environment is immutable.
-  //
-  //      We could possible store the ModuleOp in the Environment object
-  //
-  if (Environment* E = dyn_cast_or_null<Environment>(EnvStack)) {
-    // FIXME This modification of the EnvStack is incorrect I think
-    //       It should probably just replace the EnvStack and revert
-    //       when finished.
-    llvm_unreachable("TODO");
-    // nest the Environment in the EnvStack
-    EnvStack = C.CreatePair(E);
+  {
+    std::unique_ptr<Environment> EnvPtr = nullptr;
+    Environment* Env = nullptr;;
+    
+    if (!EnvSpec) {
+      Env = C.getTopLevelEnvironment();
+    } else if (auto* E = dyn_cast<Environment>(EnvSpec)) {
+      Env = E;
+    } else if (auto* ImpSet = dyn_cast<ImportSet>(EnvSpec)) {
+      EnvPtr = C.CreateEnvironment(ImpSet);
+      Env = EnvPtr.get();
+    }
+    
+    if (!Env) {
+      return C.SetError("Invalid import spec", EnvSpec);
+    }
+
+    // Set the environment.
+    heavy::EnvRAII EnvRAII(C, Env);
+    Op = C.OpGen->VisitTopLevel(ExprOrDef);
   }
 
-  mlir::Operation* Op = C.OpGen->VisitTopLevel(ExprOrDef);
   if (C.CheckError()) return;
-  //if (!Op) return C.RaiseError("compilation failed");
 
   if (Op) {
     opEval(C.OpEval, Op);

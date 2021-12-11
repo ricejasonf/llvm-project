@@ -115,6 +115,7 @@ enum class ValueKind {
   Environment,
   Error,
   Exception,
+  ExternName,
   Float,
   ForwardRef,
   Int,
@@ -823,6 +824,7 @@ public:
 
   using ValueWithSource::getSourceLocation;
 
+  // TODO Rename getVal to getView to be consistent.
   llvm::StringRef getVal() const { return Val->getView(); }
   String* getString() const { return Val; }
 
@@ -837,6 +839,35 @@ public:
   }
   static ValueKind getKind() { return ValueKind::Symbol; }
 };
+
+// ExternName - Represent the name of a global variable in terms
+//              of its linkage symbol. This is used for the
+//              "effective renaming" of variables used in top
+//              level syntax functions.
+class ExternName : public ValueBase,
+                   public ValueWithSource {
+  String* Name;
+
+  public:
+
+  ExternName(String* V, SourceLocation L = SourceLocation())
+    : ValueBase(ValueKind::ExternName)
+    , ValueWithSource(L)
+    , Name(V)
+  { }
+
+  using ValueWithSource::getSourceLocation;
+
+  llvm::StringRef getView() const {
+    return Name->getView();
+  }
+
+  static bool classof(Value V) {
+    return V.getKind() == ValueKind::ExternName;
+  }
+  static ValueKind getKind() { return ValueKind::ExternName; }
+};
+
 
 class Pair : public ValueBase {
 public:
@@ -1636,6 +1667,7 @@ inline llvm::StringRef getKindName(heavy::ValueKind Kind) {
   GET_KIND_NAME_CASE(Environment)
   GET_KIND_NAME_CASE(Error)
   GET_KIND_NAME_CASE(Exception)
+  GET_KIND_NAME_CASE(ExternName)
   GET_KIND_NAME_CASE(Float)
   GET_KIND_NAME_CASE(ForwardRef)
   GET_KIND_NAME_CASE(Int)

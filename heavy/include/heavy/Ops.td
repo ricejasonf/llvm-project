@@ -151,15 +151,11 @@ def heavy_ContOp : HeavyOp<"cont", [ReturnLike, Terminator]> {
   let results   = (outs); // no result
 }
 
-def heavy_EvalOp : HeavyOp<"eval", [Terminator]> {
-  let summary = "eval";
+def heavy_OpGenOp : HeavyOp<"opgen", [Terminator]> {
+  let summary = "opgen";
   let description = [{
-    EvalOp is the same as the scheme procedure eval except that
-    its environment defaults to the current one not including locals.
-    Hygienic macros can use this by capturing locals via SyntaxClosureOp.
-    This operation is equivalent to ApplyOp with `eval` as the operator.
-
-    Currently there is no argument for the environment specifier.
+    OpGenOp compiles scheme into the HeavyScheme MLIR dialect.
+    This operation is used for syntax code generation.
   }];
 
   let regions   = (region AnyRegion:$initCont);
@@ -348,7 +344,7 @@ def heavy_PatternOp : HeavyOp<"pattern", [HasParent<"SyntaxOp">]> {
     PatternOp represents the pattern in a pattern/template
     pair as part of the syntax-rules transform specifier. The 
     region should contain matching operations on the input syntax,
-    as well as ConsOps for the template, terminating with an EvalOp
+    as well as ConsOps for the template, terminating with an OpGenOp
     on the constructed AST.
   }];
 

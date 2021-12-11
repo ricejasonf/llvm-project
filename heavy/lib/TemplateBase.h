@@ -47,7 +47,8 @@ protected:
   //               it in a LiteralOp.
   mlir::Value createValue(heavy::Value V) {
     mlir::Value Val = OpGen::toValue(V);
-    if (Val) return OpGen.LocalizeValue(Val);
+    //if (Val) return OpGen.LocalizeValue(Val);
+    if (Val) return Val;
     return createLiteral(V);
   }
 

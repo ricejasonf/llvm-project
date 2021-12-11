@@ -58,6 +58,7 @@ protected:
   VISIT_FN(Environment)
   VISIT_FN(Error)
   VISIT_FN(Exception)
+  VISIT_FN(ExternName)
   VISIT_FN(Float)
   VISIT_FN(ForwardRef)
   VISIT_FN(ImportSet)
@@ -96,6 +97,7 @@ public:
     case ValueKind::Environment:    DISPATCH(Environment);
     case ValueKind::Error:          DISPATCH(Error);
     case ValueKind::Exception:      DISPATCH(Exception);
+    case ValueKind::ExternName:     DISPATCH(ExternName);
     case ValueKind::Float:          DISPATCH(Float);
     case ValueKind::ForwardRef:     DISPATCH(ForwardRef);
     case ValueKind::ImportSet:      DISPATCH(ImportSet);
