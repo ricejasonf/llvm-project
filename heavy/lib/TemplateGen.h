@@ -69,12 +69,10 @@ private:
     if (PatternVarNames.contains(P->getString())) {
       return OpGen.GetPatternVar(P).getDefiningOp();
     }
-    mlir::Value Result = OpGen.VisitSymbol(P);
-    assert(Result.isa<mlir::OpResult>() && "expecting operation result");
-    return OpGen.Visit(P).getDefiningOp();
 
-    EnvEntry Entry = Context.Lookup(S);
-    SourceLocation Loc = S->getSourceLocation();
+    heavy::Context& Context = OpGen.getContext();
+    EnvEntry Entry = Context.Lookup(P);
+    SourceLocation Loc = P->getSourceLocation();
 
     if (!Entry) {
       // Insert as literal identifier.
@@ -87,8 +85,10 @@ private:
       return Context.CreateExternName(Loc, Entry.MangledName);
     }
 
-    // We can refer to (run-time) locals on the (run-time) stack
-    return GetSingleResult(Entry.Value);
+    mlir::Value Result = OpGen.GetSingleResult(Entry.Value);
+    assert(Result.isa<mlir::OpResult>() && "expecting operation result");
+    return OpGen.Visit(P).getDefiningOp();
+
   }
 };
 
