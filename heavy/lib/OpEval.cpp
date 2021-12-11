@@ -13,6 +13,7 @@
 #ifndef LLVM_HEAVY_OP_EVAL_H
 #define LLVM_HEAVY_OP_EVAL_H
 
+#include "heavy/Builtins.h"
 #include "heavy/Context.h"
 #include "heavy/OpGen.h"
 #include "llvm/ADT/DenseMap.h"
@@ -55,7 +56,6 @@ class OpEvalImpl {
       }
     }
 
-    if (!V) M.getDefiningOp()->dump();
     // failure here could mean failure to capture in a closure
     assert(V && "getValue requires a value in the table");
 
@@ -110,6 +110,8 @@ public:
   //                so provide an interface to functions
   //                to wrap non-compiled SyntaxOps.
   void InvokeSyntax(SyntaxOp Op, Value Input) {
+    // Bind the Input to the block argument
+    setValue(Op.region().getArgument(0), Input);
     mlir::Block& Body = Op.region().front();
     BlockItrTy Itr = Body.begin();
     // Enter the first pattern.
@@ -177,8 +179,13 @@ private:
     else if (isa<SetOp>(Op))          return Visit(cast<SetOp>(Op));
     else if (isa<CommandOp>(Op))      return Visit(cast<CommandOp>(Op));
     else if (isa<PushContOp>(Op))     return Visit(cast<PushContOp>(Op));
+    else if (isa<OpGenOp>(Op))         return Visit(cast<OpGenOp>(Op));
     else if (isa<FuncOp>(Op))         return next(Op); // skip functions
     else if (isa<SyntaxOp>(Op))       return next(Op); // skip syntax fns
+    else if (isa<MatchPairOp>(Op))    return Visit(cast<MatchPairOp>(Op));
+    else if (isa<MatchOp>(Op))        return Visit(cast<MatchOp>(Op));
+    else if (isa<SyntaxClosureOp>(Op))
+      return Visit(cast<SyntaxClosureOp>(Op));
     else if (UndefinedOp UndefOp = dyn_cast<UndefinedOp>(Op)) {
       setValue(UndefOp, Context.CreateUndefined());
       return next(Op);
@@ -297,6 +304,7 @@ private:
   }
 
   BlockItrTy Visit(ConsOp Op) {
+    // TODO Use PairWithSource to retain source location information.
     heavy::Value A = getValue(Op.a());
     heavy::Value B = getValue(Op.b());
     heavy::Pair* V = Context.CreatePair(A, B);
@@ -508,7 +516,7 @@ private:
     // Abort the current pattern's scope
     pop_scope();
     mlir::Operation* Parent = O->getParentOp();
-    assert(isa<PatternOp>(Parent) && "Parent should be a  PatternOp");
+    assert(isa<PatternOp>(Parent) && "Parent should be a PatternOp");
     BlockItrTy Itr = ++BlockItrTy(Parent);
     if (O->getBlock()->end() == Itr) {
       heavy::SourceLocation Loc = getSourceLocation(O->getLoc());
@@ -528,7 +536,7 @@ private:
     if (equal(P, E)) {
       return next(Op);
     }
-    gotoNextPattern(Op);
+    return gotoNextPattern(Op);
   }
 
   BlockItrTy Visit(MatchPairOp Op) {
@@ -538,7 +546,34 @@ private:
       setValue(Op.cdr(), Pair->Cdr);
       return next(Op);
     }
-    gotoNextPattern(Op);
+    return gotoNextPattern(Op);
+  }
+
+  BlockItrTy Visit(SyntaxClosureOp Op) {
+    // Create a SyntaxClosure with the current
+    // EnvStack.
+    heavy::Value Input = getValue(Op.input());
+    SyntaxClosure* SC = Context.CreateSyntaxClosure(Input); 
+    setValue(Op.result(), SC);
+    return next(Op);
+  }
+
+  BlockItrTy Visit(OpGenOp Op) {
+    heavy::Value Input = getValue(Op.input());
+    if (!Op.isTailPos()) {
+      // evaluate the initCont region which pushes
+      // a continuation
+      BlockItrTy Itr = Op.initCont().front().begin();
+      while (Itr != BlockItrTy()) {
+        Itr = Visit(&*Itr);
+      }
+    }
+    mlir::Value Result = Context.OpGen->Visit(Input);
+    heavy::Value Output = heavy::OpGen::fromValue(Result);
+    if (!Context.CheckError()) {
+      Context.Cont(Output);
+    }
+    return BlockItrTy();
   }
 };
 
