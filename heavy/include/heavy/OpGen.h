@@ -206,6 +206,7 @@ public:
   }
 
   static heavy::Value fromValue(mlir::Value V) {
+    if (!V) return heavy::Value();
     if (auto OpResult = V.dyn_cast<mlir::OpResult>()) {
       return heavy::Value(OpResult.getOwner());
     }
@@ -213,10 +214,10 @@ public:
       mlir::Block* B = BlockArg.getOwner();
       return heavy::Value(reinterpret_cast<heavy::ContArg*>(B));
     }
-    return heavy::Value();
+    llvm_unreachable("invalid mlir value kind");
   }
 
-  mlir::Value createEval(SourceLocation Loc, mlir::Value Input);
+  mlir::Value createOpGen(SourceLocation Loc, mlir::Value Input);
   mlir::Value createBody(SourceLocation Loc, Value Body);
   mlir::Value createSequence(SourceLocation Loc, Value Body);
   mlir::Value createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall);
@@ -233,6 +234,7 @@ public:
                                SourceLocation Loc,
                                llvm::StringRef Name = {});
 
+  mlir::Value createGlobal(SourceLocation Loc, llvm::StringRef MangledName);
   mlir::Value createBinding(Binding *B, mlir::Value Init);
   mlir::Value createDefine(Symbol* S, Value Args, Value OrigCall);
   mlir::Value createTopLevelDefine(Symbol* S, Value Args, Value OrigCall);
@@ -289,9 +291,11 @@ public:
   }
 
   mlir::Value VisitBuiltin(Builtin* B) {
-    return create<BuiltinOp>(B->getSourceLocation(), B);
+    return SetError("internal pointer cannot be made external", B);
   }
 
+  mlir::Value VisitExternName(ExternName* EN);
+  mlir::Value VisitSyntaxClosure(SyntaxClosure* SC);
   mlir::Value VisitSymbol(Symbol* S);
   mlir::Value VisitBinding(Binding* B);
 

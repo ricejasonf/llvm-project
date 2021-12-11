@@ -67,6 +67,20 @@ Context::Context()
 
 Context::~Context() = default;
 
+Environment* Context::getTopLevelEnvironment() {
+  // EnvStack is always an Environment or an improper
+  // list ending with an Environment.
+  if (auto* E = dyn_cast<Environment>(EnvStack)) {
+    return E;
+  }
+  while (Pair* P = dyn_cast<Pair>(EnvStack)) {
+    if (auto* E = dyn_cast<Environment>(P->Cdr)) {
+      return E;
+    }
+  }
+  llvm_unreachable("EnvStack should have an Environment.");
+}
+
 template <typename Allocator, typename ...StringRefs>
 static String* CreateStringHelper(Allocator& Alloc, StringRefs ...S) {
   std::array<unsigned, sizeof...(S)> Sizes{static_cast<unsigned>(S.size())...};
@@ -158,8 +172,10 @@ Module* Context::RegisterModule(llvm::StringRef MangledName,
   return Itr->second.get();
 }
 
-bool Context::Import(heavy::ImportSet* ImportSet) {
-  heavy::Environment* Env = dyn_cast<Environment>(EnvStack);
+bool Context::Import(heavy::ImportSet* ImportSet, Environment *Env) {
+  if (!Env) {
+    Env = dyn_cast<Environment>(EnvStack);
+  }
   if (!Env) {
     // import doesn't work in local scope
     SetError("unexpected import", ImportSet);
@@ -179,6 +195,14 @@ bool Context::Import(heavy::ImportSet* ImportSet) {
   }
 
   return false;
+}
+
+std::unique_ptr<Environment>
+Context::CreateEnvironment(heavy::ImportSet* ImportSet) {
+  auto EnvPtr = std::make_unique<Environment>();
+  // The user should check the context for an error.
+  Import(ImportSet, EnvPtr.get());
+  return EnvPtr;
 }
 
 EnvFrame* Context::PushLambdaFormals(Value Formals,

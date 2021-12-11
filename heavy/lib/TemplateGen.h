@@ -47,7 +47,7 @@ public:
     heavy::Value V = Visit(Template);
     mlir::Value TransformedSyntax = isRebuilt(V) ? OpGen::toValue(V) :
                                                    createLiteral(V).result();
-    OpGen.createEval(Loc, TransformedSyntax);
+    OpGen.createOpGen(Loc, TransformedSyntax);
   }
 
 private:
@@ -72,6 +72,23 @@ private:
     mlir::Value Result = OpGen.VisitSymbol(P);
     assert(Result.isa<mlir::OpResult>() && "expecting operation result");
     return OpGen.Visit(P).getDefiningOp();
+
+    EnvEntry Entry = Context.Lookup(S);
+    SourceLocation Loc = S->getSourceLocation();
+
+    if (!Entry) {
+      // Insert as literal identifier.
+      return P;
+    }
+
+    if (Entry.MangledName) {
+      // Globals are "effectively renamed" to their
+      // linkage names for the sake of template hygiene.
+      return Context.CreateExternName(Loc, Entry.MangledName);
+    }
+
+    // We can refer to (run-time) locals on the (run-time) stack
+    return GetSingleResult(Entry.Value);
   }
 };
 

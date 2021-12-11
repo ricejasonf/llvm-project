@@ -136,16 +136,23 @@ public:
     EnvStack = E;
   }
 
+  Environment* getTopLevelEnvironment();
+
   Module* RegisterModule(llvm::StringRef MangledName,
                          heavy::ModuleLoadNamesFn* LoadNames = nullptr);
 
   void AddKnownAddress(String* MangledName, Value);
   Value GetKnownValue(llvm::StringRef MangledName);
 
-  // Import - Finds the Environment in EnvStack, adds the
-  //          ImportSet to it, and checks for name collisions
-  //          Returns true on Error
-  bool Import(ImportSet*);
+  // Import - Apply an ImportSet to an Environment checking
+  //          for name collisions. Use the current environment
+  //          by default.
+  //          Return true on Error
+  bool Import(ImportSet*, Environment* E = nullptr);
+  // CreateEnvironment - Create a non-garbage collected instance of
+  //                     Environment. The unique_ptr may contain nullptr
+  //                     if the import operation fails.
+  std::unique_ptr<Environment> CreateEnvironment(heavy::ImportSet* ImportSet);
 
   // LoadModule - Idempotently loads a library
   //              Returns nullptr on failure
@@ -335,6 +342,14 @@ public:
     return CreateError(Loc, CreateString(Str), Irritants);
   }
 
+  ExternName* CreateExternName(SourceLocation Loc, String* Str) {
+    return new (TrashHeap) ExternName(Str, Loc);
+  }
+  ExternName* CreateExternName(SourceLocation Loc, llvm::StringRef Name) {
+    String* Str = CreateIdTableEntry(Name);
+    return CreateExternName(Loc, Str);
+  }
+
   Exception* CreateException(Value V) {
     return new (TrashHeap) Exception(V);
   }
@@ -359,6 +374,23 @@ public:
   Value cdr(Value V) { return setLoc(V).cdr(); }
   Value cadr(Value V) { return setLoc(V).cadr(); }
   Value cddr(Value V) { return setLoc(V).cddr(); }
+};
+
+class EnvRAII {
+  heavy::Context& Context;
+  heavy::Value OldEnv;
+
+public:
+  EnvRAII(heavy::Context& C, heavy::Value NewEnv)
+    : Context(C),
+      OldEnv(C.getEnvironment())
+  {
+    Context.setEnvironment(NewEnv);
+  }
+
+  ~EnvRAII() {
+    Context.setEnvironment(OldEnv);
+  }
 };
 
 }
