@@ -513,21 +513,21 @@ private:
     // We should currently be in the scope of a PatternOp
     assert((isa<MatchOp, MatchPairOp>(O)) &&
         "Operation must be a pattern matcher");
+    mlir::Operation* PatternOp = O->getParentOp();
+    assert(isa<heavy::PatternOp>(PatternOp) &&
+        "PatternOp should be a PatternOpOp.");
     // Abort the current pattern's scope
     pop_scope();
-    mlir::Operation* Parent = O->getParentOp();
-    assert(isa<PatternOp>(Parent) && "Parent should be a PatternOp");
-    BlockItrTy Itr = ++BlockItrTy(Parent);
-    if (O->getBlock()->end() == Itr) {
+    mlir::Operation* NextNode = PatternOp->getNextNode();
+    if (!NextNode) {
       heavy::SourceLocation Loc = getSourceLocation(O->getLoc());
       Context.OpGen->SetError(Loc, "no matching pattern for syntax",
                               Undefined());
       return BlockItrTy();
     }
-
     // Enter the next pattern
     push_scope();
-    return cast<PatternOp>(*Itr).region().front().begin();
+    return cast<heavy::PatternOp>(*NextNode).region().front().begin();
   }
 
   BlockItrTy Visit(MatchOp Op) {
