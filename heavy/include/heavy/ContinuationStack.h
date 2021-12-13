@@ -157,7 +157,6 @@ class ContinuationStack {
     if (Src.getDepth() < Dest.getDepth()) {
       C.PushCont([](Derived& C, ValueRefs) {
         DWind Dest = C.getCapture(0);
-        llvm::errs() << "calling before\n";
         C.Apply(Dest.getBeforeFn(), llvm::None);
       }, CaptureList{Dest});
       C.TraverseWindings(Src, Dest.getParent());
@@ -167,7 +166,6 @@ class ContinuationStack {
         DWind Dest = C.getCapture(1);
         C.TraverseWindings(Src.getParent(), Dest);
       }, CaptureList{Src, Dest});
-      llvm::errs() << "calling after\n";
       C.Apply(Src.getAfterFn(), llvm::None);
     }
   }
@@ -276,7 +274,8 @@ public:
       }
 
       // This means a C++ function was not written correctly.
-      assert(DidCallContinuation && "function failed to call continuation");
+      assert((DidCallContinuation || getDerived().CheckError()) &&
+          "function failed to call continuation");
     }
     DidCallContinuation = false;
   }
