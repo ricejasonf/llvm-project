@@ -357,6 +357,7 @@ mlir::Value OpGen::createSyntaxRules(SourceLocation Loc,
   // TODO create anonymous function name for SyntaxOp symbol
   mlir::BlockArgument Arg = Block.addArgument(
                                     Builder.getType<HeavyValueTy>());
+  mlir::OpBuilder::InsertionGuard IG(Builder);
   Builder.setInsertionPointToStart(&Block);
 
   // Iterate through each pattern/template pair.
@@ -370,9 +371,9 @@ mlir::Value OpGen::createSyntaxRules(SourceLocation Loc,
       return SetError("expecting pattern template pair", X);
     }
 
-    mlir::OpBuilder::InsertionGuard IG(Builder);
     auto PatternOp = create<heavy::PatternOp>(Pattern.getSourceLocation());
     mlir::Block& B = PatternOp.region().emplaceBlock();
+    mlir::OpBuilder::InsertionGuard IG(Builder);
     Builder.setInsertionPointToStart(&B);
     PatternTemplate PT(*this, Keyword, Ellipsis, Literals);
 
@@ -755,10 +756,9 @@ mlir::Value OpGen::HandleCall(Pair* P) {
 }
 
 mlir::Value OpGen::createOpGen(SourceLocation Loc, mlir::Value Input) {
-  // Currently default to the current environment.
-  auto OpGenOp = create<heavy::OpGenOp>(Loc, Input);
-  if (IsTailPos) return mlir::Value();
-  return createContinuation(OpGenOp.initCont());
+  // OpGenOp should always be considered tail position.
+  create<heavy::OpGenOp>(Loc, Input);
+  return mlir::Value();
 }
 
 mlir::Value OpGen::createContinuation(mlir::Region& initCont) {
