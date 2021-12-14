@@ -110,13 +110,13 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   heavy::Context& Context;
   mlir::OpBuilder ModuleBuilder;
   mlir::OpBuilder Builder;
-  mlir::OpBuilder LocalInits;
   BindingScopeTable BindingTable;
   std::deque<LambdaScopeNode> LambdaScopes;
   mlir::Operation* ModuleOp;
   // TopLevelOp The current top level operation being generated.
   //          It may be either CommandOp, GlobalOp, nullptr.
   mlir::Operation* TopLevelOp = nullptr;
+  bool IsLocalDefineAllowed = false;
   std::string ModulePrefix = {};
   unsigned LambdaNameCount = 0;
   bool IsTailPos = true;
@@ -137,9 +137,9 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
     }
   };
 
-  void insertTopLevelCommandOp(SourceLocation Loc);
-  bool walkDefineInits(Value Env, NameSet& LocalNames);
-  heavy::Value transformSyntax(Value V);
+  void InsertTopLevelCommandOp(SourceLocation Loc);
+  bool WalkDefineInits(Value Env, NameSet& LocalNames);
+  bool FinishLocalDefines();
 
 public:
   explicit OpGen(heavy::Context& C);
@@ -177,9 +177,13 @@ public:
 
   std::string mangleFunctionName(llvm::StringRef Name);
 
+  // createHelper - Facilitate creating an operation with proper source
+  //                location information.
+  //              - Calling this directly bypasses implicit wrapping in
+  //                a top level op as well as finalizing local defines.
   template <typename Op, typename ...Args>
-  static Op create(mlir::OpBuilder& Builder, heavy::SourceLocation Loc,
-                   Args&& ...args) {
+  static Op createHelper(mlir::OpBuilder& Builder, heavy::SourceLocation Loc,
+                         Args&& ...args) {
     assert(Builder.getInsertionBlock() != nullptr &&
         "Operation must have insertion point");
     mlir::Location MLoc = mlir::OpaqueLoc::get(Loc.getOpaqueEncoding(),
@@ -190,9 +194,19 @@ public:
   template <typename Op, typename ...Args>
   Op create(heavy::SourceLocation Loc, Args&& ...args) {
     if (Builder.getBlock() == nullptr) {
-      insertTopLevelCommandOp(Loc);
+      InsertTopLevelCommandOp(Loc);
+    } else if (IsLocalDefineAllowed) {
+      // An error may occur here, but we always want
+      // this function to return a valid operation.
+      // Just continue until the error is realized.
+      FinishLocalDefines();
     }
-    return create<Op>(Builder, Loc, std::forward<Args>(args)...);
+    return createHelper<Op>(Builder, Loc, std::forward<Args>(args)...);
+  }
+
+  template <typename Op, typename ...Args>
+  Op createTopLevel(heavy::SourceLocation Loc, Args&& ...args) {
+    return createHelper<Op>(ModuleBuilder, Loc, std::forward<Args>(args)...);
   }
 
   static mlir::Value toValue(heavy::Value V) {

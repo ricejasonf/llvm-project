@@ -78,7 +78,7 @@ def heavy_BindingOp : HeavyOp<"binding"> {
     elided and the result can refer directly to the enclosed value.
   }];
 
-  let arguments = (ins HeavyValue:$input);
+  let arguments = (ins Optional<HeavyValue>:$input);
   let results   = (outs HeavyValue:$result);
   let builders  = [OpBuilder<(ins "::mlir::Value":$input)>];
 }
