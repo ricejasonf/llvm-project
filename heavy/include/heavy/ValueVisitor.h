@@ -71,8 +71,8 @@ protected:
   VISIT_FN(Quote)
   VISIT_FN(String)
   VISIT_FN(Symbol)
+  VISIT_FN(Syntax)
   VISIT_FN(SyntaxClosure)
-  VISIT_FN(Transformer)
   VISIT_FN(Vector)
 
   template <typename ...Args>
@@ -110,8 +110,8 @@ public:
     case ValueKind::Quote:          DISPATCH(Quote);
     case ValueKind::String:         DISPATCH(String);
     case ValueKind::Symbol:         DISPATCH(Symbol);
+    case ValueKind::Syntax:         DISPATCH(Syntax);
     case ValueKind::SyntaxClosure:  DISPATCH(SyntaxClosure);
-    case ValueKind::Transformer:    DISPATCH(Transformer);
     case ValueKind::Vector:         DISPATCH(Vector);
     default:
       llvm_unreachable("Invalid Value Kind");

@@ -291,7 +291,8 @@ private:
 
   BlockItrTy Visit(BindingOp Op) {
     // create a Binding
-    heavy::Value V = getValue(Op.input());
+    heavy::Value V = Op.input() ? getValue(Op.input()) :
+                                  heavy::Undefined();
     heavy::Binding* B = Context.CreateBinding(V);
     setValue(Op.result(), B);
     return next(Op);

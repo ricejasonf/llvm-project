@@ -32,7 +32,6 @@ OpGen::OpGen(heavy::Context& C)
   : Context(C),
     ModuleBuilder(&(C.MlirContext)),
     Builder(&(C.MlirContext)),
-    LocalInits(&(C.MlirContext)),
     BindingTable()
 {
   // TODO OpGen should own MlirContext
@@ -151,8 +150,8 @@ mlir::Operation* OpGen::VisitTopLevel(Value V) {
   return TopLevelOp;
 }
 
-void OpGen::insertTopLevelCommandOp(SourceLocation Loc) {
-  auto CommandOp = create<heavy::CommandOp>(ModuleBuilder, Loc);
+void OpGen::InsertTopLevelCommandOp(SourceLocation Loc) {
+  auto CommandOp = createTopLevel<heavy::CommandOp>(Loc);
   setTopLevelOp(CommandOp.getOperation());
   mlir::Block& Block = *CommandOp.addEntryBlock();
   // overwrites Builder without reverting it
@@ -160,7 +159,7 @@ void OpGen::insertTopLevelCommandOp(SourceLocation Loc) {
 }
 
 mlir::Value OpGen::createUndefined() {
-  return create<UndefinedOp>(SourceLocation());
+  return createHelper<UndefinedOp>(Builder, SourceLocation());
 }
 
 mlir::FunctionType OpGen::createFunctionType(unsigned Arity,
@@ -217,6 +216,10 @@ mlir::Value OpGen::createLambda(Value Formals, Value Body,
     // If Result is null then it already
     // has a terminator.
     if (mlir::Value Result = createBody(Loc, Body)) {
+      if (IsLocalDefineAllowed) {
+        FinishLocalDefines();
+      }
+      Result = LocalizeValue(Result);
       Builder.create<ContOp>(Result.getLoc(), Result);
     }
 
@@ -240,10 +243,13 @@ void OpGen::PopContinuationScope() {
 }
 
 bool OpGen::isLocalDefineAllowed() {
+  return IsLocalDefineAllowed;
+#if 0
   mlir::Block* Block = Builder.getInsertionBlock();
   if (!Block) return false;
   return (Block->empty() ||
           isa<BindingOp>(Block->back()));
+#endif
 }
 
 // createSyntaxSpec
@@ -410,7 +416,7 @@ mlir::Value OpGen::createSequence(SourceLocation Loc, Value Body) {
   return Visit(Rest);
 }
 
-// walkDefineInits
+// WalkDefineInits
 //  - The BindingOps for the local defines have
 //    been inserted by the `define` syntax. They are
 //    initialized to "undefined" and their corresponding
@@ -418,11 +424,11 @@ mlir::Value OpGen::createSequence(SourceLocation Loc, Value Body) {
 //    Walk the EnvStack up to the nearest EnvFrame and
 //    collect these and insert the lazy initializers via SetOp
 //    in the lexical order that they were defined.
-bool OpGen::walkDefineInits(Value Env,
+bool OpGen::WalkDefineInits(Value Env,
                             llvm::SmallPtrSetImpl<String*>& LocalNames) {
   Pair* P = cast<Pair>(Env);
   if (isa<EnvFrame>(P->Car)) return false;
-  if (walkDefineInits(P->Cdr, LocalNames)) return true;
+  if (WalkDefineInits(P->Cdr, LocalNames)) return true;
 
   // Check for duplicate names.
   Binding* B = cast<Binding>(P->Car);
@@ -444,45 +450,24 @@ bool OpGen::walkDefineInits(Value Env,
   return false;
 }
 
-// transformSyntax - Iteratively transform an expression if it is
-//                   a syntax call to a syntax transformer. Nested
-//                   AST is not necessarily transformed.
-heavy::Value OpGen::transformSyntax(Value V) {
-  while (auto *P = dyn_cast<Pair>(V)) {
-    if (auto* T = dyn_cast<Transformer>(P->Car)) {
-      V = T->call(Context, P);
-    } else {
-     break;
-    } 
-  }
-  return V;
+bool OpGen::FinishLocalDefines() {
+  TailPosScope TPS(*this);
+  IsTailPos = false;
+  IsLocalDefineAllowed = false;
+  llvm::SmallPtrSet<String*, 8> LocalNames;
+  return WalkDefineInits(Context.EnvStack, LocalNames);
 }
 
 mlir::Value OpGen::createBody(SourceLocation Loc, Value Body) {
-  {
-    TailPosScope TPS(*this);
-    IsTailPos = false;
-    // Handle local defines.
-    while (Pair* P = dyn_cast<Pair>(Body)) {
-      Value Node = transformSyntax(P->Car);
-      Symbol* S = dyn_cast_or_null<Symbol>(Node.car());
-      Value LookupResult = S ? Context.Lookup(S).Value : Value();
-      if (LookupResult != HEAVY_BASE_VAR(define)) break;
-      heavy::base::define(*this, cast<Pair>(Node));
-      Body = P->Cdr;
-    }
-
-    llvm::SmallPtrSet<String*, 8> LocalNames;
-    if (walkDefineInits(Context.EnvStack, LocalNames))
-      return createUndefined();
-  }
-
+  IsLocalDefineAllowed = true;
   return createSequence(Loc, Body);
 }
 
 mlir::Value OpGen::createBinding(Binding *B, mlir::Value Init) {
   SourceLocation SymbolLoc = B->getName()->getSourceLocation();
-  mlir::Value BVal = create<BindingOp>(SymbolLoc, Init);
+  // Bypass the simpler create<Op> overload to avoid triggering
+  // the finalization of the local defines.
+  mlir::Value BVal = createHelper<BindingOp>(Builder, SymbolLoc, Init);
   BindingTable.insert(B, BVal);
 
   return BVal;
@@ -491,20 +476,19 @@ mlir::Value OpGen::createBinding(Binding *B, mlir::Value Init) {
 mlir::Value OpGen::createDefine(Symbol* S, Value DefineArgs,
                                            Value OrigCall) {
   if (isTopLevel()) return createTopLevelDefine(S, DefineArgs, OrigCall);
-  if (!isLocalDefineAllowed()) return SetError("unexpected define", OrigCall);
-  // create the binding with a lazy init
-  // (include everything after the define
+  if (!IsLocalDefineAllowed) return SetError("unexpected define", OrigCall);
+  // Create the binding with a lazy init.
+  // (Include everything after the define
   //  keyword to visit it later because it could
-  //  be a terse lambda syntax)
+  //  be a terse lambda syntax.)
   Binding* B = Context.CreateBinding(S, DefineArgs);
-  // push to the local environment
+  // Push to the local environment.
   Context.PushLocalBinding(B);
-  mlir::Value BVal = createBinding(B, createUndefined());
-  // Have LocalInits insertion point to the last BindingOp
-  LocalInits.setInsertionPoint(BVal.getDefiningOp());
-  assert(isLocalDefineAllowed() && "define should still be allowed");
+  mlir::Value BVal = createBinding(B, mlir::Value());
+  assert(IsLocalDefineAllowed && "define should still be allowed");
   return BVal;
 }
+
 mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
                                         Value OrigCall) {
   SourceLocation DefineLoc = OrigCall.getSourceLocation();
@@ -537,8 +521,7 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
 
   heavy::Mangler Mangler(Context);
   std::string MangledName = Mangler.mangleVariable(getModulePrefix(), S);
-  auto GlobalOp = create<heavy::GlobalOp>(ModuleBuilder, DefineLoc,
-                                          MangledName);
+  auto GlobalOp = createTopLevel<heavy::GlobalOp>(DefineLoc, MangledName);
   setTopLevelOp(GlobalOp.getOperation());
   mlir::Block& Block = *GlobalOp.addEntryBlock();
 
@@ -668,9 +651,10 @@ mlir::Value OpGen::createGlobal(SourceLocation Loc,
     // Lazily insert extern GlobalOps
     // at the beginning of the module.
     // Note that OpEval will never visit these.
-    mlir::OpBuilder::InsertionGuard IG(Builder);
-    Builder.setInsertionPointToStart(M.getBody());
-    G = create<GlobalOp>(Loc, MangledName).getOperation();
+    mlir::OpBuilder::InsertionGuard IG(ModuleBuilder);
+    ModuleBuilder.setInsertionPointToStart(M.getBody());
+    G = createTopLevel<GlobalOp>(Loc, MangledName)
+      .getOperation();
   }
 
   assert(isa<GlobalOp>(G) && "symbol should point to global");

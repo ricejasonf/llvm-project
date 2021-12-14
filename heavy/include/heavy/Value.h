@@ -130,7 +130,6 @@ enum class ValueKind {
   Symbol,
   Syntax,
   SyntaxClosure,
-  Transformer,
   Vector,
 };
 
@@ -1099,24 +1098,6 @@ public:
   static ValueKind getKind() { return ValueKind::SyntaxClosure; }
 };
 
-// Transformer - A macro function that transforms AST
-class Transformer : public ValueBase {
-  TransformFn Fn;
-
-public:
-  Transformer(TransformFn Fn)
-    : ValueBase(ValueKind::Transformer),
-      Fn(Fn)
-  { }
-
-  Value call(Context& C, Pair* P) { return Fn(C, P); }
-
-  static bool classof(Value V) {
-    return V.getKind() == ValueKind::Transformer;
-  }
-  static ValueKind getKind() { return ValueKind::Transformer; }
-};
-
 class Vector final
   : public ValueBase,
     private llvm::TrailingObjects<Vector, Value> {
@@ -1220,7 +1201,7 @@ public:
   }
 
   bool isSyntactic() {
-    return Val.getKind() == ValueKind::Transformer ||
+    return Val.getKind() == ValueKind::Syntax ||
            Val.getKind() == ValueKind::BuiltinSyntax;
   }
 
@@ -1682,7 +1663,6 @@ inline llvm::StringRef getKindName(heavy::ValueKind Kind) {
   GET_KIND_NAME_CASE(Symbol)
   GET_KIND_NAME_CASE(Syntax)
   GET_KIND_NAME_CASE(SyntaxClosure)
-  GET_KIND_NAME_CASE(Transformer)
   GET_KIND_NAME_CASE(Vector)
   default:
     return llvm::StringRef("?????");
