@@ -55,13 +55,12 @@ class Parser {
   ValueResult ParseExprAbbrev(char const* Name);
 
   ValueResult ParseCharConstant();
-  ValueResult ParseCppDecl();
+  ValueResult ParseExternName();
   ValueResult ParseList(Token const& StartTok);
   ValueResult ParseListStart();
   ValueResult ParseNumber();
   ValueResult ParseString();
   ValueResult ParseSymbol();
-  ValueResult ParseTypename();
   ValueResult ParseVectorStart();
   ValueResult ParseVector(llvm::SmallVectorImpl<Value>& Xs);
 

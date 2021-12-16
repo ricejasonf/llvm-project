@@ -227,6 +227,11 @@ void Lexer::LexSharpLiteral(Token& Tok, const char *CurPtr) {
     // need to parse the datum to know where it ends
     Kind = tok::comment_datum;
     break;
+  case '_':
+    ++CurPtr; // Consume the underscore.
+    Kind = tok::extern_name;
+    RequiresDelimiter = true;
+    break;
   // unsupported radix R specifiers
   case 'd':
   case 'b': case 'o': case 'x':

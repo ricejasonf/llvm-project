@@ -823,8 +823,9 @@ public:
 
   using ValueWithSource::getSourceLocation;
 
-  // TODO Rename getVal to getView to be consistent.
+  // TODO Deprecate getVal to getView to be consistent.
   llvm::StringRef getVal() const { return Val->getView(); }
+  llvm::StringRef getView() const { return Val->getView(); }
   String* getString() const { return Val; }
 
   bool equals(llvm::StringRef Str) const { return getVal() == Str; }
