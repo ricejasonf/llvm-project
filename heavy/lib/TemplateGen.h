@@ -85,10 +85,14 @@ private:
       return Context.CreateExternName(Loc, Entry.MangledName);
     }
 
-    mlir::Value Result = OpGen.GetSingleResult(Entry.Value);
-    assert(Result.isa<mlir::OpResult>() && "expecting operation result");
-    return OpGen.Visit(P).getDefiningOp();
-
+    // Locals can be referred to by their stack value
+    // since local syntax cannot be exported.
+    // These are encoded as opaque constants in
+    // the generated code.
+    mlir::Value V = OpGen.Lookup(Entry.Value);
+    assert(V && "Value must exist in binding table.");
+    auto RenameOp = OpGen.create<heavy::RenameOp>(Loc, V);
+    return heavy::Value(RenameOp.getOperation());
   }
 };
 

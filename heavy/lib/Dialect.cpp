@@ -144,6 +144,19 @@ void MatchPairOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                      input);
 }
 
+void RenameOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                     mlir::Value Value) {
+  // How awful is this?
+  void* OpaquePtr = Value.getAsOpaquePointer();
+  uint64_t OpaqueValue = reinterpret_cast<uint64_t>(OpaquePtr);
+  bool IsSigned = false;
+  mlir::IntegerType UI64 = B.getIntegerType(64, IsSigned);
+  auto APVal = llvm::APInt(64, OpaqueValue, IsSigned);
+  auto Attr = mlir::IntegerAttr::get(UI64, APVal);
+  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
+  RenameOp::build(B, OpState, HeavyValueT, Attr);
+}
+
 void SetOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                      mlir::Value Binding, mlir::Value Input) {
   SetOp::build(B, OpState, B.getType<HeavyValueTy>(), Binding, Input);
