@@ -47,7 +47,6 @@ protected:
   //               it in a LiteralOp.
   mlir::Value createValue(heavy::Value V) {
     mlir::Value Val = OpGen::toValue(V);
-    //if (Val) return OpGen.LocalizeValue(Val);
     if (Val) return Val;
     return createLiteral(V);
   }
@@ -71,14 +70,14 @@ protected:
   }
 
   heavy::ConsOp createCons(SourceLocation Loc, heavy::Value X,
-                                                  heavy::Value Y) {
+                                               heavy::Value Y) {
     mlir::Value ValX = createValue(X);
     mlir::Value ValY = createValue(Y);
     return OpGen.create<ConsOp>(Loc, ValX, ValY);
   }
 
   heavy::SpliceOp createSplice(SourceLocation Loc, heavy::Value X,
-                                heavy::Value Y) {
+                               heavy::Value Y) {
     mlir::Value ValX = createValue(X);
     mlir::Value ValY = createValue(Y);
     return OpGen.create<SpliceOp>(Loc, ValX, ValY);

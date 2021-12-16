@@ -123,6 +123,8 @@ ValueResult Parser::ParseExpr() {
     return ParseNumber();
   case tok::identifier:
     return ParseSymbol();
+  case tok::extern_name:
+    return ParseExternName();
   case tok::char_constant:
     return ParseCharConstant();
   case tok::true_: {
@@ -377,13 +379,9 @@ ValueResult Parser::ParseSymbol() {
   return Value(Context.CreateSymbol(Str, Loc));
 }
 
-ValueResult Parser::ParseTypename() {
-  llvm_unreachable("TODO");
-  return ValueError();
+ValueResult Parser::ParseExternName() {
+  StringRef Str = Tok.getLiteralData();
+  SourceLocation Loc = Tok.getLocation();
+  ConsumeToken();
+  return Value(Context.CreateExternName(Loc, Str));
 }
-
-ValueResult Parser::ParseCppDecl() {
-  llvm_unreachable("TODO");
-  return ValueError();
-}
-

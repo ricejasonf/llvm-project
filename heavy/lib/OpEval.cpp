@@ -184,6 +184,7 @@ private:
     else if (isa<SyntaxOp>(Op))       return next(Op); // skip syntax fns
     else if (isa<MatchPairOp>(Op))    return Visit(cast<MatchPairOp>(Op));
     else if (isa<MatchOp>(Op))        return Visit(cast<MatchOp>(Op));
+    else if (isa<RenameOp>(Op))       return Visit(cast<RenameOp>(Op));
     else if (isa<SyntaxClosureOp>(Op))
       return Visit(cast<SyntaxClosureOp>(Op));
     else if (UndefinedOp UndefOp = dyn_cast<UndefinedOp>(Op)) {
@@ -556,6 +557,15 @@ private:
     heavy::Value Input = getValue(Op.input());
     SyntaxClosure* SC = Context.CreateSyntaxClosure(Input); 
     setValue(Op.result(), SC);
+    return next(Op);
+  }
+
+  BlockItrTy Visit(RenameOp Op) {
+    // :O
+    void* OV = reinterpret_cast<void*>(Op.opaqueValue());
+    mlir::Value MV = mlir::Value::getFromOpaquePointer(OV);
+    heavy::Value HV = heavy::OpGen::fromValue(MV);
+    setValue(Op.result(), HV);
     return next(Op);
   }
 

@@ -29,6 +29,7 @@ enum class TokenKind {
   char_constant,
   comment_datum,            // #;
   eof,
+  extern_name,              // #_HEAVY...
   false_,
   identifier,
   l_brace,
