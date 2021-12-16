@@ -339,7 +339,8 @@ def heavy_MatchPairOp : HeavyOp<"match_pair", [HasParent<"PatternOp">]> {
   ];
 }
 
-def heavy_PatternOp : HeavyOp<"pattern", [HasParent<"SyntaxOp">]> {
+def heavy_PatternOp : HeavyOp<"pattern", [IsolatedFromAbove,
+                                          HasParent<"SyntaxOp">]> {
   let description = [{
     PatternOp represents the pattern in a pattern/template
     pair as part of the syntax-rules transform specifier. The 
@@ -364,6 +365,22 @@ def heavy_PushContOp : HeavyOp<"push_cont", [ReturnLike, Terminator]> {
   let arguments = (ins StrAttr:$name,
                        Variadic<HeavyValue>:$captures);
   let results   = (outs);
+}
+
+def heavy_RenameOp : HeavyOp<"rename", [HasParent<"PatternOp">]> {
+  let summary = "rename";
+  let description = [{
+    "Rename" a local variable by storing an opaque representation
+    of its mlir::Value. The lifetime of this value expires with the
+    MLIR Context so compilation of these operations should only be JIT.
+    (Local syntax can never be exported)
+  }];
+
+  let arguments = (ins UI64Attr:$opaqueValue);
+  let results   = (outs HeavyValue:$result);
+  let builders  = [
+    OpBuilder<(ins "::mlir::Value":$opaqueValue)>
+  ];
 }
 
 def heavy_SetOp : HeavyOp<"set"> {
@@ -411,7 +428,7 @@ def heavy_SyntaxClosureOp : HeavyOp<"syntax_closure"> {
   ];
 }
 
-def heavy_SyntaxOp: HeavyOp<"syntax", [NoTerminator]> {
+def heavy_SyntaxOp: HeavyOp<"syntax", [IsolatedFromAbove, NoTerminator]> {
   let summary = "syntax";
   let description = [{
     SyntaxOp contains a linearly overloaded sequence of PatternOps that

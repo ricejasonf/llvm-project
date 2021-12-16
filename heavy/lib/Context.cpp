@@ -391,6 +391,10 @@ private:
     VisitCdr(E->getIrritants());
   }
 
+  void VisitExternName(ExternName* E) {
+    OS << "#_" << E->getView();
+  }
+
   void VisitInt(Int V) { OS << int32_t{V}; }
   void VisitFloat(Float* V) {
     llvm::SmallVector<char, 16> Buffer;
@@ -445,7 +449,7 @@ private:
   }
 
   void VisitSymbol(Symbol* S) {
-    OS << S->getVal();
+    OS << S->getView();
   }
 
   void VisitString(String* S) {

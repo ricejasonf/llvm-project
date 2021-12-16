@@ -316,6 +316,9 @@ public:
   mlir::Value VisitPair(Pair* P);
   // TODO mlir::Value VisitVector(Vector* V);
 
+  mlir::Value Lookup(heavy::Value V) {
+    return BindingTable.lookup(V);
+  }
 private:
   mlir::Value HandleCall(Pair* P);
 };
