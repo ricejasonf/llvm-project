@@ -339,8 +339,7 @@ def heavy_MatchPairOp : HeavyOp<"match_pair", [HasParent<"PatternOp">]> {
   ];
 }
 
-def heavy_PatternOp : HeavyOp<"pattern", [IsolatedFromAbove,
-                                          HasParent<"SyntaxOp">]> {
+def heavy_PatternOp : HeavyOp<"pattern", [HasParent<"SyntaxOp">]> {
   let description = [{
     PatternOp represents the pattern in a pattern/template
     pair as part of the syntax-rules transform specifier. The 
