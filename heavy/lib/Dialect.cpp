@@ -175,9 +175,8 @@ void SyntaxClosureOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
 }
 
 void SyntaxOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState) {
-  // FIXME This should have a return type of HeavySyntax
-  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
-  SyntaxOp::build(B, OpState, HeavyValueT);
+  mlir::Type HeavySyntaxT = B.getType<HeavySyntaxTy>();
+  SyntaxOp::build(B, OpState, HeavySyntaxT);
 }
 
 void UndefinedOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState) {
