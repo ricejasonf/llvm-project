@@ -108,13 +108,29 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
                                 ::reverse_iterator;
 
   heavy::Context& Context;
+
+  // ImportsBuilder - Contain insertion point for imported operations
+  //                  from Scheme modules.
+  mlir::OpBuilder ImportsBuilder;
+
+  // ModuleBuilder - Contain insertion point for top level operations
+  //                 in the output ModuleOp
   mlir::OpBuilder ModuleBuilder;
+
+  // Builder - Contain the current insertion point for non-top-level
+  //           operations.
   mlir::OpBuilder Builder;
+
   BindingScopeTable BindingTable;
   std::deque<LambdaScopeNode> LambdaScopes;
+
+  // ModuleOp is the current output module for a Program/Library
+  // It is always nested within the topmost module which also
+  // contains top-level operations imported from Scheme modules.
   mlir::Operation* ModuleOp;
+
   // TopLevelOp The current top level operation being generated.
-  //          It may be either CommandOp, GlobalOp, nullptr.
+  //            It may be either CommandOp, GlobalOp, nullptr.
   mlir::Operation* TopLevelOp = nullptr;
   bool IsLocalDefineAllowed = false;
   std::string ModulePrefix = {};
@@ -319,6 +335,8 @@ public:
   mlir::Value Lookup(heavy::Value V) {
     return BindingTable.lookup(V);
   }
+
+  mlir::Operation* LookupSymbol(llvm::StringRef MangledName);
 private:
   mlir::Value HandleCall(Pair* P);
 };
