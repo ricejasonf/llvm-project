@@ -435,8 +435,7 @@ private:
   }
 
   BlockItrTy Visit(LoadGlobalOp Op) {
-    mlir::ModuleOp M = Context.OpGen->getModuleOp();
-    mlir::Operation* G = M.lookupSymbol(Op.name());
+    mlir::Operation* G = Context.OpGen->LookupSymbol(Op.name());
     if (!G) {
       return SetError("unbound symbol", Value(Op.getOperation()));
     }
