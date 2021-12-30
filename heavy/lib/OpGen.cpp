@@ -30,15 +30,21 @@ using namespace heavy;
 
 OpGen::OpGen(heavy::Context& C)
   : Context(C),
+    ImportsBuilder(&(C.MlirContext)),
     ModuleBuilder(&(C.MlirContext)),
     Builder(&(C.MlirContext)),
     BindingTable()
 {
   // TODO OpGen should own MlirContext
   C.MlirContext.loadDialect<heavy::Dialect>();
-  mlir::ModuleOp M = Builder.create<mlir::ModuleOp>(Builder.getUnknownLoc());
+  mlir::Location Loc = Builder.getUnknownLoc();
+  mlir::ModuleOp TopModule = Builder.create<mlir::ModuleOp>(Loc);
+  Builder.setInsertionPointToStart(TopModule.getBody());
+  mlir::ModuleOp M = Builder.create<mlir::ModuleOp>(Loc);
   ModuleOp = M;
   ModuleBuilder.setInsertionPointToStart(M.getBody());
+  ImportsBuilder.setInsertionPointToStart(TopModule.getBody());
+  Builder.clearInsertionPoint();
   LambdaScopes.emplace_back(ModuleOp, BindingTable);
 }
 
@@ -645,7 +651,7 @@ mlir::Value OpGen::VisitDefineArgs(Value Args) {
 mlir::Value OpGen::createGlobal(SourceLocation Loc,
                                 llvm::StringRef MangledName) {
   mlir::ModuleOp M = getModuleOp();
-  Operation* G = M.lookupSymbol(MangledName);
+  Operation* G = LookupSymbol(MangledName);
 
   if (!G) {
     // Lazily insert extern GlobalOps
@@ -881,6 +887,15 @@ mlir::Value OpGen::LocalizeRec(heavy::Value B,
     BindingTable.insertIntoScope(&LS.BindingScope_, B, NewVal);
   }
   return NewVal;
+}
+
+mlir::Operation* OpGen::LookupSymbol(llvm::StringRef MangledName) {
+  mlir::ModuleOp M = getModuleOp();
+  Operation* G = M.lookupSymbol(MangledName);
+  if (G) return G;
+
+  M = cast<mlir::ModuleOp>(M->getParentOp());
+  return M.lookupSymbol(MangledName);
 }
 
 heavy::Value heavy::eval(Context& C, Value V, Value EnvStack) {
