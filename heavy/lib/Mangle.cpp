@@ -46,7 +46,7 @@ std::string Mangler::mangleModule(Value Spec) {
 std::string Mangler::mangleModuleName(Twine Prefix, Value Spec) {
   if (isa<Empty>(Spec)) return Prefix.str();
   Pair* P = dyn_cast<Pair>(Spec);
-  if (!P) return setError("expected list", Spec);
+  if (!P) return setError("expected library name", Spec);
 
   auto Cont = [&](Twine Result) {
     return mangleModuleName(Result, P->Cdr);
@@ -86,7 +86,7 @@ std::string Mangler::mangleName(Continuation Cont, Twine Prefix,
   } else if (String* S = dyn_cast<String>(Name)) {
     Str = S->getView();
   } else {
-    return setError("expected name in name mangler", Name);
+    return setError("expected identifier for name", Name);
   }
   return mangleName(Cont, Prefix, Str);
 }

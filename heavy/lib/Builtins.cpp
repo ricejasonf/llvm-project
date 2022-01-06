@@ -28,6 +28,14 @@ heavy::ExternSyntax HEAVY_BASE_VAR(lambda);
 heavy::ExternSyntax HEAVY_BASE_VAR(quasiquote);
 heavy::ExternSyntax HEAVY_BASE_VAR(quote);
 heavy::ExternSyntax HEAVY_BASE_VAR(set);
+heavy::ExternSyntax HEAVY_BASE_VAR(begin);
+
+heavy::ExternSyntax HEAVY_BASE_VAR(define_library);
+heavy::ExternSyntax HEAVY_BASE_VAR(export);
+heavy::ExternSyntax HEAVY_BASE_VAR(cond_expand);
+heavy::ExternSyntax HEAVY_BASE_VAR(include);
+heavy::ExternSyntax HEAVY_BASE_VAR(include_ci);
+heavy::ExternSyntax HEAVY_BASE_VAR(include_library_declarations);
 
 heavy::ExternFunction HEAVY_BASE_VAR(add);
 heavy::ExternFunction HEAVY_BASE_VAR(sub);
@@ -138,6 +146,67 @@ mlir::Value import(OpGen& OG, Pair* P) {
     Current = Current.cdr();
   }
   return mlir::Value();
+}
+
+mlir::Value export_(OpGen& OG, Pair* P) {
+  llvm_unreachable("TODO");
+}
+
+mlir::Value define_library(OpGen& OG, Pair* P) {
+  heavy::SourceLocation Loc = P->getSourceLocation();
+  if (!OG.isTopLevel() ||
+       OG.getModulePrefix().size() > 0) {
+    return OG.SetError("unexpected library definition", P);
+  }
+  Value NameSpec;
+  Pair* LibraryDecls;
+  if (Pair* P2 = dyn_cast<Pair>(P->Cdr)) {
+    NameSpec = P2->Car;
+    LibraryDecls = dyn_cast<Pair>(P2->Cdr);
+    if (!LibraryDecls) {
+      return OG.SetError("expected library declarations", P2->Cdr);
+    }
+  }
+  std::string MangledName = OG.mangleModule(NameSpec); 
+  // FIXME Because Library can contain top-level exprs we
+  //       must use continuations.
+  if (MangledName.size() != 0) {
+    OG.VisitLibrary(Loc, std::move(MangledName), LibraryDecls);
+  }
+  return mlir::Value();
+}
+
+mlir::Value begin(OpGen& OG, Pair* P) {
+  auto Loc = P->getSourceLocation();
+  if (!OG.isTopLevel()) {
+    return OG.createSequence(Loc, P->Cdr);
+  }
+
+  Value Cur = P->Cdr;
+  while (Pair* P2 = dyn_cast<Pair>(Cur)) {
+    OG.VisitTopLevel(P2->Car);
+    Cur = P2->Cdr;
+  }
+  if (!isa<Empty>(Cur)) {
+    return OG.SetError("expected proper list", P);
+  }
+  return mlir::Value();
+}
+
+mlir::Value cond_expand(OpGen& OG, Pair* P) {
+  llvm_unreachable("TODO");
+}
+
+mlir::Value include_(OpGen& OG, Pair* P) {
+  llvm_unreachable("TODO");
+}
+
+mlir::Value include_ci(OpGen& OG, Pair* P) {
+  llvm_unreachable("TODO");
+}
+
+mlir::Value include_library_declarations(OpGen& OG, Pair* P) {
+  llvm_unreachable("TODO");
 }
 
 }} // end of namespace heavy::base

@@ -37,6 +37,11 @@
 #define HEAVY_BASE_VAR__eqv           HEAVY_BASE_LIB_(V3Seqvqu)
 #define HEAVY_BASE_VAR__eval          HEAVY_BASE_LIB_(V4Seval)
 #define HEAVY_BASE_VAR__callcc        HEAVY_BASE_LIB_(V4Scalldv2Scc)
+#define HEAVY_BASE_VAR__export        HEAVY_BASE_LIB_(V6Sexport)
+#define HEAVY_BASE_VAR__include       HEAVY_BASE_LIB_(V7Sinclude)
+// ...
+// TODO Make this mapping to mangled variable names complete possibly
+//      by using HeavyScheme in Clang itself once it is ready.
 
 namespace mlir {
 
@@ -66,7 +71,14 @@ mlir::Value lambda(OpGen& OG, Pair* P);
 mlir::Value quasiquote(OpGen& C, Pair* P); // lib/Quasiquote.cpp
 mlir::Value quote(OpGen& OG, Pair* P);     // lib/Quasiquote.cpp
 mlir::Value set(OpGen& OG, Pair* P);
+mlir::Value begin(OpGen& OG, Pair* P);
+mlir::Value cond_expand(OpGen& OG, Pair* P);
 mlir::Value import(OpGen& OG, Pair* P);
+mlir::Value define_library(OpGen& OG, Pair* P);
+mlir::Value export_(OpGen& OG, Pair* P);
+mlir::Value include_(OpGen& OG, Pair* P);
+mlir::Value include_ci(OpGen& OG, Pair* P);
+mlir::Value include_library_declarations(OpGen& OG, Pair* P);
 
 
 // functions
@@ -98,6 +110,13 @@ extern heavy::ExternSyntax   HEAVY_BASE_VAR(lambda);
 extern heavy::ExternSyntax   HEAVY_BASE_VAR(quasiquote);
 extern heavy::ExternSyntax   HEAVY_BASE_VAR(quote);
 extern heavy::ExternSyntax   HEAVY_BASE_VAR(set);
+extern heavy::ExternSyntax   HEAVY_BASE_VAR(begin);
+extern heavy::ExternSyntax   HEAVY_BASE_VAR(cond_expand);
+extern heavy::ExternSyntax   HEAVY_BASE_VAR(define_library);
+extern heavy::ExternSyntax   HEAVY_BASE_VAR(export);
+extern heavy::ExternSyntax   HEAVY_BASE_VAR(include);
+extern heavy::ExternSyntax   HEAVY_BASE_VAR(include_ci);
+extern heavy::ExternSyntax   HEAVY_BASE_VAR(include_library_declarations);
 
 extern heavy::ExternFunction HEAVY_BASE_VAR(add);
 extern heavy::ExternFunction HEAVY_BASE_VAR(sub);
@@ -127,14 +146,22 @@ inline void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_IS_LOADED = true;
 
   // syntax
-  HEAVY_BASE_VAR(define)        = heavy::base::define;
-  HEAVY_BASE_VAR(define_syntax) = heavy::base::define_syntax;
-  HEAVY_BASE_VAR(syntax_rules)  = heavy::base::syntax_rules;
-  HEAVY_BASE_VAR(if)            = heavy::base::if_;
-  HEAVY_BASE_VAR(lambda)        = heavy::base::lambda;
-  HEAVY_BASE_VAR(quasiquote)    = heavy::base::quasiquote;
-  HEAVY_BASE_VAR(quote)         = heavy::base::quote;
-  HEAVY_BASE_VAR(set)           = heavy::base::set;
+  HEAVY_BASE_VAR(define)          = heavy::base::define;
+  HEAVY_BASE_VAR(define_syntax)   = heavy::base::define_syntax;
+  HEAVY_BASE_VAR(syntax_rules)    = heavy::base::syntax_rules;
+  HEAVY_BASE_VAR(if)              = heavy::base::if_;
+  HEAVY_BASE_VAR(lambda)          = heavy::base::lambda;
+  HEAVY_BASE_VAR(quasiquote)      = heavy::base::quasiquote;
+  HEAVY_BASE_VAR(quote)           = heavy::base::quote;
+  HEAVY_BASE_VAR(set)             = heavy::base::set;
+  HEAVY_BASE_VAR(begin)           = heavy::base::begin;
+  HEAVY_BASE_VAR(cond_expand)     = heavy::base::cond_expand;
+  HEAVY_BASE_VAR(define_library)  = heavy::base::define_library;
+  HEAVY_BASE_VAR(export)          = heavy::base::export_;
+  HEAVY_BASE_VAR(include)         = heavy::base::include_;
+  HEAVY_BASE_VAR(include_ci)      = heavy::base::include_ci;
+  HEAVY_BASE_VAR(include_library_declarations)
+    = heavy::base::include_library_declarations;
 
   // functions
   HEAVY_BASE_VAR(add)     = heavy::base::add;
@@ -171,6 +198,14 @@ inline void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"quote",         HEAVY_BASE_VAR(quote)},
     {"set!",          HEAVY_BASE_VAR(set)},
     {"syntax-rules",  HEAVY_BASE_VAR(syntax_rules)},
+    {"begin",         HEAVY_BASE_VAR(begin)},
+    {"cond-expand",   HEAVY_BASE_VAR(cond_expand)},
+    {"define-library",HEAVY_BASE_VAR(define_library)},
+    {"export",        HEAVY_BASE_VAR(export)},
+    {"include",       HEAVY_BASE_VAR(include)},
+    {"include-ci",    HEAVY_BASE_VAR(include_ci)},
+    {"include-library-declarations",
+      HEAVY_BASE_VAR(include_library_declarations)},
 
     // functions
     {"+",       HEAVY_BASE_VAR(add)},
