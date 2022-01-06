@@ -132,6 +132,10 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   // TopLevelOp The current top level operation being generated.
   //            It may be either CommandOp, GlobalOp, nullptr.
   mlir::Operation* TopLevelOp = nullptr;
+  // IsTopLevelAllowed - Determine if any operations may be inserted
+  //                     for use at program level or in a sequence
+  //                     within a library definition.
+  bool IsTopLevelAllowed = false;
   bool IsLocalDefineAllowed = false;
   std::string ModulePrefix = {};
   unsigned LambdaNameCount = 0;
@@ -185,12 +189,16 @@ public:
     return ModulePrefix;
   }
 
+  void VisitLibrary(heavy::SourceLocation Loc, std::string&& MangledName,
+                    heavy::Value LibraryDecls);
   mlir::Operation* VisitTopLevel(Value V);
+
 
   bool isTopLevel() { return TopLevelOp == nullptr; }
   bool isTailPos() { return IsTailPos; }
   bool isLocalDefineAllowed();
 
+  std::string mangleModule(heavy::Value Name);
   std::string mangleFunctionName(llvm::StringRef Name);
 
   // createHelper - Facilitate creating an operation with proper source
@@ -209,7 +217,7 @@ public:
 
   template <typename Op, typename ...Args>
   Op create(heavy::SourceLocation Loc, Args&& ...args) {
-    if (Builder.getBlock() == nullptr) {
+    if (Builder.getBlock() == nullptr && IsTopLevelAllowed) {
       InsertTopLevelCommandOp(Loc);
     } else if (IsLocalDefineAllowed) {
       // An error may occur here, but we always want
