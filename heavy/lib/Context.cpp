@@ -561,7 +561,7 @@ String* ImportSet::FilterName(heavy::Context& C, String* S) {
   // traverse back down removing or replacing the String
   if (Kind == ImportKind::Library) {
     Module* M = cast<Module>(Specifier);
-    assert(M->Lookup(S).Value != nullptr && "filtered name not in library");
+    assert(M->Lookup(S) && "filtered name not in library");
     return S;
   }
   S = Parent->FilterName(C, S);
@@ -732,6 +732,7 @@ void heavy::initModule(heavy::Context& C, llvm::StringRef ModuleMangledName,
     Value Val = X.second;
     String* MangledName = C.CreateIdTableEntry(
         Mangler.mangleVariable(ModuleMangledName, Id));
+    assert(Val && "value must not be nullptr");
     M->Insert(EnvBucket{Id, EnvEntry{Val, MangledName}});
     // Track valid values by their mangled names
     if (Val) {

@@ -48,6 +48,11 @@ OpGen::OpGen(heavy::Context& C)
   LambdaScopes.emplace_back(ModuleOp, BindingTable);
 }
 
+std::string OpGen::mangleModule(heavy::Value NameSpec) {
+  heavy::Mangler Mangler(Context);
+  return Mangler.mangleModule(NameSpec);
+}
+
 std::string OpGen::mangleFunctionName(llvm::StringRef Name) {
   heavy::Mangler Mangler(Context);
   if (Name.empty()) {
@@ -100,7 +105,34 @@ mlir::Value OpGen::GetPatternVar(heavy::Symbol* S) {
   llvm_unreachable("syntax closure not found in binding table");
 }
 
+void OpGen::VisitLibrary(heavy::SourceLocation Loc, std::string&& MangledName,
+                         Value LibraryDecls) {
+  assert(ModulePrefix.size() == 0 && "nested libraries are not allowed");
+  assert(isTopLevel() && "library should be top level");
+  setModulePrefix(std::move(MangledName));
+
+  mlir::Location MLoc = mlir::OpaqueLoc::get(Loc.getOpaqueEncoding(),
+                                             Builder.getContext());
+
+  // Create the output ModuleOp
+  auto ModuleOp = ImportsBuilder.create<mlir::ModuleOp>(MLoc);
+  ModuleBuilder.setInsertionPointToStart(ModuleOp.getBody());
+
+  // This does not currently support non-blocking directives.
+  mlir::OpBuilder::InsertionGuard IG(ModuleBuilder);
+  while (Pair* P = dyn_cast<Pair>(LibraryDecls)) {
+    Visit(P->Car);
+    LibraryDecls = P->Cdr;
+  }
+  if (!isa<Empty>(LibraryDecls)) {
+    SetError(Loc,
+             "expected proper list for library declarations",
+             LibraryDecls);
+  }
+}
+
 mlir::Operation* OpGen::VisitTopLevel(Value V) {
+  IsTopLevelAllowed = true;
   mlir::Operation* PrevTopLevelOp = TopLevelOp;
   TopLevelOp = nullptr;
   LambdaScopes.emplace_back(nullptr, BindingTable);
@@ -127,9 +159,15 @@ mlir::Operation* OpGen::VisitTopLevel(Value V) {
 
   Visit(V);
 
+#if 0
+  // Revert allowing top level op insertion.
+  assert(IsTopLevelAllowed == false &&
+      "Inserting a top level op should revert IsTopLevelAllowed.");
+#endif
+
   if (!TopLevelOp) return nullptr;
   assert((isa<CommandOp, GlobalOp>(TopLevelOp)) &&
-      "top level operation must be CommandOp or GlobalOp");
+      "Top level operation must be CommandOp or GlobalOp");
 
   if (heavy::CommandOp CommandOp =
         dyn_cast<heavy::CommandOp>(TopLevelOp)) {
@@ -498,6 +536,9 @@ mlir::Value OpGen::createDefine(Symbol* S, Value DefineArgs,
 mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
                                         Value OrigCall) {
   SourceLocation DefineLoc = OrigCall.getSourceLocation();
+  if (!IsTopLevelAllowed) {
+    return SetError("unexpected define", OrigCall);
+  }
 
   // If EnvStack isn't an Environment then there is local
   // scope information on top of it
