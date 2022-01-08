@@ -131,41 +131,57 @@ void OpGen::VisitLibrary(heavy::SourceLocation Loc, std::string&& MangledName,
   }
 }
 
-mlir::Operation* OpGen::VisitTopLevel(Value V) {
+void OpGen::VisitTopLevel(Value V) {
   IsTopLevelAllowed = true;
-  mlir::Operation* PrevTopLevelOp = TopLevelOp;
   TopLevelOp = nullptr;
   LambdaScopes.emplace_back(nullptr, BindingTable);
-  auto ScopeExit = llvm::make_scope_exit([&] {
-    // Pop continuation scopes to the TopLevelOp.
-    while (LambdaScopes.size() > 0) {
-      if (LambdaScopes.back().Op == TopLevelOp) {
-        // Pop the TopLevelOp.
-        TopLevelOp = PrevTopLevelOp;
-        LambdaScopes.pop_back();
-        break;
-      } else if (LambdaScopes.back().Op == ModuleOp) {
-        break;
-      } else {
-        PopContinuationScope();
-      }
-    }
-  });
 
   // We use a null Builder to denote that we should
   // insert into a lazily created CommandOp by default
-  mlir::OpBuilder::InsertionGuard IG(Builder);
+  // The insertion point is saved manually (ie not RAII)
+  // and then restored in the continuation.
+  mlir::OpBuilder::InsertPoint PrevInsertPoint = Builder.saveInsertionPoint();
   Builder.clearInsertionPoint();
 
+  Context.PushCont([this](heavy::Context& Ctx, ValueRefs) {
+    // Instead of the continuation argument we use TopLevelOp
+    FinishTopLevelOp();
+    if (TopLevelOp && TopLevelHandler) {
+      // Call the TopLevelHandler
+      Value Result = toValue(TopLevelOp);
+      Ctx.Apply(TopLevelHandler, TopLevelOp);
+    } else {
+      Ctx.Cont();
+    }
+
+    // Restore insertion point.
+    Builder.restoreInsertPoint(PrevInsertPoint);
+  });
+
+  // Top Level Syntax may be async and use continuations.
+  // (e.g. for `import` etc.)
+  if (Pair* P = dyn_cast<Pair>(V)) {
+    Value Operator = P->Car;
+    if (isa<Syntax>(Operator)) {
+      Value Input = P;
+      Context.Apply(Operator, Input);
+      return;
+    }
+  }
+
+  // At this point we stipulate any custom syntax
+  // routines are strictly sync/blocking.
+  // The pushed continuation will handle the result.
   Visit(V);
+  Context.Cont();
+}
 
-#if 0
-  // Revert allowing top level op insertion.
-  assert(IsTopLevelAllowed == false &&
-      "Inserting a top level op should revert IsTopLevelAllowed.");
-#endif
+void OpGen::FinishTopLevelOp() {
+  if (!TopLevelOp) {
+    assert(LambdaScopes.size() == 0 && "No scopes should be inserted.");
+    return;
+  }
 
-  if (!TopLevelOp) return nullptr;
   assert((isa<CommandOp, GlobalOp>(TopLevelOp)) &&
       "Top level operation must be CommandOp or GlobalOp");
 
@@ -191,7 +207,34 @@ mlir::Operation* OpGen::VisitTopLevel(Value V) {
     }
   }
 
-  return TopLevelOp;
+  // Pop continuation scopes to the TopLevelOp.
+  while (LambdaScopes.size() > 0) {
+    if (LambdaScopes.back().Op == TopLevelOp) {
+      // Pop the TopLevelOp.
+      LambdaScopes.pop_back();
+      break;
+    } else if (LambdaScopes.back().Op == ModuleOp) {
+      break;
+    } else {
+      PopContinuationScope();
+    }
+  }
+
+}
+
+void OpGen::VisitTopLevelSequence(Value List) {
+  if (Pair* P = dyn_cast<Pair>(List)) {
+    Context.PushCont([](heavy::Context& C, ValueRefs) {
+      Value Rest = C.getCaptures[0];
+      C.OpGen.VisitTopLevelSequence(Rest);
+    }, CaptureList{P->Cdr});
+    VisitTopLevel(P->Car);
+  }
+  else if (isa<Empty>(List)) {
+    Context.Cont();
+  } else {
+    SetError("expected proper list in sequence", List);
+  }
 }
 
 void OpGen::InsertTopLevelCommandOp(SourceLocation Loc) {
