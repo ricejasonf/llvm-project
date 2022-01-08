@@ -1736,8 +1736,9 @@ struct ExternValue {
 template <size_t CaptureCount>
 struct ExternLambda : public ExternValue<
         sizeof(void*) * CaptureCount + sizeof(Lambda), alignof(Lambda)> {
-  // takes any invocable object and allocates
-  // it as a type-erased Scheme lambda
+  // Take invocable object and allocates
+  // it as a type-erased Scheme Lambda.
+  // Must invoke with OpaqueFn
   template <typename F>
   void operator=(F f) {
     auto FnData = createOpaqueFn(f);
@@ -1756,11 +1757,24 @@ struct ExternFunction : ExternValue<sizeof(Builtin)> {
     this->Value = New;
   }
 };
-struct ExternSyntax : ExternValue<sizeof(BuiltinSyntax)> {
+struct ExternBuiltinSyntax : ExternValue<sizeof(BuiltinSyntax)> {
   void operator=(heavy::SyntaxFn Fn) {
     void* Mem = heavy::allocate(*this, sizeof(BuiltinSyntax),
                                 alignof(BuiltinSyntax));
     BuiltinSyntax* New = new (Mem) BuiltinSyntax(Fn);
+    this->Value = New;
+  }
+};
+struct ExternSyntax : ExternValue<sizeof(Syntax)> {
+  // Take invocable object and allocates
+  // it as a type-erased Scheme syntax function.
+  // Must invoke with OpaqueFn
+  template <typename F>
+  void operator=(F f) {
+    auto FnData = createOpaqueFn(f);
+    void* Mem = Syntax::allocate(*this, FnData);
+    Syntax* New = new (Mem) Syntax(FnData);
+
     this->Value = New;
   }
 };

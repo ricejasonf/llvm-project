@@ -82,7 +82,6 @@ mlir::Value include_library_declarations(OpGen& OG, Pair* P);
 
 
 // functions
-void eval(Context& C, ValueRefs Args);
 void dump(Context& C, ValueRefs Args);
 void add(Context& C, ValueRefs Args);
 void mul(Context&C, ValueRefs Args);
@@ -99,6 +98,11 @@ void callcc(Context& C, ValueRefs Args);
 void with_exception_handler(Context& C, ValueRefs Args);
 void raise(Context& C, ValueRefs Args);
 void error(Context& C, ValueRefs Args);
+
+// TODO These should go in (heavy eval)
+void eval(Context& C, ValueRefs Args);
+void op_eval(Context& C, ValueRefs Args);
+void compile(Context& C, ValueRefs Args);
 
 }}
 
@@ -130,11 +134,14 @@ extern heavy::ExternFunction HEAVY_BASE_VAR(dump);
 extern heavy::ExternFunction HEAVY_BASE_VAR(eq);
 extern heavy::ExternFunction HEAVY_BASE_VAR(equal);
 extern heavy::ExternFunction HEAVY_BASE_VAR(eqv);
-extern heavy::ExternFunction HEAVY_BASE_VAR(eval);
 extern heavy::ExternFunction HEAVY_BASE_VAR(callcc);
 extern heavy::ExternFunction HEAVY_BASE_VAR(with_exception_handler);
 extern heavy::ExternFunction HEAVY_BASE_VAR(raise);
 extern heavy::ExternFunction HEAVY_BASE_VAR(error);
+
+extern heavy::ExternFunction HEAVY_BASE_VAR(eval);
+extern heavy::ExternFunction HEAVY_BASE_VAR(op_eval);
+extern heavy::ExternFunction HEAVY_BASE_VAR(compile);
 
 extern bool HEAVY_BASE_IS_LOADED;
 
@@ -176,12 +183,15 @@ inline void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(eq)      = heavy::base::eqv;
   HEAVY_BASE_VAR(equal)   = heavy::base::equal;
   HEAVY_BASE_VAR(eqv)     = heavy::base::eqv;
-  HEAVY_BASE_VAR(eval)    = heavy::base::eval;
   HEAVY_BASE_VAR(callcc)  = heavy::base::callcc;
   HEAVY_BASE_VAR(with_exception_handler)
     = heavy::base::with_exception_handler;
   HEAVY_BASE_VAR(raise)   = heavy::base::raise;
   HEAVY_BASE_VAR(error)   = heavy::base::error;
+
+  HEAVY_BASE_VAR(eval)    = heavy::base::eval;
+  HEAVY_BASE_VAR(op_eval) = heavy::base::op_eval;
+  HEAVY_BASE_VAR(compile) = heavy::base::compile;
 }
 
 // initializes the module and loads lookup information
@@ -220,11 +230,14 @@ inline void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"eq?",     HEAVY_BASE_VAR(eq)},
     {"equal?",  HEAVY_BASE_VAR(equal)},
     {"eqv?",    HEAVY_BASE_VAR(eqv)},
-    {"eval",    HEAVY_BASE_VAR(eval)},
     {"call/cc", HEAVY_BASE_VAR(callcc)},
     {"with-exception-handler", HEAVY_BASE_VAR(with_exception_handler)},
     {"raise", HEAVY_BASE_VAR(raise)},
     {"error", HEAVY_BASE_VAR(error)},
+
+    {"eval",    HEAVY_BASE_VAR(eval)},
+    {"op-eval", HEAVY_BASE_VAR(op_eval)},
+    {"compile", HEAVY_BASE_VAR(compile)},
   });
 }
 }

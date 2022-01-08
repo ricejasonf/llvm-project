@@ -18,6 +18,7 @@
 #include "heavy/Value.h"
 #include "heavy/ValueVisitor.h"
 #include "mlir/IR/Builders.h"
+#include "llvm/ADT/STLExtras.h" // function_ref
 #include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/Casting.h"
@@ -132,6 +133,13 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   // TopLevelOp The current top level operation being generated.
   //            It may be either CommandOp, GlobalOp, nullptr.
   mlir::Operation* TopLevelOp = nullptr;
+
+  // TopLevelHandler - Use to evaluate potentially multiple top level
+  //                   operations. The handler should receive a single
+  //                   Value that is an Operation.
+  //                   TODO This needs to be visited during GC.
+  Value TopLevelHandler = nullptr;
+
   // IsTopLevelAllowed - Determine if any operations may be inserted
   //                     for use at program level or in a sequence
   //                     within a library definition.
@@ -191,8 +199,12 @@ public:
 
   void VisitLibrary(heavy::SourceLocation Loc, std::string&& MangledName,
                     heavy::Value LibraryDecls);
-  mlir::Operation* VisitTopLevel(Value V);
-
+  void VisitTopLevel(Value V);
+  void FinishTopLevelOp();
+  void VisitTopLevelSequence(Value List);
+  void SetTopLevelHandler(Value OnTopLevel) {
+    TopLevelHandler = OnTopLevel;
+  }
 
   bool isTopLevel() { return TopLevelOp == nullptr; }
   bool isTailPos() { return IsTailPos; }
