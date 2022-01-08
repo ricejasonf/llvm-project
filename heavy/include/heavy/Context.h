@@ -376,23 +376,6 @@ public:
   Value cddr(Value V) { return setLoc(V).cddr(); }
 };
 
-class EnvRAII {
-  heavy::Context& Context;
-  heavy::Value OldEnv;
-
-public:
-  EnvRAII(heavy::Context& C, heavy::Value NewEnv)
-    : Context(C),
-      OldEnv(C.getEnvironment())
-  {
-    Context.setEnvironment(NewEnv);
-  }
-
-  ~EnvRAII() {
-    Context.setEnvironment(OldEnv);
-  }
-};
-
 }
 
 #endif

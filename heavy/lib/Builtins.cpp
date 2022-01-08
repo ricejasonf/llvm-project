@@ -14,6 +14,7 @@
 #include "heavy/Context.h"
 #include "heavy/OpGen.h"
 #include "llvm/Support/Casting.h"
+#include "memory"
 
 bool HEAVY_BASE_IS_LOADED = false;
 
@@ -176,21 +177,16 @@ mlir::Value define_library(OpGen& OG, Pair* P) {
   return mlir::Value();
 }
 
-mlir::Value begin(OpGen& OG, Pair* P) {
+void begin(Context& C, ValueRefs Args) {
+  OpGen& OG = *C.OpGen;
+  Pair* P = cast<Pair>(Args[0]);
   auto Loc = P->getSourceLocation();
-  if (!OG.isTopLevel()) {
-    return OG.createSequence(Loc, P->Cdr);
+  if (OG.isTopLevel()) {
+    OG.VisitTopLevelSequence(P->Cdr);
+  } else {
+    mlir::Value Result = OG.createSequence(Loc, P->Cdr);
+    C.Cont(OpGen::fromValue(Result));
   }
-
-  Value Cur = P->Cdr;
-  while (Pair* P2 = dyn_cast<Pair>(Cur)) {
-    OG.VisitTopLevel(P2->Car);
-    Cur = P2->Cdr;
-  }
-  if (!isa<Empty>(Cur)) {
-    return OG.SetError("expected proper list", P);
-  }
-  return mlir::Value();
 }
 
 mlir::Value cond_expand(OpGen& OG, Pair* P) {
@@ -240,46 +236,6 @@ void callcc(Context& C, ValueRefs Args) {
   unsigned Len = Args.size();
   assert(Len == 1 && "Invalid arity to builtin `callcc`");
   C.CallCC(Args[0]);
-}
-
-void eval(Context& C, ValueRefs Args) {
-  // noop if there is already an error
-  if (C.CheckError()) return C.Cont();
-  unsigned Len = Args.size();
-  assert((Len == 1 || Len == 2) && "Invalid arity to builtin `eval`");
-  unsigned i = 0;
-  Value EnvSpec = (Len == 2) ? Args[i++] : nullptr;
-  Value ExprOrDef = Args[i];
-  mlir::Operation* Op = nullptr;
-
-  {
-    std::unique_ptr<Environment> EnvPtr = nullptr;
-    Environment* Env = nullptr;;
-    
-    if (!EnvSpec) {
-      Env = C.getTopLevelEnvironment();
-    } else if (auto* E = dyn_cast<Environment>(EnvSpec)) {
-      Env = E;
-    } else if (auto* ImpSet = dyn_cast<ImportSet>(EnvSpec)) {
-      EnvPtr = C.CreateEnvironment(ImpSet);
-      Env = EnvPtr.get();
-    }
-    
-    if (!Env) {
-      return C.SetError("Invalid import spec", EnvSpec);
-    }
-
-    // Set the environment.
-    heavy::EnvRAII EnvRAII(C, Env);
-    Op = C.OpGen->VisitTopLevel(ExprOrDef);
-  }
-
-  if (C.CheckError()) return;
-
-  if (Op) {
-    opEval(C.OpEval, Op);
-  }
-  C.Cont(Undefined());
 }
 
 void dump(Context& C, ValueRefs Args) {
@@ -395,6 +351,62 @@ void error(Context& C, ValueRefs Args) {
   if (Args.size() == 0) return C.RaiseError("invalid arity");
   if (C.CheckKind<String>(Args[0])) return;
   C.RaiseError(cast<String>(Args[0]), Args.drop_front());
+}
+
+void compile(Context& C, ValueRefs Args) {
+  // noop if there is already an error
+  if (C.CheckError()) return C.Cont();
+  unsigned Len = Args.size();
+  assert((Len == 1 || Len == 2) && "Invalid arity to builtin `eval`");
+  unsigned i = 0;
+  Value EnvSpec = (Len == 2) ? Args[i++] : nullptr;
+  Value ExprOrDef = Args[i];
+
+  std::unique_ptr<Environment> EnvPtr = nullptr;
+  Environment* Env = nullptr;;
+  
+  if (!EnvSpec) {
+    Env = C.getTopLevelEnvironment();
+  } else if (auto* E = dyn_cast<Environment>(EnvSpec)) {
+    Env = E;
+  } else if (auto* ImpSet = dyn_cast<ImportSet>(EnvSpec)) {
+    EnvPtr = C.CreateEnvironment(ImpSet);
+    Env = EnvPtr.get();
+  }
+  
+  if (!Env) {
+    return C.SetError("Invalid import spec", EnvSpec);
+  }
+
+  // EnvCleanup must be trivial to store on continuation stack.
+  class EnvCleanup {
+    Environment* EnvPtrRaw;
+    Value PrevEnv;
+
+  public:
+    EnvCleanup(Context& C, std::unique_ptr<Environment> OwnedEnv,
+               Environment* NewEnv)
+      : EnvPtrRaw(OwnedEnv.release()),
+        PrevEnv(C.getEnvironment())
+    {
+      C.setEnvironment(NewEnv);
+    }
+
+    void operator()(Context& C, ValueRefs) {
+      C.setEnvironment(PrevEnv);
+      if (EnvPtrRaw) {
+        delete EnvPtrRaw;
+      }
+    }
+  };
+
+  EnvCleanup Cleanup(C, std::move(EnvPtr), Env);
+  C.PushCont(Cleanup, CaptureList{Env});
+  C.OpGen->SetTopLevelHandler([](Context& C, ValueRefs Args) {
+    mlir::Operation* Op = cast<mlir::Operation>(Args[0]);
+    opEval(C.OpEval, Op);
+  });
+  C.OpGen->VisitTopLevel(ExprOrDef);
 }
 
 }} // end of namespace heavy::base
