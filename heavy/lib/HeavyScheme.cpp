@@ -68,71 +68,66 @@ void HeavyScheme::SetEnvironment(Environment& Env) {
   Context.setEnvironment(&Env);
 }
 
-bool HeavyScheme::ProcessTopLevelCommands(
+void HeavyScheme::ProcessTopLevelCommands(
                               heavy::Lexer& Lexer,
                               llvm::function_ref<ErrorHandlerFn> ErrorHandler,
                               heavy::tok Terminator) {
   return ProcessTopLevelCommands(Lexer, base::eval, ErrorHandler, Terminator);
 }
 
-bool HeavyScheme::ProcessTopLevelCommands(
+void HeavyScheme::ProcessTopLevelCommands(
                               heavy::Lexer& Lexer,
                               llvm::function_ref<ValueFnTy> ExprHandler,
                               llvm::function_ref<ErrorHandlerFn> ErrorHandler,
                               heavy::tok Terminator) {
   auto& Context = getContext();
   auto& SM = getSourceManager();
-  auto handleError = [&] {
+  auto HandleErrorFn = [&](heavy::Context& Context, ValueRefs) {
+    assert(Context.CheckError() && "expecting hard error");
     heavy::FullSourceLocation FullLoc = SM.getFullSourceLocation(
         Context.getErrorLocation());
     ErrorHandler(Context.getErrorMessage(), FullLoc);
-    return true;
+    Context.ClearStack();
   };
 
   heavy::Parser Parser(Lexer, Context);
   if (!Parser.PrimeToken(Terminator)) {
-    handleError();
-    return true;
+    HandleErrorFn(Context, {});
+    return;
   }
 
-  Context.SetErrorHandler(Context.CreateLambda(
-    [handleError](heavy::Context& C, ValueRefs Args) {
-      assert(C.CheckError() && "expecting hard error");
-      handleError();
-      C.Cont(Bool{true});
-    }, /*Captures=*/{}));
-
   heavy::ExternLambda<0, sizeof(ExprHandler)> HandleExpr;
-  heavy::ExternLambda<0, (sizeof(void*) * 3)> ParseAndHandle;
+  heavy::ExternLambda<0, sizeof(ErrorHandler)> HandleError;
+  heavy::ExternLambda<0, (sizeof(void*) * 3)> MainThunk;
 
-  auto ParseAndHandleFn = [&Parser, &ParseAndHandle, &HandleExpr]
+  auto MainThunkFn = [&Parser, &MainThunk, &HandleExpr]
                           (heavy::Context& C, ValueRefs) {
     assert(!C.CheckError() && "Error should have escaped.");
     if (Parser.isFinished()) {
-      C.Cont(Bool{false});
+      C.Cont();
       return;
     }
 
     // Recurse in tail position.
-    C.PushCont(Value(ParseAndHandle));
+    C.PushCont(Value(MainThunk));
 
     heavy::ValueResult ParseResult = Parser.ParseTopLevelExpr();
     if (ParseResult.isUsable()) {
       Value ParseResultVal = ParseResult.get();
       C.Apply(Value(HandleExpr), ParseResultVal);
     } else {
-      C.Cont(Bool{false});
+      C.Cont();
     }
   };
 
-  static_assert(ParseAndHandle.storage_len >= sizeof(ParseAndHandleFn),
-      "Insufficient storage for function");
-  HandleExpr = ExprHandler;
-  ParseAndHandle = ParseAndHandleFn;
+  // Store the handlers and thunk.
+  HandleExpr  = ExprHandler;
+  HandleError = HandleErrorFn;
+  MainThunk   = MainThunkFn;
 
   // Run the loop.
-  Value Result = Context.Run(ParseAndHandle, llvm::None);
-  return cast<Bool>(Result);
+  Context.WithExceptionHandlers(HandleError, MainThunk);
+  Context.Resume();
 }
 
 void HeavyScheme::RegisterModule(llvm::StringRef MangledName,

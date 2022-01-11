@@ -326,6 +326,7 @@ public:
   //    the current function call and preventing any resumption
   //    of the current continuation.
   void ClearStack() {
+    ApplyArgs[0] = Bottom;
     Top = Bottom;
   }
 
