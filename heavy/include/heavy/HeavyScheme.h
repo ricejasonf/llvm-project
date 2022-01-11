@@ -82,10 +82,10 @@ class HeavyScheme {
   //                (ie a heavy::tok::r_paren can terminate without effecting
   //                 the parsing of lists that are delimited by parens)
   //              - ExprHandler defaults to `base::eval`
-  bool ProcessTopLevelCommands(heavy::Lexer& Lexer,
+  void ProcessTopLevelCommands(heavy::Lexer& Lexer,
                                llvm::function_ref<ErrorHandlerFn> ErrorHandler,
                                heavy::tok Terminator);
-  bool ProcessTopLevelCommands(heavy::Lexer& Lexer,
+  void ProcessTopLevelCommands(heavy::Lexer& Lexer,
                                llvm::function_ref<ValueFnTy> ExprHandler,
                                llvm::function_ref<ErrorHandlerFn> ErrorHandler,
                                heavy::tok Terminator = heavy::tok::eof);

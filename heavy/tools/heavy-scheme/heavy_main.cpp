@@ -83,7 +83,9 @@ int main(int argc, char const** argv) {
 
   // Top level Scheme parse/eval stuff
 
-  auto OnError = [](llvm::StringRef Err, heavy::FullSourceLocation) {
+  bool HasErrors = false;
+  auto OnError = [&HasErrors](llvm::StringRef Err, heavy::FullSourceLocation) {
+    HasErrors = true;
     // TODO display error location
     llvm::errs() << "error: "
                  << Err
@@ -94,7 +96,7 @@ int main(int argc, char const** argv) {
   heavy::HeavyScheme HeavyScheme;
   heavy::Lexer Lexer(File);
   HeavyScheme.SetEnvironment(*Env);
-  bool HasErrors = HeavyScheme.ProcessTopLevelCommands(Lexer, ProcessTopLevelExpr, OnError);
+  HeavyScheme.ProcessTopLevelCommands(Lexer, ProcessTopLevelExpr, OnError);
 
   if (InputMode.getValue() == ExecutionMode::mlir) {
     HeavyScheme.getContext().verifyModule();
