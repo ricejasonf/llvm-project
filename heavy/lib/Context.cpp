@@ -798,16 +798,17 @@ void Context::WithExceptionHandler(Value Handler, Value Thunk) {
 void Context::Raise(Value Obj) {
   if (isa<Empty>(ExceptionHandlers)) {
     ClearStack();
-    return Cont(Undefined());
+    return Cont();
   }
   if (!isa<Pair>(ExceptionHandlers)) {
     if (!CheckError()) {
       std::string Msg;
       llvm::raw_string_ostream Stream(Msg);
-      write(Stream << "uncaught object: ", Obj);
+      write(Stream << "uncaught exception: ", Obj);
       return SetError(Msg, Obj);
     }
-    return Apply(ExceptionHandlers, Obj);
+    Value BottomHandler = ExceptionHandlers;
+    return Apply(BottomHandler, Obj);
   }
   Pair* P = cast<Pair>(ExceptionHandlers);
   Value Handler = P->Car;
