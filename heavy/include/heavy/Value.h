@@ -1000,6 +1000,12 @@ public:
                                          FnData.Storage.size());
   }
 
+  static constexpr size_t sizeToAlloc(unsigned short NumCaptures,
+                                      size_t FnStorageLen) {
+    return totalSizeToAlloc<Value, char>(NumCaptures,
+                                         FnStorageLen);
+  }
+
   template <typename Allocator>
   static void* allocate(Allocator& Alloc, OpaqueFn,
                         llvm::ArrayRef<heavy::Value> Captures);
@@ -1724,6 +1730,7 @@ void* Syntax::allocate(Allocator& Alloc, OpaqueFn FnData) {
 
 template <size_t StorageLen, size_t Alignment>
 struct ExternValue {
+  static constexpr size_t storage_len = StorageLen;
   heavy::Value Value;
   std::aligned_storage_t<StorageLen, Alignment> Storage;
 
@@ -1733,14 +1740,19 @@ struct ExternValue {
   operator heavy::Value() { return Value; }
 };
 
-template <size_t CaptureCount>
+// FIXME Add storage size for type erased functions.
+template <size_t CaptureCount, size_t FnStorageLen = sizeof(void*)>
 struct ExternLambda : public ExternValue<
-        sizeof(void*) * CaptureCount + sizeof(Lambda), alignof(Lambda)> {
+        Lambda::sizeToAlloc(CaptureCount, FnStorageLen),
+        alignof(Lambda)> {
   // Take invocable object and allocates
   // it as a type-erased Scheme Lambda.
   // Must invoke with OpaqueFn
   template <typename F>
   void operator=(F f) {
+    static_assert(Lambda::sizeToAlloc(CaptureCount, FnStorageLen) >=
+                  Lambda::sizeToAlloc(CaptureCount, sizeof(f)),
+        "storage must have sufficient size");
     auto FnData = createOpaqueFn(f);
     void* Mem = Lambda::allocate(*this, FnData, /*Captures=*/{});
     Lambda* New = new (Mem) Lambda(FnData, /*Captures=*/{});
