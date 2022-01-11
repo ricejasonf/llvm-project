@@ -19,24 +19,24 @@
 bool HEAVY_BASE_IS_LOADED = false;
 
 // import must be pre-loaded
-heavy::ExternSyntax HEAVY_BASE_VAR(import);
+heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(import);
 
-heavy::ExternSyntax HEAVY_BASE_VAR(define);
-heavy::ExternSyntax HEAVY_BASE_VAR(define_syntax);
-heavy::ExternSyntax HEAVY_BASE_VAR(syntax_rules);
-heavy::ExternSyntax HEAVY_BASE_VAR(if);
-heavy::ExternSyntax HEAVY_BASE_VAR(lambda);
-heavy::ExternSyntax HEAVY_BASE_VAR(quasiquote);
-heavy::ExternSyntax HEAVY_BASE_VAR(quote);
-heavy::ExternSyntax HEAVY_BASE_VAR(set);
-heavy::ExternSyntax HEAVY_BASE_VAR(begin);
+heavy::ExternSyntax        HEAVY_BASE_VAR(begin);
+heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(define);
+heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(define_syntax);
+heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(syntax_rules);
+heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(if);
+heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(lambda);
+heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(quasiquote);
+heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(quote);
+heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(set);
 
-heavy::ExternSyntax HEAVY_BASE_VAR(define_library);
-heavy::ExternSyntax HEAVY_BASE_VAR(export);
-heavy::ExternSyntax HEAVY_BASE_VAR(cond_expand);
-heavy::ExternSyntax HEAVY_BASE_VAR(include);
-heavy::ExternSyntax HEAVY_BASE_VAR(include_ci);
-heavy::ExternSyntax HEAVY_BASE_VAR(include_library_declarations);
+heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(define_library);
+heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(export);
+heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(cond_expand);
+heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(include);
+heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(include_ci);
+heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(include_library_declarations);
 
 heavy::ExternFunction HEAVY_BASE_VAR(add);
 heavy::ExternFunction HEAVY_BASE_VAR(sub);
@@ -50,11 +50,14 @@ heavy::ExternFunction HEAVY_BASE_VAR(dump);
 heavy::ExternFunction HEAVY_BASE_VAR(eq);
 heavy::ExternFunction HEAVY_BASE_VAR(equal);
 heavy::ExternFunction HEAVY_BASE_VAR(eqv);
-heavy::ExternFunction HEAVY_BASE_VAR(eval);
 heavy::ExternFunction HEAVY_BASE_VAR(callcc);
 heavy::ExternFunction HEAVY_BASE_VAR(with_exception_handler);
 heavy::ExternFunction HEAVY_BASE_VAR(raise);
 heavy::ExternFunction HEAVY_BASE_VAR(error);
+
+heavy::ExternFunction HEAVY_BASE_VAR(eval);
+heavy::ExternFunction HEAVY_BASE_VAR(op_eval);
+heavy::ExternFunction HEAVY_BASE_VAR(compile);
 
 namespace heavy { namespace base {
 
@@ -353,32 +356,49 @@ void error(Context& C, ValueRefs Args) {
   C.RaiseError(cast<String>(Args[0]), Args.drop_front());
 }
 
-void compile(Context& C, ValueRefs Args) {
-  // noop if there is already an error
-  if (C.CheckError()) return C.Cont();
-  unsigned Len = Args.size();
-  assert((Len == 1 || Len == 2) && "Invalid arity to builtin `eval`");
-  unsigned i = 0;
-  Value EnvSpec = (Len == 2) ? Args[i++] : nullptr;
-  Value ExprOrDef = Args[i];
+void eval(Context& C, ValueRefs Args) {
+  if (Args.size() != 3) {
+    return C.RaiseError("invalid arity");
+  }
 
+  // FIXME We should be able to use an std::initializer_list<Value>
+  //       instead of a std::array here (and everywhere maybe).
+  Value OpEval = HEAVY_BASE_VAR(op_eval);
+  std::array<Value, 3> NewArgs = {Args[0], Args[1], OpEval};
+  C.Apply(HEAVY_BASE_VAR(compile), NewArgs);
+}
+
+void op_eval(Context& C, ValueRefs Args) {
+  if (Args.size() != 1) {
+    return C.RaiseError("invalid arity");
+  }
+  mlir::Operation* Op = cast<mlir::Operation>(Args[0]);
+  heavy::opEval(C.OpEval, Op);
+}
+
+void compile(Context& C, ValueRefs Args) {
+  if (Args.size() != 3) {
+    return C.RaiseError("invalid arity");
+  }
+  Value ExprOrDef       = Args[0];
+  Value EnvSpec         = Args[1];
+  Value TopLevelHandler = Args[2];
+
+  // EnvPtr - Manage ownership of the Environment
+  //          if we have to create it on the fly.
   std::unique_ptr<Environment> EnvPtr = nullptr;
   Environment* Env = nullptr;;
   
-  if (!EnvSpec) {
-    Env = C.getTopLevelEnvironment();
-  } else if (auto* E = dyn_cast<Environment>(EnvSpec)) {
+  if (auto* E = dyn_cast<Environment>(EnvSpec)) {
     Env = E;
   } else if (auto* ImpSet = dyn_cast<ImportSet>(EnvSpec)) {
     EnvPtr = C.CreateEnvironment(ImpSet);
     Env = EnvPtr.get();
-  }
-  
-  if (!Env) {
-    return C.SetError("Invalid import spec", EnvSpec);
+  } else {
+    return C.SetError("invalid environment specifier", EnvSpec);
   }
 
-  // EnvCleanup must be trivial to store on continuation stack.
+  // EnvCleanup must be trivial to store on the continuation stack.
   class EnvCleanup {
     Environment* EnvPtrRaw;
     Value PrevEnv;
@@ -400,12 +420,12 @@ void compile(Context& C, ValueRefs Args) {
     }
   };
 
+  // Keep stuff alive.
   EnvCleanup Cleanup(C, std::move(EnvPtr), Env);
-  C.PushCont(Cleanup, CaptureList{Env});
-  C.OpGen->SetTopLevelHandler([](Context& C, ValueRefs Args) {
-    mlir::Operation* Op = cast<mlir::Operation>(Args[0]);
-    opEval(C.OpEval, Op);
-  });
+  C.PushCont(Cleanup, CaptureList{ExprOrDef, Env, TopLevelHandler});
+
+  // TODO OpGen and Environment need to live together somehow.
+  C.OpGen->SetTopLevelHandler(TopLevelHandler);
   C.OpGen->VisitTopLevel(ExprOrDef);
 }
 
