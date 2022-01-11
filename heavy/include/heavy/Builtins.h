@@ -63,6 +63,7 @@ using ValueRefs = llvm::MutableArrayRef<heavy::Value>;
 namespace heavy { namespace base {
 
 // syntax
+void begin(Context& C, ValueRefs Args);
 mlir::Value define(OpGen& OG, Pair* P);
 mlir::Value define_syntax(OpGen& OG, Pair* P);
 mlir::Value syntax_rules(OpGen& OG, Pair* P);
@@ -71,7 +72,6 @@ mlir::Value lambda(OpGen& OG, Pair* P);
 mlir::Value quasiquote(OpGen& C, Pair* P); // lib/Quasiquote.cpp
 mlir::Value quote(OpGen& OG, Pair* P);     // lib/Quasiquote.cpp
 mlir::Value set(OpGen& OG, Pair* P);
-mlir::Value begin(OpGen& OG, Pair* P);
 mlir::Value cond_expand(OpGen& OG, Pair* P);
 mlir::Value import(OpGen& OG, Pair* P);
 mlir::Value define_library(OpGen& OG, Pair* P);
@@ -106,21 +106,22 @@ void compile(Context& C, ValueRefs Args);
 
 }}
 
-extern heavy::ExternSyntax   HEAVY_BASE_VAR(define);
-extern heavy::ExternSyntax   HEAVY_BASE_VAR(define_syntax);
-extern heavy::ExternSyntax   HEAVY_BASE_VAR(syntax_rules);
-extern heavy::ExternSyntax   HEAVY_BASE_VAR(if);
-extern heavy::ExternSyntax   HEAVY_BASE_VAR(lambda);
-extern heavy::ExternSyntax   HEAVY_BASE_VAR(quasiquote);
-extern heavy::ExternSyntax   HEAVY_BASE_VAR(quote);
-extern heavy::ExternSyntax   HEAVY_BASE_VAR(set);
-extern heavy::ExternSyntax   HEAVY_BASE_VAR(begin);
-extern heavy::ExternSyntax   HEAVY_BASE_VAR(cond_expand);
-extern heavy::ExternSyntax   HEAVY_BASE_VAR(define_library);
-extern heavy::ExternSyntax   HEAVY_BASE_VAR(export);
-extern heavy::ExternSyntax   HEAVY_BASE_VAR(include);
-extern heavy::ExternSyntax   HEAVY_BASE_VAR(include_ci);
-extern heavy::ExternSyntax   HEAVY_BASE_VAR(include_library_declarations);
+extern heavy::ExternSyntax          HEAVY_BASE_VAR(begin);
+extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(define);
+extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(define_syntax);
+extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(syntax_rules);
+extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(if);
+extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(lambda);
+extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(quasiquote);
+extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(quote);
+extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(set);
+extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(cond_expand);
+extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(define_library);
+extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(export);
+extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(include);
+extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(include_ci);
+extern heavy::ExternBuiltinSyntax
+  HEAVY_BASE_VAR(include_library_declarations);
 
 extern heavy::ExternFunction HEAVY_BASE_VAR(add);
 extern heavy::ExternFunction HEAVY_BASE_VAR(sub);

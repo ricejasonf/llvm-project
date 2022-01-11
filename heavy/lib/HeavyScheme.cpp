@@ -99,22 +99,40 @@ bool HeavyScheme::ProcessTopLevelCommands(
     [handleError](heavy::Context& C, ValueRefs Args) {
       assert(C.CheckError() && "expecting hard error");
       handleError();
-      C.Cont(Undefined());
+      C.Cont(Bool{true});
     }, /*Captures=*/{}));
 
-  heavy::Lambda* Lambda = Context.CreateLambda(ExprHandler, {});
+  heavy::ExternLambda<0, sizeof(ExprHandler)> HandleExpr;
+  heavy::ExternLambda<0, (sizeof(void*) * 3)> ParseAndHandle;
 
-  heavy::ValueResult Result;
-  while (!Parser.isFinished()) {
-    Result = Parser.ParseTopLevelExpr();
-    if (Result.isUsable()) {
-      heavy::Value ResultVal = Result.get();
-      Context.Apply(Lambda, ResultVal);
-      Context.Resume();
+  auto ParseAndHandleFn = [&Parser, &ParseAndHandle, &HandleExpr]
+                          (heavy::Context& C, ValueRefs) {
+    assert(!C.CheckError() && "Error should have escaped.");
+    if (Parser.isFinished()) {
+      C.Cont(Bool{false});
+      return;
+    }
+
+    // Recurse in tail position.
+    C.PushCont(Value(ParseAndHandle));
+
+    heavy::ValueResult ParseResult = Parser.ParseTopLevelExpr();
+    if (ParseResult.isUsable()) {
+      Value ParseResultVal = ParseResult.get();
+      C.Apply(Value(HandleExpr), ParseResultVal);
+    } else {
+      C.Cont(Bool{false});
     }
   };
 
-  return Context.CheckError();
+  static_assert(ParseAndHandle.storage_len >= sizeof(ParseAndHandleFn),
+      "Insufficient storage for function");
+  HandleExpr = ExprHandler;
+  ParseAndHandle = ParseAndHandleFn;
+
+  // Run the loop.
+  Value Result = Context.Run(ParseAndHandle, llvm::None);
+  return cast<Bool>(Result);
 }
 
 void HeavyScheme::RegisterModule(llvm::StringRef MangledName,
