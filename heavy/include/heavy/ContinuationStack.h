@@ -15,7 +15,6 @@
 
 #include "heavy/Value.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/Casting.h"
@@ -227,11 +226,11 @@ public:
   //       loop breaking once the function or any
   //       called escape procedure is complete.
   //       This is used for nested calls in C++.
-  void Run(Value Callee, ValueRefs Args) {
+  Value Run(Value Callee, ValueRefs Args) {
     PushBreak();
     Apply(Callee, Args);
     Resume();
-    // return the result??
+    return getCurrentResult();
   }
 
 

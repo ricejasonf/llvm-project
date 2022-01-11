@@ -143,19 +143,18 @@ void OpGen::VisitTopLevel(Value V) {
   mlir::OpBuilder::InsertPoint PrevInsertPoint = Builder.saveInsertionPoint();
   Builder.clearInsertionPoint();
 
-  Context.PushCont([this](heavy::Context& Ctx, ValueRefs) {
+  Context.PushCont([this, PrevInsertPoint](heavy::Context& Ctx, ValueRefs) {
     // Instead of the continuation argument we use TopLevelOp
     FinishTopLevelOp();
     if (TopLevelOp && TopLevelHandler) {
       // Call the TopLevelHandler
-      Value Result = toValue(TopLevelOp);
-      Ctx.Apply(TopLevelHandler, TopLevelOp);
+      Value Result = TopLevelOp;
+      Ctx.Apply(TopLevelHandler, Result);
     } else {
       Ctx.Cont();
     }
 
-    // Restore insertion point.
-    Builder.restoreInsertPoint(PrevInsertPoint);
+    Builder.restoreInsertionPoint(PrevInsertPoint);
   });
 
   // Top Level Syntax may be async and use continuations.
@@ -225,8 +224,8 @@ void OpGen::FinishTopLevelOp() {
 void OpGen::VisitTopLevelSequence(Value List) {
   if (Pair* P = dyn_cast<Pair>(List)) {
     Context.PushCont([](heavy::Context& C, ValueRefs) {
-      Value Rest = C.getCaptures[0];
-      C.OpGen.VisitTopLevelSequence(Rest);
+      Value Rest = C.getCapture(0);
+      C.OpGen->VisitTopLevelSequence(Rest);
     }, CaptureList{P->Cdr});
     VisitTopLevel(P->Car);
   }
@@ -761,7 +760,11 @@ mlir::Value OpGen::VisitExternName(ExternName* EN) {
 }
 
 mlir::Value OpGen::VisitSyntaxClosure(SyntaxClosure* SC) {
-  heavy::EnvRAII EnvRAII(Context, SC->Env);
+  Value PrevEnv = Context.getEnvironment();
+  Context.setEnvironment(SC->Env);
+  auto ScopeExit = llvm::make_scope_exit([&] {
+    Context.setEnvironment(PrevEnv);
+  });
   return Visit(SC->Node);
 }
 

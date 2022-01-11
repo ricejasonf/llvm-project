@@ -47,7 +47,7 @@ void Value::dump() {
 //                    which is special. We also give it a relatively
 //                    simple, readable symbol name.
 heavy::ExternString<20> NameForImportVar;
-heavy::ExternSyntax _HEAVY_import;
+heavy::ExternBuiltinSyntax _HEAVY_import;
 
 Context::Context()
   : DialectRegisterer()
