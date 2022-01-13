@@ -1073,6 +1073,9 @@ public:
   static size_t sizeToAlloc(OpaqueFn const& FnData) {
     return totalSizeToAlloc<char>(FnData.Storage.size());
   }
+  static constexpr size_t sizeToAlloc(size_t FnStorageLen) {
+    return totalSizeToAlloc<char>(FnStorageLen);
+  }
 
   template <typename Allocator>
   static void* allocate(Allocator& Alloc, OpaqueFn);
@@ -1777,12 +1780,16 @@ struct ExternBuiltinSyntax : ExternValue<sizeof(BuiltinSyntax)> {
     this->Value = New;
   }
 };
-struct ExternSyntax : ExternValue<sizeof(Syntax)> {
+template <size_t FnStorageLen = sizeof(void*)>
+struct ExternSyntax : ExternValue<sizeof(Syntax) + FnStorageLen> {
   // Take invocable object and allocates
   // it as a type-erased Scheme syntax function.
   // Must invoke with OpaqueFn
   template <typename F>
   void operator=(F f) {
+    static_assert(Syntax::sizeToAlloc(FnStorageLen) >=
+                  Syntax::sizeToAlloc(sizeof(f)),
+        "storage must have sufficient size");
     auto FnData = createOpaqueFn(f);
     void* Mem = Syntax::allocate(*this, FnData);
     Syntax* New = new (Mem) Syntax(FnData);

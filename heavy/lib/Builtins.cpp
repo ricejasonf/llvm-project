@@ -21,7 +21,7 @@ bool HEAVY_BASE_IS_LOADED = false;
 // import must be pre-loaded
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(import);
 
-heavy::ExternSyntax        HEAVY_BASE_VAR(begin);
+heavy::ExternSyntax<>      HEAVY_BASE_VAR(begin);
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(define);
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(define_syntax);
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(syntax_rules);
@@ -357,14 +357,14 @@ void error(Context& C, ValueRefs Args) {
 }
 
 void eval(Context& C, ValueRefs Args) {
-  if (Args.size() != 3) {
+  if (Args.size() != 2) {
     return C.RaiseError("invalid arity");
   }
+  Value ExprOrDef       = Args[0];
+  Value EnvSpec         = Args[1];
+  Value Eval = Args.size() == 3 ? Args[2] : HEAVY_BASE_VAR(op_eval);
 
-  // FIXME We should be able to use an std::initializer_list<Value>
-  //       instead of a std::array here (and everywhere maybe).
-  Value OpEval = HEAVY_BASE_VAR(op_eval);
-  std::array<Value, 3> NewArgs = {Args[0], Args[1], OpEval};
+  std::array<Value, 3> NewArgs = {ExprOrDef, EnvSpec, Eval};
   C.Apply(HEAVY_BASE_VAR(compile), NewArgs);
 }
 
@@ -417,6 +417,7 @@ void compile(Context& C, ValueRefs Args) {
       if (EnvPtrRaw) {
         delete EnvPtrRaw;
       }
+      C.Cont();
     }
   };
 

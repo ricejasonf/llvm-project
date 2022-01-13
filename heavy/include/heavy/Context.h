@@ -51,12 +51,7 @@ class OpGen;
 class Context;
 
 
-// The resulting Value of these functions
-// may be invalidated on a call to garbage
-// collection if it is not bound to a variable
-// at top level scope
-// (defined in OpGen.cpp)
-Value eval(Context&, Value V, Value EnvStack = nullptr);
+void eval(Context&, Value V, Value Env);
 void write(llvm::raw_ostream&, Value);
 
 void opEval(OpEval&, mlir::Operation*);

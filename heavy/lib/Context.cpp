@@ -467,6 +467,15 @@ void write(llvm::raw_ostream& OS, Value V) {
   return W.Visit(V);
 }
 
+void eval(Context& C, Value V, Value Env) {
+  // TODO This should be the (heavy eval) module
+  if (!HEAVY_BASE_IS_LOADED) {
+    HEAVY_BASE_INIT(C);
+  }
+  heavy::Value Args[2] = {V, Env};
+  C.Apply(HEAVY_BASE_VAR(eval), ValueRefs(Args));
+}
+
 // this handles non-immediate values
 // and assumes the values have the same kind
 bool equal_slow(Value V1, Value V2) {
