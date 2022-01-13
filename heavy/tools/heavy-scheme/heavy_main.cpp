@@ -46,11 +46,12 @@ static cl::opt<ExecutionMode> InputMode(
   cl::init(ExecutionMode::repl));
 
 void ProcessTopLevelExpr(heavy::Context& Context, heavy::ValueRefs Values) {
-  assert(Values.size() == 1 && "Expecting single parse result");
+  assert(Values.size() == 2 && "expecting 2 arguments");
   heavy::Value Val = Values[0];
+  heavy::Value Env = Values[1];
   switch (InputMode.getValue()) {
   case ExecutionMode::repl:
-    Val = heavy::eval(Context, Val);
+    heavy::eval(Context, Val, Env);
     return;
   case ExecutionMode::read:
     if (!Context.CheckError()) Val.dump();
@@ -95,8 +96,8 @@ int main(int argc, char const** argv) {
   auto Env = std::make_unique<heavy::Environment>();
   heavy::HeavyScheme HeavyScheme;
   heavy::Lexer Lexer(File);
-  HeavyScheme.SetEnvironment(*Env);
-  HeavyScheme.ProcessTopLevelCommands(Lexer, ProcessTopLevelExpr, OnError);
+  HeavyScheme.ProcessTopLevelCommands(Lexer, *Env, ProcessTopLevelExpr,
+                                      OnError);
 
   if (InputMode.getValue() == ExecutionMode::mlir) {
     HeavyScheme.getContext().verifyModule();

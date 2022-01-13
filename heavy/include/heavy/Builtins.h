@@ -106,7 +106,7 @@ void compile(Context& C, ValueRefs Args);
 
 }}
 
-extern heavy::ExternSyntax          HEAVY_BASE_VAR(begin);
+extern heavy::ExternSyntax<>        HEAVY_BASE_VAR(begin);
 extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(define);
 extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(define_syntax);
 extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(syntax_rules);
@@ -149,8 +149,12 @@ extern bool HEAVY_BASE_IS_LOADED;
 extern "C" {
 // initialize the module for run-time independent of the compiler
 inline void HEAVY_BASE_INIT(heavy::Context& Context) {
+  if (HEAVY_BASE_IS_LOADED) return; // TODO Remove
+#if 0 // TODO Temp disable this until we break out (heavy eval)
   assert(!HEAVY_BASE_IS_LOADED &&
     "module should not be loaded more than once");
+#endif
+
   HEAVY_BASE_IS_LOADED = true;
 
   // syntax

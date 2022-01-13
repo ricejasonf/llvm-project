@@ -102,8 +102,7 @@ public:
     while (Itr != BlockItrTy()) {
       Itr = Visit(&*Itr);
     }
-
-    Context.Resume();
+    // "Calling the continuation" is handled during visitation.
   }
 
   // InvokeSyntax - There is no operation to invoke syntax

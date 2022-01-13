@@ -63,20 +63,18 @@ void HeavyScheme::LoadEmbeddedEnv(void* Handle,
   return;
 }
 
-void HeavyScheme::SetEnvironment(Environment& Env) {
-  auto& Context = getContext();
-  Context.setEnvironment(&Env);
-}
-
 void HeavyScheme::ProcessTopLevelCommands(
                               heavy::Lexer& Lexer,
+                              Environment& Env, 
                               llvm::function_ref<ErrorHandlerFn> ErrorHandler,
                               heavy::tok Terminator) {
-  return ProcessTopLevelCommands(Lexer, base::eval, ErrorHandler, Terminator);
+  return ProcessTopLevelCommands(Lexer, Env, base::eval, ErrorHandler,
+                                 Terminator);
 }
 
 void HeavyScheme::ProcessTopLevelCommands(
                               heavy::Lexer& Lexer,
+                              Environment& Env, 
                               llvm::function_ref<ValueFnTy> ExprHandler,
                               llvm::function_ref<ErrorHandlerFn> ErrorHandler,
                               heavy::tok Terminator) {
@@ -98,9 +96,9 @@ void HeavyScheme::ProcessTopLevelCommands(
 
   heavy::ExternLambda<0, sizeof(ExprHandler)> HandleExpr;
   heavy::ExternLambda<0, sizeof(ErrorHandler)> HandleError;
-  heavy::ExternLambda<0, (sizeof(void*) * 3)> MainThunk;
+  heavy::ExternLambda<0, (sizeof(void*) * 4)> MainThunk;
 
-  auto MainThunkFn = [&Parser, &MainThunk, &HandleExpr]
+  auto MainThunkFn = [&Parser, &MainThunk, &HandleExpr, &Env]
                           (heavy::Context& C, ValueRefs) {
     assert(!C.CheckError() && "Error should have escaped.");
     if (Parser.isFinished()) {
@@ -114,7 +112,8 @@ void HeavyScheme::ProcessTopLevelCommands(
     heavy::ValueResult ParseResult = Parser.ParseTopLevelExpr();
     if (ParseResult.isUsable()) {
       Value ParseResultVal = ParseResult.get();
-      C.Apply(Value(HandleExpr), ParseResultVal);
+      std::array<Value, 2> EvalArgs{ParseResultVal, &Env};
+      C.Apply(Value(HandleExpr), EvalArgs);
     } else {
       C.Cont();
     }
