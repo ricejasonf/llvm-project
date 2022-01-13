@@ -53,16 +53,16 @@ void ProcessTopLevelExpr(heavy::Context& Context, heavy::ValueRefs Values) {
   case ExecutionMode::repl:
     heavy::eval(Context, Val, Env);
     return;
-  case ExecutionMode::read:
-    if (!Context.CheckError()) Val.dump();
-    break;
   case ExecutionMode::mlir:
-    Context.PushTopLevel(Val);
-    break;
+    heavy::compile(Context, Val, Env, heavy::Undefined());
+    return;
+  case ExecutionMode::read:
+    Val.dump();
+    Context.Cont();
+    return;
   default:
     llvm_unreachable("Invalid execution mode for loop");
   }
-  Context.Cont();
 }
 
 int main(int argc, char const** argv) {

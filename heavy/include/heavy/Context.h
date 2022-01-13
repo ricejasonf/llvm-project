@@ -51,6 +51,7 @@ class OpGen;
 class Context;
 
 
+void compile(Context&, Value V, Value Env, Value Handler);
 void eval(Context&, Value V, Value Env);
 void write(llvm::raw_ostream&, Value);
 
