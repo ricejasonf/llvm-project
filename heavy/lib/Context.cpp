@@ -467,6 +467,15 @@ void write(llvm::raw_ostream& OS, Value V) {
   return W.Visit(V);
 }
 
+void compile(Context& C, Value V, Value Env, Value Handler) {
+  // TODO This should be the (heavy eval) module
+  if (!HEAVY_BASE_IS_LOADED) {
+    HEAVY_BASE_INIT(C);
+  }
+  heavy::Value Args[3] = {V, Env, Handler};
+  C.Apply(HEAVY_BASE_VAR(compile), ValueRefs(Args));
+}
+
 void eval(Context& C, Value V, Value Env) {
   // TODO This should be the (heavy eval) module
   if (!HEAVY_BASE_IS_LOADED) {
