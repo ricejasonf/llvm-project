@@ -70,8 +70,6 @@ class HeavyScheme {
   void LoadEmbeddedEnv(void* Handle,
           llvm::function_ref<void(HeavyScheme&, void*)> LoadParent);
 
-  void SetEnvironment(Environment& Env);
-
   using ErrorHandlerFn = void(llvm::StringRef, heavy::FullSourceLocation);
 
   // ProcessTopLevelCommands
@@ -82,10 +80,10 @@ class HeavyScheme {
   //                (ie a heavy::tok::r_paren can terminate without effecting
   //                 the parsing of lists that are delimited by parens)
   //              - ExprHandler defaults to `base::eval`
-  void ProcessTopLevelCommands(heavy::Lexer& Lexer,
+  void ProcessTopLevelCommands(heavy::Lexer& Lexer, Environment& Env,
                                llvm::function_ref<ErrorHandlerFn> ErrorHandler,
                                heavy::tok Terminator);
-  void ProcessTopLevelCommands(heavy::Lexer& Lexer,
+  void ProcessTopLevelCommands(heavy::Lexer& Lexer, Environment& Env,
                                llvm::function_ref<ValueFnTy> ExprHandler,
                                llvm::function_ref<ErrorHandlerFn> ErrorHandler,
                                heavy::tok Terminator = heavy::tok::eof);

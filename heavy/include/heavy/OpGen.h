@@ -203,7 +203,11 @@ public:
   void FinishTopLevelOp();
   void VisitTopLevelSequence(Value List);
   void SetTopLevelHandler(Value OnTopLevel) {
-    TopLevelHandler = OnTopLevel;
+    if (isa<Undefined>(OnTopLevel)) {
+      TopLevelHandler = nullptr;
+    } else {
+      TopLevelHandler = OnTopLevel;
+    }
   }
 
   bool isTopLevel() { return TopLevelOp == nullptr; }
