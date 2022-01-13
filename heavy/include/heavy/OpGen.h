@@ -99,10 +99,10 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   void PopContinuationScope();
 
   void setTopLevelOp(mlir::Operation* Op) {
-    assert(LambdaScopes.size() == 2 &&
+    assert(LambdaScopes.size() == 1 &&
         "TopLevelOp should be at module scope with a LambdaScope");
+    LambdaScopes.emplace_back(Op, BindingTable);
     TopLevelOp = Op;
-    LambdaScopes[1].Op = Op;
   }
 
   using LambdaScopeIterator = typename std::deque<LambdaScopeNode>
