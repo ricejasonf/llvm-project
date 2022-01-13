@@ -134,7 +134,6 @@ void OpGen::VisitLibrary(heavy::SourceLocation Loc, std::string&& MangledName,
 void OpGen::VisitTopLevel(Value V) {
   IsTopLevelAllowed = true;
   TopLevelOp = nullptr;
-  LambdaScopes.emplace_back(nullptr, BindingTable);
 
   // We use a null Builder to denote that we should
   // insert into a lazily created CommandOp by default
