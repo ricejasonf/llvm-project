@@ -176,16 +176,11 @@ void OpGen::VisitTopLevel(Value V) {
 }
 
 void OpGen::FinishTopLevelOp() {
-  if (!TopLevelOp) {
-    assert(LambdaScopes.size() == 0 && "No scopes should be inserted.");
-    return;
-  }
-
-  assert((isa<CommandOp, GlobalOp>(TopLevelOp)) &&
+  assert((TopLevelOp == nullptr || isa<CommandOp, GlobalOp>(TopLevelOp)) &&
       "Top level operation must be CommandOp or GlobalOp");
 
   if (heavy::CommandOp CommandOp =
-        dyn_cast<heavy::CommandOp>(TopLevelOp)) {
+        dyn_cast_or_null<heavy::CommandOp>(TopLevelOp)) {
     // Ensure current function body (if any) has a terminator.
     if (auto F = dyn_cast_or_null<FuncOp>(LambdaScopes.back().Op)) {
       mlir::Block& Block = F.getBody().back();
@@ -218,7 +213,6 @@ void OpGen::FinishTopLevelOp() {
       PopContinuationScope();
     }
   }
-
 }
 
 void OpGen::VisitTopLevelSequence(Value List) {
@@ -983,11 +977,4 @@ mlir::Operation* OpGen::LookupSymbol(llvm::StringRef MangledName) {
 
   M = cast<mlir::ModuleOp>(M->getParentOp());
   return M.lookupSymbol(MangledName);
-}
-
-heavy::Value heavy::eval(Context& C, Value V, Value EnvStack) {
-  heavy::Value Args[2] = {V, EnvStack};
-  int ArgCount = EnvStack ? 2 : 1;
-  base::eval(C, ValueRefs(Args, ArgCount));
-  return C.getCurrentResult();
 }

@@ -125,6 +125,7 @@ class ContinuationStack {
   void ApplyHelper(Value Callee, ValueRefs Args) {
     assert(!DidCallContinuation &&
         "continuation should be specified only once");
+    assert(Callee && "Callee must not be null");
     DidCallContinuation = true; // debug mode only
     if (Args.data() != ApplyArgs.data()) {
       ApplyArgs.resize(Args.size() + 1);
