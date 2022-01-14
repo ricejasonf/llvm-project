@@ -13,10 +13,8 @@
 #ifndef LLVM_HEAVY_HEAVYSCHEME_H
 #define LLVM_HEAVY_HEAVYSCHEME_H
 
-#include "heavy/Value.h"
-
 #include "heavy/Lexer.h"
-#include "heavy/Source.h"
+#include "heavy/Value.h"
 #include "llvm/ADT/STLExtras.h" // function_ref
 #include "llvm/ADT/StringRef.h"
 #include <memory>
@@ -80,10 +78,10 @@ class HeavyScheme {
   //                (ie a heavy::tok::r_paren can terminate without effecting
   //                 the parsing of lists that are delimited by parens)
   //              - ExprHandler defaults to `base::eval`
-  void ProcessTopLevelCommands(heavy::Lexer& Lexer, Environment& Env,
+  void ProcessTopLevelCommands(heavy::Lexer& Lexer,
                                llvm::function_ref<ErrorHandlerFn> ErrorHandler,
                                heavy::tok Terminator);
-  void ProcessTopLevelCommands(heavy::Lexer& Lexer, Environment& Env,
+  void ProcessTopLevelCommands(heavy::Lexer& Lexer, heavy::Environment& Env,
                                llvm::function_ref<ValueFnTy> ExprHandler,
                                llvm::function_ref<ErrorHandlerFn> ErrorHandler,
                                heavy::tok Terminator = heavy::tok::eof);
