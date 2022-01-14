@@ -65,9 +65,9 @@ void HeavyScheme::LoadEmbeddedEnv(void* Handle,
 
 void HeavyScheme::ProcessTopLevelCommands(
                               heavy::Lexer& Lexer,
-                              Environment& Env, 
                               llvm::function_ref<ErrorHandlerFn> ErrorHandler,
                               heavy::tok Terminator) {
+  Environment& Env = *ContextPtr->getTopLevelEnvironment();
   return ProcessTopLevelCommands(Lexer, Env, base::eval, ErrorHandler,
                                  Terminator);
 }

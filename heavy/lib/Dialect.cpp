@@ -12,7 +12,6 @@
 
 #include "heavy/Dialect.h"
 #include "heavy/Context.h"
-#include "llvm/ADT/TypeSwitch.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpImplementation.h"
