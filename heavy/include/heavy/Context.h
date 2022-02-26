@@ -97,8 +97,9 @@ class Context : DialectRegisterer,
   Value ExceptionHandlers = heavy::Empty();
 
 public:
-  std::unique_ptr<heavy::OpGen> OpGen;
-  heavy::OpEval OpEval;
+  //std::unique_ptr<heavy::OpGen> OpGen;
+  heavy::OpGen* OpGen = nullptr;
+  heavy::OpEval OpEval; // TODO Deprecate this single, owned instance of OpEval
 
   // SetErrorHandler - Set the bottom most exception handler to handle
   //                   hard errors including uncaught exceptions.

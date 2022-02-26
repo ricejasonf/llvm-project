@@ -32,6 +32,82 @@
 
 using namespace heavy;
 
+namespace {
+// EnvExtent - Use for dynamic-wind of compiler state
+//             and owned objects including
+//             Environment and possibly OpGen
+class EnvExtent {
+  heavy::Context& Context;
+  heavy::Value PrevEnv;
+  heavy::OpGen* PrevOpGen;
+  heavy::Environment* Env;
+  heavy::OpGen* OpGen;
+  bool IsOpGenOwned;
+
+  EnvExtent(heavy::Context& C,
+            std::unique_ptr<heavy::Environment> E,
+            heavy::OpGen* O,
+            bool IsOpGenOwned)
+    : Context(C),
+      PrevEnv(C.getEnvironment()),
+      PrevOpGen(C.OpGen),
+      Env(E.release()),
+      OpGen(O),
+      IsOpGenOwned(IsOpGenOwned)
+  { }
+
+  public:
+
+  EnvExtent(heavy::Context& C,
+            std::unique_ptr<heavy::Environment> E,
+            std::unique_ptr<heavy::OpGen> O)
+    : EnvExtent(C, std::move(E), O.release(), /*IsOpgenOwned=*/true)
+  { }
+
+  EnvExtent(heavy::Context& C,
+            std::unique_ptr<heavy::Environment> E,
+            heavy::OpGen* O)
+    : EnvExtent(C, std::move(E), O, /*IsOpgenOwned=*/false)
+  { }
+
+  void Enter() {
+    Context.OpGen = OpGen;
+    Context.setEnvironment(Env);
+
+    // If things were previously destroyed, crash hard
+    assert((OpGen && Env) &&
+        "entering destroyed dynamic extent for environment");
+    if (!OpGen || !Env) {
+      Context.SetError("entering destroyed dynamic extent for environment",
+                       Undefined()); 
+    }
+  }
+
+  void Exit() {
+    // Only Exit if state is valid
+    if (!OpGen || !Env) return;
+
+    // Revert the compiler to the state previous to
+    // entering the dynamic extent.
+    Context.OpGen = PrevOpGen;
+    Context.setEnvironment(PrevEnv);
+  }
+
+  void Destroy() {
+    // Revert everything and destroy the owned objects.
+    Context.OpGen = PrevOpGen;
+    Context.setEnvironment(PrevEnv);
+
+    delete Env;
+    if (IsOpGenOwned)
+      delete OpGen;
+
+    Env = nullptr;
+    OpGen = nullptr;
+  }
+};
+}
+
 void ValueBase::dump() {
   write(llvm::errs(), this);
   llvm::errs() << '\n';
