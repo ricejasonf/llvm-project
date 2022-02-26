@@ -28,6 +28,12 @@
 
 using namespace heavy;
 
+namespace {
+void PushLibraryDecls(Context& C, OpGen& O, Value LibraryDecls) {
+  
+}
+} // namespace
+
 OpGen::OpGen(heavy::Context& C)
   : Context(C),
     ImportsBuilder(&(C.MlirContext)),
@@ -35,7 +41,6 @@ OpGen::OpGen(heavy::Context& C)
     Builder(&(C.MlirContext)),
     BindingTable()
 {
-  // TODO OpGen should own MlirContext
   C.MlirContext.loadDialect<heavy::Dialect>();
   mlir::Location Loc = Builder.getUnknownLoc();
   mlir::ModuleOp TopModule = Builder.create<mlir::ModuleOp>(Loc);
@@ -105,20 +110,24 @@ mlir::Value OpGen::GetPatternVar(heavy::Symbol* S) {
   llvm_unreachable("syntax closure not found in binding table");
 }
 
-void OpGen::VisitLibrary(heavy::SourceLocation Loc, std::string&& MangledName,
+void OpGen::VisitLibrary(heavy::SourceLocation Loc, std::string MangledName,
                          Value LibraryDecls) {
   assert(ModulePrefix.size() == 0 && "nested libraries are not allowed");
   assert(isTopLevel() && "library should be top level");
-  setModulePrefix(std::move(MangledName));
-
   mlir::Location MLoc = mlir::OpaqueLoc::get(Loc.getOpaqueEncoding(),
                                              Builder.getContext());
+
+  auto NewOpGen = std::make_unique<OpGen>(Context);
+  auto NewEnv = std::make_unique<Environment>();
+  NewOpGen->setModulePrefix(std::move(MangledName));
 
   // Create the output ModuleOp
   auto ModuleOp = ImportsBuilder.create<mlir::ModuleOp>(MLoc);
   ModuleBuilder.setInsertionPointToStart(ModuleOp.getBody());
 
-  // This does not currently support non-blocking directives.
+  // TODO UseEnvExtent that was moved to Context.cpp
+
+  // TODO This does not currently support non-blocking directives.
   mlir::OpBuilder::InsertionGuard IG(ModuleBuilder);
   while (Pair* P = dyn_cast<Pair>(LibraryDecls)) {
     Visit(P->Car);
