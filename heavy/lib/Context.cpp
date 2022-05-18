@@ -32,82 +32,6 @@
 
 using namespace heavy;
 
-namespace {
-// EnvExtent - Use for dynamic-wind of compiler state
-//             and owned objects including
-//             Environment and possibly OpGen
-class EnvExtent {
-  heavy::Context& Context;
-  heavy::Value PrevEnv;
-  heavy::OpGen* PrevOpGen;
-  heavy::Environment* Env;
-  heavy::OpGen* OpGen;
-  bool IsOpGenOwned;
-
-  EnvExtent(heavy::Context& C,
-            std::unique_ptr<heavy::Environment> E,
-            heavy::OpGen* O,
-            bool IsOpGenOwned)
-    : Context(C),
-      PrevEnv(C.getEnvironment()),
-      PrevOpGen(C.OpGen),
-      Env(E.release()),
-      OpGen(O),
-      IsOpGenOwned(IsOpGenOwned)
-  { }
-
-  public:
-
-  EnvExtent(heavy::Context& C,
-            std::unique_ptr<heavy::Environment> E,
-            std::unique_ptr<heavy::OpGen> O)
-    : EnvExtent(C, std::move(E), O.release(), /*IsOpgenOwned=*/true)
-  { }
-
-  EnvExtent(heavy::Context& C,
-            std::unique_ptr<heavy::Environment> E,
-            heavy::OpGen* O)
-    : EnvExtent(C, std::move(E), O, /*IsOpgenOwned=*/false)
-  { }
-
-  void Enter() {
-    Context.OpGen = OpGen;
-    Context.setEnvironment(Env);
-
-    // If things were previously destroyed, crash hard
-    assert((OpGen && Env) &&
-        "entering destroyed dynamic extent for environment");
-    if (!OpGen || !Env) {
-      Context.SetError("entering destroyed dynamic extent for environment",
-                       Undefined()); 
-    }
-  }
-
-  void Exit() {
-    // Only Exit if state is valid
-    if (!OpGen || !Env) return;
-
-    // Revert the compiler to the state previous to
-    // entering the dynamic extent.
-    Context.OpGen = PrevOpGen;
-    Context.setEnvironment(PrevEnv);
-  }
-
-  void Destroy() {
-    // Revert everything and destroy the owned objects.
-    Context.OpGen = PrevOpGen;
-    Context.setEnvironment(PrevEnv);
-
-    delete Env;
-    if (IsOpGenOwned)
-      delete OpGen;
-
-    Env = nullptr;
-    OpGen = nullptr;
-  }
-};
-}
-
 void ValueBase::dump() {
   write(llvm::errs(), this);
   llvm::errs() << '\n';
@@ -933,4 +857,64 @@ void Context::RaiseError(String* Msg, llvm::ArrayRef<Value> IrrArgs) {
   }
   Value Error = CreateError(Loc, Msg, IrrList);
   Raise(Error);
+}
+
+template <typename T>
+void GuardManagedObject(T* Obj, Value Thunk) {
+  // Sentinel is referenced by each lambda
+  // to share the state of the object's lifetime.
+  // This is checked everytime we enter the dynamic extent.
+  Pair* Sentinel = CreatePair(Bool(true));
+
+  Value Before = CreateLambda([](Derived& C, ValueRefs) {
+    Vector* V = cast<Vector>(C.getCapture(0));
+    // Check that the object is still alive.
+    if (!isa<Bool>(V.get(0))) {
+      // Throw run-time error runtime
+      C.RaiseError("unable to enter extent when managed object is destroyed");
+    }
+  }, CaptureList{Sentinel});
+
+  Value After = CreateLambda([](Derived& C, ValueRefs) {
+    // Do nothing.
+  });
+
+  Value Destroy = CreateLambda([Obj](Derived& C, ValueRefs)
+    Pair* P = cast<Pair>(C.getCapture(0));
+    // Clear the sentinel value.
+    P->Car = Value();
+    delete Obj;
+  }, CaptureList{Sentinel});
+
+  PushCont(Destroy);
+  DynamicWind(Before, Thunk, After);
+};
+
+void Context::WithEnv(std::unique_ptr<heavy::Environment> E, Value Thunk) {
+  Value Env = E.get();
+  Value PrevEnv = getEnvironment();
+  Value Before = CreateLambda([](Context& C, ValueRefs) {
+    Value Env = C.getCapture(0);
+    C.setEnvironment(Env);
+    C.Cont();
+  }, CaptureList{Env});
+  Value After = CreateLambda([](Context& C, ValueRefs) {
+    Value PrevEnv = C.getCapture(0);
+    C.setEnvironment(PrevEnv);
+    C.Cont();
+  }, CaptureList{PrevEnv});
+  DynamicWind(std::move(E), Before, Thunk, After);
+}
+
+void Context::WithOpGen(Value Thunk) {
+  auto NewOpGenPtr = std::make_unique<heavy::OpGen>(*this);
+  heavy::OpGen* NewOpGen = NewOpGenPtr.get();
+  Value PrevOpGen = this->OpGen;
+  Value Before = CreateLambda([NewOpGen](Context& C, ValueRefs) {
+    C.OpGen = NewOpGen;
+  });
+  Value After = CreateLambda([PrevOpGen](Context& C, ValueRefs) {
+    C.OpGen = PrevOpGen
+  });
+  DynamicWind(std::move(E), Before, Thunk, After);
 }
