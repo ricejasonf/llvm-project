@@ -1139,7 +1139,7 @@ class Vector final
   }
 
 public:
-  Value get(unsigned I) {
+  Value& get(unsigned I) {
     assert(I < Len && "invalid index for vector");
     return *(getTrailingObjects<Value>() + I);
   }

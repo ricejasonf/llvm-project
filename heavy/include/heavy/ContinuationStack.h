@@ -30,6 +30,7 @@
 
 namespace heavy {
 using CaptureList = std::initializer_list<Value>;
+using DestructorTy = void(void*);
 
 // ContinuationStack
 //      - CRTP base class to add the "run-time" functionality
@@ -170,6 +171,43 @@ class ContinuationStack {
     }
   }
 
+  // ManagedObjectWind - Manage the lifetime of a C++ object within a dynamic extent
+  // via a provided type-erased desctructor. 
+  void ManagedObjectWind(void* Ptr, DestructorTy Destructor, Value Before,
+                         Value Thunk, Value After) {
+    Derived& C = getDerived();
+    // Sentinel is referenced by each lambda
+    // to share the state of the object's lifetime.
+    // This is checked everytime we enter the dynamic extent.
+    Value Sentinel = C.CreateVector(std::initializer_list<Value>{Bool{true}});
+
+    Value Destroy = C.CreateLambda([Ptr, Destructor](Derived& C, ValueRefs Args) {
+      if (!isa<Vector>(C.getCapture(0))) {
+        // We could only get here if the user saved an escape proc
+        // in the After thunk.
+        C.RaiseError("managed object is already destroyed");
+      }
+
+      // Clear the sentinel value and delete the managed object.
+      P->Car = Value();
+      Destructor(Ptr);
+      // Forward the return args from Thunk.
+      C.Cont(Args);
+    }, CaptureList{Sentinel});
+
+    Value SafeBefore = C.CreateLambda([](Derived& C, ValueRefs) {
+      Vector* V = cast<Vector>(C.getCapture(0));
+      Value Before = cast<Vector>(C.getCapture(1));
+      // Check that the object is still alive.
+      if (!isa<Bool>(V.get(0))) {
+        C.RaiseError("unable to enter extent when managed object is destroyed");
+      }
+      C.Apply(Before, {});
+    }, CaptureList{Sentinel, Before});
+
+    PushCont(Destroy);
+    DynamicWind(SafeBefore, Thunk, After);
+  }
 
 public:
   ContinuationStack()
@@ -397,6 +435,15 @@ public:
     }, CaptureList{Thunk, After, NewDW});
     C.Apply(Before, {});
   }
+
+  template <typename T>
+  void DynamicWind(std::unique_ptr<T*> ManagedPtr, Value Before, Value Thunk,
+                   Value After) {
+    T* Ptr = ManagedPtr.release();
+    DestructorTy Destructor = [](void* Ptr) { delete static_cast<T*>(Ptr); };
+    ManagedObjectWind(Ptr, Destructor, Before, Thunk, After);
+  }
+
 };
 
 }

@@ -117,17 +117,27 @@ void OpGen::VisitLibrary(heavy::SourceLocation Loc, std::string MangledName,
   mlir::Location MLoc = mlir::OpaqueLoc::get(Loc.getOpaqueEncoding(),
                                              Builder.getContext());
 
-  auto NewOpGen = std::make_unique<OpGen>(Context);
-  auto NewEnv = std::make_unique<Environment>();
+  auto NewOpGen = std::make_unique<heavy::OpGen>(Context);
+  auto NewEnv = std::make_unique<heavy::Environment>();
   NewOpGen->setModulePrefix(std::move(MangledName));
 
   // Create the output ModuleOp
   auto ModuleOp = ImportsBuilder.create<mlir::ModuleOp>(MLoc);
   ModuleBuilder.setInsertionPointToStart(ModuleOp.getBody());
 
-  // TODO UseEnvExtent that was moved to Context.cpp
+  Context.WithEnv(std::make_unique<heavy::Environment>(),
+    Context.CreateLambda([](heavy::Context& C, ValueArgs) {
+      Value LibraryDecls = C.getCapture(0);
+      C.WithOpGen(C.CreateLambda([](heavy::Context& C, ValueArgs) {
+        Value LibraryDecls = C.getCapture(0);
+        // The new OpGen needs a starting point for top level directives
+        // for the given module/library/thing???
 
-  // TODO This does not currently support non-blocking directives.
+        // Recursively visit LibraryDecls
+      }, CaptureList{LibraryDecls}));
+      C.Cont();
+    }, CaptureList{LibraryDecls}));
+  // FIXME This does not currently support non-blocking directives.
   mlir::OpBuilder::InsertionGuard IG(ModuleBuilder);
   while (Pair* P = dyn_cast<Pair>(LibraryDecls)) {
     Visit(P->Car);
