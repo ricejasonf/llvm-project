@@ -112,6 +112,9 @@ public:
     RaiseError(CreateString(Msg), IrrArgs);
   }
 
+  void WithEnv(std::unique_ptr<heavy::Environment> E, Value Thunk);
+  void WithOpGen(Value Thunk);
+
   mlir::Operation* getModuleOp();
   void dumpModuleOp();
   void verifyModule();
