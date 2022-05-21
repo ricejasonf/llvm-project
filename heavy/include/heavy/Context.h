@@ -66,8 +66,7 @@ struct OpEval {
   ~OpEval();
 };
 
-class Context : DialectRegisterer,
-                public ContinuationStack<Context> {
+class Context : public ContinuationStack<Context> {
   friend class OpGen;
   friend class OpEvalImpl;
   friend class HeavyScheme;
@@ -113,7 +112,7 @@ public:
   }
 
   void WithEnv(std::unique_ptr<heavy::Environment> E, Value Thunk);
-  void WithOpGen(Value Thunk);
+  void WithLibraryEnv(std::string ModulePrefix, Value Thunk);
 
   mlir::Operation* getModuleOp();
   void dumpModuleOp();

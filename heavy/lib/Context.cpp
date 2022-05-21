@@ -50,14 +50,13 @@ heavy::ExternString<20> NameForImportVar;
 heavy::ExternBuiltinSyntax _HEAVY_import;
 
 Context::Context()
-  : DialectRegisterer()
-  , ContinuationStack<Context>()
+  : ContinuationStack<Context>()
   , TrashHeap()
   , SystemModule(std::make_unique<Module>(*this))
   , SystemEnvironment(std::make_unique<Environment>())
   , EnvStack(SystemEnvironment.get())
   , MlirContext()
-  , OpGen(std::make_unique<heavy::OpGen>(*this))
+  , OpGen(nullptr)
   , OpEval(*this)
 {
   NameForImportVar = "_HEAVY_import";
@@ -906,15 +905,47 @@ void Context::WithEnv(std::unique_ptr<heavy::Environment> E, Value Thunk) {
   DynamicWind(std::move(E), Before, Thunk, After);
 }
 
-void Context::WithOpGen(Value Thunk) {
-  auto NewOpGenPtr = std::make_unique<heavy::OpGen>(*this);
-  heavy::OpGen* NewOpGen = NewOpGenPtr.get();
-  Value PrevOpGen = this->OpGen;
-  Value Before = CreateLambda([NewOpGen](Context& C, ValueRefs) {
-    C.OpGen = NewOpGen;
-  });
-  Value After = CreateLambda([PrevOpGen](Context& C, ValueRefs) {
-    C.OpGen = PrevOpGen
-  });
-  DynamicWind(std::move(E), Before, Thunk, After);
+namespace {
+class LibraryEnv {
+  heavy::Environment Env;
+  heavy::OpGen OpGen;
+
+  LibraryEnv(heavy::Context& C)
+    : Env(),
+      OpGen(C)
+  { }
+
+  static void Wind(heavy::Context& Context, std::string ModulePrefix,
+                   Value Thunk) {
+    std::make_unique<LibraryEnv> Ptr(Context);
+    heavy::OpGen& OpGen = Ptr->OpGen;
+    OpGen.setModulePrefix(std::move(ModulePrefix));
+
+    Value PrevEnv = Context.getEnvironment();
+    heavy::OpGen& PrevOpGen = Context.OpGen;
+
+    // Capture Env via scheme lambda so its references are checked
+    // during garbage collection.
+    Value Before = Context.CreateLambda([&OpGen](Context& C, ValueRefs) {
+      Value Env = C.getCapture(0);
+      C.setEnvironment(Env);
+      C.OpGen = OpGen;
+      C.Cont();
+    }, CaptureList{Value(Ptr->Env)});
+
+    // Since we don't own PrevEnv do not capture it in scheme land.
+    Value After = Context.CreateLambda([&PrevOpGen, PrevEnv](Context& C,
+                                                             ValueRefs) {
+      C.setEnvironment(PrevEnv);
+      C.OpGen = PrevOpGen;
+      C.Cont();
+    });
+
+    C.DynamicWind(std::move(Ptr), Before, Thunk, After);
+  }
+};
+} // namespace
+
+void Context::WithLibraryEnv(std::string ModulePrefix, Value Thunk) {
+  LibraryEnv::Wind(*this, std::move(ModulePrefix), Thunk);
 }

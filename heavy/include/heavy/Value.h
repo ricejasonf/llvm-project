@@ -100,7 +100,6 @@ struct OpaqueFn {
 template <typename F>
 static OpaqueFn createOpaqueFn(F& Fn);
 
-
 enum class ValueKind {
   Undefined = 0,
   BigInt,

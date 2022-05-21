@@ -111,7 +111,8 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   heavy::Context& Context;
 
   // ImportsBuilder - Contain insertion point for imported operations
-  //                  from Scheme modules.
+  //                  from Scheme modules. The parent of its block is
+  //                  the highest parent module TopModule.
   mlir::OpBuilder ImportsBuilder;
 
   // ModuleBuilder - Contain insertion point for top level operations
@@ -184,11 +185,8 @@ public:
   // GetPatternVar - Get a SyntacticClosureOp by its name.
   mlir::Value GetPatternVar(heavy::Symbol* S);
 
-  void setModulePrefix(std::string&& Prefix) {
+  void setModulePrefix(std::string Prefix) {
     ModulePrefix = std::move(Prefix);
-  }
-  void resetModulePrefix() {
-    ModulePrefix.clear();
   }
   llvm::StringRef getModulePrefix() {
     if (ModulePrefix.empty()) {
