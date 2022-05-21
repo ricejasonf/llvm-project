@@ -28,28 +28,27 @@
 
 using namespace heavy;
 
-namespace {
-void PushLibraryDecls(Context& C, OpGen& O, Value LibraryDecls) {
-  
-}
-} // namespace
-
 OpGen::OpGen(heavy::Context& C)
   : Context(C),
-    ImportsBuilder(&(C.MlirContext)),
+    ImportsBuilder(ImportsBuilder),
     ModuleBuilder(&(C.MlirContext)),
     Builder(&(C.MlirContext)),
     BindingTable()
 {
-  C.MlirContext.loadDialect<heavy::Dialect>();
   mlir::Location Loc = Builder.getUnknownLoc();
-  mlir::ModuleOp TopModule = Builder.create<mlir::ModuleOp>(Loc);
-  Builder.setInsertionPointToStart(TopModule.getBody());
-  mlir::ModuleOp M = Builder.create<mlir::ModuleOp>(Loc);
+  // Get or create the ImportsBuilder.
+  if (!C.OpGen || C.OpGen.ImportsBuilder.getBlock() == nullptr) {
+    C.MlirContext.loadDialect<heavy::Dialect>();
+    // Create the module that contains the main module and import modules
+    mlir::ModuleOp TopModule = Builder.create<mlir::ModuleOp>(Loc);
+    ImportsBuilder.setInsertionPointToStart(TopModule.getBody());
+  }
+
+  // The first child ModuleOp is the main module. All subsequent
+  // modules are imports (and libraries?).
+  mlir::ModuleOp M = ImportsBuilder.create<mlir::ModuleOp>(Loc);
   ModuleOp = M;
   ModuleBuilder.setInsertionPointToStart(M.getBody());
-  ImportsBuilder.setInsertionPointToStart(TopModule.getBody());
-  Builder.clearInsertionPoint();
   LambdaScopes.emplace_back(ModuleOp, BindingTable);
 }
 
@@ -117,37 +116,27 @@ void OpGen::VisitLibrary(heavy::SourceLocation Loc, std::string MangledName,
   mlir::Location MLoc = mlir::OpaqueLoc::get(Loc.getOpaqueEncoding(),
                                              Builder.getContext());
 
-  auto NewOpGen = std::make_unique<heavy::OpGen>(Context);
-  auto NewEnv = std::make_unique<heavy::Environment>();
-  NewOpGen->setModulePrefix(std::move(MangledName));
+  Value Thunk = Context.CreateLambda([](heavy::Context& C, ValueArgs) {
+    // Recursively visit LibraryDecls
+    Value LibraryDecls = C.getCapture(0);
+    Value VisitLibDecls = C.CreateLambda([](heavy::Context &C,
+                                            ValueArgs Args) {
+      Value LibraryDecls = Args[0]
+      if (Pair* P = dyn_cast<Pair>(LibraryDecls)) {
+        C.OpGen.Visit(P->Car);
+        C.Apply(C.getCallee(), LibraryDecls.Cdr):
+      } else if (isa<Empty>(LibraryDecls)) {
+        C.Cont();
+      } else {
+        C.SetError(Loc,
+                   "expected proper list for library declarations",
+                   LibraryDecls);
+      }
+    });
+    C.Cont();
+  }, CaptureList{LibraryDecls});
 
-  // Create the output ModuleOp
-  auto ModuleOp = ImportsBuilder.create<mlir::ModuleOp>(MLoc);
-  ModuleBuilder.setInsertionPointToStart(ModuleOp.getBody());
-
-  Context.WithEnv(std::make_unique<heavy::Environment>(),
-    Context.CreateLambda([](heavy::Context& C, ValueArgs) {
-      Value LibraryDecls = C.getCapture(0);
-      C.WithOpGen(C.CreateLambda([](heavy::Context& C, ValueArgs) {
-        Value LibraryDecls = C.getCapture(0);
-        // The new OpGen needs a starting point for top level directives
-        // for the given module/library/thing???
-
-        // Recursively visit LibraryDecls
-      }, CaptureList{LibraryDecls}));
-      C.Cont();
-    }, CaptureList{LibraryDecls}));
-  // FIXME This does not currently support non-blocking directives.
-  mlir::OpBuilder::InsertionGuard IG(ModuleBuilder);
-  while (Pair* P = dyn_cast<Pair>(LibraryDecls)) {
-    Visit(P->Car);
-    LibraryDecls = P->Cdr;
-  }
-  if (!isa<Empty>(LibraryDecls)) {
-    SetError(Loc,
-             "expected proper list for library declarations",
-             LibraryDecls);
-  }
+  Context.WithLibraryEnv(std::move(MangledName), Thunk);
 }
 
 void OpGen::VisitTopLevel(Value V) {
