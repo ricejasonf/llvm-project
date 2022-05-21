@@ -41,15 +41,6 @@ struct Dialect : public mlir::Dialect {
   void printType(mlir::Type, mlir::DialectAsmPrinter&) const override;
 };
 
-struct DialectRegisterer {
-  DialectRegisterer() {
-#if 0 // FIXME not sure how this works now
-    // TODO Remove this
-    mlir::registerDialect<Dialect>();
-#endif
-  }
-};
-
 struct HeavyValueTy : public mlir::Type::TypeBase<
                             HeavyValueTy,
                             mlir::Type,
