@@ -32,6 +32,7 @@ using ModuleLoadNamesFn = void(heavy::Context&);
 //               needed for embedding scheme
 class HeavyScheme {
   std::unique_ptr<heavy::Context> ContextPtr;
+  std::unique_ptr<heavy::Environment> EnvPtr;
   std::unique_ptr<heavy::SourceManager> SourceManagerPtr;
 
   public:
@@ -70,6 +71,8 @@ class HeavyScheme {
 
   using ErrorHandlerFn = void(llvm::StringRef, heavy::FullSourceLocation);
 
+  std::unique_ptr<heavy::Environment> CreateEnvironment();
+
   // ProcessTopLevelCommands
   //              - Reading tokens with the provided lexer, this command parses
   //                and evaluates a top level scheme command sequence returning
@@ -81,6 +84,10 @@ class HeavyScheme {
   void ProcessTopLevelCommands(heavy::Lexer& Lexer,
                                llvm::function_ref<ErrorHandlerFn> ErrorHandler,
                                heavy::tok Terminator);
+  void ProcessTopLevelCommands(heavy::Lexer& Lexer,
+                               llvm::function_ref<ValueFnTy> ExprHandler,
+                               llvm::function_ref<ErrorHandlerFn> ErrorHandler,
+                               heavy::tok Terminator = heavy::tok::eof);
   void ProcessTopLevelCommands(heavy::Lexer& Lexer, heavy::Environment& Env,
                                llvm::function_ref<ValueFnTy> ExprHandler,
                                llvm::function_ref<ErrorHandlerFn> ErrorHandler,

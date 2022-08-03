@@ -15,6 +15,7 @@
 #include "heavy/HeavyScheme.h"
 #include "heavy/Lexer.h"
 #include "heavy/Mangle.h"
+#include "heavy/OpGen.h"
 #include "heavy/Parser.h"
 #include "heavy/Value.h"
 
@@ -63,42 +64,56 @@ void HeavyScheme::LoadEmbeddedEnv(void* Handle,
   return;
 }
 
+std::unique_ptr<heavy::Environment> HeavyScheme::CreateEnvironment() {
+  return std::make_unique<heavy::Environment>(getContext());
+}
+
 void HeavyScheme::ProcessTopLevelCommands(
                               heavy::Lexer& Lexer,
                               llvm::function_ref<ErrorHandlerFn> ErrorHandler,
                               heavy::tok Terminator) {
-  Environment& Env = *ContextPtr->getTopLevelEnvironment();
-  return ProcessTopLevelCommands(Lexer, Env, base::eval, ErrorHandler,
+  return ProcessTopLevelCommands(Lexer, base::eval, ErrorHandler,
+                                 Terminator);
+}
+void HeavyScheme::ProcessTopLevelCommands(
+                              heavy::Lexer& Lexer,
+                              llvm::function_ref<ValueFnTy> ExprHandler,
+                              llvm::function_ref<ErrorHandlerFn> ErrorHandler,
+                              heavy::tok Terminator) {
+  if (!EnvPtr) {
+    EnvPtr = CreateEnvironment();
+  }
+  return ProcessTopLevelCommands(Lexer, *EnvPtr, ExprHandler, ErrorHandler,
                                  Terminator);
 }
 
 void HeavyScheme::ProcessTopLevelCommands(
                               heavy::Lexer& Lexer,
-                              Environment& Env, 
+                              Environment& Env,
                               llvm::function_ref<ValueFnTy> ExprHandler,
                               llvm::function_ref<ErrorHandlerFn> ErrorHandler,
                               heavy::tok Terminator) {
   auto& Context = getContext();
   auto& SM = getSourceManager();
   auto HandleErrorFn = [&](heavy::Context& Context, ValueRefs) {
-    assert(Context.CheckError() && "expecting hard error");
+    //assert(Context.CheckError() && "expecting hard error");
     heavy::FullSourceLocation FullLoc = SM.getFullSourceLocation(
         Context.getErrorLocation());
     ErrorHandler(Context.getErrorMessage(), FullLoc);
     Context.ClearStack();
   };
 
-  heavy::Parser Parser(Lexer, Context);
+  auto ParserPtr = std::make_unique<Parser>(Lexer, Context);
+  Parser& Parser = *ParserPtr;
+
   if (!Parser.PrimeToken(Terminator)) {
     HandleErrorFn(Context, {});
     return;
   }
 
-  heavy::ExternLambda<0, sizeof(ExprHandler)> HandleExpr;
-  heavy::ExternLambda<0, sizeof(ErrorHandler)> HandleError;
-  heavy::ExternLambda<0, (sizeof(void*) * 4)> MainThunk;
-
-  auto MainThunkFn = [&Parser, &MainThunk, &HandleExpr, &Env]
+  Value HandleExpr = Context.CreateLambda(ExprHandler, {});
+  Value HandleError = Context.CreateLambda(HandleErrorFn, {});
+  Value MainThunk = Context.CreateLambda([&Parser]
                           (heavy::Context& C, ValueRefs) {
     assert(!C.CheckError() && "Error should have escaped.");
     if (Parser.isFinished()) {
@@ -107,25 +122,28 @@ void HeavyScheme::ProcessTopLevelCommands(
     }
 
     // Recurse in tail position.
-    C.PushCont(Value(MainThunk));
+    C.PushCont(C.getCallee());
 
     heavy::ValueResult ParseResult = Parser.ParseTopLevelExpr();
     if (ParseResult.isUsable()) {
+      Value Env = C.getCapture(0);
+      Value HandleExpr = C.getCapture(1);
       Value ParseResultVal = ParseResult.get();
-      std::array<Value, 2> EvalArgs{ParseResultVal, &Env};
-      C.Apply(Value(HandleExpr), EvalArgs);
+      std::array<Value, 2> EvalArgs{ParseResultVal, Env};
+      C.Apply(HandleExpr, EvalArgs);
     } else {
       C.Cont();
     }
-  };
+  }, CaptureList{Value(&Env), HandleExpr});
 
-  // Store the handlers and thunk.
-  HandleExpr  = ExprHandler;
-  HandleError = HandleErrorFn;
-  MainThunk   = MainThunkFn;
+  Context.DynamicWind(std::move(ParserPtr), Context.CreateLambda(
+    [](heavy::Context& Context, ValueRefs) {
+      Value HandleError = Context.getCapture(0);
+      Value MainThunk = Context.getCapture(1);
+      Context.WithExceptionHandler(HandleError, MainThunk);
+    }, CaptureList{HandleError, MainThunk}));
 
   // Run the loop.
-  Context.WithExceptionHandlers(HandleError, MainThunk);
   Context.Resume();
 }
 
