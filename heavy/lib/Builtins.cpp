@@ -143,6 +143,7 @@ mlir::Value set(OpGen& OG, Pair* P) {
 mlir::Value import(OpGen& OG, Pair* P) {
   heavy::Context& Context = OG.getContext(); 
   Value Current = P->Cdr;
+  // FIXME This needs to be a recursive scheme call
   while (Value Node = Current.car()) {
     if (ImportSet* ImpSet = Context.CreateImportSet(Node)) {
       Context.Import(ImpSet);
@@ -398,36 +399,14 @@ void compile(Context& C, ValueRefs Args) {
     return C.SetError("invalid environment specifier", EnvSpec);
   }
 
-  // EnvCleanup must be trivial to store on the continuation stack.
-  class EnvCleanup {
-    Environment* EnvPtrRaw;
-    Value PrevEnv;
+  Value Thunk = C.CreateLambda([](heavy::Context& C, ValueRefs) {
+    Value ExprOrDef = C.getCapture(0);
+    Value TopLevelHandler = C.getCapture(1);
+    C.OpGen->SetTopLevelHandler(TopLevelHandler);
+    C.OpGen->VisitTopLevel(ExprOrDef); // calls Cont()
+  }, CaptureList{ExprOrDef, TopLevelHandler});
 
-  public:
-    EnvCleanup(Context& C, std::unique_ptr<Environment> OwnedEnv,
-               Environment* NewEnv)
-      : EnvPtrRaw(OwnedEnv.release()),
-        PrevEnv(C.getEnvironment())
-    {
-      C.setEnvironment(NewEnv);
-    }
-
-    void operator()(Context& C, ValueRefs) {
-      C.setEnvironment(PrevEnv);
-      if (EnvPtrRaw) {
-        delete EnvPtrRaw;
-      }
-      C.Cont();
-    }
-  };
-
-  // Keep stuff alive.
-  EnvCleanup Cleanup(C, std::move(EnvPtr), Env);
-  C.PushCont(Cleanup, CaptureList{ExprOrDef, Env, TopLevelHandler});
-
-  // TODO OpGen and Environment need to live together somehow.
-  C.OpGen->SetTopLevelHandler(TopLevelHandler);
-  C.OpGen->VisitTopLevel(ExprOrDef);
+  C.WithEnv(std::move(EnvPtr), Env, Thunk);
 }
 
 }} // end of namespace heavy::base

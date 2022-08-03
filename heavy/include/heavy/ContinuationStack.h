@@ -30,7 +30,7 @@
 
 namespace heavy {
 using CaptureList = std::initializer_list<Value>;
-using DestructorTy = void(void*);
+using DestructorTy = void (*)(void*);
 
 // ContinuationStack
 //      - CRTP base class to add the "run-time" functionality
@@ -182,24 +182,25 @@ class ContinuationStack {
     Value Sentinel = C.CreateVector(std::initializer_list<Value>{Bool{true}});
 
     Value Destroy = C.CreateLambda([Ptr, Destructor](Derived& C, ValueRefs Args) {
-      if (!isa<Vector>(C.getCapture(0))) {
+      Vector* Sentinel = dyn_cast<Vector>(C.getCapture(0));
+      if (!Sentinel || !Sentinel->get(0)) {
         // We could only get here if the user saved an escape proc
         // in the After thunk.
         C.RaiseError("managed object is already destroyed");
       }
 
       // Clear the sentinel value and delete the managed object.
-      P->Car = Value();
+      Sentinel->get(0) = Value();
       Destructor(Ptr);
       // Forward the return args from Thunk.
       C.Cont(Args);
     }, CaptureList{Sentinel});
 
     Value SafeBefore = C.CreateLambda([](Derived& C, ValueRefs) {
-      Vector* V = cast<Vector>(C.getCapture(0));
-      Value Before = cast<Vector>(C.getCapture(1));
+      Vector* Sentinel = cast<Vector>(C.getCapture(0));
+      Value Before = C.getCapture(1);
       // Check that the object is still alive.
-      if (!isa<Bool>(V.get(0))) {
+      if (!Sentinel->get(0)) {
         C.RaiseError("unable to enter extent when managed object is destroyed");
       }
       C.Apply(Before, {});
@@ -237,6 +238,7 @@ public:
   }
 
   // Yield
+  //  - TODO Deprecate (I think continuations should suffice)
   //  - Breaks the run loop yielding a value to serve
   //    as the result.
   //    (ie for a possibly nested call to eval)
@@ -248,6 +250,7 @@ public:
   }
 
   // PushBreak
+  //  - TODO Deprecate (I think continuations should suffice)
   //  - Schedules a yield to be called so any
   //    evaluation that occurs on top can finish
   void PushBreak() {
@@ -339,7 +342,11 @@ public:
   void PushCont(heavy::Value Callable) {
     PushCont([](Derived& Context, ValueRefs Args) {
       heavy::Value Callable = Context.getCapture(0);
-      Context.Apply(Callable, Args.drop_front());
+      // FIXME Remove this drop_front when is certain
+      //       that it was vestigal
+      //       (we used to include the callee in Args)
+      //Context.Apply(Callable, Args.drop_front());
+      Context.Apply(Callable, Args);
     }, Callable);
   }
 
@@ -437,13 +444,18 @@ public:
   }
 
   template <typename T>
-  void DynamicWind(std::unique_ptr<T*> ManagedPtr, Value Before, Value Thunk,
+  void DynamicWind(std::unique_ptr<T> ManagedPtr, Value Before, Value Thunk,
                    Value After) {
     T* Ptr = ManagedPtr.release();
     DestructorTy Destructor = [](void* Ptr) { delete static_cast<T*>(Ptr); };
     ManagedObjectWind(Ptr, Destructor, Before, Thunk, After);
   }
-
+  template <typename T>
+  void DynamicWind(std::unique_ptr<T> ManagedPtr, Value Thunk) {
+    Derived& C = getDerived();
+    auto Noop = C.CreateLambda([](Derived& C, ValueRefs) { C.Cont(); }, {});
+    DynamicWind(std::move(ManagedPtr), Noop, Thunk, Noop);
+  }
 };
 
 }
