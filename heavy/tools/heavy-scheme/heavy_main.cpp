@@ -93,11 +93,9 @@ int main(int argc, char const** argv) {
                  << "\n\n";
   };
 
-  auto Env = std::make_unique<heavy::Environment>();
   heavy::HeavyScheme HeavyScheme;
   heavy::Lexer Lexer(File);
-  HeavyScheme.ProcessTopLevelCommands(Lexer, *Env, ProcessTopLevelExpr,
-                                      OnError);
+  HeavyScheme.ProcessTopLevelCommands(Lexer, ProcessTopLevelExpr, OnError);
 
   if (InputMode.getValue() == ExecutionMode::mlir) {
     HeavyScheme.getContext().verifyModule();

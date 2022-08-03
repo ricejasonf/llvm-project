@@ -97,8 +97,8 @@ bool Parser::ParseHeavyScheme() {
 
   heavy::TokenKind Terminator = heavy::tok::r_brace;
   bool HasError = HeavyScheme->ProcessTopLevelCommands(SchemeLexer,
-                                                      ErrorHandler,
-                                                      Terminator);
+                                                       ErrorHandler,
+                                                       Terminator);
 
   // Return control to C++ Lexer
   PP.FinishEmbeddedLexer(SchemeLexer.GetByteOffset());

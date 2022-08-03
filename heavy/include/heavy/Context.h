@@ -82,8 +82,6 @@ class Context : public ContinuationStack<Context> {
   llvm::DenseMap<void*, std::unique_ptr<Environment>> EmbeddedEnvs;
   llvm::DenseMap<String*, Value> KnownAddresses;
 
-  std::unique_ptr<Module> SystemModule; // TODO deprecate
-  std::unique_ptr<Environment> SystemEnvironment; // TODO deprecate
   // EnvStack
   //  - an improper list ending with an Environment
   //  - Calls to procedures or eval will set the EnvStack
@@ -96,7 +94,6 @@ class Context : public ContinuationStack<Context> {
   Value ExceptionHandlers = heavy::Empty();
 
 public:
-  //std::unique_ptr<heavy::OpGen> OpGen;
   heavy::OpGen* OpGen = nullptr;
   heavy::OpEval OpEval; // TODO Deprecate this single, owned instance of OpEval
 
@@ -111,7 +108,10 @@ public:
     RaiseError(CreateString(Msg), IrrArgs);
   }
 
-  void WithEnv(std::unique_ptr<heavy::Environment> E, Value Thunk);
+  // WithEnv - Call a thunk with an environment and the ability to clean up
+  //           the environment object if necessary.
+  void WithEnv(std::unique_ptr<heavy::Environment> E, heavy::Environment* Env,
+               Value Thunk);
   void WithLibraryEnv(std::string ModulePrefix, Value Thunk);
 
   mlir::Operation* getModuleOp();
@@ -131,7 +131,8 @@ public:
     return EnvStack;
   }
   void setEnvironment(Value E) {
-    assert((isa<Environment, Pair>(E)) && "invalid environment specifier");
+    assert((isa<Environment, Pair, Empty>(E)) &&
+        "invalid environment specifier");
     EnvStack = E;
   }
 
@@ -159,11 +160,6 @@ public:
 
   Context();
   ~Context();
-
-  // Returns a Builtin from the SystemModule
-  // for use within builtin syntaxes that wish
-  // to defer to evaluation
-  Builtin* GetBuiltin(StringRef Name);
 
   // Lookup
   //  - Takes a Symbol

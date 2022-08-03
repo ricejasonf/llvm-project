@@ -52,9 +52,7 @@ heavy::ExternBuiltinSyntax _HEAVY_import;
 Context::Context()
   : ContinuationStack<Context>()
   , TrashHeap()
-  , SystemModule(std::make_unique<Module>(*this))
-  , SystemEnvironment(std::make_unique<Environment>())
-  , EnvStack(SystemEnvironment.get())
+  , EnvStack(Empty())
   , MlirContext()
   , OpGen(nullptr)
   , OpEval(*this)
@@ -65,6 +63,20 @@ Context::Context()
 }
 
 Context::~Context() = default;
+
+Environment::Environment(Environment* Parent)
+  : ValueBase(ValueKind::Environment),
+    OpGen(nullptr),
+    Parent(Parent),
+    EnvMap(0)
+{ }
+Environment::Environment(Context& C, std::string ModulePrefix)
+  : ValueBase(ValueKind::Environment),
+    OpGen(std::make_unique<heavy::OpGen>(C, std::move(ModulePrefix))),
+    Parent(nullptr),
+    EnvMap(0)
+{ }
+Environment::~Environment() = default;
 
 Environment* Context::getTopLevelEnvironment() {
   // EnvStack is always an Environment or an improper
@@ -198,7 +210,7 @@ bool Context::Import(heavy::ImportSet* ImportSet, Environment *Env) {
 
 std::unique_ptr<Environment>
 Context::CreateEnvironment(heavy::ImportSet* ImportSet) {
-  auto EnvPtr = std::make_unique<Environment>();
+  auto EnvPtr = std::make_unique<Environment>(*this);
   // The user should check the context for an error.
   Import(ImportSet, EnvPtr.get());
   return EnvPtr;
@@ -858,94 +870,61 @@ void Context::RaiseError(String* Msg, llvm::ArrayRef<Value> IrrArgs) {
   Raise(Error);
 }
 
-template <typename T>
-void GuardManagedObject(T* Obj, Value Thunk) {
-  // Sentinel is referenced by each lambda
-  // to share the state of the object's lifetime.
-  // This is checked everytime we enter the dynamic extent.
-  Pair* Sentinel = CreatePair(Bool(true));
-
-  Value Before = CreateLambda([](Derived& C, ValueRefs) {
-    Vector* V = cast<Vector>(C.getCapture(0));
-    // Check that the object is still alive.
-    if (!isa<Bool>(V.get(0))) {
-      // Throw run-time error runtime
-      C.RaiseError("unable to enter extent when managed object is destroyed");
-    }
-  }, CaptureList{Sentinel});
-
-  Value After = CreateLambda([](Derived& C, ValueRefs) {
-    // Do nothing.
-  });
-
-  Value Destroy = CreateLambda([Obj](Derived& C, ValueRefs)
-    Pair* P = cast<Pair>(C.getCapture(0));
-    // Clear the sentinel value.
-    P->Car = Value();
-    delete Obj;
-  }, CaptureList{Sentinel});
-
-  PushCont(Destroy);
-  DynamicWind(Before, Thunk, After);
-};
-
-void Context::WithEnv(std::unique_ptr<heavy::Environment> E, Value Thunk) {
-  Value Env = E.get();
-  Value PrevEnv = getEnvironment();
-  Value Before = CreateLambda([](Context& C, ValueRefs) {
-    Value Env = C.getCapture(0);
-    C.setEnvironment(Env);
-    C.Cont();
-  }, CaptureList{Env});
-  Value After = CreateLambda([](Context& C, ValueRefs) {
-    Value PrevEnv = C.getCapture(0);
-    C.setEnvironment(PrevEnv);
-    C.Cont();
-  }, CaptureList{PrevEnv});
-  DynamicWind(std::move(E), Before, Thunk, After);
-}
-
 namespace {
 class LibraryEnv {
-  heavy::Environment Env;
-  heavy::OpGen OpGen;
+  // EnvPtr is meant to just keep the
+  // object alive for the user when needed.
+  std::unique_ptr<heavy::Environment> EnvPtr;
+  heavy::Environment* Env;
 
-  LibraryEnv(heavy::Context& C)
-    : Env(),
-      OpGen(C)
+public:
+  LibraryEnv(std::unique_ptr<Environment> EP,
+             heavy::Environment* E)
+    : EnvPtr(std::move(EP)),
+      Env(E)
   { }
 
-  static void Wind(heavy::Context& Context, std::string ModulePrefix,
+  static void Wind(heavy::Context& Context,
+                   std::unique_ptr<heavy::Environment> EnvPtr,
+                   heavy::Environment* Env,
                    Value Thunk) {
-    std::make_unique<LibraryEnv> Ptr(Context);
-    heavy::OpGen& OpGen = Ptr->OpGen;
-    OpGen.setModulePrefix(std::move(ModulePrefix));
+    auto Ptr = std::make_unique<LibraryEnv>(std::move(EnvPtr), Env);
+    heavy::OpGen* OpGen = Ptr->Env->GetOpGen();
 
     Value PrevEnv = Context.getEnvironment();
-    heavy::OpGen& PrevOpGen = Context.OpGen;
+    heavy::OpGen* PrevOpGen = Context.OpGen;
 
     // Capture Env via scheme lambda so its references are checked
     // during garbage collection.
-    Value Before = Context.CreateLambda([&OpGen](Context& C, ValueRefs) {
+    Value Before = Context.CreateLambda([OpGen](heavy::Context& C,
+                                                 ValueRefs) {
       Value Env = C.getCapture(0);
       C.setEnvironment(Env);
       C.OpGen = OpGen;
       C.Cont();
-    }, CaptureList{Value(Ptr->Env)});
+    }, CaptureList{Value((Ptr->Env))});
 
     // Since we don't own PrevEnv do not capture it in scheme land.
-    Value After = Context.CreateLambda([&PrevOpGen, PrevEnv](Context& C,
-                                                             ValueRefs) {
+    Value After = Context.CreateLambda([PrevOpGen, PrevEnv](heavy::Context& C,
+                                                            ValueRefs) {
       C.setEnvironment(PrevEnv);
       C.OpGen = PrevOpGen;
       C.Cont();
-    });
+    }, {});
 
-    C.DynamicWind(std::move(Ptr), Before, Thunk, After);
+    Context.DynamicWind(std::move(Ptr), Before, Thunk, After);
   }
 };
 } // namespace
 
+void Context::WithEnv(std::unique_ptr<heavy::Environment> EnvPtr,
+                      heavy::Environment* Env, Value Thunk) {
+  LibraryEnv::Wind(*this, std::move(EnvPtr), Env, Thunk);
+}
+
 void Context::WithLibraryEnv(std::string ModulePrefix, Value Thunk) {
-  LibraryEnv::Wind(*this, std::move(ModulePrefix), Thunk);
+  auto EnvPtr = std::make_unique<heavy::Environment>(*this,
+      std::move(ModulePrefix));
+
+  LibraryEnv::Wind(*this, std::move(EnvPtr), EnvPtr.get(), Thunk);
 }

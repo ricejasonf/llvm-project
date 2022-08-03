@@ -29,6 +29,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <type_traits>
 #include <utility>
 
@@ -1465,7 +1466,6 @@ public:
 //    core syntax or embedded environments
 //  - Represents an Environment Specifier created with (environment ...)
 //    or the default or embedded environments
-//  - Stacks Modules the bottom of which is the SystemModule.
 //  - Adding top level definitions that shadow names in EnvMap
 //    is forbidden
 class Environment : public ValueBase {
@@ -1474,15 +1474,20 @@ class Environment : public ValueBase {
 private:
   using MapTy = llvm::DenseMap<String*, EnvEntry>;
 
+  std::unique_ptr<heavy::OpGen> OpGen;
   Environment* Parent = nullptr;
   MapTy EnvMap;
 
 public:
-  Environment(Environment* Parent = nullptr)
-    : ValueBase(ValueKind::Environment),
-      Parent(Parent),
-      EnvMap(0)
-  { }
+  // Implemented in Context.cpp
+  Environment(Environment* Parent);
+  Environment(heavy::Context& C, std::string ModulePrefix = {});
+  ~Environment();
+
+  heavy::OpGen* GetOpGen() {
+    if (OpGen) return OpGen.get();
+    return Parent->GetOpGen();
+  }
 
   // Returns nullptr if not found
   EnvEntry Lookup(String* Str) {
