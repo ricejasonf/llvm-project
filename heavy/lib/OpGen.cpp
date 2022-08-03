@@ -28,16 +28,18 @@
 
 using namespace heavy;
 
-OpGen::OpGen(heavy::Context& C)
+OpGen::OpGen(heavy::Context& C, std::string ModulePrefix)
   : Context(C),
-    ImportsBuilder(ImportsBuilder),
+    ImportsBuilder(&(C.MlirContext)),
     ModuleBuilder(&(C.MlirContext)),
     Builder(&(C.MlirContext)),
-    BindingTable()
+    BindingTable(),
+    ModulePrefix(std::move(ModulePrefix))
+
 {
   mlir::Location Loc = Builder.getUnknownLoc();
   // Get or create the ImportsBuilder.
-  if (!C.OpGen || C.OpGen.ImportsBuilder.getBlock() == nullptr) {
+  if (!C.OpGen || C.OpGen->ImportsBuilder.getBlock() == nullptr) {
     C.MlirContext.loadDialect<heavy::Dialect>();
     // Create the module that contains the main module and import modules
     mlir::ModuleOp TopModule = Builder.create<mlir::ModuleOp>(Loc);
@@ -113,18 +115,17 @@ void OpGen::VisitLibrary(heavy::SourceLocation Loc, std::string MangledName,
                          Value LibraryDecls) {
   assert(ModulePrefix.size() == 0 && "nested libraries are not allowed");
   assert(isTopLevel() && "library should be top level");
-  mlir::Location MLoc = mlir::OpaqueLoc::get(Loc.getOpaqueEncoding(),
-                                             Builder.getContext());
 
-  Value Thunk = Context.CreateLambda([](heavy::Context& C, ValueArgs) {
+  Value Thunk = Context.CreateLambda([Loc](heavy::Context& C, ValueRefs) {
     // Recursively visit LibraryDecls
     Value LibraryDecls = C.getCapture(0);
-    Value VisitLibDecls = C.CreateLambda([](heavy::Context &C,
-                                            ValueArgs Args) {
-      Value LibraryDecls = Args[0]
+    Value VisitLibDecls = C.CreateLambda([Loc](heavy::Context &C,
+                                               ValueRefs Args) {
+      Value LibraryDecls = Args[0];
       if (Pair* P = dyn_cast<Pair>(LibraryDecls)) {
-        C.OpGen.Visit(P->Car);
-        C.Apply(C.getCallee(), LibraryDecls.Cdr):
+        Value VisitLibDecls = C.getCallee();
+        C.OpGen->Visit(P->Car);
+        C.Apply(VisitLibDecls, P->Cdr);
       } else if (isa<Empty>(LibraryDecls)) {
         C.Cont();
       } else {
@@ -132,8 +133,8 @@ void OpGen::VisitLibrary(heavy::SourceLocation Loc, std::string MangledName,
                    "expected proper list for library declarations",
                    LibraryDecls);
       }
-    });
-    C.Cont();
+    }, {});
+    C.Apply(VisitLibDecls, LibraryDecls);
   }, CaptureList{LibraryDecls});
 
   Context.WithLibraryEnv(std::move(MangledName), Thunk);

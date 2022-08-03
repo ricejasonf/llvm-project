@@ -171,7 +171,7 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   bool FinishLocalDefines();
 
 public:
-  explicit OpGen(heavy::Context& C);
+  explicit OpGen(heavy::Context& C, std::string ModulePrefix = {});
 
   heavy::Context& getContext() { return Context; }
 
@@ -195,7 +195,7 @@ public:
     return ModulePrefix;
   }
 
-  void VisitLibrary(heavy::SourceLocation Loc, std::string&& MangledName,
+  void VisitLibrary(heavy::SourceLocation Loc, std::string MangledName,
                     heavy::Value LibraryDecls);
   void VisitTopLevel(Value V);
   void FinishTopLevelOp();
