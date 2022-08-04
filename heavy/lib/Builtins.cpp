@@ -21,7 +21,14 @@ bool HEAVY_BASE_IS_LOADED = false;
 // import must be pre-loaded
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(import);
 
+heavy::ExternSyntax<>      HEAVY_BASE_VAR(define_library);
 heavy::ExternSyntax<>      HEAVY_BASE_VAR(begin);
+heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(export);
+heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(cond_expand);
+heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(include);
+heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(include_ci);
+heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(include_library_declarations);
+
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(define);
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(define_syntax);
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(syntax_rules);
@@ -31,12 +38,6 @@ heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(quasiquote);
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(quote);
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(set);
 
-heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(define_library);
-heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(export);
-heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(cond_expand);
-heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(include);
-heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(include_ci);
-heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(include_library_declarations);
 
 heavy::ExternFunction HEAVY_BASE_VAR(add);
 heavy::ExternFunction HEAVY_BASE_VAR(sub);
@@ -157,11 +158,13 @@ mlir::Value export_(OpGen& OG, Pair* P) {
   llvm_unreachable("TODO");
 }
 
-mlir::Value define_library(OpGen& OG, Pair* P) {
-  heavy::SourceLocation Loc = P->getSourceLocation();
-  if (!OG.isTopLevel() ||
-       OG.getModulePrefix().size() > 0) {
-    return OG.SetError("unexpected library definition", P);
+void define_library(Context& C, ValueRefs Args) {
+  OpGen& OG = *C.OpGen;
+  Pair* P = cast<Pair>(Args[0]);
+  auto Loc = P->getSourceLocation();
+  if (!OG.isTopLevel()) {
+    C.SetError("unexpected library definition", P);
+    return;
   }
   Value NameSpec;
   Pair* LibraryDecls;
@@ -169,16 +172,16 @@ mlir::Value define_library(OpGen& OG, Pair* P) {
     NameSpec = P2->Car;
     LibraryDecls = dyn_cast<Pair>(P2->Cdr);
     if (!LibraryDecls) {
-      return OG.SetError("expected library declarations", P2->Cdr);
+      C.SetError("expected library declarations", P2->Cdr);
+      return;
     }
   }
   std::string MangledName = OG.mangleModule(NameSpec); 
-  // FIXME Because Library can contain top-level exprs we
-  //       must use continuations.
-  if (MangledName.size() != 0) {
-    OG.VisitLibrary(Loc, std::move(MangledName), LibraryDecls);
+  if (MangledName.size() == 0) {
+    C.SetError("library name is invalid");
+    return;
   }
-  return mlir::Value();
+  OG.VisitLibrary(Loc, std::move(MangledName), LibraryDecls);
 }
 
 void begin(Context& C, ValueRefs Args) {
