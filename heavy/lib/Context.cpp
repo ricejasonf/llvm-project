@@ -337,15 +337,15 @@ EnvEntry Context::Lookup(Symbol* Name, Value Stack) {
 }
 
 mlir::Operation* Context::getModuleOp() {
-  return OpGen->getModuleOp();
+  return ModuleOp;
 }
 void Context::dumpModuleOp() {
-  OpGen->getModuleOp().dump();
+  return cast<mlir::ModuleOp>(ModuleOp).dump();
 }
 
 void Context::verifyModule() {
-  mlir::ModuleOp ModuleOp = OpGen->getModuleOp();
-  if (mlir::failed(mlir::verify(ModuleOp))) {
+  mlir::ModuleOp M = cast<mlir::ModuleOp>(ModuleOp);
+  if (mlir::failed(mlir::verify(M))) {
     llvm::errs() << "error: verfication failed\n";
   }
 }
