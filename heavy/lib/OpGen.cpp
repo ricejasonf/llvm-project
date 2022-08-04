@@ -38,19 +38,25 @@ OpGen::OpGen(heavy::Context& C, std::string ModulePrefix)
 
 {
   mlir::Location Loc = Builder.getUnknownLoc();
+  // TODO Determine if we can get rid of ImportsBuilder
+  //      and just create it on the fly each time.
   // Get or create the ImportsBuilder.
   if (!C.OpGen || C.OpGen->ImportsBuilder.getBlock() == nullptr) {
+    assert(!C.ModuleOp && "There should be only one top level module");
     C.MlirContext.loadDialect<heavy::Dialect>();
     // Create the module that contains the main module and import modules
     mlir::ModuleOp TopModule = Builder.create<mlir::ModuleOp>(Loc);
     ImportsBuilder.setInsertionPointToStart(TopModule.getBody());
+    C.ModuleOp = TopModule;
+    // The first child ModuleOp is the main module. All subsequent
+    // modules are imports (and libraries?).
+    ModuleOp = ImportsBuilder.create<mlir::ModuleOp>(Loc);
+  } else {
+    ModuleOp = C.OpGen->ImportsBuilder.create<mlir::ModuleOp>(Loc);
   }
 
-  // The first child ModuleOp is the main module. All subsequent
-  // modules are imports (and libraries?).
-  mlir::ModuleOp M = ImportsBuilder.create<mlir::ModuleOp>(Loc);
-  ModuleOp = M;
-  ModuleBuilder.setInsertionPointToStart(M.getBody());
+  ModuleBuilder.setInsertionPointToStart(
+      cast<mlir::ModuleOp>(ModuleOp).getBody());
   LambdaScopes.emplace_back(ModuleOp, BindingTable);
 }
 
@@ -113,7 +119,6 @@ mlir::Value OpGen::GetPatternVar(heavy::Symbol* S) {
 
 void OpGen::VisitLibrary(heavy::SourceLocation Loc, std::string MangledName,
                          Value LibraryDecls) {
-  assert(ModulePrefix.size() == 0 && "nested libraries are not allowed");
   assert(isTopLevel() && "library should be top level");
 
   Value Thunk = Context.CreateLambda([Loc](heavy::Context& C, ValueRefs) {
@@ -124,8 +129,12 @@ void OpGen::VisitLibrary(heavy::SourceLocation Loc, std::string MangledName,
       Value LibraryDecls = Args[0];
       if (Pair* P = dyn_cast<Pair>(LibraryDecls)) {
         Value VisitLibDecls = C.getCallee();
-        C.OpGen->Visit(P->Car);
-        C.Apply(VisitLibDecls, P->Cdr);
+        C.PushCont([](heavy::Context& C, ValueRefs) {
+            Value VisitLibDecls = C.getCapture(0);
+            Value Cdr = C.getCapture(1);
+            C.Apply(VisitLibDecls, Cdr);
+          }, CaptureList{VisitLibDecls, P->Cdr});
+        C.OpGen->VisitTopLevel(P->Car);
       } else if (isa<Empty>(LibraryDecls)) {
         C.Cont();
       } else {
@@ -180,6 +189,7 @@ void OpGen::VisitTopLevel(Value V) {
   // routines are strictly sync/blocking.
   // The pushed continuation will handle the result.
   Visit(V);
+  if (Context.CheckError()) return;
   Context.Cont();
 }
 
@@ -983,6 +993,6 @@ mlir::Operation* OpGen::LookupSymbol(llvm::StringRef MangledName) {
   Operation* G = M.lookupSymbol(MangledName);
   if (G) return G;
 
-  M = cast<mlir::ModuleOp>(M->getParentOp());
+  M = cast<mlir::ModuleOp>(Context.getModuleOp());
   return M.lookupSymbol(MangledName);
 }
