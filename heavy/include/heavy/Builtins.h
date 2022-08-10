@@ -23,6 +23,7 @@
 #define HEAVY_BASE_INIT               HEAVY_BASE_LIB_(_init)
 #define HEAVY_BASE_VAR(NAME)          HEAVY_BASE_VAR__##NAME
 #define HEAVY_BASE_VAR__import        HEAVY_BASE_LIB_(V6Simport)
+#define HEAVY_BASE_VAR__export        HEAVY_BASE_LIB_(V6Sexport)
 #define HEAVY_BASE_VAR__add           HEAVY_BASE_LIB_(Vpl)
 #define HEAVY_BASE_VAR__sub           HEAVY_BASE_LIB_(Vmi)
 #define HEAVY_BASE_VAR__div           HEAVY_BASE_LIB_(Vdv)
@@ -37,7 +38,6 @@
 #define HEAVY_BASE_VAR__eqv           HEAVY_BASE_LIB_(V3Seqvqu)
 #define HEAVY_BASE_VAR__eval          HEAVY_BASE_LIB_(V4Seval)
 #define HEAVY_BASE_VAR__callcc        HEAVY_BASE_LIB_(V4Scalldv2Scc)
-#define HEAVY_BASE_VAR__export        HEAVY_BASE_LIB_(V6Sexport)
 #define HEAVY_BASE_VAR__include       HEAVY_BASE_LIB_(V7Sinclude)
 // ...
 // TODO Make this mapping to mangled variable names complete possibly
@@ -65,9 +65,9 @@ namespace heavy { namespace base {
 // syntax (top level, continuable)
 void begin(Context& C, ValueRefs Args);
 void define_library(Context& C, ValueRefs Args);
+void export_(Context&, ValueRefs);
 // TODO Change signature to continuable Syntax functions.
 mlir::Value import(OpGen& OG, Pair* P);
-mlir::Value export_(OpGen& OG, Pair* P);
 mlir::Value include_(OpGen& OG, Pair* P);
 mlir::Value include_ci(OpGen& OG, Pair* P);
 mlir::Value include_library_declarations(OpGen& OG, Pair* P);
@@ -111,6 +111,7 @@ void compile(Context& C, ValueRefs Args);
 
 extern heavy::ExternSyntax<>        HEAVY_BASE_VAR(begin);
 extern heavy::ExternSyntax<>        HEAVY_BASE_VAR(define_library);
+extern heavy::ExternSyntax<>        HEAVY_BASE_VAR(export);
 extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(define);
 extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(define_syntax);
 extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(syntax_rules);
@@ -120,7 +121,6 @@ extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(quasiquote);
 extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(quote);
 extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(set);
 extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(cond_expand);
-extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(export);
 extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(include);
 extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(include_ci);
 extern heavy::ExternBuiltinSyntax
