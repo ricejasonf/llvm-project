@@ -16,12 +16,14 @@
 #include "heavy/Dialect.h"
 #include "heavy/Mangle.h"
 #include "heavy/OpGen.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Verifier.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include <memory>
@@ -43,7 +45,7 @@ OpGen::OpGen(heavy::Context& C, std::string ModulePrefix)
   // Get or create the ImportsBuilder.
   if (!C.OpGen || C.OpGen->ImportsBuilder.getBlock() == nullptr) {
     assert(!C.ModuleOp && "There should be only one top level module");
-    C.MlirContext.loadDialect<heavy::Dialect>();
+    C.MlirContext.loadDialect<heavy::Dialect, mlir::StandardOpsDialect>();
     // Create the module that contains the main module and import modules
     mlir::ModuleOp TopModule = Builder.create<mlir::ModuleOp>(Loc);
     ImportsBuilder.setInsertionPointToStart(TopModule.getBody());
@@ -71,6 +73,11 @@ std::string OpGen::mangleFunctionName(llvm::StringRef Name) {
     return Mangler.mangleAnonymousId(getModulePrefix(), LambdaNameCount++);
   }
   return Mangler.mangleFunction(getModulePrefix(), Name);
+}
+
+std::string OpGen::mangleVariable(heavy::Value Name) {
+  heavy::Mangler Mangler(Context);
+  return Mangler.mangleVariable(getModulePrefix(), Name);
 }
 
 mlir::ModuleOp OpGen::getModuleOp() {
@@ -622,7 +629,15 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
 
   heavy::Mangler Mangler(Context);
   std::string MangledName = Mangler.mangleVariable(getModulePrefix(), S);
-  auto GlobalOp = createTopLevel<heavy::GlobalOp>(DefineLoc, MangledName);
+  auto GlobalOp = dyn_cast_or_null<heavy::GlobalOp>(
+      LookupSymbol(MangledName));
+  if (GlobalOp) {
+    // Move the GlobalOp to the current ModuleBuilder insert point
+    mlir::Operation* Op = GlobalOp.getOperation();
+    Op->moveBefore(&Op->getBlock()->back());
+  } else {
+    GlobalOp = createTopLevel<heavy::GlobalOp>(DefineLoc, MangledName);
+  }
   setTopLevelOp(GlobalOp.getOperation());
   mlir::Block& Block = *GlobalOp.addEntryBlock();
 
@@ -993,6 +1008,101 @@ mlir::Operation* OpGen::LookupSymbol(llvm::StringRef MangledName) {
   Operation* G = M.lookupSymbol(MangledName);
   if (G) return G;
 
+  // FIXME This needs to account for symbols in sibling modules
+  //       I think we should only see imported names
   M = cast<mlir::ModuleOp>(Context.getModuleOp());
   return M.lookupSymbol(MangledName);
+}
+
+void OpGen::Export(Value NameList) {
+  heavy::Mangler Mangler(Context);
+  std::string FuncName = Mangler.mangleSpecialName(ModulePrefix, "load_module");
+  mlir::FuncOp F = dyn_cast_or_null<mlir::FuncOp>(
+      getModuleOp().lookupSymbol(FuncName));
+  mlir::Block* Block;
+
+  if (!F) {
+    // FIXME Context should have its own type
+    mlir::Type ContextT   = Builder.getType<HeavyValueTy>();
+    mlir::FunctionType FT = Builder.getFunctionType(ContextT, {});
+    F = createHelper<mlir::FuncOp>(ModuleBuilder,
+                                   NameList.getSourceLocation(),
+                                   FuncName, FT);
+    Block = F.addEntryBlock();
+  } else {
+    Block = &(F.getBody().back());
+  }
+
+  // Iterate existing ExportIdOp nodes and load them into NameSet
+  llvm::SmallSet<llvm::StringRef, 8> NameSet;
+  auto& Ops = Block->getOperations();
+  for (auto& Op : Ops) {
+    auto ExportIdOp = dyn_cast<heavy::ExportIdOp>(Op);
+    if (!ExportIdOp) continue;
+    auto Result = NameSet.insert(ExportIdOp.id());
+    if (!Result.second) {
+      // This is an error in the IR.
+      Context.SetError("export has duplicate name");
+      return;
+    }
+  }
+
+  // Setup the builder and ensure a terminator exists
+  mlir::OpBuilder ExportBuilder(&Context.MlirContext);
+  if (Block->empty()) {
+    ExportBuilder.setInsertionPointToEnd(Block);
+    ExportBuilder.create<mlir::ReturnOp>(F.getLoc());
+  }
+  ExportBuilder.setInsertionPoint(Block->getTerminator());
+
+  // Now iterate the names and add ExportIdOps.
+
+  Value V = NameList;
+  while (Pair* P = dyn_cast<Pair>(V)) {
+    Symbol* Source = dyn_cast<Symbol>(P->Car);
+    Symbol* Target = Source;
+    if (!Target) {
+      if (Pair* P2 = dyn_cast<Pair>(P->Car)) {
+        if (isSymbol(P2->Car, "rename") && isa<Pair>(P2->Cdr)) {
+          Pair* P3 = cast<Pair>(P2->Cdr); 
+          Source = dyn_cast<Symbol>(P3->Car);
+          if (!Source) {
+            Context.SetError("expecting identifier", P3);
+            return;
+          }
+          if (Pair* P4 = dyn_cast<Pair>(P3->Cdr)) {
+            Target = dyn_cast<Symbol>(P4->Car);
+            if (!Target) {
+              Context.SetError("expecting identifier", P4);
+              return;
+            }
+            if (!isa<Empty>(P4->Cdr)) {
+              Context.SetError("expecting proper list", P4);
+              return;
+            }
+          }
+        }
+      }
+    }
+    if (!Source || !Target) {
+      Context.SetError("expecting export spec", P);
+      return;
+    }
+
+    // Check that Target is not a duplicate
+    auto Result = NameSet.insert(Target->getView());
+    if (!Result.second) {
+      Context.SetError("export has duplicate name", Target);
+      return;
+    }
+    std::string MangledName = mangleVariable(Source);
+    createHelper<ExportIdOp>(ExportBuilder, Target->getSourceLocation(),
+                             MangledName, Target->getView());
+    // Next
+    V = P->Cdr;
+  }
+  if (!isa<Empty>(V)) {
+    Context.SetError("expecting proper list");
+  }
+  return Context.Cont();
 }

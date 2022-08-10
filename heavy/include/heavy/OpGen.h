@@ -195,6 +195,7 @@ public:
     return ModulePrefix;
   }
 
+  void Export(Value NameList);
   void VisitLibrary(heavy::SourceLocation Loc, std::string MangledName,
                     heavy::Value LibraryDecls);
   void VisitTopLevel(Value V);
@@ -214,6 +215,7 @@ public:
 
   std::string mangleModule(heavy::Value Name);
   std::string mangleFunctionName(llvm::StringRef Name);
+  std::string mangleVariable(heavy::Value Name);
 
   // createHelper - Facilitate creating an operation with proper source
   //                location information.
