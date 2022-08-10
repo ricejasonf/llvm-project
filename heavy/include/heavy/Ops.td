@@ -292,6 +292,16 @@ def heavy_LoadGlobalOp : HeavyOp<"load_global"> {
   ];
 }
 
+def heavy_ExportIdOp : HeavyOp<"export-id"> {
+  let summary = "export-id";
+  let description = [{
+    Provide an identifier to associate with a symbol for a compiling context.
+    All export-id operations are nested in a specially named FuncOp to be called
+    by a compiling context when importing the module.
+  }];
+  let arguments = (ins StrAttr:$symbolName, StrAttr:$id);
+}
+
 def heavy_MatchOp : HeavyOp<"match", [HasParent<"PatternOp">]> {
   let summary = "match";
   let description = [{

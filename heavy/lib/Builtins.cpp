@@ -23,7 +23,7 @@ heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(import);
 
 heavy::ExternSyntax<>      HEAVY_BASE_VAR(define_library);
 heavy::ExternSyntax<>      HEAVY_BASE_VAR(begin);
-heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(export);
+heavy::ExternSyntax<>      HEAVY_BASE_VAR(export);
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(cond_expand);
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(include);
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(include_ci);
@@ -154,8 +154,10 @@ mlir::Value import(OpGen& OG, Pair* P) {
   return mlir::Value();
 }
 
-mlir::Value export_(OpGen& OG, Pair* P) {
-  llvm_unreachable("TODO");
+void export_(Context& C, ValueRefs Args) {
+  OpGen& OG = *C.OpGen;
+  Pair* P = cast<Pair>(Args[0]);
+  OG.Export(P->Cdr);
 }
 
 void define_library(Context& C, ValueRefs Args) {
