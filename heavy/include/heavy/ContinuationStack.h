@@ -418,6 +418,20 @@ public:
     C.Apply(InputProc, Proc);
   }
 
+  // SaveEscapeProc - Save the current continuation as an escape
+  //                  procedure. This is a bit more readable than manually
+  //                  creating it, especially when nesting multiple escape
+  //                  procedures.
+  template <typename F>
+  void SaveEscapeProc(Binding* Var, F Proc, CaptureList Captures) {
+    Derived& C = getDerived();
+    PushCont(Proc, Captures);
+    CallCC(C.CreateLambda([](heavy::Context& C, ValueRefs Args) {
+      cast<Binding>(C.getCapture(0)).setValue(Args[0]);
+      C.Cont();
+    }, CaptureList{Value(Var)})); 
+  }
+
   void DynamicWind(Value Before, Value Thunk, Value After) {
     Derived& C = getDerived();
     int Depth = CurDW.getDepth();
