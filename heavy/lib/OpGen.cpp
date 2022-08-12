@@ -127,7 +127,79 @@ mlir::Value OpGen::GetPatternVar(heavy::Symbol* S) {
 void OpGen::VisitLibrary(heavy::SourceLocation Loc, std::string MangledName,
                          Value LibraryDecls) {
   assert(isTopLevel() && "library should be top level");
+  // LibraryEnvProc - Capture and later set to the escape procedure
+  //                  that is used to process top level exprs for the
+  //                  library which must be with a (begin ...) syntax.
+  LibraryEnvProc = Context.CreateBinding(Empty());
+  Value HandleLibraryDecls = C.CreateBinding(Empty());
+  LibraryDecls = C.CreateBinding(LibraryDecls);
 
+  // The library environment isn't used until we are in a sequence (begin).
+  // Use the parent environment without allowing operations to be inserted.
+  auto LibraryBefore = Context.CreateLambda([](heavy::Context& C,
+                                                   ValueRefs) {
+    // Store LibraryEnvProc as a member so it is accessible within
+    // the `begin` syntax.
+    assert(!C.OpGen.LibraryEnvProc &&
+        "should not have to track previous state");
+    C.OpGen.LibraryEnvProc = C.getCapture(0);
+  }, CaptureList{LibraryEnvProc});
+  auto LibraryAfter = Context.CreateLambda([](heavy::Context& C,
+                                                  ValueRefs) {
+    C.OpGen.LibraryEnvProc = nullptr;
+  });
+  auto LibraryThunk = Context.CreateLambda([](heavy::Context& C,
+                                                  ValueRefs) {
+    Value HandleLibraryDecls = C.getCapture(0);
+    C.SaveEscapreProc(HandleLibraryDecls, [](heavy::Context& C, ValueRefs) {
+      if (Pair* P = LibraryDecls.getValue()) {
+        LibraryDecls.setValue(P->Cdr);
+        PushCont(HandleLibraryDecls);
+        VisitLibrarySpec(P);
+      } else if (isa<Empty>(LibraryDecls.getValue())) {
+        // The library is done.
+        // Call LibraryEnvProc to allow it to complete
+        // to clean up the librarys environment.
+        HandleLibraryDecls.setValue(Empty());
+        C.Apply(C.OpGen.LibraryEnvProc);
+      } else {
+        C.SetError("expected proper list for library declarations",
+                   LibraryDecls.getValue());
+      }
+    });
+    // Create an escape proc to loop to this point.
+  }, CaptureList{HandleLibraryDecls});
+
+  //PushCont the creation of LibraryEnvProc
+  Context.PushCont([](heavy::Context& C, ValueRefs) {
+    Value HandleLibraryDecls = C.getCapture(0);
+    Value Thunk = C.CreateLambda([](heavy::Context& C, ValueRefs) {
+      C.SaveEscapeProc(LibraryEnvProc, [](heavy::Context& C, ValueRefs Args) {
+        // Handle the sequence from `begin` from within the lib environment.
+        HandleLibraryDecls = C.getCapture(0);
+        if (isa<Lambda>(HandleLibraryDecls)) {
+          C.PushCont(HandleLibraryDecls);
+          C.PushCont([](heavy::Context& C, ValueRefs Args) {
+            // Args[0] is the List from the `begin` syntax.
+            C.OpGen.VisitTopLevelSequence(Args[0]);
+          });
+          C.Cont(Args[0]);
+        } else {
+          // If the escape proc is cleared then let this proc
+          // complete so it deletes the environment.
+          C.Cont();
+        }
+      }, CaptureList{HandleLibraryDecls});
+    }, CaptureList{HandleLibrayDecl});
+    C.WithLibraryEnv(std::move(MangledName), Thunk);
+    MangledName.clear(); // just to be safe
+  }, CaptureList{HandleLibraryDecls, LibrarEnvProc});
+
+  Context.DynamicWind(LibraryBefore,
+                      LibraryThunk,
+                      LibraryAfter);
+
+  // junk
   Value Thunk = Context.CreateLambda([Loc](heavy::Context& C, ValueRefs) {
     // Recursively visit LibraryDecls
     Value LibraryDecls = C.getCapture(0);
@@ -154,6 +226,16 @@ void OpGen::VisitLibrary(heavy::SourceLocation Loc, std::string MangledName,
   }, CaptureList{LibraryDecls});
 
   Context.WithLibraryEnv(std::move(MangledName), Thunk);
+}
+
+void OpGen::VisitLibraryDecl(Value LibDecl) {
+  // The spec must be a syntax call. 
+  assert(OpGen.
+  Pair* P = dyn_cast<Pair>(LibDecl);
+  if (!P || P->Cdr) {
+    Context.SetError("expecting library spec", LibDecl);
+  }
+
 }
 
 void OpGen::VisitTopLevel(Value V) {
@@ -185,6 +267,7 @@ void OpGen::VisitTopLevel(Value V) {
   // (e.g. for `import` etc.)
   if (Pair* P = dyn_cast<Pair>(V)) {
     Value Operator = P->Car;
+    // FIXME Why don't we need to perform lookup here?
     if (isa<Syntax>(Operator)) {
       Value Input = P;
       Context.Apply(Operator, Input);
@@ -241,6 +324,11 @@ void OpGen::FinishTopLevelOp() {
 }
 
 void OpGen::VisitTopLevelSequence(Value List) {
+  if (LibraryEnvProc) {
+    // Call the escape proc into the library's environment.
+    C.Apply(LibraryEnvProc, List);
+    return;
+  }
   if (Pair* P = dyn_cast<Pair>(List)) {
     Context.PushCont([](heavy::Context& C, ValueRefs) {
       Value Rest = C.getCapture(0);
