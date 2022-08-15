@@ -124,64 +124,43 @@ mlir::Value OpGen::GetPatternVar(heavy::Symbol* S) {
   llvm_unreachable("syntax closure not found in binding table");
 }
 
+// WithLibraryEnv - Call a thunk within the library environment
+//                  for <library spec>. (ie begin, import, export)
+void OpGen::WithLibraryEnv(Value Thunk) {
+  if (!LibraryEnvProc) {
+    Context.SetError("not in a library context");
+    return;
+  }
+  Context.Apply(LibraryEnvProc, Thunk);
+}
+
 void OpGen::VisitLibrary(heavy::SourceLocation Loc, std::string MangledName,
                          Value LibraryDecls) {
   assert(isTopLevel() && "library should be top level");
+  // EnvPtr - A raw pointer that is captured to be owned by
+  //          the input unique_ptr that is required to WithLibraryEnv.
+  heavy::Environment* EnvPtr =
+    new heavy::Environment(Context, std::move(ModulePrefix));
   // LibraryEnvProc - Capture and later set to the escape procedure
   //                  that is used to process top level exprs for the
   //                  library which must be with a (begin ...) syntax.
   LibraryEnvProc = Context.CreateBinding(Empty());
-  Value HandleLibraryDecls = C.CreateBinding(Empty());
-  LibraryDecls = C.CreateBinding(LibraryDecls);
-
-  // The library environment isn't used until we are in a sequence (begin).
-  // Use the parent environment without allowing operations to be inserted.
-  auto LibraryBefore = Context.CreateLambda([](heavy::Context& C,
-                                                   ValueRefs) {
-    // Store LibraryEnvProc as a member so it is accessible within
-    // the `begin` syntax.
-    assert(!C.OpGen.LibraryEnvProc &&
-        "should not have to track previous state");
-    C.OpGen.LibraryEnvProc = C.getCapture(0);
-  }, CaptureList{LibraryEnvProc});
-  auto LibraryAfter = Context.CreateLambda([](heavy::Context& C,
-                                                  ValueRefs) {
-    C.OpGen.LibraryEnvProc = nullptr;
-  });
-  auto LibraryThunk = Context.CreateLambda([](heavy::Context& C,
-                                                  ValueRefs) {
-    Value HandleLibraryDecls = C.getCapture(0);
-    C.SaveEscapreProc(HandleLibraryDecls, [](heavy::Context& C, ValueRefs) {
-      if (Pair* P = LibraryDecls.getValue()) {
-        LibraryDecls.setValue(P->Cdr);
-        PushCont(HandleLibraryDecls);
-        VisitLibrarySpec(P);
-      } else if (isa<Empty>(LibraryDecls.getValue())) {
-        // The library is done.
-        // Call LibraryEnvProc to allow it to complete
-        // to clean up the librarys environment.
-        HandleLibraryDecls.setValue(Empty());
-        C.Apply(C.OpGen.LibraryEnvProc);
-      } else {
-        C.SetError("expected proper list for library declarations",
-                   LibraryDecls.getValue());
-      }
-    });
-    // Create an escape proc to loop to this point.
-  }, CaptureList{HandleLibraryDecls});
-
+  Value HandleLibraryDecls = Context.CreateBinding(Empty());
+  LibraryDecls = Context.CreateBinding(LibraryDecls);
   //PushCont the creation of LibraryEnvProc
-  Context.PushCont([](heavy::Context& C, ValueRefs) {
+  Context.PushCont([EnvPtr](heavy::Context& C, ValueRefs) {
     Value HandleLibraryDecls = C.getCapture(0);
     Value Thunk = C.CreateLambda([](heavy::Context& C, ValueRefs) {
-      C.SaveEscapeProc(LibraryEnvProc, [](heavy::Context& C, ValueRefs Args) {
+      Value HandleLibraryDecls = C.getCapture(0);
+      C.SaveEscapeProc(C.OpGen->LibraryEnvProc, [](heavy::Context& C,
+                                                  ValueRefs Args) {
         // Handle the sequence from `begin` from within the lib environment.
-        HandleLibraryDecls = C.getCapture(0);
+        Value HandleLibraryDecls = C.getCapture(0);
         if (isa<Lambda>(HandleLibraryDecls)) {
           C.PushCont(HandleLibraryDecls);
           C.PushCont([](heavy::Context& C, ValueRefs Args) {
-            // Args[0] is the List from the `begin` syntax.
-            C.OpGen.VisitTopLevelSequence(Args[0]);
+            // Args[0] is Thunk from OpGen::WithLibraryEnv(Value Thunk)
+            C.Apply(Args[0], {});
           });
           C.Cont(Args[0]);
         } else {
@@ -190,56 +169,71 @@ void OpGen::VisitLibrary(heavy::SourceLocation Loc, std::string MangledName,
           C.Cont();
         }
       }, CaptureList{HandleLibraryDecls});
-    }, CaptureList{HandleLibrayDecl});
-    C.WithLibraryEnv(std::move(MangledName), Thunk);
-    MangledName.clear(); // just to be safe
-  }, CaptureList{HandleLibraryDecls, LibrarEnvProc});
+    }, CaptureList{HandleLibraryDecls});
+    // Taking ownership of EnvPtr
+    C.WithEnv(std::unique_ptr<heavy::Environment>(EnvPtr), EnvPtr, Thunk);
+  }, CaptureList{HandleLibraryDecls, LibraryEnvProc});
+
+
+  // The library environment isn't used until we are in a sequence (begin).
+  // Use the parent environment without allowing operations to be inserted.
+  auto LibraryBefore = Context.CreateLambda([](heavy::Context& C, ValueRefs) {
+    // Store LibraryEnvProc as a member so it is accessible within
+    // the `begin` syntax.
+    assert(!C.OpGen->LibraryEnvProc &&
+        "should not have to track previous state");
+    C.OpGen->LibraryEnvProc = C.getCapture(0);
+  }, CaptureList{LibraryEnvProc});
+  auto LibraryAfter = Context.CreateLambda([](heavy::Context& C, ValueRefs) {
+    C.OpGen->LibraryEnvProc = nullptr;
+  }, CaptureList{});
+  auto LibraryThunk = Context.CreateLambda([](heavy::Context& C,
+                                                  ValueRefs) {
+    Value HandleLibraryDecls = C.getCapture(0);
+    Value LibraryDecls       = C.getCapture(1);
+    C.SaveEscapeProc(HandleLibraryDecls, [](heavy::Context& C, ValueRefs) {
+      Value HandleLibraryDecls = C.getCapture(0);
+      Binding* LibraryDecls = cast<Binding>(C.getCapture(1));
+      if (Pair* P = dyn_cast<Pair>(LibraryDecls->getValue())) {
+        LibraryDecls->setValue(P->Cdr);
+        C.PushCont(HandleLibraryDecls);
+        C.OpGen->VisitLibrarySpec(P);
+      } else if (isa<Empty>(LibraryDecls->getValue())) {
+        // The library is done.
+        // Call LibraryEnvProc to allow it to complete
+        // to clean up the librarys environment.
+        cast<Binding>(HandleLibraryDecls)->setValue(Empty());
+        C.Apply(C.OpGen->LibraryEnvProc, {});
+      } else {
+        C.SetError("expected proper list for library declarations",
+                   LibraryDecls->getValue());
+      }
+    }, CaptureList{HandleLibraryDecls, LibraryDecls});
+    // Create an escape proc to loop to this point.
+  }, CaptureList{HandleLibraryDecls, LibraryDecls});
 
   Context.DynamicWind(LibraryBefore,
                       LibraryThunk,
                       LibraryAfter);
-
-  // junk
-  Value Thunk = Context.CreateLambda([Loc](heavy::Context& C, ValueRefs) {
-    // Recursively visit LibraryDecls
-    Value LibraryDecls = C.getCapture(0);
-    Value VisitLibDecls = C.CreateLambda([Loc](heavy::Context &C,
-                                               ValueRefs Args) {
-      Value LibraryDecls = Args[0];
-      if (Pair* P = dyn_cast<Pair>(LibraryDecls)) {
-        Value VisitLibDecls = C.getCallee();
-        C.PushCont([](heavy::Context& C, ValueRefs) {
-            Value VisitLibDecls = C.getCapture(0);
-            Value Cdr = C.getCapture(1);
-            C.Apply(VisitLibDecls, Cdr);
-          }, CaptureList{VisitLibDecls, P->Cdr});
-        C.OpGen->VisitTopLevel(P->Car);
-      } else if (isa<Empty>(LibraryDecls)) {
-        C.Cont();
-      } else {
-        C.SetError(Loc,
-                   "expected proper list for library declarations",
-                   LibraryDecls);
-      }
-    }, {});
-    C.Apply(VisitLibDecls, LibraryDecls);
-  }, CaptureList{LibraryDecls});
-
-  Context.WithLibraryEnv(std::move(MangledName), Thunk);
 }
 
-void OpGen::VisitLibraryDecl(Value LibDecl) {
-  // The spec must be a syntax call. 
-  assert(OpGen.
-  Pair* P = dyn_cast<Pair>(LibDecl);
-  if (!P || P->Cdr) {
-    Context.SetError("expecting library spec", LibDecl);
+void OpGen::VisitLibrarySpec(Value LibSpec) {
+  bool DidCallSyntax = false;
+  if (Pair* P = dyn_cast<Pair>(LibSpec)) {
+    MaybeCallSyntax(P, DidCallSyntax);
   }
-
+  if (!DidCallSyntax) {
+    Context.SetError("expecting library spec", LibSpec);
+    return;
+  }
+  Context.Cont();
 }
 
 void OpGen::VisitTopLevel(Value V) {
-  IsTopLevelAllowed = true;
+  if (LibraryEnvProc) {
+    VisitLibrarySpec(V);
+    return;
+  }
   TopLevelOp = nullptr;
 
   // We use a null Builder to denote that we should
@@ -325,8 +319,9 @@ void OpGen::FinishTopLevelOp() {
 
 void OpGen::VisitTopLevelSequence(Value List) {
   if (LibraryEnvProc) {
-    // Call the escape proc into the library's environment.
-    C.Apply(LibraryEnvProc, List);
+    WithLibraryEnv(Context.CreateLambda([](heavy::Context& C, ValueRefs) {
+      C.OpGen->VisitTopLevelSequence(C.getCapture(0));
+    }, CaptureList{List}));
     return;
   }
   if (Pair* P = dyn_cast<Pair>(List)) {
@@ -685,7 +680,7 @@ mlir::Value OpGen::createDefine(Symbol* S, Value DefineArgs,
 mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
                                         Value OrigCall) {
   SourceLocation DefineLoc = OrigCall.getSourceLocation();
-  if (!IsTopLevelAllowed) {
+  if (LibraryEnvProc) {
     return SetError("unexpected define", OrigCall);
   }
 
@@ -977,34 +972,55 @@ mlir::Value OpGen::createContinuation(mlir::Region& initCont) {
   return FuncEntry->getArguments()[1];
 }
 
-mlir::Value OpGen::VisitPair(Pair* P) {
+// LookupCallee - Return the lookup result of callee from a
+//                call expression or Undefined if the callee
+//                is not a name or no entry exists.
+//
+//                TODO We could potentially cache here
+//                     the lookup result to prevent
+//                     multiple lookups.
+mlir::Value OpGen::MaybeCallSyntax(Pair* P, bool& DidCallSyntax) {
   Value Operator = P->Car;
-  // A named operator might point to some kind of syntax transformer.
-  if (Symbol* Name = dyn_cast<Symbol>(Operator)) {
+  if (Symbol* Name = dyn_cast<Symbol>(P->Car)) {
     EnvEntry Entry = Context.Lookup(Name);
     if (!Entry) {
       Operator = Undefined();
     } else if (Binding* B = dyn_cast<Binding>(Entry.Value)) {
+      // FIXME This would not be a syntax name. Perhaps it was
+      //       meant to pass this to Handle call to prevent multiple
+      //       calls to lookup?
+      //       (or combine this with the Undefined branch??)
       Operator = B->getValue();
     } else {
       Operator = Entry.Value;
     }
   }
-
   switch (Operator.getKind()) {
     case ValueKind::BuiltinSyntax: {
+      DidCallSyntax = true;
       BuiltinSyntax* BS = cast<BuiltinSyntax>(Operator);
       return BS->Fn(*this, P);
     }
     case ValueKind::Syntax: {
+      DidCallSyntax = true;
       Value Input = P;
       Context.Run(Operator, ValueRefs(Input));
       return toValue(Context.getCurrentResult());
     }
     default: {
-      return HandleCall(P);
+      DidCallSyntax = false;
+      return mlir::Value();
     }
   }
+}
+
+mlir::Value OpGen::VisitPair(Pair* P) {
+  bool DidCallSyntax;
+  mlir::Value Result = MaybeCallSyntax(P, DidCallSyntax);
+  if (DidCallSyntax) {
+    return Result;
+  }
+  return HandleCall(P);
 }
 
 #if 0 // TODO VectorOp??
