@@ -423,13 +423,13 @@ public:
   //                  creating it, especially when nesting multiple escape
   //                  procedures.
   template <typename F>
-  void SaveEscapeProc(Binding* Var, F Proc, CaptureList Captures) {
+  void SaveEscapeProc(Value Var, F Proc, CaptureList Captures) {
     Derived& C = getDerived();
     PushCont(Proc, Captures);
-    CallCC(C.CreateLambda([](heavy::Context& C, ValueRefs Args) {
-      cast<Binding>(C.getCapture(0)).setValue(Args[0]);
+    CallCC(C.CreateLambda([](Derived& C, ValueRefs Args) {
+      cast<Binding>(C.getCapture(0))->setValue(Args[0]);
       C.Cont();
-    }, CaptureList{Value(Var)})); 
+    }, CaptureList{Var})); 
   }
 
   void DynamicWind(Value Before, Value Thunk, Value After) {
