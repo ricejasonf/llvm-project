@@ -141,10 +141,11 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   //                   TODO This needs to be visited during GC.
   Value TopLevelHandler = nullptr;
 
-  // IsTopLevelAllowed - Determine if any operations may be inserted
-  //                     for use at program level or in a sequence
-  //                     within a library definition.
-  bool IsTopLevelAllowed = false;
+  // LibraryEnvProc - In the context of define-library we allow <library spec>
+  //                  to enter the library environment. No operations should
+  //                  be inserted if this is set.
+  Value LibraryEnvProc = nullptr;
+
   bool IsLocalDefineAllowed = false;
   std::string ModulePrefix = {};
   unsigned LambdaNameCount = 0;
@@ -208,6 +209,8 @@ public:
       TopLevelHandler = OnTopLevel;
     }
   }
+  void VisitLibrarySpec(Value V);
+  void WithLibraryEnv(Value Thunk);
 
   bool isTopLevel() { return TopLevelOp == nullptr; }
   bool isTailPos() { return IsTailPos; }
@@ -233,7 +236,7 @@ public:
 
   template <typename Op, typename ...Args>
   Op create(heavy::SourceLocation Loc, Args&& ...args) {
-    if (Builder.getBlock() == nullptr && IsTopLevelAllowed) {
+    if (Builder.getBlock() == nullptr) {
       InsertTopLevelCommandOp(Loc);
     } else if (IsLocalDefineAllowed) {
       // An error may occur here, but we always want
@@ -246,6 +249,8 @@ public:
 
   template <typename Op, typename ...Args>
   Op createTopLevel(heavy::SourceLocation Loc, Args&& ...args) {
+    assert(!LibraryEnvProc &&
+        "Should not be in a library spec context");
     return createHelper<Op>(ModuleBuilder, Loc, std::forward<Args>(args)...);
   }
 
@@ -362,6 +367,7 @@ public:
 
   mlir::Operation* LookupSymbol(llvm::StringRef MangledName);
 private:
+  mlir::Value MaybeCallSyntax(Pair* P, bool& DidCallSyntax);
   mlir::Value HandleCall(Pair* P);
 };
 
