@@ -95,12 +95,13 @@ void HeavyScheme::ProcessTopLevelCommands(
                               heavy::tok Terminator) {
   auto& Context = getContext();
   auto& SM = getSourceManager();
-  auto HandleErrorFn = [&](heavy::Context& Context, ValueRefs) {
-    //assert(Context.CheckError() && "expecting hard error");
+  auto HandleErrorFn = [&](heavy::Context& Context, ValueRefs Args) {
+    heavy::Error* Err = cast<heavy::Error>(Args[0]);
     heavy::FullSourceLocation FullLoc = SM.getFullSourceLocation(
-        Context.getErrorLocation());
-    ErrorHandler(Context.getErrorMessage(), FullLoc);
+        Args[0].getSourceLocation());
+    ErrorHandler(Err->getErrorMessage(), FullLoc);
     Context.ClearStack();
+    Context.Cont();
   };
 
   auto ParserPtr = std::make_unique<Parser>(Lexer, Context);

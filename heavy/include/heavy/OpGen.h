@@ -144,7 +144,7 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   // LibraryEnvProc - In the context of define-library we allow <library spec>
   //                  to enter the library environment. No operations should
   //                  be inserted if this is set.
-  Value LibraryEnvProc = nullptr;
+  Binding* LibraryEnvProc = nullptr;
 
   bool IsLocalDefineAllowed = false;
   std::string ModulePrefix = {};
@@ -211,6 +211,9 @@ public:
   }
   void VisitLibrarySpec(Value V);
   void WithLibraryEnv(Value Thunk);
+  bool isLibraryContext() {
+    return LibraryEnvProc != nullptr;
+  }
 
   bool isTopLevel() { return TopLevelOp == nullptr; }
   bool isTailPos() { return IsTailPos; }

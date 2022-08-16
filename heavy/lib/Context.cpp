@@ -47,7 +47,7 @@ void Value::dump() {
 //                    which is special. We also give it a relatively
 //                    simple, readable symbol name.
 heavy::ExternString<20> NameForImportVar;
-heavy::ExternBuiltinSyntax _HEAVY_import;
+heavy::ExternSyntax<> _HEAVY_import;
 
 Context::Context()
   : ContinuationStack<Context>()
@@ -58,7 +58,7 @@ Context::Context()
   , OpEval(*this)
 {
   NameForImportVar = "_HEAVY_import";
-  _HEAVY_import = heavy::base::import;
+  _HEAVY_import = heavy::base::import_;
   RegisterModule(HEAVY_BASE_LIB_STR, HEAVY_BASE_LOAD_MODULE);
 }
 
@@ -830,14 +830,15 @@ void Context::Raise(Value Obj) {
     return Cont();
   }
   if (!isa<Pair>(ExceptionHandlers)) {
-    if (!CheckError()) {
+    if (isa<heavy::Error>(Obj)) {
+      Value BottomHandler = ExceptionHandlers;
+      return Apply(BottomHandler, Obj);
+    } else {
       std::string Msg;
       llvm::raw_string_ostream Stream(Msg);
       write(Stream << "uncaught exception: ", Obj);
       return SetError(Msg, Obj);
     }
-    Value BottomHandler = ExceptionHandlers;
-    return Apply(BottomHandler, Obj);
   }
   Pair* P = cast<Pair>(ExceptionHandlers);
   Value Handler = P->Car;

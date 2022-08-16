@@ -19,7 +19,7 @@
 bool HEAVY_BASE_IS_LOADED = false;
 
 // import must be pre-loaded
-heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(import);
+heavy::ExternSyntax<>      HEAVY_BASE_VAR(import);
 
 heavy::ExternSyntax<>      HEAVY_BASE_VAR(define_library);
 heavy::ExternSyntax<>      HEAVY_BASE_VAR(begin);
@@ -141,17 +141,32 @@ mlir::Value set(OpGen& OG, Pair* P) {
   return OG.createSet(P->getSourceLocation(), S, Expr);
 }
 
-mlir::Value import(OpGen& OG, Pair* P) {
-  heavy::Context& Context = OG.getContext(); 
-  Value Current = P->Cdr;
-  // FIXME This needs to be a recursive scheme call
-  while (Value Node = Current.car()) {
-    if (ImportSet* ImpSet = Context.CreateImportSet(Node)) {
-      Context.Import(ImpSet);
+namespace { 
+  void import_helper(Context& C, ValueRefs Args) {
+    if (Pair* P = dyn_cast<Pair>(Args[0])) {
+      if (ImportSet* ImpSet = C.CreateImportSet(P->Car)) {
+        C.Import(ImpSet);
+        C.Apply(C.getCallee(), P->Cdr);
+      } else {
+        C.SetError("invalid import spec", P);
+      }
+    } else if (isa<Empty>(Args[0])) {
+      C.Cont();
+    } else {
+      C.SetError("expecting proper list for import syntax", Args[0]);
     }
-    Current = Current.cdr();
   }
-  return mlir::Value();
+}
+void import_(Context& C, ValueRefs Args) {
+  Value ImportSpecs = cast<Pair>(Args[0])->Cdr;
+  if (C.OpGen->isLibraryContext()) {
+    C.OpGen->WithLibraryEnv(C.CreateLambda([](Context& C, ValueRefs) {
+      Value ImportSpecs = C.getCapture(0);
+      C.Apply(C.CreateLambda(import_helper, {}), ImportSpecs);
+    }, CaptureList{ImportSpecs}));
+  } else {
+    C.Apply(C.CreateLambda(import_helper, {}), ImportSpecs);
+  }
 }
 
 void export_(Context& C, ValueRefs Args) {
