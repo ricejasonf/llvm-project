@@ -131,7 +131,7 @@ void OpGen::WithLibraryEnv(Value Thunk) {
     Context.SetError("not in a library context");
     return;
   }
-  Context.Apply(LibraryEnvProc, Thunk);
+  Context.Apply(LibraryEnvProc->getValue(), Thunk);
 }
 
 void OpGen::VisitLibrary(heavy::SourceLocation Loc, std::string MangledName,
@@ -179,16 +179,15 @@ void OpGen::VisitLibrary(heavy::SourceLocation Loc, std::string MangledName,
   // Use the parent environment without allowing operations to be inserted.
   auto LibraryBefore = Context.CreateLambda([](heavy::Context& C, ValueRefs) {
     // Store LibraryEnvProc as a member so it is accessible within
-    // the `begin` syntax.
-    assert(!C.OpGen->LibraryEnvProc &&
-        "should not have to track previous state");
-    C.OpGen->LibraryEnvProc = C.getCapture(0);
+    // library specs
+    C.OpGen->LibraryEnvProc = cast<Binding>(C.getCapture(0));
+    C.Cont();
   }, CaptureList{LibraryEnvProc});
   auto LibraryAfter = Context.CreateLambda([](heavy::Context& C, ValueRefs) {
     C.OpGen->LibraryEnvProc = nullptr;
+    C.Cont();
   }, CaptureList{});
-  auto LibraryThunk = Context.CreateLambda([](heavy::Context& C,
-                                                  ValueRefs) {
+  auto LibraryThunk = Context.CreateLambda([](heavy::Context& C, ValueRefs) {
     Value HandleLibraryDecls = C.getCapture(0);
     Value LibraryDecls       = C.getCapture(1);
     C.SaveEscapeProc(HandleLibraryDecls, [](heavy::Context& C, ValueRefs) {
@@ -197,19 +196,18 @@ void OpGen::VisitLibrary(heavy::SourceLocation Loc, std::string MangledName,
       if (Pair* P = dyn_cast<Pair>(LibraryDecls->getValue())) {
         LibraryDecls->setValue(P->Cdr);
         C.PushCont(HandleLibraryDecls);
-        C.OpGen->VisitLibrarySpec(P);
+        C.OpGen->VisitLibrarySpec(P->Car);
       } else if (isa<Empty>(LibraryDecls->getValue())) {
         // The library is done.
         // Call LibraryEnvProc to allow it to complete
         // to clean up the librarys environment.
         cast<Binding>(HandleLibraryDecls)->setValue(Empty());
-        C.Apply(C.OpGen->LibraryEnvProc, {});
+        C.Apply(C.OpGen->LibraryEnvProc->getValue(), {});
       } else {
         C.SetError("expected proper list for library declarations",
                    LibraryDecls->getValue());
       }
     }, CaptureList{HandleLibraryDecls, LibraryDecls});
-    // Create an escape proc to loop to this point.
   }, CaptureList{HandleLibraryDecls, LibraryDecls});
 
   Context.DynamicWind(LibraryBefore,
@@ -457,6 +455,7 @@ mlir::Value OpGen::createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall) {
   if (!TransformerSpec || !isa<Empty>(SyntaxSpec->Cdr.cdr())) {
     return SetError("invalid syntax spec", SyntaxSpec);
   }
+  // TODO Use MaybeCallSyntax
   if (Symbol* TS = dyn_cast_or_null<Symbol>(TransformerSpec->Car)) {
     // Operator is typically syntax-rules here.
     if (Value Operator = Context.Lookup(TS).Value) {
