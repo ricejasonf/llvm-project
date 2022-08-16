@@ -39,9 +39,6 @@
 #define HEAVY_BASE_VAR__eval          HEAVY_BASE_LIB_(V4Seval)
 #define HEAVY_BASE_VAR__callcc        HEAVY_BASE_LIB_(V4Scalldv2Scc)
 #define HEAVY_BASE_VAR__include       HEAVY_BASE_LIB_(V7Sinclude)
-// ...
-// TODO Make this mapping to mangled variable names complete possibly
-//      by using HeavyScheme in Clang itself once it is ready.
 
 namespace mlir {
 
@@ -66,8 +63,8 @@ namespace heavy { namespace base {
 void begin(Context& C, ValueRefs Args);
 void define_library(Context& C, ValueRefs Args);
 void export_(Context&, ValueRefs);
+void import_(Context&, ValueRefs);
 // TODO Change signature to continuable Syntax functions.
-mlir::Value import(OpGen& OG, Pair* P);
 mlir::Value include_(OpGen& OG, Pair* P);
 mlir::Value include_ci(OpGen& OG, Pair* P);
 mlir::Value include_library_declarations(OpGen& OG, Pair* P);
