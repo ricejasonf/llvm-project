@@ -145,8 +145,8 @@ namespace {
   void import_helper(Context& C, ValueRefs Args) {
     if (Pair* P = dyn_cast<Pair>(Args[0])) {
       if (ImportSet* ImpSet = C.CreateImportSet(P->Car)) {
-        C.Import(ImpSet);
-        C.Apply(C.getCallee(), P->Cdr);
+        if (!C.Import(ImpSet))
+          C.Apply(C.getCallee(), P->Cdr);
       } else {
         C.SetError("invalid import spec", P);
       }
@@ -179,7 +179,7 @@ void define_library(Context& C, ValueRefs Args) {
   OpGen& OG = *C.OpGen;
   Pair* P = cast<Pair>(Args[0]);
   auto Loc = P->getSourceLocation();
-  if (!OG.isTopLevel()) {
+  if (!OG.isTopLevel() || OG.isLibraryContext()) {
     C.SetError("unexpected library definition", P);
     return;
   }
