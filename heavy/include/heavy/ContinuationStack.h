@@ -181,7 +181,8 @@ class ContinuationStack {
     // This is checked everytime we enter the dynamic extent.
     Value Sentinel = C.CreateVector(std::initializer_list<Value>{Bool{true}});
 
-    Value Destroy = C.CreateLambda([Ptr, Destructor](Derived& C, ValueRefs Args) {
+    Value Destroy = C.CreateLambda([Ptr, Destructor](Derived& C,
+                                                     ValueRefs Args) {
       Vector* Sentinel = dyn_cast<Vector>(C.getCapture(0));
       if (!Sentinel || !Sentinel->get(0)) {
         // We could only get here if the user saved an escape proc
@@ -196,12 +197,13 @@ class ContinuationStack {
       C.Cont(Args);
     }, CaptureList{Sentinel});
 
-    Value SafeBefore = C.CreateLambda([](Derived& C, ValueRefs) {
+    Value SafeBefore = C.CreateLambda([Ptr](Derived& C, ValueRefs) {
       Vector* Sentinel = cast<Vector>(C.getCapture(0));
       Value Before = C.getCapture(1);
       // Check that the object is still alive.
       if (!Sentinel->get(0)) {
         C.RaiseError("unable to enter extent when managed object is destroyed");
+        return;
       }
       C.Apply(Before, {});
     }, CaptureList{Sentinel, Before});
@@ -358,6 +360,10 @@ public:
     ApplyHelper(Callee, Args);
   }
 
+  void ApplyThunk(Value Callee) {
+    ApplyHelper(Callee, {});
+  }
+
   // Cont
   //    - Prepares a call to the topmost continuation
   //    - Args should not include the callee
@@ -406,54 +412,64 @@ public:
       C.PushCont([](Derived& C, ValueRefs) {
         String* SavedStack  = cast<String>(C.getCapture(0));
         Vector* SavedArgs   = cast<Vector>(C.getCapture(1));
+        C.CurDW = C.getCapture(2); // SavedDW
         C.RestoreStack(SavedStack);
         C.Cont(SavedArgs->getElements());
-        return Value();
-      }, CaptureList{SavedStack, SavedArgs});
-      CurDW = SavedDW;
+      }, CaptureList{SavedStack, SavedArgs, SavedDW});
       C.TraverseWindings(this->CurDW, SavedDW);
-      return Value();
+      CurDW = SavedDW;
     }, CaptureList{SavedStack, SavedDW});
 
     C.Apply(InputProc, Proc);
   }
 
-  // SaveEscapeProc - Save the current continuation as an escape
-  //                  procedure. This is a bit more readable than manually
-  //                  creating it, especially when nesting multiple escape
-  //                  procedures.
+  // SaveEscapeProc - Push Proc as current continuation for use 
+  //                  as an escape procedure bound to Var, then
+  //                  call the continuation we had before so
+  //                  that Proc is only called explicitly.
   template <typename F>
   void SaveEscapeProc(Value Var, F Proc, CaptureList Captures) {
+    assert(isa<Binding>(Var) && "expecting a binding for Var"); 
     Derived& C = getDerived();
     PushCont(Proc, Captures);
     CallCC(C.CreateLambda([](Derived& C, ValueRefs Args) {
       cast<Binding>(C.getCapture(0))->setValue(Args[0]);
+      // Remove Proc from the stack before continuing.
+      C.PopCont();
       C.Cont();
     }, CaptureList{Var})); 
   }
 
   void DynamicWind(Value Before, Value Thunk, Value After) {
     Derived& C = getDerived();
-    int Depth = CurDW.getDepth();
-    Value NewDW = C.CreateVector(
-        std::initializer_list<Value>{Int(Depth + 1), Before, After, CurDW});
 
-    C.PushCont([this](Derived& C, ValueRefs) {
-      Value Thunk = C.getCapture(0);
-      Value After = C.getCapture(1);
-      this->CurDW = C.getCapture(2);
+    C.PushCont([](Derived& C, ValueRefs) {
+      Value PrevDW = C.CurDW;
+      Value Thunk  = C.getCapture(0);
+      Value Before = C.getCapture(1);
+      Value After  = C.getCapture(2);
+      int Depth = C.CurDW.getDepth();
+      C.CurDW = C.CreateVector(
+        std::initializer_list<Value>{Int(Depth + 1), Before, After, C.CurDW});
+#if HEAVY_DYNAMIC_WIND_DEBUG
+      llvm::errs() << "DWIND created depth: " << C.CurDW.getDepth()
+                   << " (Vector* " << reinterpret_cast<uintptr_t>(C.CurDW.Vec)
+                   << ")\n";
+#endif
 
       C.PushCont([](Derived& C, ValueRefs ThunkResults) {
         Value After = C.getCapture(0);
+        Value PrevDW = C.getCapture(1);
 
         C.PushCont([](Derived& C, ValueRefs) {
           ValueRefs ThunkResults = C.getCaptures();
           C.Cont(ThunkResults);
         }, /*Captures=*/ThunkResults); 
+        C.CurDW = PrevDW;
         C.Apply(After, {});
-      }, CaptureList{After});
+      }, CaptureList{After, PrevDW});
       C.Apply(Thunk, {});
-    }, CaptureList{Thunk, After, NewDW});
+    }, CaptureList{Thunk, Before, After});
     C.Apply(Before, {});
   }
 

@@ -906,7 +906,7 @@ public:
     }, CaptureList{Value((Ptr->Env))});
 
     // Since we don't own PrevEnv do not capture it in scheme land.
-    Value After = Context.CreateLambda([PrevOpGen, PrevEnv](heavy::Context& C,
+    Value After = Context.CreateLambda([PrevOpGen, PrevEnv, OpGen](heavy::Context& C,
                                                             ValueRefs) {
       C.setEnvironment(PrevEnv);
       C.OpGen = PrevOpGen;

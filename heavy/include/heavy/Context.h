@@ -92,7 +92,7 @@ class Context : public ContinuationStack<Context> {
   SourceLocation Loc = {}; // last known location for errors
   Value Err = nullptr;
   Value ExceptionHandlers = heavy::Empty();
-  mlir::Operation* ModuleOp;
+  mlir::Operation* ModuleOp = nullptr;
 
 public:
   heavy::OpGen* OpGen = nullptr;
