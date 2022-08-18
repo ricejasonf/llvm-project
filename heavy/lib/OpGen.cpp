@@ -131,6 +131,8 @@ void OpGen::WithLibraryEnv(Value Thunk) {
     Context.SetError("not in a library context");
     return;
   }
+  assert(!isa<Undefined>(LibraryEnvProc->getValue()) &&
+      "LibraryEnvProc must be initialized");
   Context.Apply(LibraryEnvProc->getValue(), Thunk);
 }
 
@@ -144,23 +146,36 @@ void OpGen::VisitLibrary(heavy::SourceLocation Loc, std::string MangledName,
   // LibraryEnvProc - Capture and later set to the escape procedure
   //                  that is used to process top level exprs for the
   //                  library which must be with a (begin ...) syntax.
-  LibraryEnvProc = Context.CreateBinding(Empty());
-  Value HandleLibraryDecls = Context.CreateBinding(Empty());
+  assert(!LibraryEnvProc && "should not already be in library context");
+  LibraryEnvProc = Context.CreateBinding(Undefined());
+  Value HandleLibraryDecls = Context.CreateBinding(Int(5));
   LibraryDecls = Context.CreateBinding(LibraryDecls);
-  //PushCont the creation of LibraryEnvProc
+
+  // PushCont the creation of LibraryEnvProc
   Context.PushCont([EnvPtr](heavy::Context& C, ValueRefs) {
-    Value HandleLibraryDecls = C.getCapture(0);
+    Binding* HandleLibraryDecls = cast<Binding>(C.getCapture(0));
+    Value LibraryEnvProc = C.getCapture(1);
+
+    if (isa<Empty>(HandleLibraryDecls->getValue())) {
+      C.Cont();
+      return;
+    }
+
     Value Thunk = C.CreateLambda([](heavy::Context& C, ValueRefs) {
-      Value HandleLibraryDecls = C.getCapture(0);
-      C.SaveEscapeProc(C.OpGen->LibraryEnvProc, [](heavy::Context& C,
-                                                  ValueRefs Args) {
+      Binding* HandleLibraryDecls = cast<Binding>(C.getCapture(0));
+      Value LibraryEnvProc = C.getCapture(1);
+
+      // PushCont the initial calling of HandleLibraryDecls
+      C.PushCont(HandleLibraryDecls->getValue());
+
+      C.SaveEscapeProc(LibraryEnvProc, [](heavy::Context& C, ValueRefs Args) {
         // Handle the sequence from `begin` from within the lib environment.
-        Value HandleLibraryDecls = C.getCapture(0);
-        if (isa<Lambda>(HandleLibraryDecls)) {
-          C.PushCont(HandleLibraryDecls);
+        Binding* HandleLibraryDecls = cast<Binding>(C.getCapture(0));
+        if (isa<Lambda>(HandleLibraryDecls->getValue())) {
+          C.PushCont(HandleLibraryDecls->getValue());
           C.PushCont([](heavy::Context& C, ValueRefs Args) {
             // Args[0] is Thunk from OpGen::WithLibraryEnv(Value Thunk)
-            C.Apply(Args[0], {});
+            C.ApplyThunk(Args[0]);
           });
           C.Cont(Args[0]);
         } else {
@@ -169,7 +184,7 @@ void OpGen::VisitLibrary(heavy::SourceLocation Loc, std::string MangledName,
           C.Cont();
         }
       }, CaptureList{HandleLibraryDecls});
-    }, CaptureList{HandleLibraryDecls});
+    }, CaptureList{HandleLibraryDecls, LibraryEnvProc});
     // Taking ownership of EnvPtr
     C.WithEnv(std::unique_ptr<heavy::Environment>(EnvPtr), EnvPtr, Thunk);
   }, CaptureList{HandleLibraryDecls, LibraryEnvProc});
@@ -191,18 +206,22 @@ void OpGen::VisitLibrary(heavy::SourceLocation Loc, std::string MangledName,
     Value HandleLibraryDecls = C.getCapture(0);
     Value LibraryDecls       = C.getCapture(1);
     C.SaveEscapeProc(HandleLibraryDecls, [](heavy::Context& C, ValueRefs) {
-      Value HandleLibraryDecls = C.getCapture(0);
+      Binding* HandleLibraryDecls = cast<Binding>(C.getCapture(0));
       Binding* LibraryDecls = cast<Binding>(C.getCapture(1));
-      if (Pair* P = dyn_cast<Pair>(LibraryDecls->getValue())) {
+      if (isa<Empty>(C.OpGen->LibraryEnvProc->getValue())) {
+        C.Cont();
+      } else if (Pair* P = dyn_cast<Pair>(LibraryDecls->getValue())) {
         LibraryDecls->setValue(P->Cdr);
-        C.PushCont(HandleLibraryDecls);
+        C.PushCont(HandleLibraryDecls->getValue());
         C.OpGen->VisitLibrarySpec(P->Car);
       } else if (isa<Empty>(LibraryDecls->getValue())) {
         // The library is done.
         // Call LibraryEnvProc to allow it to complete
         // to clean up the librarys environment.
+        Value Finish = C.OpGen->LibraryEnvProc->getValue();
         cast<Binding>(HandleLibraryDecls)->setValue(Empty());
-        C.Apply(C.OpGen->LibraryEnvProc->getValue(), {});
+        C.OpGen->LibraryEnvProc->setValue(Empty());
+        C.Apply(Finish, {});
       } else {
         C.SetError("expected proper list for library declarations",
                    LibraryDecls->getValue());
