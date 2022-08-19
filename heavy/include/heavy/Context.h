@@ -113,7 +113,6 @@ public:
   //           the environment object if necessary.
   void WithEnv(std::unique_ptr<heavy::Environment> E, heavy::Environment* Env,
                Value Thunk);
-  void WithLibraryEnv(std::string ModulePrefix, Value Thunk);
 
   mlir::Operation* getModuleOp();
   void dumpModuleOp();
