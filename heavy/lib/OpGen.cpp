@@ -32,30 +32,29 @@ using namespace heavy;
 
 OpGen::OpGen(heavy::Context& C, std::string ModulePrefix)
   : Context(C),
-    ImportsBuilder(&(C.MlirContext)),
     ModuleBuilder(&(C.MlirContext)),
     Builder(&(C.MlirContext)),
     BindingTable(),
     ModulePrefix(std::move(ModulePrefix))
-
 {
   mlir::Location Loc = Builder.getUnknownLoc();
-  // TODO Determine if we can get rid of ImportsBuilder
-  //      and just create it on the fly each time.
-  // Get or create the ImportsBuilder.
-  if (!C.OpGen || C.OpGen->ImportsBuilder.getBlock() == nullptr) {
+  mlir::OpBuilder ImportsBuilder(&(C.MlirContext));
+  mlir::ModuleOp TopModule;
+  if (!C.OpGen) {
     assert(!C.ModuleOp && "There should be only one top level module");
     C.MlirContext.loadDialect<heavy::Dialect, mlir::StandardOpsDialect>();
     // Create the module that contains the main module and import modules
-    mlir::ModuleOp TopModule = Builder.create<mlir::ModuleOp>(Loc);
-    ImportsBuilder.setInsertionPointToStart(TopModule.getBody());
+    TopModule = Builder.create<mlir::ModuleOp>(Loc);
     C.ModuleOp = TopModule;
+    //ImportsBuilder.setInsertionPointToStart(C.ModuleOp->getBody());
     // The first child ModuleOp is the main module. All subsequent
-    // modules are imports (and libraries?).
-    ModuleOp = ImportsBuilder.create<mlir::ModuleOp>(Loc);
+    // modules are imports.
   } else {
-    ModuleOp = C.OpGen->ImportsBuilder.create<mlir::ModuleOp>(Loc);
+    TopModule = cast<mlir::ModuleOp>(C.ModuleOp);
   }
+  ImportsBuilder.setInsertionPointToEnd(TopModule.getBody());
+  ModuleOp = ImportsBuilder.create<mlir::ModuleOp>(Loc,
+                                        getModulePrefix());
 
   ModuleBuilder.setInsertionPointToStart(
       cast<mlir::ModuleOp>(ModuleOp).getBody());
@@ -142,7 +141,7 @@ void OpGen::VisitLibrary(heavy::SourceLocation Loc, std::string MangledName,
   // EnvPtr - A raw pointer that is captured to be owned by
   //          the input unique_ptr that is required to WithLibraryEnv.
   heavy::Environment* EnvPtr =
-    new heavy::Environment(Context, std::move(ModulePrefix));
+    new heavy::Environment(Context, std::move(MangledName));
   // LibraryEnvProc - Capture and later set to the escape procedure
   //                  that is used to process top level exprs for the
   //                  library which must be with a (begin ...) syntax.
