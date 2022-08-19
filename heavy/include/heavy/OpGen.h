@@ -110,11 +110,6 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
 
   heavy::Context& Context;
 
-  // ImportsBuilder - Contain insertion point for imported operations
-  //                  from Scheme modules. The parent of its block is
-  //                  the highest parent module TopModule.
-  mlir::OpBuilder ImportsBuilder;
-
   // ModuleBuilder - Contain insertion point for top level operations
   //                 in the output ModuleOp
   mlir::OpBuilder ModuleBuilder;

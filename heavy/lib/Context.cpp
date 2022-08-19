@@ -922,11 +922,3 @@ void Context::WithEnv(std::unique_ptr<heavy::Environment> EnvPtr,
                       heavy::Environment* Env, Value Thunk) {
   LibraryEnv::Wind(*this, std::move(EnvPtr), Env, Thunk);
 }
-
-void Context::WithLibraryEnv(std::string ModulePrefix, Value Thunk) {
-  // FIXME Might not need this overload
-  auto EnvPtr = std::make_unique<heavy::Environment>(*this,
-      std::move(ModulePrefix));
-
-  LibraryEnv::Wind(*this, std::move(EnvPtr), EnvPtr.get(), Thunk);
-}
