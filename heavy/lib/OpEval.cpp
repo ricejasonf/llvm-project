@@ -87,6 +87,9 @@ public:
     ValueMapScopes.emplace(ValueMap);
   }
 
+  // Prevent copy/move since we capture this in a few lambdas.
+  OpEvalImpl(OpEvalImpl const&) = delete;
+
   ~OpEvalImpl() {
     // pop the scopes in order
     while (!ValueMapScopes.empty())
@@ -434,12 +437,11 @@ private:
   }
 
   BlockItrTy Visit(LoadGlobalOp Op) {
-    mlir::Operation* G = Context.OpGen->LookupSymbol(Op.name());
-    if (!G) {
-      return SetError("unbound symbol", Value(Op.getOperation()));
+    Value Val = Context.GetKnownValue(Op.name());
+    if (!Val) {
+      Val = Undefined();
     }
-    assert(G && "symbol does not exist");
-    setValue(Op, getBindingOrValue(G->getResult(0)));
+    setValue(Op, Val);
     return next(Op);
   }
 
@@ -448,11 +450,11 @@ private:
     if (Op.isExternal()) return next(Op);
 
     push_scope();
-    Context.PushCont([Op](heavy::Context& C, ValueRefs Args) mutable {
+    Context.PushCont([Op, this](heavy::Context& C, ValueRefs Args) mutable {
       assert(Args.size() == 1 && "invalid continuation arity");
       // Mutable globals must be wrapped with a binding
-      heavy::Binding* Binding = C.CreateBinding(Args[0]);
-      C.OpEval.Impl->setValue(Op.result(), Binding);
+      Value Binding = C.CreateBinding(Args[0]);
+      C.AddKnownAddress(Op.sym_name(), Binding);
       C.Cont(Undefined());
     }, ValueRefs());
 
@@ -553,7 +555,7 @@ private:
     // Create a SyntaxClosure with the current
     // EnvStack.
     heavy::Value Input = getValue(Op.input());
-    SyntaxClosure* SC = Context.CreateSyntaxClosure(Input); 
+    SyntaxClosure* SC = Context.CreateSyntaxClosure(Input);
     setValue(Op.result(), SC);
     return next(Op);
   }
@@ -586,22 +588,35 @@ private:
   }
 };
 
-void opEval(OpEval& E, mlir::Operation* Op) {
-  E.Impl->Eval(Op);
-}
-
 void invokeSyntaxOp(heavy::Context& C, mlir::Operation* Op,
                     heavy::Value Value) {
-  OpEval E(C);
+  OpEvalImpl E(C);
   auto SyntaxOp = cast<heavy::SyntaxOp>(Op);
-  E.Impl->InvokeSyntax(SyntaxOp, Value);
+  E.InvokeSyntax(SyntaxOp, Value);
 }
 
-OpEval::OpEval(heavy::Context& C)
-  : Impl(std::make_unique<OpEvalImpl>(C))
-{ }
-
-OpEval::~OpEval() = default;
+namespace base {
+void op_eval(Context& C, ValueRefs Args) {
+  if (Args.size() != 1) {
+    return C.RaiseError("invalid arity");
+  }
+  // TODO It might be nice to somehow not make a malloc
+  //      as this is run for each top level expression.
+  //      Perhaps use a static Optional<OpEval> or an instance
+  //      owned by Context or Environment to alleviate the cases
+  //      where we always need one or two instances.
+  auto OpEval = std::make_unique<OpEvalImpl>(C);
+  OpEvalImpl& E = *OpEval.get();
+  Value Thunk = C.CreateLambda([&E](Context& C, ValueRefs) mutable {
+    mlir::Operation* Op = cast<mlir::Operation>(C.getCapture(0));
+    if (!Op) {
+      return C.RaiseError("expecting operation");
+    }
+    E.Eval(Op);
+  }, /*CaptureList=*/ Args);
+  C.DynamicWind(std::move(OpEval), Thunk);
+}
+}
 
 }
 

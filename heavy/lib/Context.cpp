@@ -55,7 +55,6 @@ Context::Context()
   , EnvStack(Empty())
   , MlirContext()
   , OpGen(nullptr)
-  , OpEval(*this)
 {
   NameForImportVar = "_HEAVY_import";
   _HEAVY_import = heavy::base::import_;
@@ -175,45 +174,47 @@ Vector* Context::CreateVector(unsigned N) {
 Module* Context::RegisterModule(llvm::StringRef MangledName,
                                 heavy::ModuleLoadNamesFn* LoadNames) {
   auto Result = Modules.try_emplace(MangledName,
-      std::make_unique<Module>(*this, LoadNames));
+       std::make_unique<Module>(*this, LoadNames));
   auto Itr = Result.first;
   bool DidInsert = Result.second;
-
+ 
   assert(DidInsert && "module should be created only once");
   return Itr->second.get();
 }
 
-bool Context::Import(heavy::ImportSet* ImportSet, Environment *Env) {
+#if 0 // TODO Make this create a module storing a function
+              to initialize it from a ModuleOp
+Module* Context::RegisterModule(mlir::Operation* ModuleOp) {
+  // TODO Get the "load_module" FuncOp 
+  mlir::ModuleOp Op = cast<mlir::ModuleOp>(ModuleOp);
+  llvm::StringRef MangledName = Op.getName().getValueOr("");
+  return RegisterModule(MangledName,
+      std::make_unique<Module>(*this, ModuleOp));
+}
+#endif
+
+void Context::Import(heavy::ImportSet* ImportSet) {
+  Environment* Env = dyn_cast<Environment>(EnvStack);
   if (!Env) {
-    Env = dyn_cast<Environment>(EnvStack);
-  }
-  if (!Env) {
-    // import doesn't work in local scope
+    // Import doesn't work in local scope.
     SetError("unexpected import", ImportSet);
-    return true;
+    return;
   }
 
+  // This should probably be recursive scheme calls.
   for (EnvBucket ImportVal : *ImportSet) {
     String* Name = ImportVal.first;
-    // if there is no name just skip it (it was filtered out)
+    // If there is no name just skip it (it was filtered out).
     if (!Name) continue;
     if (!Env->ImportValue(ImportVal)) {
       String* ErrMsg = CreateString("imported name already exists: ",
                                     Name->getView());
       SetError(ErrMsg, ImportSet);
-      return true;
+      return;
     }
   }
 
-  return false;
-}
-
-std::unique_ptr<Environment>
-Context::CreateEnvironment(heavy::ImportSet* ImportSet) {
-  auto EnvPtr = std::make_unique<Environment>(*this);
-  // The user should check the context for an error.
-  Import(ImportSet, EnvPtr.get());
-  return EnvPtr;
+  Cont();
 }
 
 EnvFrame* Context::PushLambdaFormals(Value Formals,
@@ -738,6 +739,10 @@ Module* Context::LoadModule(Value Spec) {
 }
 
 
+void Context::AddKnownAddress(llvm::StringRef MangledName, heavy::Value Value) {
+  String* Name = CreateIdTableEntry(MangledName);
+  AddKnownAddress(Name, Value);
+}
 void Context::AddKnownAddress(String* MangledName, heavy::Value Value) {
   assert(Value && "value at address must actually be known");
   KnownAddresses[MangledName] = Value;
