@@ -64,10 +64,6 @@ void HeavyScheme::LoadEmbeddedEnv(void* Handle,
   return;
 }
 
-std::unique_ptr<heavy::Environment> HeavyScheme::CreateEnvironment() {
-  return std::make_unique<heavy::Environment>(getContext());
-}
-
 void HeavyScheme::ProcessTopLevelCommands(
                               heavy::Lexer& Lexer,
                               llvm::function_ref<ErrorHandlerFn> ErrorHandler,
@@ -81,7 +77,7 @@ void HeavyScheme::ProcessTopLevelCommands(
                               llvm::function_ref<ErrorHandlerFn> ErrorHandler,
                               heavy::tok Terminator) {
   if (!EnvPtr) {
-    EnvPtr = CreateEnvironment();
+    EnvPtr = std::make_unique<heavy::Environment>(getContext());
   }
   return ProcessTopLevelCommands(Lexer, *EnvPtr, ExprHandler, ErrorHandler,
                                  Terminator);
