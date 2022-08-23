@@ -46,7 +46,6 @@ using llvm::dyn_cast;
 using llvm::dyn_cast_or_null;
 using llvm::isa;
 
-class OpEval;
 class OpGen;
 class Context;
 
@@ -55,16 +54,10 @@ void compile(Context&, Value V, Value Env, Value Handler);
 void eval(Context&, Value V, Value Env);
 void write(llvm::raw_ostream&, Value);
 
-void opEval(OpEval&, mlir::Operation*);
+class OpEvalImpl;
+void opEval(mlir::Operation*);
 void invokeSyntaxOp(heavy::Context& C, mlir::Operation* Op,
                     heavy::Value Value);
-
-class OpEvalImpl;
-struct OpEval {
-  std::unique_ptr<OpEvalImpl> Impl;
-  OpEval(Context& C);
-  ~OpEval();
-};
 
 class Context : public ContinuationStack<Context> {
   friend class OpGen;
@@ -96,7 +89,6 @@ class Context : public ContinuationStack<Context> {
 
 public:
   heavy::OpGen* OpGen = nullptr;
-  heavy::OpEval OpEval; // TODO Deprecate this single, owned instance of OpEval
 
   // SetErrorHandler - Set the bottom most exception handler to handle
   //                   hard errors including uncaught exceptions.
@@ -141,14 +133,16 @@ public:
   Module* RegisterModule(llvm::StringRef MangledName,
                          heavy::ModuleLoadNamesFn* LoadNames = nullptr);
 
-  void AddKnownAddress(String* MangledName, Value);
+  void AddKnownAddress(llvm::StringRef MangledName, heavy::Value Value);
+  void AddKnownAddress(String* MangledName, heavy::Value Value);
   Value GetKnownValue(llvm::StringRef MangledName);
 
   // Import - Apply an ImportSet to an Environment checking
   //          for name collisions. Use the current environment
   //          by default.
   //          Return true on Error
-  bool Import(ImportSet*, Environment* E = nullptr);
+  void Import(heavy::ImportSet* ImportSet);
+
   // CreateEnvironment - Create a non-garbage collected instance of
   //                     Environment. The unique_ptr may contain nullptr
   //                     if the import operation fails.

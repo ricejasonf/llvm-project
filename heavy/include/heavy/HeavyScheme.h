@@ -71,8 +71,6 @@ class HeavyScheme {
 
   using ErrorHandlerFn = void(llvm::StringRef, heavy::FullSourceLocation);
 
-  std::unique_ptr<heavy::Environment> CreateEnvironment();
-
   // ProcessTopLevelCommands
   //              - Reading tokens with the provided lexer, this command parses
   //                and evaluates a top level scheme command sequence returning
