@@ -145,8 +145,12 @@ namespace {
   void import_helper(Context& C, ValueRefs Args) {
     if (Pair* P = dyn_cast<Pair>(Args[0])) {
       if (ImportSet* ImpSet = C.CreateImportSet(P->Car)) {
-        if (!C.Import(ImpSet))
-          C.Apply(C.getCallee(), P->Cdr);
+        C.PushCont([](Context& C, ValueRefs) {
+          Value Callee = C.getCapture(0);
+          Value RecurseArgs[] = {C.getCapture(1)};
+          C.Apply(Callee, RecurseArgs);
+        }, CaptureList{C.getCallee(), P->Cdr});
+        C.Import(ImpSet);
       } else {
         C.SetError("invalid import spec", P);
       }
@@ -170,9 +174,15 @@ void import_(Context& C, ValueRefs Args) {
 }
 
 void export_(Context& C, ValueRefs Args) {
-  OpGen& OG = *C.OpGen;
-  Pair* P = cast<Pair>(Args[0]);
-  OG.Export(P->Cdr);
+  if (!C.OpGen->isLibraryContext()) {
+    return C.RaiseError("export must be in library context", Args[0]);
+  }
+
+  Value Input = cast<Pair>(Args[0])->Cdr;
+
+  C.OpGen->WithLibraryEnv(C.CreateLambda([](Context& C, ValueRefs Args) {
+    C.OpGen->Export(C.getCapture(0));
+  }, CaptureList{Input}));
 }
 
 void define_library(Context& C, ValueRefs Args) {
@@ -389,14 +399,6 @@ void eval(Context& C, ValueRefs Args) {
   C.Apply(HEAVY_BASE_VAR(compile), NewArgs);
 }
 
-void op_eval(Context& C, ValueRefs Args) {
-  if (Args.size() != 1) {
-    return C.RaiseError("invalid arity");
-  }
-  mlir::Operation* Op = cast<mlir::Operation>(Args[0]);
-  heavy::opEval(C.OpEval, Op);
-}
-
 void compile(Context& C, ValueRefs Args) {
   if (Args.size() != 3) {
     return C.RaiseError("invalid arity");
@@ -412,19 +414,27 @@ void compile(Context& C, ValueRefs Args) {
   
   if (auto* E = dyn_cast<Environment>(EnvSpec)) {
     Env = E;
-  } else if (auto* ImpSet = dyn_cast<ImportSet>(EnvSpec)) {
-    EnvPtr = C.CreateEnvironment(ImpSet);
+  } else if (isa<ImportSet>(EnvSpec)) {
+    auto EnvPtr = std::make_unique<Environment>(C);
     Env = EnvPtr.get();
   } else {
     return C.SetError("invalid environment specifier", EnvSpec);
   }
 
   Value Thunk = C.CreateLambda([](heavy::Context& C, ValueRefs) {
-    Value ExprOrDef = C.getCapture(0);
-    Value TopLevelHandler = C.getCapture(1);
-    C.OpGen->SetTopLevelHandler(TopLevelHandler);
-    C.OpGen->VisitTopLevel(ExprOrDef); // calls Cont()
-  }, CaptureList{ExprOrDef, TopLevelHandler});
+    Value EnvSpec = C.getCapture(0);
+    C.PushCont([](heavy::Context& C, ValueRefs) {
+      Value ExprOrDef = C.getCapture(0);
+      Value TopLevelHandler = C.getCapture(1);
+      C.OpGen->SetTopLevelHandler(TopLevelHandler);
+      C.OpGen->VisitTopLevel(ExprOrDef); // calls Cont()
+    }, C.getCaptures().drop_front());
+    if (auto* ImpSet = dyn_cast<ImportSet>(EnvSpec)) {
+      C.Import(ImpSet);
+    } else {
+      C.Cont();
+    }
+  }, CaptureList{EnvSpec, ExprOrDef, TopLevelHandler});
 
   C.WithEnv(std::move(EnvPtr), Env, Thunk);
 }
