@@ -144,16 +144,16 @@ mlir::Value set(OpGen& OG, Pair* P) {
 namespace { 
   void import_helper(Context& C, ValueRefs Args) {
     if (Pair* P = dyn_cast<Pair>(Args[0])) {
-      if (ImportSet* ImpSet = C.CreateImportSet(P->Car)) {
-        C.PushCont([](Context& C, ValueRefs) {
-          Value Callee = C.getCapture(0);
-          Value RecurseArgs[] = {C.getCapture(1)};
-          C.Apply(Callee, RecurseArgs);
-        }, CaptureList{C.getCallee(), P->Cdr});
+      C.PushCont([](Context& C, ValueRefs) {
+        Value Callee = C.getCapture(0);
+        Value RecurseArgs[] = {C.getCapture(1)};
+        C.Apply(Callee, RecurseArgs);
+      }, CaptureList{C.getCallee(), P->Cdr});
+      C.PushCont([](Context& C, ValueRefs Args) {
+        auto* ImpSet = cast<ImportSet>(Args[0]);
         C.Import(ImpSet);
-      } else {
-        C.SetError("invalid import spec", P);
-      }
+      }, CaptureList{});
+      C.CreateImportSet(P->Car);
     } else if (isa<Empty>(Args[0])) {
       C.Cont();
     } else {
