@@ -148,9 +148,8 @@ public:
   //                     if the import operation fails.
   std::unique_ptr<Environment> CreateEnvironment(heavy::ImportSet* ImportSet);
 
-  // LoadModule - Idempotently loads a library
-  //              Returns nullptr on failure
-  Module* LoadModule(Value Spec);
+  // LoadModule - Idempotently load a library
+  void LoadModule(Value Spec);
 
   Context();
   ~Context();
@@ -354,8 +353,8 @@ public:
 
   Quote* CreateQuote(Value V) { return new (TrashHeap) Quote(V); }
 
-  // CreateImportSet - Returns nullptr on failure
-  ImportSet* CreateImportSet(Value Spec);
+  // CreateImportSet - Call CC with created ImportSet.
+  void CreateImportSet(Value Spec);
 
   // These accessors help track the location
   // so it is convenient to overwrite a variable
