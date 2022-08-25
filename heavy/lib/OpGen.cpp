@@ -46,7 +46,6 @@ OpGen::OpGen(heavy::Context& C, std::string ModulePrefix)
     // Create the module that contains the main module and import modules
     TopModule = Builder.create<mlir::ModuleOp>(Loc);
     C.ModuleOp = TopModule;
-    //ImportsBuilder.setInsertionPointToStart(C.ModuleOp->getBody());
     // The first child ModuleOp is the main module. All subsequent
     // modules are imports.
   } else {

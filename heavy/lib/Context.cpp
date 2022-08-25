@@ -628,12 +628,16 @@ String* ImportSet::FilterFromPairs(heavy::Context& C, String* S) {
   return S;
 }
 
-ImportSet* Context::CreateImportSet(Value Spec) {
+// CreateImportSet - Return a created import set from an import-spec,
+//                   or nullptr if a continuation was called
+//                   (ie for an error or LoadModule).
+//
+void Context::CreateImportSet(Value Spec) {
   ImportSet::ImportKind Kind;
   Symbol* Keyword = dyn_cast_or_null<Symbol>(Spec.car());
   if (!Keyword) {
     SetError("expecting import set", Spec);
-    return nullptr;
+    return;
   }
   // TODO perhaps we could intern these keywords in the IdTable
   if (Keyword->equals("only")) {
@@ -646,96 +650,111 @@ ImportSet* Context::CreateImportSet(Value Spec) {
     Kind = ImportSet::ImportKind::Prefix;
   } else {
     // ImportSet::ImportKind::Library;
-    Module* M = LoadModule(Spec);
-    if (!M) return nullptr;
-    return new (TrashHeap) ImportSet(M);
+    PushCont([](Context& C, ValueRefs Args) {
+      Module* M = cast<heavy::Module>(Args[0]);
+      C.Cont(new (C.TrashHeap) ImportSet(M));
+    });
+    LoadModule(Spec);
+    return;
   }
 
-  ImportSet* Parent = CreateImportSet(cadr(Spec));
-  if (!Parent) return nullptr;
+  Value ParentSpec = cadr(Spec);
   Spec = Spec.cdr().cdr();
 
-  if (Kind == ImportSet::ImportKind::Prefix) {
-    Symbol* Prefix = dyn_cast_or_null<Symbol>(car(Spec));
-    if (!Prefix) {
-      SetError("expected identifier for prefix");
-      return nullptr;
-    }
-    if (!isa_and_nonnull<Empty>(cdr(Spec))) {
-      SetError("expected end of list");
-      return nullptr;
-    }
-    return new (TrashHeap) ImportSet(Kind, Parent, Prefix);
-  }
+  PushCont([Kind](Context& C, ValueRefs Args) {
+    ImportSet* Parent = cast<ImportSet>(Args[0]);
+    Value Spec = C.getCapture(0);
 
-  // Identifier (pairs) list
-  // Check the syntax and that each provided name
-  // exists in the parent import set
-  if (!isa_and_nonnull<Pair>(Spec)) {
-    SetError("expecting list");
-    return nullptr;
-  }
-  // Spec is now the list of ids to be used by ImportSet
-
-  Value Current = Spec;
-  Symbol* Name = nullptr;
-  while (Pair* P = dyn_cast<Pair>(Current)) {
-    switch (Kind) {
-    case ImportSet::ImportKind::Only:
-    case ImportSet::ImportKind::Except:
-      Name = dyn_cast<Symbol>(P->Car);
-      break;
-    case ImportSet::ImportKind::Rename: {
-      Pair* P2 = dyn_cast<Pair>(P->Car);
-      if (!P2) {
-       SetError("expected pair", P);
-       return nullptr;
+    if (Kind == ImportSet::ImportKind::Prefix) {
+      Symbol* Prefix = dyn_cast_or_null<Symbol>(C.car(Spec));
+      if (!Prefix) {
+        C.SetError("expected identifier for prefix");
+        return;
       }
-      Name = dyn_cast<Symbol>(P2->Car);
-      Symbol* Rename = dyn_cast_or_null<Symbol>(Value(P2).cadr());
-      if (Name || Rename) {
-        SetError("expected pair of identifiers", P2);
-        return nullptr;
+      if (!isa_and_nonnull<Empty>(C.cdr(Spec))) {
+        C.SetError("expected end of list");
+        return;
       }
-      break;
-    }
-    default:
-      llvm_unreachable("invalid import set kind");
+      C.Cont(new (C.TrashHeap) ImportSet(Kind, Parent, Prefix));
+      return;
     }
 
-    EnvEntry LookupResult = Parent->Lookup(*this, Name);
-    if (!LookupResult) {
-      SetError("name does not exist in import set");
-      return nullptr;
+    // Identifier (pairs) list
+    // Check the syntax and that each provided name
+    // exists in the parent import set
+    if (!isa_and_nonnull<Pair>(Spec)) {
+      C.SetError("expecting list");
+      return;
     }
-    Current = P->Cdr;
-  }
-  return new (TrashHeap) ImportSet(Kind, Parent, Spec);
+    // Spec is now the list of ids to be used by ImportSet
+
+    Value Current = Spec;
+    Symbol* Name = nullptr;
+    while (Pair* P = dyn_cast<Pair>(Current)) {
+      switch (Kind) {
+      case ImportSet::ImportKind::Only:
+      case ImportSet::ImportKind::Except:
+        Name = dyn_cast<Symbol>(P->Car);
+        break;
+      case ImportSet::ImportKind::Rename: {
+        Pair* P2 = dyn_cast<Pair>(P->Car);
+        if (!P2) {
+         C.SetError("expected pair", P);
+         return;
+        }
+        Name = dyn_cast<Symbol>(P2->Car);
+        Symbol* Rename = dyn_cast_or_null<Symbol>(Value(P2).cadr());
+        if (Name || Rename) {
+          C.SetError("expected pair of identifiers", P2);
+          return;
+        }
+        break;
+      }
+      default:
+        llvm_unreachable("invalid import set kind");
+      }
+
+      EnvEntry LookupResult = Parent->Lookup(C, Name);
+      if (!LookupResult) {
+        C.SetError("name does not exist in import set");
+        return;
+      }
+      Current = P->Cdr;
+    }
+    C.Cont(new (C.TrashHeap) ImportSet(Kind, Parent, Spec));
+  }, CaptureList{Spec});
+  CreateImportSet(ParentSpec);
 }
 
-Module* Context::LoadModule(Value Spec) {
+void Context::LoadModule(Value Spec) {
   heavy::Mangler Mangler(*this);
   std::string Name = Mangler.mangleModule(Spec);
-  std::unique_ptr<Module>& M = Modules[Name];
-  if (!M) {
-    SetError("unable to load module", Spec);
-    return nullptr;
-#if 0
-    // TODO
-    // Load the file and compile the scheme code and check again
-    // We might need the SourceManager to belong to Context
-    std::string Filename = getModuleFilename(Spec);
-    std::unique_ptr<Module>& M = Modules[Name];
-    if (!M) {
-      String* Msg = CreateString("loaded file does not contain library: ",
-                                 Filename);
-      SetError(Msg, Spec);
-      return nullptr;
-    }
-#endif
+  Module* M = Modules[Name].get();
+  if (M) {
+    // Idempotently register the names of the globals.
+    // (For external modules)
+    M->LoadNames();
+    Cont(M);
+    return;
   }
-  M->LoadNames();
-  return M.get();
+
+  // Lookup the Module in ModuleOp
+  mlir::ModuleOp TopOp = cast<mlir::ModuleOp>(ModuleOp);
+  if (auto Op = dyn_cast_or_null<mlir::ModuleOp>(TopOp.lookupSymbol(Name))) {
+    M = RegisterModule(Name);
+    Value Args[] = {Op.getOperation()};
+    PushCont([](Context& C, ValueRefs) {
+      C.Cont(C.getCapture(0));
+    }, CaptureList{M});
+    Apply(HEAVY_BASE_VAR(op_eval), Args);
+    return;
+  }
+
+  // TODO
+  // Load the file and compile the scheme code and try again.
+  // We might need the SourceManager to accessible to Context.
+
+  SetError("unable to load module (not supported)", Spec);
 }
 
 

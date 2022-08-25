@@ -97,15 +97,25 @@ public:
   }
 
   void Eval(mlir::Operation* Op) {
-    assert((isa<GlobalOp, CommandOp>(Op)) &&
-          "eval expects a top level op");
-    BlockItrTy Itr = Visit(Op);
-    // When a call to Visit returns a null we defer
-    // execution to the continuation stack.
-    while (Itr != BlockItrTy()) {
-      Itr = Visit(&*Itr);
+    if (isa<GlobalOp, CommandOp>(Op)) {
+      BlockItrTy Itr = Visit(Op);
+      // When a call to Visit returns a null we defer
+      // execution to the continuation stack.
+      while (Itr != BlockItrTy()) {
+        Itr = Visit(&*Itr);
+      }
+      // "Calling the continuation" is handled during visitation.
+    } else if (auto ModuleOp = dyn_cast<mlir::ModuleOp>(Op)) {
+      for (mlir::Operation& TL : ModuleOp.getBody()->getOperations()) {
+        Context.PushCont([this, &TL](heavy::Context& C, ValueRefs) mutable {
+          this->Eval(&TL);
+        }, CaptureList{});
+      }
+      Context.Cont();
+      return;
+    } else {
+      SetError("op_eval expects a top level op");
     }
-    // "Calling the continuation" is handled during visitation.
   }
 
   // InvokeSyntax - There is no operation to invoke syntax
