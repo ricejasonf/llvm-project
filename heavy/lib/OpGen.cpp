@@ -362,6 +362,8 @@ void OpGen::InsertTopLevelCommandOp(SourceLocation Loc) {
 }
 
 mlir::Value OpGen::createUndefined() {
+  if (Builder.getInsertionBlock() == nullptr)
+    return mlir::Value();
   return createHelper<UndefinedOp>(Builder, SourceLocation());
 }
 
@@ -712,16 +714,22 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
 
   EnvEntry Entry = Env->Lookup(S);
   if (Entry.Value && Entry.MangledName) {
-    return SetError("define overwrites immutable location", S);
+    if (Mangler::isExternalVariable(getModulePrefix(),
+                                    Entry.MangledName->getView()))
+      return SetError("define overwrites extern global", S);
   }
 
   // If the name already exists in the current module
   // then it behaves like `set!`
   if (Binding* B = dyn_cast_or_null<Binding>(Entry.Value)) {
+    assert(Entry.MangledName && "global should have mangled name");
     TailPosScope TPS(*this);
     IsTailPos = false;
     mlir::Value Init = VisitDefineArgs(DefineArgs);
-    mlir::Value BVal = LocalizeValue(BindingTable.lookup(B), B);
+    // FIXME Why do we localize a value for a top level define?
+    //mlir::Value BVal = LocalizeValue(BindingTable.lookup(B), B);
+    mlir::Value BVal = createGlobal(B->getSourceLocation(),
+                                    Entry.MangledName->getView());
     assert(BVal && "expecting BindingOp for Binding");
     return create<SetOp>(DefineLoc, BVal, Init);
   }
@@ -747,9 +755,11 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
 
     Binding* B = Context.CreateBinding(S, DefineArgs);
     // Insert into the module level scope
+#if 0 // FIXME Should there be module level bindings?
     BindingTable.insertIntoScope(&LambdaScopes[0].BindingScope_, B,
                                  GlobalOp);
-    Env->Insert(B);
+#endif
+    Env->Insert(B, Context.CreateIdTableEntry(MangledName));
     if (mlir::Value Init = VisitDefineArgs(DefineArgs)) {
       create<ContOp>(DefineLoc, Init);
     }
@@ -873,10 +883,19 @@ mlir::Value OpGen::createGlobal(SourceLocation Loc,
   }
 
   assert(isa<GlobalOp>(G) && "symbol should point to global");
+  auto CanonicalValue = heavy::Value(G);
 
   // Localize globals by the GlobalOp's Operation*
-  auto CanonicalValue = heavy::Value(G);
-  mlir::Value LocalV = BindingTable.lookup(CanonicalValue);
+  mlir::Value LocalV;
+  if (!TopLevelOp) {
+    LocalV = create<LoadGlobalOp>(Loc, 
+        cast<GlobalOp>(G).getName());
+    BindingTable.insert(CanonicalValue, LocalV);
+  } else {
+    LocalV = BindingTable.lookup(CanonicalValue);
+  }
+  // TODO Make this not require a result value from
+  //      GlobalOp.
   mlir::Value V = LocalV ? LocalV : G->getResult(0);
   return LocalizeValue(V, CanonicalValue);
 }
@@ -1137,20 +1156,17 @@ mlir::Operation* OpGen::LookupSymbol(llvm::StringRef MangledName) {
 void OpGen::Export(Value NameList) {
   heavy::Mangler Mangler(Context);
   std::string FuncName = Mangler.mangleSpecialName(ModulePrefix, "load_module");
-  mlir::FuncOp F = dyn_cast_or_null<mlir::FuncOp>(
+  heavy::ExportOp F = dyn_cast_or_null<heavy::ExportOp>(
       getModuleOp().lookupSymbol(FuncName));
   mlir::Block* Block;
 
   if (!F) {
-    // FIXME Context should have its own type
-    mlir::Type ContextT   = Builder.getType<HeavyValueTy>();
-    mlir::FunctionType FT = Builder.getFunctionType(ContextT, {});
-    F = createHelper<mlir::FuncOp>(ModuleBuilder,
-                                   NameList.getSourceLocation(),
-                                   FuncName, FT);
-    Block = F.addEntryBlock();
+    F = createHelper<heavy::ExportOp>(ModuleBuilder,
+                                      NameList.getSourceLocation(),
+                                      FuncName);
+    Block = &F.body().emplaceBlock();
   } else {
-    Block = &(F.getBody().back());
+    Block = &(F.body().back());
   }
 
   // Iterate existing ExportIdOp nodes and load them into NameSet
@@ -1169,11 +1185,7 @@ void OpGen::Export(Value NameList) {
 
   // Setup the builder and ensure a terminator exists
   mlir::OpBuilder ExportBuilder(&Context.MlirContext);
-  if (Block->empty()) {
-    ExportBuilder.setInsertionPointToEnd(Block);
-    ExportBuilder.create<mlir::ReturnOp>(F.getLoc());
-  }
-  ExportBuilder.setInsertionPoint(Block->getTerminator());
+  ExportBuilder.setInsertionPointToEnd(Block);
 
   // Now iterate the names and add ExportIdOps.
 

@@ -174,7 +174,7 @@ Vector* Context::CreateVector(unsigned N) {
 Module* Context::RegisterModule(llvm::StringRef MangledName,
                                 heavy::ModuleLoadNamesFn* LoadNames) {
   auto Result = Modules.try_emplace(MangledName,
-       std::make_unique<Module>(*this, LoadNames));
+        std::make_unique<Module>(*this, LoadNames));
   auto Itr = Result.first;
   bool DidInsert = Result.second;
  
@@ -729,23 +729,23 @@ void Context::CreateImportSet(Value Spec) {
 void Context::LoadModule(Value Spec) {
   heavy::Mangler Mangler(*this);
   std::string Name = Mangler.mangleModule(Spec);
-  Module* M = Modules[Name].get();
+  std::unique_ptr<Module>& M = Modules[Name];
   if (M) {
     // Idempotently register the names of the globals.
     // (For external modules)
     M->LoadNames();
-    Cont(M);
+    Cont(M.get());
     return;
   }
 
   // Lookup the Module in ModuleOp
   mlir::ModuleOp TopOp = cast<mlir::ModuleOp>(ModuleOp);
   if (auto Op = dyn_cast_or_null<mlir::ModuleOp>(TopOp.lookupSymbol(Name))) {
-    M = RegisterModule(Name);
+    M = std::make_unique<Module>(*this);
     Value Args[] = {Op.getOperation()};
     PushCont([](Context& C, ValueRefs) {
       C.Cont(C.getCapture(0));
-    }, CaptureList{M});
+    }, CaptureList{M.get()});
     Apply(HEAVY_BASE_VAR(op_eval), Args);
     return;
   }
@@ -760,11 +760,7 @@ void Context::LoadModule(Value Spec) {
 
 void Context::AddKnownAddress(llvm::StringRef MangledName, heavy::Value Value) {
   String* Name = CreateIdTableEntry(MangledName);
-  AddKnownAddress(Name, Value);
-}
-void Context::AddKnownAddress(String* MangledName, heavy::Value Value) {
-  assert(Value && "value at address must actually be known");
-  KnownAddresses[MangledName] = Value;
+  KnownAddresses[Name] = Value;
 }
 
 Value Context::GetKnownValue(llvm::StringRef MangledName) {
@@ -781,17 +777,33 @@ void heavy::initModule(heavy::Context& C, llvm::StringRef ModuleMangledName,
   assert(M && "module must be registered");
   heavy::Mangler Mangler(C);
   for (ModuleInitListPairTy const& X : InitList) {
+    Value Val = X.second;
+    llvm::StringRef Id = X.first;
+    std::string MangledName = Mangler.mangleVariable(ModuleMangledName, Id);
+    registerModuleVar(C, M, MangledName, Id, Val);
+#if 0
     String* Id = C.CreateIdTableEntry(X.first);
     Value Val = X.second;
     String* MangledName = C.CreateIdTableEntry(
         Mangler.mangleVariable(ModuleMangledName, Id));
     assert(Val && "value must not be nullptr");
     M->Insert(EnvBucket{Id, EnvEntry{Val, MangledName}});
+#endif
     // Track valid values by their mangled names
     if (Val) {
       C.AddKnownAddress(MangledName, Val);
     }
   }
+}
+
+void heavy::registerModuleVar(heavy::Context& C,
+                              heavy::Module* M,
+                              llvm::StringRef VarSymbol,
+                              llvm::StringRef VarId,
+                              Value Val) {
+  String* Id = C.CreateIdTableEntry(VarId);
+  String* MangledName = C.CreateIdTableEntry(VarSymbol);
+  M->Insert(EnvBucket{Id, EnvEntry{Val, MangledName}});
 }
 
 bool Context::CheckKind(ValueKind VK, Value V) {

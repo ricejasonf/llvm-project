@@ -106,10 +106,27 @@ public:
       }
       // "Calling the continuation" is handled during visitation.
     } else if (auto ModuleOp = dyn_cast<mlir::ModuleOp>(Op)) {
-      for (mlir::Operation& TL : ModuleOp.getBody()->getOperations()) {
-        Context.PushCont([this, &TL](heavy::Context& C, ValueRefs) mutable {
-          this->Eval(&TL);
-        }, CaptureList{});
+      // TODO Simplify these two loops by guaranteeing ExportOp
+      //      be the last operation in a valid ModuleOp.
+
+      // Find the ExportOp and push it first so it always runs last.
+      auto& Ops = ModuleOp.getBody()->getOperations();
+      for (auto i = Ops.rbegin(); i != Ops.rend(); ++i) {
+        mlir::Operation* TL = &*i;
+        if (auto E = dyn_cast<ExportOp>(TL)) {
+          Context.PushCont([this, E](heavy::Context& C, ValueRefs) mutable {
+            this->VisitExportOp(E);
+          }, CaptureList{});
+          break;
+        }
+      }
+      for (auto i = Ops.rbegin(); i != Ops.rend(); ++i) {
+        mlir::Operation* TL = &*i;
+        if (!isa<ExportOp>(TL)) {
+          Context.PushCont([this, TL](heavy::Context& C, ValueRefs) mutable {
+            this->Eval(TL);
+          }, CaptureList{});
+        }
       }
       Context.Cont();
       return;
@@ -596,6 +613,37 @@ private:
     }
     return BlockItrTy();
   }
+
+  // VisitExportOp - Register export vars with Context. Always run this
+  //                 after the module init function. (ie Evaluating the ModuleOp)
+  void VisitExportOp(ExportOp Op) {
+    // Walk all of the ExportIdOps registering
+    // the exported names with Context.
+    llvm::StringRef ModuleName =
+      cast<mlir::ModuleOp>(Op.getOperation()->getParentOp())
+        .getName()
+        .getValueOr("");
+    if (ModuleName.empty()) {
+      SourceLocation Loc = getSourceLocation(Op.getLoc());
+      SetError(Loc, "module must have symbol", Undefined());
+      return;
+    }
+    Module* M = Context.Modules[ModuleName].get();
+    assert(M && "module should be registered");
+    mlir::Block& Body = Op.body().back(); 
+    for (mlir::Operation& X : Body.getOperations()) {
+      if (auto IdOp = dyn_cast<ExportIdOp>(X)) {
+        Value Val = Context.GetKnownValue(IdOp.symbolName());
+        if (!Val) {
+          SourceLocation Loc = getSourceLocation(IdOp.getLoc());
+          SetError(Loc, "export of undefined value", Undefined());
+          return;
+        }
+        registerModuleVar(Context, M, IdOp.symbolName(), IdOp.id(), Val);
+      }
+    }
+    Context.Cont();
+  }
 };
 
 void invokeSyntaxOp(heavy::Context& C, mlir::Operation* Op,
@@ -610,11 +658,7 @@ void op_eval(Context& C, ValueRefs Args) {
   if (Args.size() != 1) {
     return C.RaiseError("invalid arity");
   }
-  // TODO It might be nice to somehow not make a malloc
-  //      as this is run for each top level expression.
-  //      Perhaps use a static Optional<OpEval> or an instance
-  //      owned by Context or Environment to alleviate the cases
-  //      where we always need one or two instances.
+
   auto OpEval = std::make_unique<OpEvalImpl>(C);
   OpEvalImpl& E = *OpEval.get();
   Value Thunk = C.CreateLambda([&E](Context& C, ValueRefs) mutable {
