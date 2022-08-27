@@ -122,13 +122,15 @@ void HeavyScheme::ProcessTopLevelCommands(
     C.PushCont(C.getCallee());
 
     heavy::ValueResult ParseResult = Parser.ParseTopLevelExpr();
+    // FIXME This should probably use PushCont
+    //       ParseTopLevelExpr should use Cont.
     if (ParseResult.isUsable()) {
       Value Env = C.getCapture(0);
       Value HandleExpr = C.getCapture(1);
       Value ParseResultVal = ParseResult.get();
       std::array<Value, 2> EvalArgs{ParseResultVal, Env};
       C.Apply(HandleExpr, EvalArgs);
-    } else {
+    } else if (!C.CheckError()) {
       C.Cont();
     }
   }, CaptureList{Value(&Env), HandleExpr});

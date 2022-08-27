@@ -1246,6 +1246,11 @@ using ModuleInitListPairTy = std::pair<llvm::StringRef, heavy::Value>;
 using ModuleInitListTy     = std::initializer_list<ModuleInitListPairTy>;
 void initModule(heavy::Context&, llvm::StringRef MangledName,
                 ModuleInitListTy InitList);
+void registerModuleVar(heavy::Context& C,
+                       heavy::Module* M,
+                       llvm::StringRef VarSymbol,
+                       llvm::StringRef VarId,
+                       Value Val);
 
 class Module : public ValueBase {
   friend class Context;
@@ -1513,12 +1518,13 @@ public:
 
   // Insert - Add a named mutable location. Overwriting
   //          with a new object is okay here if it is mutable
-  void Insert(Binding* B) {
+  void Insert(Binding* B, String* MangledName) {
     String* Name = B->getName()->getString();
     auto& Entry = EnvMap[Name];
     assert(!Entry.MangledName &&
         "insert may not modify immutable locations");
     Entry.Value = B;
+    Entry.MangledName = MangledName;
   }
 
   // SetSyntax - Extend the syntactic environment.

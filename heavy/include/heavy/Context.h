@@ -66,6 +66,11 @@ class Context : public ContinuationStack<Context> {
   friend void* allocate(Context& C, size_t Size, size_t Alignment);
   friend void initModule(heavy::Context&, llvm::StringRef MangledName,
                          ModuleInitListTy InitList);
+  friend void registerModuleVar(heavy::Context& C,
+                                heavy::Module* M,
+                                llvm::StringRef VarSymbol,
+                                llvm::StringRef VarId,
+                                Value Val);
   AllocatorTy TrashHeap;
 
   llvm::AllocatorBase<AllocatorTy>& getAllocator() { return TrashHeap; }
@@ -134,7 +139,6 @@ public:
                          heavy::ModuleLoadNamesFn* LoadNames = nullptr);
 
   void AddKnownAddress(llvm::StringRef MangledName, heavy::Value Value);
-  void AddKnownAddress(String* MangledName, heavy::Value Value);
   Value GetKnownValue(llvm::StringRef MangledName);
 
   // Import - Apply an ImportSet to an Environment checking

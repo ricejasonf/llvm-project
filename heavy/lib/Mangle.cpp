@@ -13,6 +13,8 @@
 
 #include "heavy/Value.h"
 #include "heavy/Mangle.h"
+#include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringRef.h"
 
 namespace {
 bool isSpecialChar(char c) {
@@ -55,6 +57,11 @@ std::string Mangler::mangleModuleName(Twine Prefix, Value Spec) {
 }
 
 std::string Mangler::mangleVariable(Twine ModulePrefix, Value Name) {
+  auto Cont = [&](Twine Result) { return Result.str(); };
+  return mangleName(Cont, ModulePrefix + Twine('V'), Name);
+}
+
+std::string Mangler::mangleVariable(Twine ModulePrefix, llvm::StringRef Name) {
   auto Cont = [&](Twine Result) { return Result.str(); };
   return mangleName(Cont, ModulePrefix + Twine('V'), Name);
 }
@@ -151,6 +158,64 @@ std::string Mangler::mangleCharHexCode(Continuation Cont, Twine Prefix,
   return mangleNameSegment(Cont, "???", Str.drop_front(1));
 }
 
+bool Mangler::isExternalVariable(llvm::StringRef ModulePrefix,
+                                 llvm::StringRef VarName) {
+  if (!VarName.startswith(ModulePrefix))
+    return false;
+  llvm::StringRef Result = parseModulePrefix(VarName);
+  return !Result.equals(ModulePrefix);
+}
+
+// parseModulePrefix - Parse the module prefix of a valid symbol name.
+//                     The prefix for an invalid name should be safe,
+//                     but is undefined and may trigger assertions.
+llvm::StringRef Mangler::parseModulePrefix(llvm::StringRef Name) {
+  llvm::StringRef Ending = Name.drop_front(getManglePrefix().size());
+  while (Ending.size() > 0) {
+    switch (Ending[0]) {
+      case 'V': case 'F': case 'A':
+        // Break from the loop
+        break;
+      case 'L':
+        // Library name
+        Ending = Ending.drop_front(1);
+        continue;
+      case '1': case '2': case '3': case '4': case '5':
+      case '6': case '7': case '8': case '9':
+        consumeNameSegment(Ending);
+        continue;
+      // TODO Handle CharHexCode
+      default:
+        // SpecialChar code is always two characters.
+        Ending = Ending.drop_front(2);
+        continue;
+    }
+    break;
+  }
+  return Name.drop_back(Ending.size());
+}
+
+// consumeNameSegment - Consume a valid name segment from Buf and
+//                      return the parsed name.
+//                      Invalid formats should be safe, but have a 
+//                      result that is undefined and may trigger
+//                      assertions.
+llvm::StringRef Mangler::consumeNameSegment(llvm::StringRef& Buf) {
+  assert(Buf[0] >= '1' && Buf[0] <= '9' &&
+      "name segment should begin with length");
+  llvm::StringRef Result = "";
+  size_t Length = 0;
+  while (Buf.size() > 0 && llvm::isDigit(Buf[0])) {
+    unsigned Digit = llvm::hexDigitValue(Buf[0]);
+    Length = Length * 10 + Digit;
+    Buf = Buf.drop_front(1);
+  }
+  assert(Buf[0] == 'S' && "invalid name segment");
+  Buf = Buf.drop_front(1); // Consume 'S'.
+  Result = Buf.take_front(Length);
+  Buf = Buf.drop_front(Length);
+  return Result;
+}
 
 }
 
