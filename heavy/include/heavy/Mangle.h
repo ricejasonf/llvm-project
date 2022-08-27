@@ -111,8 +111,14 @@ public:
   { }
 
   static llvm::StringRef getManglePrefix() { return ManglePrefix; }
+  static bool isExternalVariable(llvm::StringRef ModulePrefix,
+                                 llvm::StringRef VarName);
+  static llvm::StringRef parseModulePrefix(llvm::StringRef Name);
+  static llvm::StringRef consumeNameSegment(llvm::StringRef& Buf);
+
   std::string mangleModule(Value Spec);
   std::string mangleVariable(Twine ModulePrefix, Value Name);
+  std::string mangleVariable(Twine ModulePrefix, llvm::StringRef Name);
   std::string mangleFunction(Twine ModulePrefix, llvm::StringRef Name);
   std::string mangleSpecialName(Twine ModulePrefix, llvm::StringRef Name);
 
