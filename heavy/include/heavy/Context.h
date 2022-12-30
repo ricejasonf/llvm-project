@@ -94,6 +94,7 @@ class Context : public ContinuationStack<Context> {
 
 public:
   heavy::OpGen* OpGen = nullptr;
+  heavy::OpEvalImpl* OpEval = nullptr;
 
   // SetErrorHandler - Set the bottom most exception handler to handle
   //                   hard errors including uncaught exceptions.
@@ -154,6 +155,7 @@ public:
 
   // LoadModule - Idempotently load a library
   void LoadModule(Value Spec);
+  void PushModuleCleanup(llvm::StringRef MangledName, Value Fn);
 
   Context();
   ~Context();

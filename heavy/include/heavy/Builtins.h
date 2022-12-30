@@ -64,6 +64,7 @@ void begin(Context& C, ValueRefs Args);
 void define_library(Context& C, ValueRefs Args);
 void export_(Context&, ValueRefs);
 void import_(Context&, ValueRefs);
+void push_library_cleanup(Context&, ValueRefs);
 // TODO Change signature to continuable Syntax functions.
 mlir::Value include_(OpGen& OG, Pair* P);
 mlir::Value include_ci(OpGen& OG, Pair* P);
@@ -109,6 +110,7 @@ void compile(Context& C, ValueRefs Args);
 extern heavy::ExternSyntax<>        HEAVY_BASE_VAR(begin);
 extern heavy::ExternSyntax<>        HEAVY_BASE_VAR(define_library);
 extern heavy::ExternSyntax<>        HEAVY_BASE_VAR(export);
+extern heavy::ExternSyntax<>        HEAVY_BASE_VAR(push_library_cleanup);
 extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(define);
 extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(define_syntax);
 extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(syntax_rules);
@@ -174,6 +176,8 @@ inline void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(include_ci)      = heavy::base::include_ci;
   HEAVY_BASE_VAR(include_library_declarations)
     = heavy::base::include_library_declarations;
+  HEAVY_BASE_VAR(push_library_cleanup)
+    = heavy::base::push_library_cleanup;
 
   // functions
   HEAVY_BASE_VAR(add)     = heavy::base::add;
@@ -221,6 +225,8 @@ inline void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"include-ci",    HEAVY_BASE_VAR(include_ci)},
     {"include-library-declarations",
       HEAVY_BASE_VAR(include_library_declarations)},
+    {"push-library-cleanup",
+      HEAVY_BASE_VAR(push_library_cleanup)},
 
     // functions
     {"+",       HEAVY_BASE_VAR(add)},
