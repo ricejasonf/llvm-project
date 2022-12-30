@@ -757,6 +757,21 @@ void Context::LoadModule(Value Spec) {
   SetError("unable to load module (not supported)", Spec);
 }
 
+// Allow the user to add cleanup routines to unload a module/library.
+// It is currently used for destroying the instance of OpEval.
+// TODO expose this via run-time function accessible in scheme land.
+void Context::PushModuleCleanup(llvm::StringRef MangledName, Value Fn) {
+  std::unique_ptr<Module>& M = Modules[MangledName];
+  if (!M) {
+    return RaiseError("module not loaded",
+        Value(CreateString(MangledName)));
+  }
+  if (heavy::Lambda* Lambda = dyn_cast<heavy::Lambda>(Fn)) {
+    M->PushCleanup(Lambda); 
+  } else {
+    return RaiseError("expecting function", Fn);
+  }
+}
 
 void Context::AddKnownAddress(llvm::StringRef MangledName, heavy::Value Value) {
   String* Name = CreateIdTableEntry(MangledName);
@@ -957,4 +972,29 @@ public:
 void Context::WithEnv(std::unique_ptr<heavy::Environment> EnvPtr,
                       heavy::Environment* Env, Value Thunk) {
   LibraryEnv::Wind(*this, std::move(EnvPtr), Env, Thunk);
+}
+
+// Module
+
+Module::~Module() {
+  // Call cleanups pushed within the module
+  // when the module is unloading.
+  if (Cleanup) {
+    Context.ApplyThunk(Cleanup);
+  }
+}
+
+// Push a cleanup function to be called when the
+// module is unloaded/destroyed.
+void Module::PushCleanup(heavy::Lambda* Fn) {
+  if (!Cleanup) {
+    Cleanup = Fn;
+    return;
+  }
+  Cleanup = Context.CreateLambda([](heavy::Context& C, ValueRefs) {
+    heavy::Lambda* Next = cast<Lambda>(C.getCapture(0));
+    heavy::Lambda* Fn   = cast<Lambda>(C.getCapture(1));
+    C.PushCont(Value(Next));
+    C.ApplyThunk(Fn);
+  }, CaptureList{Cleanup, Fn});
 }

@@ -1258,6 +1258,8 @@ class Module : public ValueBase {
   using MapIteratorTy  = typename MapTy::iterator;
   heavy::Context& Context; // for String lookup
   heavy::ModuleLoadNamesFn* LoadNamesFn; // for lazy importing
+  // Store global cleanups. Requires garbage collection.
+  heavy::Lambda* Cleanup = nullptr;
   MapTy Map;
 
 public:
@@ -1267,6 +1269,9 @@ public:
       LoadNamesFn(LoadNamesFn),
       Map()
   { }
+
+  ~Module();
+  void PushCleanup(heavy::Lambda* CleanupFn);
 
   heavy::Context& getContext() { return Context; }
 
