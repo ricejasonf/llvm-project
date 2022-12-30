@@ -779,11 +779,10 @@ void Context::AddKnownAddress(llvm::StringRef MangledName, heavy::Value Value) {
 }
 
 Value Context::GetKnownValue(llvm::StringRef MangledName) {
-  String* Id = IdTable[MangledName];
-  assert(Id && "identifier should have been inserted into table for mangled name");
+  String* Name = CreateIdTableEntry(MangledName);
   // Could we possibly use dlsym or something here
   // for actual external values?
-  return KnownAddresses.lookup(Id);
+  return KnownAddresses.lookup(Name);
 }
 
 void heavy::initModule(heavy::Context& C, llvm::StringRef ModuleMangledName,
