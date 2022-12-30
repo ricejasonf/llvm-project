@@ -28,7 +28,6 @@ heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(cond_expand);
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(include);
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(include_ci);
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(include_library_declarations);
-heavy::ExternSyntax<>      HEAVY_BASE_VAR(push_library_cleanup);
 
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(define);
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(define_syntax);
@@ -238,17 +237,6 @@ mlir::Value include_ci(OpGen& OG, Pair* P) {
 
 mlir::Value include_library_declarations(OpGen& OG, Pair* P) {
   llvm_unreachable("TODO");
-}
-
-// push_library_cleanup - Allow users to provide
-//                        cleanups for unloading a module.
-void push_library_cleanup(Context& C, ValueRefs Args) {
-  if (!C.OpGen->isLibraryContext()) {
-    return C.RaiseError("export must be in library context", Args[0]);
-  }
-  llvm_unreachable("TODO");
-  // TODO Create OpGen ops to create the call to the push_module_cleanup
-  //      run-time function.
 }
 
 }} // end of namespace heavy::base
