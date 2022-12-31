@@ -587,10 +587,14 @@ mlir::Value OpGen::createSyntaxRules(SourceLocation Loc,
     mlir::Block& B = PatternOp.region().emplaceBlock();
     mlir::OpBuilder::InsertionGuard IG(Builder);
     Builder.setInsertionPointToStart(&B);
+
+    Value PrevEnvStack = Context.EnvStack;
     PatternTemplate PT(*this, Keyword, Ellipsis, Literals);
 
     PT.VisitPatternTemplate(Pattern, Template, Arg);
     PatternDefs = I->Cdr;
+    // Restore the environment.
+    Context.EnvStack = PrevEnvStack;
   }
   if (!isa<Empty>(PatternDefs) || Block.empty()) {
     return SetError("expecting list of pattern templates pairs", PatternDefs);
