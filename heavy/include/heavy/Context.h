@@ -309,6 +309,7 @@ public:
 
     return New;
   }
+
   template <typename F>
   Syntax* CreateSyntax(F Fn) {
     auto FnData = createOpaqueFn(Fn);
@@ -318,9 +319,12 @@ public:
     return New;
   }
 
+  Syntax* CreateSyntaxWithOp(mlir::Operation* SyntaxOp);
+
   Builtin* CreateBuiltin(ValueFn Fn) {
     return new (TrashHeap) Builtin(Fn);
   }
+
   BuiltinSyntax* CreateBuiltinSyntax(SyntaxFn Fn) {
     return new (TrashHeap) BuiltinSyntax(Fn);
   }

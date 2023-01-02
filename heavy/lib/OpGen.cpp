@@ -464,12 +464,24 @@ bool OpGen::isLocalDefineAllowed() {
 mlir::Value OpGen::createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall) {
   mlir::Value Result;
   Environment* TopLevelEnv = nullptr;
-  if (isTopLevel()) {
-    TopLevelEnv = cast<Environment>(Context.EnvStack);
-  }
+  mlir::OpBuilder::InsertionGuard IG(Builder);
 
   Symbol* Keyword = dyn_cast<Symbol>(SyntaxSpec->Car);
   if (!Keyword) return SetError("expecting syntax spec keyword", SyntaxSpec);
+
+  if (isTopLevel()) {
+    TopLevelEnv = cast<Environment>(Context.EnvStack);
+    // Create the syntax as a global.
+    std::string MangledName = mangleVariable(Keyword);
+    SourceLocation DefineLoc = OrigCall.getSourceLocation();
+    // FIXME This code is very similar to stuff in createTopLevelDefine
+    auto GlobalOp = createTopLevel<heavy::GlobalOp>(DefineLoc, MangledName);
+    setTopLevelOp(GlobalOp.getOperation());
+    mlir::Block& Block = *GlobalOp.addEntryBlock();
+    // Set insertion point.
+    Builder.setInsertionPointToStart(&Block);
+  }
+
   Pair* TransformerSpec = dyn_cast<Pair>(SyntaxSpec->Cdr.car());
   if (!TransformerSpec || !isa<Empty>(SyntaxSpec->Cdr.cdr())) {
     return SetError("invalid syntax spec", SyntaxSpec);
@@ -509,15 +521,13 @@ mlir::Value OpGen::createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall) {
     return SetError("expecting syntax object", SyntaxSpec);
   }
 
-  auto Fn = [SyntaxOp](heavy::Context& C, ValueRefs Args) -> void {
-    heavy::Value Input = Args[0];
-    invokeSyntaxOp(C, SyntaxOp, Input);
-    // The contained OpGenOp will call C.Apply(...).
-  };
-  heavy::Syntax* Syntax = Context.CreateSyntax(Fn);
+  heavy::Syntax* Syntax = Context.CreateSyntaxWithOp(
+      SyntaxOp.getOperation());
 
   if (TopLevelEnv) {
     TopLevelEnv->SetSyntax(Keyword, Syntax);
+    // Insert a ContOp for the global that was created.
+    Builder.create<ContOp>(Result.getLoc(), Result);
   } else {
     Binding* B = Context.CreateBinding(Keyword, Syntax);
     Context.PushLocalBinding(B);
@@ -528,7 +538,7 @@ mlir::Value OpGen::createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall) {
 
 mlir::Value OpGen::createSyntaxRules(SourceLocation Loc,
                                      Symbol* Keyword,
-                                     Symbol* Ellipsis, 
+                                     Symbol* Ellipsis,
                                      heavy::Value LiteralList,
                                      heavy::Value PatternDefs) {
   // Expect list of unique literal identifiers.
@@ -892,7 +902,7 @@ mlir::Value OpGen::createGlobal(SourceLocation Loc,
   // Localize globals by the GlobalOp's Operation*
   mlir::Value LocalV;
   if (!TopLevelOp) {
-    LocalV = create<LoadGlobalOp>(Loc, 
+    LocalV = create<LoadGlobalOp>(Loc,
         cast<GlobalOp>(G).getName());
     BindingTable.insert(CanonicalValue, LocalV);
   } else {
@@ -1097,7 +1107,7 @@ mlir::Value OpGen::LocalizeValue(mlir::Value V, heavy::Value B) {
       NewVal = create<LoadGlobalOp>(Loc, G.getName());
     } else if (auto LG = dyn_cast<LoadGlobalOp>(Op)) {
       // Just make a new load global with the same name.
-      NewVal = create<LoadGlobalOp>(Loc, LG.name()); 
+      NewVal = create<LoadGlobalOp>(Loc, LG.name());
     }
     if (NewVal) {
       if (B) {
@@ -1200,7 +1210,7 @@ void OpGen::Export(Value NameList) {
     if (!Target) {
       if (Pair* P2 = dyn_cast<Pair>(P->Car)) {
         if (isSymbol(P2->Car, "rename") && isa<Pair>(P2->Cdr)) {
-          Pair* P3 = cast<Pair>(P2->Cdr); 
+          Pair* P3 = cast<Pair>(P2->Cdr);
           Source = dyn_cast<Symbol>(P3->Car);
           if (!Source) {
             Context.SetError("expecting identifier", P3);

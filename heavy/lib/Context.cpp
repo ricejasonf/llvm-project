@@ -171,6 +171,16 @@ Vector* Context::CreateVector(unsigned N) {
   return new (Mem) Vector(CreateUndefined(), N);
 }
 
+Syntax* Context::CreateSyntaxWithOp(mlir::Operation* Op) {
+  auto SyntaxOp = cast<heavy::SyntaxOp>(Op);
+  auto Fn = [SyntaxOp](heavy::Context& C, ValueRefs Args) -> void {
+    heavy::Value Input = Args[0];
+    invokeSyntaxOp(C, SyntaxOp, Input);
+    // The contained OpGenOp will call C.Apply(...).
+  };
+  return CreateSyntax(Fn);
+}
+
 Module* Context::RegisterModule(llvm::StringRef MangledName,
                                 heavy::ModuleLoadNamesFn* LoadNames) {
   auto Result = Modules.try_emplace(MangledName,
