@@ -208,9 +208,9 @@ private:
     else if (isa<SetOp>(Op))          return Visit(cast<SetOp>(Op));
     else if (isa<CommandOp>(Op))      return Visit(cast<CommandOp>(Op));
     else if (isa<PushContOp>(Op))     return Visit(cast<PushContOp>(Op));
-    else if (isa<OpGenOp>(Op))         return Visit(cast<OpGenOp>(Op));
+    else if (isa<OpGenOp>(Op))        return Visit(cast<OpGenOp>(Op));
     else if (isa<FuncOp>(Op))         return next(Op); // skip functions
-    else if (isa<SyntaxOp>(Op))       return next(Op); // skip syntax fns
+    else if (isa<SyntaxOp>(Op))       return Visit(cast<SyntaxOp>(Op));
     else if (isa<MatchPairOp>(Op))    return Visit(cast<MatchPairOp>(Op));
     else if (isa<MatchOp>(Op))        return Visit(cast<MatchOp>(Op));
     else if (isa<RenameOp>(Op))       return Visit(cast<RenameOp>(Op));
@@ -577,6 +577,15 @@ private:
       return next(Op);
     }
     return gotoNextPattern(Op);
+  }
+
+  BlockItrTy Visit(SyntaxOp Op) {
+    // Evaluate iff this is a global.
+    if (isa<GlobalOp>(Op->getParentOp())) {
+      heavy::Syntax* Syntax = Context.CreateSyntaxWithOp(Op);
+      setValue(Op.result(), Syntax);
+    }
+    return next(Op);
   }
 
   BlockItrTy Visit(SyntaxClosureOp Op) {
