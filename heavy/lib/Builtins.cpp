@@ -80,7 +80,6 @@ mlir::Value define_syntax(OpGen& OG, Pair* P) {
   if (!P2) return OG.SetError("invalid define-syntax syntax", P);
   Symbol* S = dyn_cast<Symbol>(P2->Car);
   if (!S) return OG.SetError("expecting name for define-syntax", P);
-  
 
   return OG.createSyntaxSpec(P2, P);
 }
@@ -141,7 +140,7 @@ mlir::Value set(OpGen& OG, Pair* P) {
   return OG.createSet(P->getSourceLocation(), S, Expr);
 }
 
-namespace { 
+namespace {
   void import_helper(Context& C, ValueRefs Args) {
     if (Pair* P = dyn_cast<Pair>(Args[0])) {
       C.PushCont([](Context& C, ValueRefs) {
@@ -203,7 +202,7 @@ void define_library(Context& C, ValueRefs Args) {
       return;
     }
   }
-  std::string MangledName = OG.mangleModule(NameSpec); 
+  std::string MangledName = OG.mangleModule(NameSpec);
   if (MangledName.size() == 0) {
     C.SetError("library name is invalid");
     return;
@@ -411,7 +410,7 @@ void compile(Context& C, ValueRefs Args) {
   //          if we have to create it on the fly.
   std::unique_ptr<Environment> EnvPtr = nullptr;
   Environment* Env = nullptr;;
-  
+
   if (auto* E = dyn_cast<Environment>(EnvSpec)) {
     Env = E;
   } else if (isa<ImportSet>(EnvSpec)) {
