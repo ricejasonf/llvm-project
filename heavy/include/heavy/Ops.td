@@ -147,7 +147,7 @@ def heavy_ContOp : HeavyOp<"cont", [ReturnLike, Terminator]> {
     an expression.
   }];
 
-  let arguments = (ins Variadic<HeavyValue>:$args);
+  let arguments = (ins Variadic<AnyTypeOf<[HeavyValue, HeavySyntax]>>:$args);
   let results   = (outs); // no result
 }
 

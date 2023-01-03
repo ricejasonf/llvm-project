@@ -255,10 +255,10 @@ void OpGen::VisitTopLevel(Value V) {
   // insert into a lazily created CommandOp by default
   // The insertion point is saved manually (ie not RAII)
   // and then restored in the continuation.
-  mlir::OpBuilder::InsertPoint PrevInsertPoint = Builder.saveInsertionPoint();
+  mlir::OpBuilder::InsertPoint PrevIp = Builder.saveInsertionPoint();
   Builder.clearInsertionPoint();
 
-  Context.PushCont([this, PrevInsertPoint](heavy::Context& Ctx, ValueRefs) {
+  Context.PushCont([this, PrevIp](heavy::Context& Ctx, ValueRefs) {
     // Instead of the continuation argument we use TopLevelOp
     FinishTopLevelOp();
     if (TopLevelOp && TopLevelHandler) {
@@ -269,7 +269,7 @@ void OpGen::VisitTopLevel(Value V) {
       Ctx.Cont();
     }
 
-    Builder.restoreInsertionPoint(PrevInsertPoint);
+    Builder.restoreInsertionPoint(PrevIp);
   });
 
   // Top Level Syntax may be async and use continuations.
@@ -464,7 +464,8 @@ bool OpGen::isLocalDefineAllowed() {
 mlir::Value OpGen::createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall) {
   mlir::Value Result;
   Environment* TopLevelEnv = nullptr;
-  mlir::OpBuilder::InsertionGuard IG(Builder);
+  // Save the insertion point for top level define-syntax.
+  mlir::OpBuilder::InsertPoint PrevIp = Builder.saveInsertionPoint();
 
   Symbol* Keyword = dyn_cast<Symbol>(SyntaxSpec->Car);
   if (!Keyword) return SetError("expecting syntax spec keyword", SyntaxSpec);
@@ -528,6 +529,7 @@ mlir::Value OpGen::createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall) {
     TopLevelEnv->SetSyntax(Keyword, Syntax);
     // Insert a ContOp for the global that was created.
     Builder.create<ContOp>(Result.getLoc(), Result);
+    Builder.restoreInsertionPoint(PrevIp);
   } else {
     Binding* B = Context.CreateBinding(Keyword, Syntax);
     Context.PushLocalBinding(B);
