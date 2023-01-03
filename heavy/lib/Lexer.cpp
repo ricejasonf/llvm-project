@@ -181,10 +181,14 @@ void Lexer::LexNumberOrEllipsis(Token& Tok, const char *CurPtr) {
   const char *OrigPtr = CurPtr;
   // We already consumed a dot .
   char c1 = *CurPtr;
+  if (isDelimiter(c1)) {
+    return FormTokenWithChars(Tok, CurPtr, tok::period);
+  }
   char c2 = ConsumeChar(CurPtr);
   char c3 = ConsumeChar(CurPtr);
   if (c1 == '.' && c2 ==  '.' && isDelimiter(c3)) {
-    // '...' is a valid identifier
+    // '...' is a valid identifier (via <dot subsequent>)
+    // TODO Implement <peculiar identifier>.
     return FormIdentifier(Tok, CurPtr);
   }
   // Lex as a number
