@@ -276,6 +276,7 @@ public:
                                        SourceLocation Loc) {
     return new (TrashHeap) PairWithSource(V1, V2, Loc);
   }
+  Value       CreateList(llvm::ArrayRef<Value> Vs);
   String*     CreateString(StringRef S);
   String*     CreateString(StringRef S1, StringRef S2);
   String*     CreateString(StringRef, StringRef, StringRef);

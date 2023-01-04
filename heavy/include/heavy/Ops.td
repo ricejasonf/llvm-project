@@ -39,6 +39,7 @@ def HeavyValueAttr : Attr<CPred<"true">,
 }
 
 // Additional Types
+def HeavyRest : HeavyValueBase<"Pair">; // For rest arguments.
 def HeavyPair : HeavyValueBase<"Pair">;
 def HeavySyntax : HeavyValueBase<"Syntax">;
 

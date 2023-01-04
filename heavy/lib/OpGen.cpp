@@ -371,7 +371,7 @@ mlir::FunctionType OpGen::createFunctionType(unsigned Arity,
                                              bool HasRestParam) {
   mlir::Type ClosureT   = Builder.getType<HeavyValueTy>();
   mlir::Type ValueT     = Builder.getType<HeavyValueTy>();
-  mlir::Type RestT      = Builder.getType<HeavyValueTy>();
+  mlir::Type RestT      = Builder.getType<HeavyRestTy>();
 
   llvm::SmallVector<mlir::Type, 16> Types{};
   // push the closure type
@@ -380,7 +380,7 @@ mlir::FunctionType OpGen::createFunctionType(unsigned Arity,
     for (unsigned i = 0; i < Arity - 1; i++) {
       Types.push_back(ValueT);
     }
-    mlir::Type LastParamT = HasRestParam ? ValueT : RestT;
+    mlir::Type LastParamT = HasRestParam ? RestT : ValueT;
     Types.push_back(LastParamT);
   }
 

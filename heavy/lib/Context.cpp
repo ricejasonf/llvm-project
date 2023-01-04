@@ -141,6 +141,15 @@ Symbol* Context::CreateSymbol(llvm::StringRef S,
   return new (TrashHeap) Symbol(Str, Loc);
 }
 
+Value Context::CreateList(llvm::ArrayRef<Value> Vs) {
+  // Returns a *newly allocated* list of its arguments.
+  heavy::Value List = CreateEmpty();
+  for (auto Itr = Vs.rbegin(); Itr != Vs.rend(); ++Itr) {
+    List = CreatePair(*Itr, List);
+  }
+  return List;
+}
+
 #if 0 // not sure if we want to create symbols for every possible import
 // for import prefixes
 Symbol* Context::CreateSymbol(llvm::StringRef S1, StringRef S2) {

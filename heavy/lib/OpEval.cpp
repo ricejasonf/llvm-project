@@ -232,7 +232,7 @@ private:
     // which later gets assigned to BingingOps (in code)
 
     auto OpArgs = Body.getArguments();
-    assert(OpArgs.size() == Args.size() + 1
+    assert(OpArgs.size() >= Args.size() + 1
         && "arity should be checked already");
     // OpArg[0] is always the context object
     for (unsigned i = 0; i < Args.size(); ++i) {
@@ -242,15 +242,30 @@ private:
 
   BlockItrTy CallFuncOp(heavy::FuncOp F, ValueRefs Args) {
     SourceLocation CallLoc = getSourceLocation(F.getLoc());
+    heavy::Value RestList;
     // check arguments
-    {
-      unsigned NumArgs = Args.size();
-      mlir::FunctionType FT = F.getTypeAttr()
-                               .getValue()
-                               .cast<mlir::FunctionType>();
-      // assert(!F.hasRestParam() && "TODO support rest parameters");
+    unsigned NumArgs = Args.size();
+    mlir::FunctionType FT = F.getTypeAttr()
+                             .getValue()
+                             .cast<mlir::FunctionType>();
+    // The functions type includes the argument
+    // for the context object.
+    unsigned NumParams = FT.getNumInputs() - 1;
+    if (NumParams > 0 && FT.getInputs().back().isa<HeavyRestTy>()) {
+      // Handle a rest param.
+      // Check that the number of explicit params
+      // are less than the amount of arguments.
+      //int NumExplicitArgsMatched = NumParams - 1 - NumArgs;
+      if (NumArgs < NumParams - 1) {
+        return SetError(CallLoc, "invalid arity", heavy::Undefined());
+      }
+
+      ValueRefs RestArgs = Args.slice(NumParams - 1, NumArgs - (NumParams - 1));
+      Args = Args.drop_back(RestArgs.size());
+      RestList = Context.CreateList(RestArgs);
+    } else {
       // The function type includes the Context as a parameter
-      if (FT.getNumInputs() != NumArgs + 1) {
+      if (NumParams != NumArgs) {
         return SetError(CallLoc, "invalid arity", heavy::Undefined());
       }
     }
@@ -258,6 +273,9 @@ private:
     push_scope();
     mlir::Block& Body = F.getBody().front();
     LoadArgs(Body, Args);
+    if (RestList) {
+      setValue(Body.getArguments().back(), RestList);
+    }
     BlockItrTy Itr = Body.begin();
     while (Itr != BlockItrTy()) {
       Itr = Visit(&*Itr);
@@ -640,7 +658,7 @@ private:
     }
     Module* M = Context.Modules[ModuleName].get();
     assert(M && "module should be registered");
-    mlir::Block& Body = Op.body().back(); 
+    mlir::Block& Body = Op.body().back();
     for (mlir::Operation& X : Body.getOperations()) {
       if (auto IdOp = dyn_cast<ExportIdOp>(X)) {
         Value Val = Context.GetKnownValue(IdOp.symbolName());

@@ -48,6 +48,13 @@ struct HeavyValueTy : public mlir::Type::TypeBase<
   using Base::Base;
 };
 
+struct HeavyRestTy : public mlir::Type::TypeBase<
+                            HeavyRestTy,
+                            mlir::Type,
+                            mlir::TypeStorage> {
+  using Base::Base;
+};
+
 struct HeavyValueAttrStorage : public mlir::AttributeStorage {
   heavy::Value Val;
 

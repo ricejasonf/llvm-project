@@ -359,11 +359,7 @@ void eqv(Context& C, ValueRefs Args) {
 
 void list(Context& C, ValueRefs Args) {
   // Returns a *newly allocated* list of its arguments.
-  heavy::Value List = C.CreateEmpty();
-  for (heavy::Value Arg : Args) {
-    List = C.CreatePair(Arg, List);
-  }
-  C.Cont(List);
+  C.Cont(C.CreateList(Args));
 }
 
 void append(Context& C, ValueRefs Args) {
