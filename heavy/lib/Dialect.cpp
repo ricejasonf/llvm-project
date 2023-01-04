@@ -24,6 +24,7 @@ Dialect::Dialect(mlir::MLIRContext* Ctx)
   addTypes<HeavyValueTy>();
   addAttributes<HeavyValueAttr>();
 
+  addTypes<HeavyRestTy>();
   addTypes<HeavyPairTy>();
 
   addTypes<HeavySyntaxTy>();
@@ -48,6 +49,8 @@ void Dialect::printType(mlir::Type Type,
   char const* Name;
   if (Type.isa<HeavyValueTy>()) {
     Name = "value";
+  } else if (Type.isa<HeavyRestTy>()) {
+    Name = "rest";
   } else if (Type.isa<HeavyPairTy>()) {
     Name = "pair";
   } else if (Type.isa<HeavySyntaxTy>()) {
