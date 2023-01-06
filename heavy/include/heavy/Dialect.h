@@ -14,6 +14,7 @@
 #define HEAVY_DIALECT_H
 
 #include "heavy/Value.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
@@ -30,7 +31,7 @@ static_assert(llvm::PointerLikeTypeTraits<heavy::Operation*>::NumLowBitsAvailabl
               "mlir::Operation* must have 8 byte alignment to fit in heavy::Value");
 
 namespace heavy {
-using mlir::FuncOp;
+using mlir::func::FuncOp;
 
 struct Dialect : public mlir::Dialect {
   explicit Dialect(mlir::MLIRContext* Ctx);
