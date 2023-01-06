@@ -67,7 +67,7 @@ public:
       //       element altogether.
       Pair* P = cast<Pair>(Pattern);
       auto MatchPairOp = OpGen.create<heavy::MatchPairOp>(Loc, E);
-      Visit(P->Cdr, MatchPairOp.cdr());
+      Visit(P->Cdr, MatchPairOp.getCdr());
     } else {
       Visit(Pattern, E);
     }
@@ -111,9 +111,9 @@ public:
 
     heavy::Context& C = OpGen.getContext();
 
-    Visit(P->Car, MatchPairOp.car());
+    Visit(P->Car, MatchPairOp.getCar());
     if (!C.CheckError()) {
-      Visit(P->Cdr, MatchPairOp.cdr());
+      Visit(P->Cdr, MatchPairOp.getCdr());
     }
 
     return mlir::Value();

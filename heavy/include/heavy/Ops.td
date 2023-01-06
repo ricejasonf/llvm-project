@@ -27,10 +27,10 @@ def HeavyDialect : Dialect {
 //                  implies the need for garbage collection.
 class HeavyValueBase<string name> : Type<
   CPred<!strconcat("$_self.isa<::heavy::Heavy", name, "Ty>()")>,
-  name, !strconcat("::heavy::", name)>;
+  name, "::heavy::HeavyValueTy"/*!strconcat("::heavy::", name)*/>;
 
 def HeavyValue : Type<CPred<"$_self.isa<::heavy::HeavyValueTy>()">,
-                  "value", "::heavy::Value">;
+                  "value", "::heavy::HeavyValueTy">;
 
 def HeavyValueAttr : Attr<CPred<"true">,
                           "Any Attribute convertible to heavy::Value"> {
@@ -48,7 +48,7 @@ def HeavyOpGen : Type<CPred<"$_self.isa<::heavy::HeavyOpGenTy>()">,
 def HeavyMlirValue : Type<CPred<"$_self.isa<::heavy::HeavyMlirValueTy>()">,
                   "MlirValue", "::mlir::Value">;
 
-class HeavyOp<string mnemonic, list<OpTrait> traits = []> :
+class HeavyOp<string mnemonic, list<Trait> traits = []> :
     Op<HeavyDialect, mnemonic, traits>;
 
 def heavy_ApplyOp : HeavyOp<"apply", [ReturnLike, Terminator]> {
@@ -65,7 +65,7 @@ def heavy_ApplyOp : HeavyOp<"apply", [ReturnLike, Terminator]> {
 
   let extraClassDeclaration = [{
     bool isTailPos() {
-      return initCont().empty();
+      return getInitCont().empty();
     }
   }];
 }
@@ -79,7 +79,8 @@ def heavy_BindingOp : HeavyOp<"binding"> {
     elided and the result can refer directly to the enclosed value.
   }];
 
-  let arguments = (ins Optional<HeavyValue>:$input);
+  let arguments = (ins Optional<AnyTypeOf<[HeavyValue,
+                                          HeavyRest]>>:$input);
   let results   = (outs HeavyValue:$result);
   let builders  = [OpBuilder<(ins "::mlir::Value":$input)>];
 }
@@ -116,9 +117,9 @@ def heavy_CommandOp : HeavyOp<"command", [IsolatedFromAbove]> {
   let regions = (region AnyRegion:$body);
   let extraClassDeclaration = [{
     mlir::Block* addEntryBlock() {
-      assert(body().empty() && "CommandOp already has an entry block");
+      assert(getBody().empty() && "CommandOp already has an entry block");
       mlir::Block* entry = new mlir::Block();
-      body().push_back(entry);
+      getBody().push_back(entry);
       return entry;
     }
   }];
@@ -164,7 +165,7 @@ def heavy_OpGenOp : HeavyOp<"opgen", [Terminator]> {
   let results   = (outs);
   let extraClassDeclaration = [{
     bool isTailPos() {
-      return initCont().empty();
+      return getInitCont().empty();
     }
   }];
 }
@@ -178,11 +179,11 @@ def heavy_GlobalOp : HeavyOp<"global", [Symbol, IsolatedFromAbove]> {
 
   let regions = (region AnyRegion:$initializer);
   let extraClassDeclaration = [{
-    bool isExternal() { return initializer().empty(); }
+    bool isExternal() { return getInitializer().empty(); }
     mlir::Block* addEntryBlock() {
-      assert(initializer().empty() && "GlobalOp already has an entry block");
+      assert(getInitializer().empty() && "GlobalOp already has an entry block");
       mlir::Block* entry = new mlir::Block();
-      initializer().push_back(entry);
+      getInitializer().push_back(entry);
       return entry;
     }
   }];
@@ -226,7 +227,7 @@ def heavy_IfContOp : HeavyOp<"if_cont", [ReturnLike, Terminator]> {
 
   let extraClassDeclaration = [{
     bool isTailPos() {
-      return initCont().empty();
+      return getInitCont().empty();
     }
   }];
 }
@@ -248,7 +249,7 @@ def heavy_LambdaOp : HeavyOp<"lambda"> {
   ];
 }
 
-def heavy_LiteralOp : HeavyOp<"literal", [NoSideEffect]> {
+def heavy_LiteralOp : HeavyOp<"literal", [Pure]> {
   let summary = "literal";
   let description = [{
     Literals in scheme can be primitives or quoted scheme values that are
@@ -468,7 +469,7 @@ def heavy_SyntaxOp: HeavyOp<"syntax", [IsolatedFromAbove, NoTerminator]> {
   let builders  = [OpBuilder<(ins)>];
 }
 
-def heavy_UndefinedOp : HeavyOp<"undefined", [NoSideEffect]> {
+def heavy_UndefinedOp : HeavyOp<"undefined", [Pure]> {
   let summary = "undefined";
   let description = [{
     This is a singleton literal for heavy::Undefined

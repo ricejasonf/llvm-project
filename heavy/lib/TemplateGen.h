@@ -46,7 +46,8 @@ public:
     heavy::SourceLocation Loc = Template.getSourceLocation();
     heavy::Value V = Visit(Template);
     mlir::Value TransformedSyntax = isRebuilt(V) ? OpGen::toValue(V) :
-                                                   createLiteral(V).result();
+                                                   createLiteral(V)
+                                                    .getResult();
     OpGen.createOpGen(Loc, TransformedSyntax);
   }
 

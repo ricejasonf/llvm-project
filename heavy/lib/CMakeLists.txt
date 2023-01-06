@@ -13,7 +13,8 @@ add_llvm_library(heavy
   ${HEAVY_LIB}/Quasiquote.cpp
   ${HEAVY_LIB}/../../clang/lib/Basic/CharInfo.cpp)
 
-add_dependencies(heavy HeavyOpsIncGen)
+add_dependencies(heavy HeavyOpsIncGen
+                       MLIRFuncOpsIncGen)
 
 llvm_map_components_to_libnames(LLVM_LIBS
   core
@@ -21,6 +22,7 @@ llvm_map_components_to_libnames(LLVM_LIBS
 
 set(MLIR_LIBS
   MLIRAnalysis
+  MLIRFuncDialect
   MLIRIR
   MLIRSideEffectInterfaces
   MLIRTransforms)
