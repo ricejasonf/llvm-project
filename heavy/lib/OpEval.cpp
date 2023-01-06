@@ -46,7 +46,7 @@ class OpEvalImpl {
     if (!V) {
       if (GlobalOp G = M.getDefiningOp<GlobalOp>()) {
         if (G.isExternal()) {
-          heavy::Value Val = Context.GetKnownValue(G.sym_name());
+          heavy::Value Val = Context.GetKnownValue(G.getSymName());
           setValue(M, Val);
           return Val;
         }
@@ -140,13 +140,13 @@ public:
   //                to wrap non-compiled SyntaxOps.
   void InvokeSyntax(SyntaxOp Op, Value Input) {
     // Bind the Input to the block argument
-    setValue(Op.region().getArgument(0), Input);
-    mlir::Block& Body = Op.region().front();
+    setValue(Op.getRegion().getArgument(0), Input);
+    mlir::Block& Body = Op.getRegion().front();
     BlockItrTy Itr = Body.begin();
     // Enter the first pattern.
     auto PatternOp = cast<heavy::PatternOp>(*Itr);
     push_scope();
-    Itr = PatternOp.region().front().begin();
+    Itr = PatternOp.getRegion().front().begin();
     while (Itr != BlockItrTy()) {
       Itr = Visit(&*Itr);
     }
@@ -245,8 +245,7 @@ private:
     heavy::Value RestList;
     // check arguments
     unsigned NumArgs = Args.size();
-    mlir::FunctionType FT = F.getTypeAttr()
-                             .getValue()
+    mlir::FunctionType FT = F.getFunctionType()
                              .cast<mlir::FunctionType>();
     // The functions type includes the argument
     // for the context object.
@@ -291,13 +290,13 @@ private:
   //    to the callees function parameters
   void LoadArgResults(ApplyOp Op,
                       llvm::SmallVectorImpl<heavy::Value>& ArgResults) {
-    auto Args = Op.args();
+    auto Args = Op.getArgs();
     ArgResults.clear();
     ArgResults.resize(Args.size() + 1);
     for (unsigned i = 0; i < Args.size(); ++i) {
       ArgResults[i + 1] = getValue(Args[i]);
     }
-    ArgResults[0] = getValue(Op.fn());
+    ArgResults[0] = getValue(Op.getFn());
   }
 
   // SetContValues
@@ -327,7 +326,7 @@ private:
     if (!Op.isTailPos()) {
       // evaluate the initCont region which pushes
       // a continuation
-      BlockItrTy Itr = Op.initCont().front().begin();
+      BlockItrTy Itr = Op.getInitCont().front().begin();
       while (Itr != BlockItrTy()) {
         Itr = Visit(&*Itr);
       }
@@ -339,25 +338,25 @@ private:
 
   BlockItrTy Visit(BindingOp Op) {
     // create a Binding
-    heavy::Value V = Op.input() ? getValue(Op.input()) :
+    heavy::Value V = Op.getInput() ? getValue(Op.getInput()) :
                                   heavy::Undefined();
     heavy::Binding* B = Context.CreateBinding(V);
-    setValue(Op.result(), B);
+    setValue(Op.getResult(), B);
     return next(Op);
   }
 
   BlockItrTy Visit(BuiltinOp Op) {
-    heavy::Value V = Op.builtinFn();
-    setValue(Op.result(), V);
+    heavy::Value V = Op.getBuiltinFn();
+    setValue(Op.getResult(), V);
     return next(Op);
   }
 
   BlockItrTy Visit(ConsOp Op) {
     // TODO Use PairWithSource to retain source location information.
-    heavy::Value A = getValue(Op.a());
-    heavy::Value B = getValue(Op.b());
+    heavy::Value A = getValue(Op.getA());
+    heavy::Value B = getValue(Op.getB());
     heavy::Pair* V = Context.CreatePair(A, B);
-    setValue(Op.result(), V);
+    setValue(Op.getResult(), V);
     return next(Op);
   }
 
@@ -366,7 +365,7 @@ private:
     // For functions the continuation is dynamic and we
     // must use the current stack frame to find the next
     // operation. For all others the continuation is fixed.
-    auto ContArgs = Op.args();
+    auto ContArgs = Op.getArgs();
     llvm::SmallVector<heavy::Value, 1> ContValues(ContArgs.size(),
                                                   nullptr);
     for (unsigned i = 0; i < ContArgs.size(); ++i) {
@@ -395,27 +394,27 @@ private:
   }
 
   BlockItrTy Visit(IfOp Op) {
-    Value Input = getValue(Op.input());
+    Value Input = getValue(Op.getInput());
     push_scope();
-    return Input.isTrue() ? Op.thenRegion().front().begin() :
-                            Op.elseRegion().front().begin();
+    return Input.isTrue() ? Op.getThenRegion().front().begin() :
+                            Op.getElseRegion().front().begin();
   }
 
   BlockItrTy Visit(IfContOp Op) {
-    Value Input = getValue(Op.input());
+    Value Input = getValue(Op.getInput());
 
     if (!Op.isTailPos()) {
       // evaluate the initCont region which pushes
       // a continuation
-      BlockItrTy Itr = Op.initCont().front().begin();
+      BlockItrTy Itr = Op.getInitCont().front().begin();
       while (Itr != BlockItrTy()) {
         Itr = Visit(&*Itr);
       }
     }
 
     push_scope();
-    return Input.isTrue() ? Op.thenRegion().front().begin() :
-                            Op.elseRegion().front().begin();
+    return Input.isTrue() ? Op.getThenRegion().front().begin() :
+                            Op.getElseRegion().front().begin();
   }
 
   auto createClosure(mlir::Operation* Op, mlir::ValueRange CaptureVals,
@@ -438,16 +437,16 @@ private:
 
   BlockItrTy Visit(LambdaOp Op) {
     llvm::SmallVector<heavy::Value, 8> Captures;
-    auto CallFn = createClosure(Op, Op.captures(), Captures);
+    auto CallFn = createClosure(Op, Op.getCaptures(), Captures);
     Lambda* L = Context.CreateLambda(CallFn, Captures);
 
-    setValue(Op.result(), L);
+    setValue(Op.getResult(), L);
     return next(Op);
   }
 
   BlockItrTy Visit(PushContOp Op) {
     llvm::SmallVector<heavy::Value, 8> Captures;
-    auto CallFn = createClosure(Op, Op.captures(), Captures);
+    auto CallFn = createClosure(Op, Op.getCaptures(), Captures);
     Context.PushCont(CallFn, Captures);
 
     return BlockItrTy();
@@ -455,19 +454,19 @@ private:
 
   BlockItrTy Visit(LiteralOp Op) {
     // Map the IR value node to the run-time value
-    heavy::Value V = Op.input();
-    setValue(Op.result(), V);
+    heavy::Value V = Op.getInput();
+    setValue(Op.getResult(), V);
     return next(Op);
   }
 
   BlockItrTy Visit(LoadClosureOp Op) {
     // get the Lambda object and get its
     // closure value and set it to the value
-    uint32_t Index = Op.index();
+    uint32_t Index = Op.getIndex();
 
     // We are assuming we will only ever get a
     // closure element from the current callee.
-    // heavy::Value Closure = getValue(Op.closure());
+    // heavy::Value Closure = getValue(Op.getClosure());
     heavy::Value Closure = Context.getCallee();
 
     heavy::Value V = nullptr;
@@ -478,12 +477,12 @@ private:
 
     assert(V && "must have a valid closure type");
 
-    setValue(Op.result(), V);
+    setValue(Op.getResult(), V);
     return next(Op);
   }
 
   BlockItrTy Visit(LoadGlobalOp Op) {
-    Value Val = Context.GetKnownValue(Op.name());
+    Value Val = Context.GetKnownValue(Op.getName());
     if (!Val) {
       Val = Undefined();
     }
@@ -500,29 +499,29 @@ private:
       assert(Args.size() == 1 && "invalid continuation arity");
       // Mutable globals must be wrapped with a binding
       Value Binding = C.CreateBinding(Args[0]);
-      C.AddKnownAddress(Op.sym_name(), Binding);
+      C.AddKnownAddress(Op.getSymName(), Binding);
       C.Cont(Undefined());
     }, ValueRefs());
 
-    return Op.initializer().front().begin();
+    return Op.getInitializer().front().begin();
   }
 
   BlockItrTy Visit(CommandOp Op) {
     push_scope();
-    return Op.body().front().begin();
+    return Op.getBody().front().begin();
   }
 
   BlockItrTy Visit(SetOp Op) {
-    heavy::Binding* B = cast<heavy::Binding>(getBindingOrValue(Op.binding()));
-    heavy::Value RHS = getValue(Op.input());
+    heavy::Binding* B = cast<heavy::Binding>(getBindingOrValue(Op.getBinding()));
+    heavy::Value RHS = getValue(Op.getInput());
     B->setValue(RHS);
     return next(Op);
   }
 
   BlockItrTy Visit(SpliceOp Op) {
     heavy::SourceLocation Loc = getSourceLocation(Op.getLoc());
-    heavy::Value LHS = getValue(Op.a());
-    heavy::Value RHS = getValue(Op.b());
+    heavy::Value LHS = getValue(Op.getA());
+    heavy::Value RHS = getValue(Op.getB());
 
     // must both be lists
     if (!isa<heavy::Pair>(LHS) && !isa<heavy::Empty>(LHS)) {
@@ -575,12 +574,12 @@ private:
     }
     // Enter the next pattern
     push_scope();
-    return cast<heavy::PatternOp>(*NextNode).region().front().begin();
+    return cast<heavy::PatternOp>(*NextNode).getRegion().front().begin();
   }
 
   BlockItrTy Visit(MatchOp Op) {
-    heavy::Value P = Op.val();
-    heavy::Value E = getValue(Op.input());
+    heavy::Value P = Op.getVal();
+    heavy::Value E = getValue(Op.getInput());
     if (equal(P, E)) {
       return next(Op);
     }
@@ -588,10 +587,10 @@ private:
   }
 
   BlockItrTy Visit(MatchPairOp Op) {
-    heavy::Value E = getValue(Op.input());
+    heavy::Value E = getValue(Op.getInput());
     if (auto* Pair = dyn_cast<heavy::Pair>(E)) {
-      setValue(Op.car(), Pair->Car);
-      setValue(Op.cdr(), Pair->Cdr);
+      setValue(Op.getCar(), Pair->Car);
+      setValue(Op.getCdr(), Pair->Cdr);
       return next(Op);
     }
     return gotoNextPattern(Op);
@@ -601,7 +600,7 @@ private:
     // Evaluate iff this is a global.
     if (isa<GlobalOp>(Op->getParentOp())) {
       heavy::Syntax* Syntax = Context.CreateSyntaxWithOp(Op);
-      setValue(Op.result(), Syntax);
+      setValue(Op.getResult(), Syntax);
     }
     return next(Op);
   }
@@ -609,27 +608,27 @@ private:
   BlockItrTy Visit(SyntaxClosureOp Op) {
     // Create a SyntaxClosure with the current
     // EnvStack.
-    heavy::Value Input = getValue(Op.input());
+    heavy::Value Input = getValue(Op.getInput());
     SyntaxClosure* SC = Context.CreateSyntaxClosure(Input);
-    setValue(Op.result(), SC);
+    setValue(Op.getResult(), SC);
     return next(Op);
   }
 
   BlockItrTy Visit(RenameOp Op) {
     // :O
-    void* OV = reinterpret_cast<void*>(Op.opaqueValue());
+    void* OV = reinterpret_cast<void*>(Op.getOpaqueValue());
     mlir::Value MV = mlir::Value::getFromOpaquePointer(OV);
     heavy::Value HV = heavy::OpGen::fromValue(MV);
-    setValue(Op.result(), HV);
+    setValue(Op.getResult(), HV);
     return next(Op);
   }
 
   BlockItrTy Visit(OpGenOp Op) {
-    heavy::Value Input = getValue(Op.input());
+    heavy::Value Input = getValue(Op.getInput());
     if (!Op.isTailPos()) {
       // evaluate the initCont region which pushes
       // a continuation
-      BlockItrTy Itr = Op.initCont().front().begin();
+      BlockItrTy Itr = Op.getInitCont().front().begin();
       while (Itr != BlockItrTy()) {
         Itr = Visit(&*Itr);
       }
@@ -650,7 +649,7 @@ private:
     llvm::StringRef ModuleName =
       cast<mlir::ModuleOp>(Op.getOperation()->getParentOp())
         .getName()
-        .getValueOr("");
+        .value_or("");
     if (ModuleName.empty()) {
       SourceLocation Loc = getSourceLocation(Op.getLoc());
       SetError(Loc, "module must have symbol", Undefined());
@@ -658,16 +657,16 @@ private:
     }
     Module* M = Context.Modules[ModuleName].get();
     assert(M && "module should be registered");
-    mlir::Block& Body = Op.body().back();
+    mlir::Block& Body = Op.getBody().back();
     for (mlir::Operation& X : Body.getOperations()) {
       if (auto IdOp = dyn_cast<ExportIdOp>(X)) {
-        Value Val = Context.GetKnownValue(IdOp.symbolName());
+        Value Val = Context.GetKnownValue(IdOp.getSymbolName());
         if (!Val) {
           SourceLocation Loc = getSourceLocation(IdOp.getLoc());
           SetError(Loc, "export of undefined value", Undefined());
           return;
         }
-        registerModuleVar(Context, M, IdOp.symbolName(), IdOp.id(), Val);
+        registerModuleVar(Context, M, IdOp.getSymbolName(), IdOp.getId(), Val);
       }
     }
     Context.Cont();

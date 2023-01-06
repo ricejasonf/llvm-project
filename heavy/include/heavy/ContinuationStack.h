@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <cassert>
 #include <initializer_list>
+#include <optional>
 #include <utility>
 
 #ifndef HEAVY_STACK_SIZE
@@ -158,7 +159,7 @@ class ContinuationStack {
     if (Src.getDepth() < Dest.getDepth()) {
       C.PushCont([](Derived& C, ValueRefs) {
         DWind Dest = C.getCapture(0);
-        C.Apply(Dest.getBeforeFn(), llvm::None);
+        C.Apply(Dest.getBeforeFn(), std::nullopt);
       }, CaptureList{Dest});
       C.TraverseWindings(Src, Dest.getParent());
     } else {
@@ -167,7 +168,7 @@ class ContinuationStack {
         DWind Dest = C.getCapture(1);
         C.TraverseWindings(Src.getParent(), Dest);
       }, CaptureList{Src, Dest});
-      C.Apply(Src.getAfterFn(), llvm::None);
+      C.Apply(Src.getAfterFn(), std::nullopt);
     }
   }
 

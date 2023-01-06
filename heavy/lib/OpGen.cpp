@@ -16,7 +16,6 @@
 #include "heavy/Dialect.h"
 #include "heavy/Mangle.h"
 #include "heavy/OpGen.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Value.h"
@@ -42,7 +41,7 @@ OpGen::OpGen(heavy::Context& C, std::string ModulePrefix)
   mlir::ModuleOp TopModule;
   if (!C.OpGen) {
     assert(!C.ModuleOp && "There should be only one top level module");
-    C.MlirContext.loadDialect<heavy::Dialect, mlir::StandardOpsDialect>();
+    C.MlirContext.loadDialect<heavy::Dialect, mlir::func::FuncDialect>();
     // Create the module that contains the main module and import modules
     TopModule = Builder.create<mlir::ModuleOp>(Loc);
     C.ModuleOp = TopModule;
@@ -309,7 +308,7 @@ void OpGen::FinishTopLevelOp() {
     }
 
     // Ensure the CommandOp body has a terminator.
-    mlir::Block& Block = CommandOp.body().front();
+    mlir::Block& Block = CommandOp.getBody().front();
     assert(!Block.empty() && "command op must have body");
     if (!Block.back().hasTrait<mlir::OpTrait::IsTerminator>()) {
       mlir::OpBuilder::InsertionGuard IG(Builder);
@@ -399,7 +398,7 @@ mlir::Value OpGen::createLambda(Value Formals, Value Body,
   unsigned Arity = EnvFrame->getBindings().size();
   mlir::FunctionType FT = createFunctionType(Arity, HasRestParam);
 
-  auto F = create<mlir::FuncOp>(Loc, MangledName, FT);
+  auto F = create<heavy::FuncOp>(Loc, MangledName, FT);
   LambdaScope LS(*this, F);
 
   // Insert into the function body
@@ -576,11 +575,13 @@ mlir::Value OpGen::createSyntaxRules(SourceLocation Loc,
 
   // Create the SyntaxOp
   auto SyntaxOp = create<heavy::SyntaxOp>(Loc);
-  mlir::Block& Block = SyntaxOp.region().emplaceBlock();
+  mlir::Block& Block = SyntaxOp.getRegion().emplaceBlock();
 
   // TODO create anonymous function name for SyntaxOp symbol
   mlir::BlockArgument Arg = Block.addArgument(
-                                    Builder.getType<HeavyValueTy>());
+        Builder.getType<HeavyValueTy>(),
+        mlir::OpaqueLoc::get(Loc.getOpaqueEncoding(), Builder.getContext())
+                                    );
   mlir::OpBuilder::InsertionGuard IG(Builder);
   Builder.setInsertionPointToStart(&Block);
 
@@ -596,7 +597,7 @@ mlir::Value OpGen::createSyntaxRules(SourceLocation Loc,
     }
 
     auto PatternOp = create<heavy::PatternOp>(Pattern.getSourceLocation());
-    mlir::Block& B = PatternOp.region().emplaceBlock();
+    mlir::Block& B = PatternOp.getRegion().emplaceBlock();
     mlir::OpBuilder::InsertionGuard IG(Builder);
     Builder.setInsertionPointToStart(&B);
 
@@ -611,7 +612,7 @@ mlir::Value OpGen::createSyntaxRules(SourceLocation Loc,
   if (!isa<Empty>(PatternDefs) || Block.empty()) {
     return SetError("expecting list of pattern templates pairs", PatternDefs);
   }
-  return SyntaxOp.result();
+  return SyntaxOp.getResult();
 }
 
 // processSequence creates a sequence of operations in the current block
@@ -834,17 +835,17 @@ mlir::Value OpGen::createIf(SourceLocation Loc, Value Cond, Value Then,
 
   if (!RequiresContinuation) {
     auto IfOp = create<heavy::IfOp>(Loc, CondResult);
-    IfOp.thenRegion().push_back(ThenBlock);
-    IfOp.elseRegion().push_back(ElseBlock);
+    IfOp.getThenRegion().push_back(ThenBlock);
+    IfOp.getElseRegion().push_back(ElseBlock);
     return IfOp;
   }
 
   auto IfContOp = create<heavy::IfContOp>(Loc, CondResult);
-  IfContOp.thenRegion().push_back(ThenBlock);
-  IfContOp.elseRegion().push_back(ElseBlock);
+  IfContOp.getThenRegion().push_back(ThenBlock);
+  IfContOp.getElseRegion().push_back(ElseBlock);
 
   if (TailPos) return mlir::Value();
-  return createContinuation(IfContOp.initCont());
+  return createContinuation(IfContOp.getInitCont());
 }
 
 // LHS can be a symbol or a binding
@@ -990,7 +991,7 @@ mlir::Value OpGen::HandleCall(Pair* P) {
   }
 
   if (IsTailPos) return mlir::Value();
-  return createContinuation(Op.initCont());
+  return createContinuation(Op.getInitCont());
 }
 
 mlir::Value OpGen::createOpGen(SourceLocation Loc, mlir::Value Input) {
@@ -1015,7 +1016,7 @@ mlir::Value OpGen::createContinuation(mlir::Region& initCont) {
   // create the continuation's function
   // subsequent operations will be nested within
   // relying on previous insertion guards to pull us out
-  auto F = create<mlir::FuncOp>(heavy::SourceLocation(), MangledName, FT);
+  auto F = create<heavy::FuncOp>(heavy::SourceLocation(), MangledName, FT);
   PushContinuationScope(F);
   mlir::Block* FuncEntry = F.addEntryBlock();
   Builder.setInsertionPointToStart(FuncEntry);
@@ -1109,7 +1110,7 @@ mlir::Value OpGen::LocalizeValue(mlir::Value V, heavy::Value B) {
       NewVal = create<LoadGlobalOp>(Loc, G.getName());
     } else if (auto LG = dyn_cast<LoadGlobalOp>(Op)) {
       // Just make a new load global with the same name.
-      NewVal = create<LoadGlobalOp>(Loc, LG.name());
+      NewVal = create<LoadGlobalOp>(Loc, LG.getName());
     }
     if (NewVal) {
       if (B) {
@@ -1144,7 +1145,7 @@ mlir::Value OpGen::LocalizeRec(heavy::Value B,
 
   // Capture V for use in the current function scope.
   mlir::OpBuilder::InsertionGuard IG(Builder);
-  auto FuncOp = cast<mlir::FuncOp>(LS.Op);
+  auto FuncOp = cast<heavy::FuncOp>(LS.Op);
   mlir::Block& Block = FuncOp.getBody().front();
   Builder.setInsertionPointToStart(&Block);
   LS.Captures.push_back(ParentLocal);
@@ -1180,9 +1181,9 @@ void OpGen::Export(Value NameList) {
     F = createHelper<heavy::ExportOp>(ModuleBuilder,
                                       NameList.getSourceLocation(),
                                       FuncName);
-    Block = &F.body().emplaceBlock();
+    Block = &F.getBody().emplaceBlock();
   } else {
-    Block = &(F.body().back());
+    Block = &(F.getBody().back());
   }
 
   // Iterate existing ExportIdOp nodes and load them into NameSet
@@ -1191,7 +1192,7 @@ void OpGen::Export(Value NameList) {
   for (auto& Op : Ops) {
     auto ExportIdOp = dyn_cast<heavy::ExportIdOp>(Op);
     if (!ExportIdOp) continue;
-    auto Result = NameSet.insert(ExportIdOp.id());
+    auto Result = NameSet.insert(ExportIdOp.getId());
     if (!Result.second) {
       // This is an error in the IR.
       Context.SetError("export has duplicate name");

@@ -15,12 +15,12 @@
 #include "heavy/Parser.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
+#include <optional>
 
 using heavy::Context;
 using heavy::Parser;
@@ -30,15 +30,15 @@ using llvm::StringRef;
 namespace {
   // Returns true on an invalid number prefix notation
   bool parseNumberPrefix(const char*& CurPtr,
-                         llvm::Optional<bool>& IsExact,
-                         llvm::Optional<unsigned>& Radix) {
+                         std::optional<bool>& IsExact,
+                         std::optional<unsigned>& Radix) {
     if (*CurPtr != '#')
       return false;
 
     ++CurPtr;
     char c = *CurPtr;
-    if (Radix.hasValue() ||
-        (IsExact.hasValue() &&
+    if (Radix.has_value() ||
+        (IsExact.has_value() &&
          (c == 'e' || c == 'i'))) {
       return true;
     }
@@ -69,7 +69,7 @@ namespace {
     return parseNumberPrefix(CurPtr, IsExact, Radix);
   }
 
-  llvm::Optional<llvm::APInt>
+  std::optional<llvm::APInt>
   tryParseInteger(StringRef TokenSpan, unsigned BitWidth, unsigned Radix) {
     // largely inspired by NumericLiteralParser::GetIntegerValue
     llvm::APInt RadixVal(BitWidth, Radix, /*IsSigned=*/true);
@@ -297,9 +297,9 @@ ValueResult Parser::ParseNumber() {
   char const* Current = Tok.getLiteralData().begin();
   char const* End     = Tok.getLiteralData().end();
   int BitWidth = 32; // Int uses int32_t
-  llvm::Optional<bool> IsExactOpt;
-  llvm::Optional<unsigned> RadixOpt;
-  llvm::Optional<llvm::APInt> IntOpt;
+  std::optional<bool> IsExactOpt;
+  std::optional<unsigned> RadixOpt;
+  std::optional<llvm::APInt> IntOpt;
 
   if (parseNumberPrefix(Current, IsExactOpt, RadixOpt)) {
     llvm_unreachable("TODO diagnose invalid number prefix");
@@ -307,8 +307,8 @@ ValueResult Parser::ParseNumber() {
   }
 
   StringRef TokenSpan(Current, End - Current);
-  bool IsExact = IsExactOpt.getValueOr(true);
-  unsigned Radix = RadixOpt.getValueOr(10);
+  bool IsExact = IsExactOpt.value_or(true);
+  unsigned Radix = RadixOpt.value_or(10);
 
   // TODO use llvm::StringRef's integer parsing stuffs
   //      and just use a fixed BitWidth
@@ -316,13 +316,13 @@ ValueResult Parser::ParseNumber() {
 
   ConsumeToken();
 
-  if (IsExact && IntOpt.hasValue()) {
-    return Value(Int(IntOpt.getValue().getZExtValue()));
+  if (IsExact && IntOpt.has_value()) {
+    return Value(Int(IntOpt.value().getZExtValue()));
   }
 
   llvm::APFloat FloatVal(0.0f);
-  if (IntOpt.hasValue()) {
-    llvm::APInt Int = IntOpt.getValue();
+  if (IntOpt.has_value()) {
+    llvm::APInt Int = IntOpt.value();
     FloatVal.convertFromAPInt(Int, /*isSigned=*/true,
                            llvm::APFloat::rmNearestTiesToEven);
   } else {
