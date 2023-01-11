@@ -24,12 +24,15 @@ namespace heavy {
 
 HeavyScheme::HeavyScheme(std::unique_ptr<heavy::Context> C)
   : ContextPtr(std::move(C)),
+    EnvPtr(std::make_unique<heavy::Environment>(*ContextPtr)),
     SourceManagerPtr(std::make_unique<heavy::SourceManager>())
-{ }
+{
+  ContextPtr->setEnvironment(EnvPtr.get());
+  HEAVY_BASE_INIT(*ContextPtr);
+}
 
 HeavyScheme::HeavyScheme()
-  : ContextPtr(std::make_unique<heavy::Context>()),
-    SourceManagerPtr(std::make_unique<heavy::SourceManager>())
+  : HeavyScheme(std::make_unique<heavy::Context>())
 { }
 
 HeavyScheme::~HeavyScheme() = default;
@@ -76,9 +79,6 @@ void HeavyScheme::ProcessTopLevelCommands(
                               llvm::function_ref<ValueFnTy> ExprHandler,
                               llvm::function_ref<ErrorHandlerFn> ErrorHandler,
                               heavy::tok Terminator) {
-  if (!EnvPtr) {
-    EnvPtr = std::make_unique<heavy::Environment>(getContext());
-  }
   return ProcessTopLevelCommands(Lexer, *EnvPtr, ExprHandler, ErrorHandler,
                                  Terminator);
 }

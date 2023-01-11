@@ -14,10 +14,8 @@
 #define LLVM_HEAVY_CONTEXT_H
 
 #include "heavy/ContinuationStack.h"
-#include "heavy/Dialect.h"
 #include "heavy/Source.h"
 #include "heavy/Value.h"
-#include "mlir/IR/MLIRContext.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -35,6 +33,10 @@
 #include <memory>
 #include <unordered_map>
 #include <utility>
+
+namespace mlir {
+  class MLIRContext;
+}
 
 namespace heavy {
 using AllocatorTy = llvm::BumpPtrAllocator;
@@ -86,7 +88,7 @@ class Context : public ContinuationStack<Context> {
   //    and swap it back upon completion (via RAII)
   Value EnvStack;
 
-  mlir::MLIRContext MlirContext;
+  std::unique_ptr<mlir::MLIRContext> MLIRContext;
   SourceLocation Loc = {}; // last known location for errors
   Value Err = nullptr;
   Value ExceptionHandlers = heavy::Empty();

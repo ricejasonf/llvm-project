@@ -20,7 +20,7 @@
 
 #define HEAVY_CLANG_LIB               _HEAVYL5Sclang
 #define HEAVY_CLANG_LIB_(NAME)        _HEAVYL5Sclang ## NAME
-#define HEAVY_CLANG_LIB_STR          "_HEAVYL5Sclang"
+#define HEAVY_CLANG_LIB_STR           "_HEAVYL5SheavyL5Sclang"
 #define HEAVY_CLANG_IS_LOADED         HEAVY_CLANG_LIB##_is_loaded
 #define HEAVY_CLANG_LOAD_MODULE       HEAVY_CLANG_LIB##_load_module
 #define HEAVY_CLANG_INIT              HEAVY_CLANG_LIB##_init
