@@ -22,7 +22,6 @@
 #define HEAVY_BASE_LOAD_MODULE        HEAVY_BASE_LIB_(_load_module)
 #define HEAVY_BASE_INIT               HEAVY_BASE_LIB_(_init)
 #define HEAVY_BASE_VAR(NAME)          HEAVY_BASE_VAR__##NAME
-#define HEAVY_BASE_VAR__import        HEAVY_BASE_LIB_(V6Simport)
 #define HEAVY_BASE_VAR__export        HEAVY_BASE_LIB_(V6Sexport)
 #define HEAVY_BASE_VAR__add           HEAVY_BASE_LIB_(Vpl)
 #define HEAVY_BASE_VAR__sub           HEAVY_BASE_LIB_(Vmi)

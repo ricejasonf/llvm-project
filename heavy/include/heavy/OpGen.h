@@ -14,6 +14,7 @@
 #define LLVM_HEAVY_OP_GEN_H
 
 #include "heavy/Context.h"
+#include "heavy/Dialect.h"
 #include "heavy/Mangle.h"
 #include "heavy/Value.h"
 #include "heavy/ValueVisitor.h"

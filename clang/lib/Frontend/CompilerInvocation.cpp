@@ -3744,6 +3744,9 @@ void CompilerInvocationBase::GenerateLangArgs(const LangOptions &Opts,
 
   if (!Opts.RandstructSeed.empty())
     GenerateArg(Consumer, OPT_frandomize_layout_seed_EQ, Opts.RandstructSeed);
+
+  if (Opts.Heavy)
+    GenerateArg(Consumer, OPT_fheavy);
 }
 
 bool CompilerInvocation::ParseLangArgs(LangOptions &Opts, ArgList &Args,

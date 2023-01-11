@@ -18,9 +18,6 @@
 
 bool HEAVY_BASE_IS_LOADED = false;
 
-// import must be pre-loaded
-heavy::ExternSyntax<>      HEAVY_BASE_VAR(import);
-
 heavy::ExternSyntax<>      HEAVY_BASE_VAR(define_library);
 heavy::ExternSyntax<>      HEAVY_BASE_VAR(begin);
 heavy::ExternSyntax<>      HEAVY_BASE_VAR(export);
@@ -383,6 +380,7 @@ void error(Context& C, ValueRefs Args) {
 }
 
 void eval(Context& C, ValueRefs Args) {
+  assert(HEAVY_BASE_IS_LOADED && "eval lib must be loaded");
   if (Args.size() != 2) {
     return C.RaiseError("invalid arity");
   }

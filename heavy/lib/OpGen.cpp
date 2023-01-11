@@ -18,6 +18,7 @@
 #include "heavy/OpGen.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Verifier.h"
 #include "llvm/ADT/ScopeExit.h"
@@ -31,17 +32,17 @@ using namespace heavy;
 
 OpGen::OpGen(heavy::Context& C, std::string ModulePrefix)
   : Context(C),
-    ModuleBuilder(&(C.MlirContext)),
-    Builder(&(C.MlirContext)),
+    ModuleBuilder(C.MLIRContext.get()),
+    Builder(C.MLIRContext.get()),
     BindingTable(),
     ModulePrefix(std::move(ModulePrefix))
 {
   mlir::Location Loc = Builder.getUnknownLoc();
-  mlir::OpBuilder ImportsBuilder(&(C.MlirContext));
+  mlir::OpBuilder ImportsBuilder(C.MLIRContext.get());
   mlir::ModuleOp TopModule;
   if (!C.OpGen) {
     assert(!C.ModuleOp && "There should be only one top level module");
-    C.MlirContext.loadDialect<heavy::Dialect, mlir::func::FuncDialect>();
+    C.MLIRContext->loadDialect<heavy::Dialect, mlir::func::FuncDialect>();
     // Create the module that contains the main module and import modules
     TopModule = Builder.create<mlir::ModuleOp>(Loc);
     C.ModuleOp = TopModule;
@@ -1201,7 +1202,7 @@ void OpGen::Export(Value NameList) {
   }
 
   // Setup the builder and ensure a terminator exists
-  mlir::OpBuilder ExportBuilder(&Context.MlirContext);
+  mlir::OpBuilder ExportBuilder(Context.MLIRContext.get());
   ExportBuilder.setInsertionPointToEnd(Block);
 
   // Now iterate the names and add ExportIdOps.
