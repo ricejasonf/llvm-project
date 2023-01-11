@@ -3951,6 +3951,9 @@ void CompilerInvocationBase::GenerateLangArgs(const LangOptions &Opts,
     StringRef S = llvm::getAllocTokenModeAsString(*Opts.AllocTokenMode);
     GenerateArg(Consumer, OPT_falloc_token_mode_EQ, S);
   }
+
+  if (Opts.Heavy)
+    GenerateArg(Consumer, OPT_fheavy);
 }
 
 bool CompilerInvocation::ParseLangArgs(LangOptions &Opts, ArgList &Args,

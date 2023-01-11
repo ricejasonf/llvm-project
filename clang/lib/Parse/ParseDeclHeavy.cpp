@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "heavy/Clang.h"
+#include "heavy/Context.h"
 #include "heavy/HeavyScheme.h"
 #include "heavy/Value.h"
 #include "clang/Parse/Parser.h"
@@ -42,18 +43,24 @@ void LoadParentEnv(heavy::HeavyScheme& HS, void* Handle) {
 void LoadBuiltinModule(clang::Parser& P) {
   auto diag_error = [&](heavy::Context& C, heavy::ValueRefs Args) {
     // TODO automate argument checking somehow
-    if (Args.size() != 1) return setError(C, "invalid arity to function");
-    if (!isa<heavy::String>(Args[0])) return setError(C, "expecting string");
+    if (Args.size() != 1) {
+      C.RaiseError("invalid arity to function", C.getCallee());
+      return;
+    }
+    if (!isa<heavy::String>(Args[0])) {
+      C.RaiseError("expecting string", C.getCallee());
+      return;
+    }
     llvm::StringRef Err = cast<heavy::String>(Args[0])->getView();
 
     P.Diag(clang::SourceLocation{}, diag::err_heavy_scheme)
       << "MESSAGE FROM CLANG LAND: " << Err;
-    return heavy::Undefined{};
+    C.Cont(); 
   };
 
-  auto hello_world = [](auto&&...) {
+  auto hello_world = [](heavy::Context& C, heavy::ValueRefs Args) {
     llvm::errs() << "\nhello world (from clang)\n";
-    return heavy::Undefined{};
+    C.Cont(); 
   };
 
   HEAVY_CLANG_VAR(diag_error)   = diag_error;
@@ -86,8 +93,10 @@ bool Parser::ParseHeavyScheme() {
   DeclContext* DC = getActions().CurContext;
   HeavyScheme->LoadEmbeddedEnv(DC, LoadParentEnv);
 
+  bool HasError = false;
   auto ErrorHandler = [&](llvm::StringRef Err,
                           heavy::FullSourceLocation EmbeddedLoc) {
+    HasError = true;
     clang::SourceLocation ErrLoc = clang::SourceLocation
       ::getFromRawEncoding(EmbeddedLoc.getExternalRawEncoding())
        .getLocWithOffset(EmbeddedLoc.getOffset());
@@ -96,9 +105,9 @@ bool Parser::ParseHeavyScheme() {
 
 
   heavy::TokenKind Terminator = heavy::tok::r_brace;
-  bool HasError = HeavyScheme->ProcessTopLevelCommands(SchemeLexer,
-                                                       ErrorHandler,
-                                                       Terminator);
+  HeavyScheme->ProcessTopLevelCommands(SchemeLexer,
+                                       ErrorHandler,
+                                       Terminator);
 
   // Return control to C++ Lexer
   PP.FinishEmbeddedLexer(SchemeLexer.GetByteOffset());

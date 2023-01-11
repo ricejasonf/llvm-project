@@ -18,6 +18,7 @@
 #include "heavy/Source.h"
 #include "heavy/Value.h"
 #include "heavy/ValueVisitor.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Verifier.h" // TODO move to OpGen
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -53,7 +54,7 @@ Context::Context()
   : ContinuationStack<Context>()
   , TrashHeap()
   , EnvStack(Empty())
-  , MlirContext()
+  , MLIRContext(std::make_unique<mlir::MLIRContext>())
   , OpGen(nullptr)
 {
   NameForImportVar = "_HEAVY_import";
