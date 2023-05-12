@@ -587,7 +587,7 @@ inline T* cast_or_null(::heavy::Value V) {
 
 template <>
 struct DenseMapInfo<::heavy::Value> {
-  static ::heavy::Value getEmptyKey() { 
+  static ::heavy::Value getEmptyKey() {
     return DenseMapInfo<::heavy::ValueBase*>::getEmptyKey();
   }
   static ::heavy::Value getTombstoneKey() {
@@ -694,6 +694,7 @@ public:
 
   static bool isExactZero(heavy::Value);
   static ValueKind CommonKind(Value X, Value Y);
+  static double getAsDouble(Value V);
 };
 
 // BigInt currently assumes 64 bits
@@ -726,7 +727,7 @@ public:
     , Val(V)
   { }
 
-  auto getVal() { return Val; }
+  auto const& getVal() { return Val; }
   static bool classof(Value V) {
     return V.getKind() == ValueKind::Float;
   }
@@ -755,6 +756,17 @@ inline bool Number::isExactZero(Value V) {
     I->Val == 0;
   }
   return cast<Int>(V) == 0;
+}
+
+inline double Number::getAsDouble(Value V) {
+  switch(V.getKind()) {
+  case ValueKind::Float:
+    return cast<Float>(V)->getVal().convertToDouble();
+  case ValueKind::Int:
+    return double{cast<Int>(V) + 0.0};
+  default:
+    return {};
+  }
 }
 
 class String final

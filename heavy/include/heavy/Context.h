@@ -267,6 +267,9 @@ public:
     llvm::APInt Val(64, X, /*IsSigned=*/true);
     return CreateBigInt(Val);
   }
+  Float*      CreateFloat(double Double) {
+    return CreateFloat(llvm::APFloat(Double));
+  }
   Float*      CreateFloat(llvm::APFloat V);
   Pair*       CreatePair(Value V1, Value V2) {
     return new (TrashHeap) Pair(V1, V2);
