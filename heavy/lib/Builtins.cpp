@@ -242,20 +242,40 @@ namespace heavy {
 struct NumberOp {
   // These operations always mutate the first operand
   struct Add {
-    static Int f(Int X, Int Y) { return X + Y; }
-    static void f(Float* X, Float *Y) { X->Val = X->Val + Y->Val; }
+    static Int f(Context& C, Int X, Int Y) { return X + Y; }
+    static void f(Context& C, Float* X, Value Y) {
+      X->Val = llvm::APFloat(
+          X->Val.convertToDouble() + Number::getAsDouble(Y));
+    }
   };
   struct Sub {
-    static Int f(Int X, Int Y) { return X - Y; }
-    static void f(Float* X, Float *Y) { X->Val = X->Val - Y->Val; }
+    static Int f(Context& C, Int X, Int Y) { return X - Y; }
+    static void f(Context& C, Float* X, Value Y) {
+      X->Val = llvm::APFloat(
+          X->Val.convertToDouble() - Number::getAsDouble(Y));
+    }
   };
   struct Mul {
-    static Int f(Int X, Int Y) { return X * Y; }
-    static void f(Float* X, Float *Y) { X->Val = X->Val * Y->Val; }
+    static Int f(Context& C, Int X, Int Y) { return X * Y; }
+    static void f(Context& C, Float* X, Value Y) {
+      X->Val = llvm::APFloat(
+          X->Val.convertToDouble() * Number::getAsDouble(Y));
+    }
   };
   struct Div {
-    static Int f(Int X, Int Y) { return X / Y; }
-    static void f(Float* X, Float *Y) { X->Val = X->Val / Y->Val; }
+    static void f(Context& C, Float* X, Value Y) {
+      X->Val = llvm::APFloat(
+          X->Val.convertToDouble() / Number::getAsDouble(Y));
+    }
+    static Value f(Context& C, Int X, Int Y) {
+      if (Number::isExactZero(Y)) {
+        C.RaiseError("divide by exact zero", Value(Y));
+        return nullptr;
+      }
+      // TODO Support exact rational numbers.
+      // Treat all division as inexact.
+      return C.CreateFloat(double{X + 0.0} / Y);
+    }
   };
 };
 
@@ -275,61 +295,66 @@ void dump(Context& C, ValueRefs Args) {
 }
 
 template <typename Op>
-heavy::Value operator_helper(Context& C, Value X, Value Y) {
-  if (C.CheckNumber(X)) return nullptr;
-  if (C.CheckNumber(X)) return nullptr;
-  ValueKind CommonKind = Number::CommonKind(X, Y);
-  switch (CommonKind) {
-    case ValueKind::Float: {
-      llvm_unreachable("TODO casting to float");
+heavy::Value arithmetic_reduce(Context& C, Value Accum, ValueRefs Args) {
+  for (heavy::Value X : Args) {
+    if (C.CheckNumber(X)) return nullptr;
+    switch (Number::CommonKind(Accum, X)) {
+      case ValueKind::Float: {
+        // We can assume Float or Int for both values.
+        // Make Accum a Float if it is not.
+        if (!isa<Float>(Accum)) {
+          Accum = C.CreateFloat(double{cast<Int>(Accum) + 0.0});
+        }
+        Op::f(C, cast<Float>(Accum), X);
+        break;
+      }
+      case ValueKind::Int: {
+        // We can assume they are both Int.
+        Accum = Op::f(C, cast<Int>(Accum), cast<Int>(X));
+        // The result might NOT be Int though.
+        if (Accum == nullptr) return nullptr;
+        break;
+      }
+      default:
+        // CommonKind had an invalid number type
+        // or an error was thrown.
+        return nullptr;
     }
-    case ValueKind::Int: {
-      // we can assume they are both Int
-      return Op::f(cast<Int>(X), cast<Int>(Y));
-    }
-    default:
-      llvm_unreachable("unsupported numeric type");
   }
+  return Accum;
 }
 
 void add(Context& C, ValueRefs Args) {
-  Value Temp = Args[0];
-  for (heavy::Value X : Args.drop_front()) {
-    Temp = operator_helper<NumberOp::Add>(C, Temp, X);
-    if (!Temp) return;
+  Value Result = arithmetic_reduce<NumberOp::Add>(C, Int{0}, Args);
+  if (Result) {
+    C.Cont(Result);
   }
-  C.Cont(Temp);
-}
-
-void mul(Context&C, ValueRefs Args) {
-  Value Temp = Args[0];
-  for (heavy::Value X : Args.drop_front()) {
-    Temp = operator_helper<NumberOp::Mul>(C, Temp, X);
-    if (!Temp) return;
-  }
-  C.Cont(Temp);
 }
 
 void sub(Context&C, ValueRefs Args) {
-  Value Temp = Args[0];
-  for (heavy::Value X : Args.drop_front()) {
-    Temp = operator_helper<NumberOp::Sub>(C, Temp, X);
-    if (!Temp) return;
+  Value Result = arithmetic_reduce<NumberOp::Sub>(C, Int{0}, Args);
+  if (Result) {
+    C.Cont(Result);
   }
-  C.Cont(Temp);
+}
+
+void mul(Context&C, ValueRefs Args) {
+  Value Result = arithmetic_reduce<NumberOp::Mul>(C, Int{1}, Args);
+  if (Result) {
+    C.Cont(Result);
+  }
 }
 
 void div(Context& C, ValueRefs Args) {
-  Value Temp = Args[0];
-  for (heavy::Value X : Args.drop_front()) {
-    if (Number::isExactZero(X)) {
-      C.RaiseError("divide by exact zero", X);
-      return;
-    }
-    Temp = operator_helper<NumberOp::Div>(C, Temp, X);
-    if (!Temp) return;
+  if (Args.empty()) {
+    C.Cont(Int{1});
+    return;
   }
-  C.Cont(Temp);
+  Value Result = arithmetic_reduce<NumberOp::Div>(C, Args[0],
+                                                  Args.drop_front());
+  if (Result) {
+    C.Cont(Result);
+  }
 }
 
 void gt(Context& C, ValueRefs Args) {
