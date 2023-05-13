@@ -19,6 +19,7 @@
 #include <string>
 #include <system_error>
 #include <unordered_map>
+#include <vector>
 
 namespace heavy {
 class SourceManager;
@@ -66,6 +67,26 @@ public:
   };
 };
 
+struct SourceLineStart {
+  SourceLocation Loc = {};
+  unsigned LineNumber = 1;
+
+  // Compare by SourceLocation for searching
+  // line numbers when printing diagnostics.
+  // This only makes sense in the context of
+  // a single SourceFile.
+  bool operator<(SourceLineStart Other) {
+    return Loc.getEncoding() < Other.Loc.getEncoding();
+  }
+};
+
+struct SourceLineContext {
+  llvm::StringRef LineRange = {};
+  // Column - The offset of the location of interest in LineBuffer.
+  unsigned Column = 0;
+  unsigned LineNumber = 0;
+};
+
 class SourceFileStorage {
   friend class SourceManager;
   using StorageTy = std::unique_ptr<llvm::MemoryBuffer>;
@@ -97,6 +118,12 @@ struct SourceFile {
   // ExternalLocRawEncoding - Used to store clang::SourceLocation
   uintptr_t ExternalRawEncoding = 0;
 
+  // Store LineStart positions for like every 50 lines
+  // to make searching faster without using too much
+  // memory.
+  // TODO Maybe remove this since we don't populate it.
+  std::vector<SourceLineStart> LineStarts = {};
+
   bool isValid() const { return StartLoc.isValid(); }
 
   bool hasLoc(SourceLocation Loc) {
@@ -109,40 +136,102 @@ struct SourceFile {
   SourceLocation getStartLocation() const {
     return StartLoc;
   }
+
+  bool isExternal() const { return ExternalRawEncoding > 0; }
+};
+
+class SourceFileId {
+  unsigned IdValue = 0;
+public:
+  SourceFileId(unsigned IndexOffset) {
+    IdValue = IndexOffset + 1;
+  }
+
+  bool isValid() const {
+    return IdValue > 0;
+  }
+
+  unsigned getOffset() const {
+    return IdValue - 1;
+  }
 };
 
 class FullSourceLocation {
   friend SourceManager;
-  SourceFile File;
+  SourceManager& Manager;
+  SourceFileId FileId;
   SourceLocation Loc;
 
-  FullSourceLocation(SourceFile File, SourceLocation Loc)
-    : File(File),
+  FullSourceLocation(SourceManager& SM, SourceFileId FileId, SourceLocation Loc)
+    : Manager(SM),
+      FileId(FileId),
       Loc(Loc)
   { }
 
 public:
-  SourceFile getFile() const {
-    assert(isValid() && "SourceLocation must be valid");
-    return File;
-  }
-
   SourceLocation getLocation() const {
     return Loc;
   }
 
-  uintptr_t getExternalRawEncoding() {
-    return File.ExternalRawEncoding;
+  uintptr_t getExternalRawEncoding() const {
+    return Manager.getFile(FileId).ExternalRawEncoding;
   }
 
   // getOffset - returns offset of location from
   //             the start of the file
   unsigned getOffset() {
-    return Loc.getOffsetFrom(File.StartLoc);
+    return Loc.getOffsetFrom(Manager.getFile(FileId).StartLoc);
   }
 
   bool isValid() const {
     return Loc.isValid();
+  }
+
+  // FIXME: This is definitely big enough to go in a source file.
+  SourceLineContext getLineContext() const {
+    SourceFile& File = Manager.getFile(FileId);
+    char const* const FileStartPos = File.Buffer.begin();
+    char const* const FileEndPos = File.Buffer.eegin();
+    // Find the closest LineStart
+    auto& LineStarts = File.LineStarts;
+    auto Itr = std::upper_bound(LineStarts.begin(),
+                                LineStarts.end());
+    Closest = (Itr == LineStarts.end()) ? *Itr : SourceLineStart{};
+    // Now scan lines until we get to the desired location.
+    char const* const TargetPos = Manager.getBufferPos(FileId, Loc);
+    char const* CurPos = Manager.getBufferPos(FileId, Closest.Loc);
+    unsigned CurrentLineNumber = Closest.LineNumber;
+    char const* LineStartPos = CurPos;
+    if (CurPos <= TargetPos) {
+      // Traverse forward saving the last noted LineStart.
+      while (TargetPos != CurPos) {
+        if (CurPos == FileEndPos) break;
+        // If we see a newline character
+        if (CurPos == '\n') {
+          ++CurrentLineNumber;
+          LineStartPos = CurPos + 1;
+        }
+        ++CurPos;
+      }
+    } else {
+      // Traverse backward going to one LineStart beyond the TargetPos.
+      while (TargetPos != CurPos) {
+        if (CurPos == FileStartPos) break;
+        // If we see a newline character
+        if (CurPos == '\n') {
+          --CurrentLineNumber;
+        }
+        --CurPos;
+      }
+      while (*CurPos != '\n') {
+        if (CurPos == FileStartPos) break;
+        --CurPos;
+      }
+      LineStartPos = (CurPos == FileStartPos) ? FileStartPos : CurPos + 1;
+    }
+    return SourceLineContext{llvm::StringRef(LineStartPos, LineEndPos),
+                             TargetPos - LineStartPos,
+                             CurrentLineNumber};
   }
 };
 
@@ -187,11 +276,23 @@ public:
   }
 
   FullSourceLocation getFullSourceLocation(SourceLocation Loc) {
-    return FullSourceLocation{getFile(Loc), Loc};
+    return FullSourceLocation{*this, getFileId(Loc), Loc};
   }
 
-  SourceFile getFile(SourceLocation Loc) {
-    for (SourceFile X : Entries) {
+  // Note that the references to SourceFile should not be stored.
+  SourceFile& getFile(SourceFileId Id) const {
+    return Id.isValid() ? Entries[Id.getOffset()] : SourceFile{};
+  }
+
+  SourceFile& getFile(SourceLocation Loc) const {
+    for (SourceFile const& X : Entries) {
+      if (X.hasLoc(Loc)) return X;
+    }
+    return SourceFile{};
+  }
+
+  SourceFile& getFileId(SourceLocation Loc) const {
+    for (SourceFile const& X : Entries) {
       if (X.hasLoc(Loc)) return X;
     }
     return SourceFile{};
@@ -207,6 +308,10 @@ public:
       return File;
     }
     return (*itr).second;
+  }
+
+  char const* getBufferPos(SourceFileId Id, SourceLocation Loc) const {
+    return getFile(Id).Buffer[Loc.Loc];
   }
 };
 
