@@ -331,13 +331,6 @@ void add(Context& C, ValueRefs Args) {
   }
 }
 
-void sub(Context&C, ValueRefs Args) {
-  Value Result = arithmetic_reduce<NumberOp::Sub>(C, Int{0}, Args);
-  if (Result) {
-    C.Cont(Result);
-  }
-}
-
 void mul(Context&C, ValueRefs Args) {
   Value Result = arithmetic_reduce<NumberOp::Mul>(C, Int{1}, Args);
   if (Result) {
@@ -345,13 +338,34 @@ void mul(Context&C, ValueRefs Args) {
   }
 }
 
-void div(Context& C, ValueRefs Args) {
-  if (Args.empty()) {
-    C.Cont(Int{1});
-    return;
+void sub(Context&C, ValueRefs Args) {
+  Value Initial;
+
+  if (Args.size() > 1) {
+    Initial = Args[0];
+    Args = Args.drop_front(); 
+  } else {
+    // Additive inverse
+    Initial = Int{0};
   }
-  Value Result = arithmetic_reduce<NumberOp::Div>(C, Args[0],
-                                                  Args.drop_front());
+
+  Value Result = arithmetic_reduce<NumberOp::Sub>(C, Initial, Args);
+  if (Result) {
+    C.Cont(Result);
+  }
+}
+
+void div(Context& C, ValueRefs Args) {
+  Value Initial;
+
+  if (Args.size() > 1) {
+    Initial = Args[0];
+    Args = Args.drop_front(); 
+  } else {
+    // Multiplicative inverse
+    Initial = Int{1};
+  }
+  Value Result = arithmetic_reduce<NumberOp::Div>(C, Initial, Args);
   if (Result) {
     C.Cont(Result);
   }
