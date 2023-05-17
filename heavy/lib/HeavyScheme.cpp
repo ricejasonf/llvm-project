@@ -17,6 +17,8 @@
 #include "heavy/Mangle.h"
 #include "heavy/OpGen.h"
 #include "heavy/Parser.h"
+#include "heavy/Source.h"
+#include "heavy/SourceManager.h"
 #include "heavy/Value.h"
 
 
