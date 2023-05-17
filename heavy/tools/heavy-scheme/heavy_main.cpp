@@ -13,6 +13,7 @@
 #include <heavy/Lexer.h>
 #include <heavy/Parser.h>
 #include <heavy/HeavyScheme.h>
+#include <heavy/SourceManager.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/InitLLVM.h>
 #include <llvm/Support/Process.h>
@@ -85,7 +86,8 @@ int main(int argc, char const** argv) {
   // Top level Scheme parse/eval stuff
 
   bool HasErrors = false;
-  auto OnError = [&HasErrors](llvm::StringRef Err, heavy::FullSourceLocation) {
+  auto OnError = [&HasErrors](llvm::StringRef Err,
+                              heavy::FullSourceLocation const&) {
     HasErrors = true;
     // TODO display error location
     llvm::errs() << "error: "
