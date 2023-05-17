@@ -26,6 +26,7 @@ class SourceManager;
 class Value;
 class Undefined;
 class Environment;
+class FullSourceLocation;
 using ModuleLoadNamesFn = void(heavy::Context&);
 
 // HeavyScheme - Opaque wrapper for heavy::Context and common operations
@@ -69,7 +70,8 @@ class HeavyScheme {
   void LoadEmbeddedEnv(void* Handle,
           llvm::function_ref<void(HeavyScheme&, void*)> LoadParent);
 
-  using ErrorHandlerFn = void(llvm::StringRef, heavy::FullSourceLocation);
+  using ErrorHandlerFn = void(llvm::StringRef,
+                              heavy::FullSourceLocation const&);
 
   // ProcessTopLevelCommands
   //              - Reading tokens with the provided lexer, this command parses
