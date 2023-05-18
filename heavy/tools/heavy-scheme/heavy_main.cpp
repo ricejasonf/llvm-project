@@ -87,9 +87,15 @@ int main(int argc, char const** argv) {
 
   bool HasErrors = false;
   auto OnError = [&HasErrors](llvm::StringRef Err,
-                              heavy::FullSourceLocation const&) {
+                              heavy::FullSourceLocation const& SL) {
     HasErrors = true;
-    // TODO display error location
+    if (SL.isValid()) {
+      heavy::SourceLineContext LineContext = SL.getLineContext();
+      llvm::errs() << LineContext.FileName
+                   << ':' << LineContext.LineNumber
+                   << ':' << LineContext.Column << ' ';
+    }
+
     llvm::errs() << "error: "
                  << Err
                  << "\n\n";

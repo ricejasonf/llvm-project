@@ -138,8 +138,8 @@ FullSourceLocation::getLineContext() const {
   }
   // Traverse forwarrd to get LineEndPos.
   char const* LineEndPos = LineStartPos;
-  while (*LineEndPos != '\n' ||
-         *LineEndPos != '\r' ||
+  while (*LineEndPos != '\n' &&
+         *LineEndPos != '\r' &&
          LineEndPos != FileEndPos) {
     ++LineEndPos;
   }
