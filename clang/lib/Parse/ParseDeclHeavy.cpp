@@ -53,8 +53,7 @@ void LoadBuiltinModule(clang::Parser& P) {
     }
     llvm::StringRef Err = cast<heavy::String>(Args[0])->getView();
 
-    P.Diag(clang::SourceLocation{}, diag::err_heavy_scheme)
-      << "MESSAGE FROM CLANG LAND: " << Err;
+    P.Diag(clang::SourceLocation{}, diag::err_heavy_scheme) << Err;
     C.Cont(); 
   };
 
