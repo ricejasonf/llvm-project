@@ -73,10 +73,11 @@ int main(int argc, char const** argv) {
   bool IsInteractive = llvm::sys::Process::StandardInIsUserInput();
 #endif
   llvm::InitLLVM LLVM_(argc, argv);
-  heavy::SourceManager SourceMgr{};
+  heavy::HeavyScheme HeavyScheme;
   cl::ParseCommandLineOptions(argc, argv);
   llvm::StringRef Filename = InputFilename;
-  llvm::ErrorOr<heavy::SourceFile> FileResult = SourceMgr.Open(Filename);
+  llvm::ErrorOr<heavy::SourceFile>
+    FileResult = HeavyScheme.getSourceManager().Open(Filename);
   if (std::error_code ec = FileResult.getError()) {
     llvm::errs() << "Could not open input file: " << ec.message() << "\n";
     return 1;
@@ -93,15 +94,19 @@ int main(int argc, char const** argv) {
       heavy::SourceLineContext LineContext = SL.getLineContext();
       llvm::errs() << LineContext.FileName
                    << ':' << LineContext.LineNumber
-                   << ':' << LineContext.Column << ' ';
+                   << ':' << LineContext.Column << ' '
+                   << "error: " << Err << '\n'
+                   << LineContext.LineRange << '\n';
+      // Display the caret pointing to the point of interest.
+      for (unsigned i = 1; i < LineContext.Column; i++) {
+        llvm::errs() << ' ';
+      }
+      llvm::errs() << "^\n";
+    } else {
+      llvm::errs() << "error: " << Err << "\n\n";
     }
-
-    llvm::errs() << "error: "
-                 << Err
-                 << "\n\n";
   };
 
-  heavy::HeavyScheme HeavyScheme;
   heavy::Lexer Lexer(File);
   HeavyScheme.ProcessTopLevelCommands(Lexer, ProcessTopLevelExpr, OnError);
 

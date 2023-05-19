@@ -91,7 +91,7 @@ SourceManager::getClosestLineStart(SourceFile File,
   //       vector and using std::upper_bound.
   //       (like every 50 lines)
   //       Right now we don't expect large files.
-  return SourceLineStart{File.StartLoc, /*Line=*/0};
+  return SourceLineStart{File.StartLoc, /*Line=*/1};
 }
 
 // FullSourceLocation

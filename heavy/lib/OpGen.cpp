@@ -976,6 +976,11 @@ mlir::Value OpGen::HandleCall(Pair* P) {
     Value V = P->Cdr;
     while (auto* P2 = dyn_cast<Pair>(V)) {
       mlir::Value Arg = GetSingleResult(P2->Car);
+      if (mlir::Operation* Op = Arg.getDefiningOp()) {
+        Op->setLoc(mlir::OpaqueLoc::get(
+              P2->getSourceLocation().getOpaqueEncoding(),
+              Builder.getContext()));
+      }
       Args.push_back(Arg);
       V = P2->Cdr;
     }
