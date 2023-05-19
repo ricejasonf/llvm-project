@@ -318,6 +318,7 @@ private:
   }
 
   BlockItrTy Visit(ApplyOp Op) {
+    Context.setLoc(getSourceLocation(Op.getLoc()));
     llvm::SmallVector<heavy::Value, 8> ArgResults;
     LoadArgResults(Op, ArgResults);
     Value Callee = ArgResults[0];

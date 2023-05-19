@@ -81,7 +81,7 @@ struct SourceFile {
   // ExternalLocRawEncoding - Used to store clang::SourceLocation
   uintptr_t ExternalRawEncoding = 0;
 
-  bool isValid() const { return StartLoc.isValid(); }
+  bool isValid() const { return StartLoc.isValid() || isExternal(); }
 
   bool hasLoc(SourceLocation Loc) const {
     unsigned L = Loc.getEncoding();
@@ -127,7 +127,7 @@ public:
   }
 
   bool isValid() const {
-    return Loc.isValid();
+    return Loc.isValid() && File.isValid() && !File.isExternal();
   }
 
   // This is a potentially expensive operation
