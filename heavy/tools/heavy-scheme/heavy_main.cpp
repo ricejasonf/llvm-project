@@ -94,7 +94,7 @@ int main(int argc, char const** argv) {
       heavy::SourceLineContext LineContext = SL.getLineContext();
       llvm::errs() << LineContext.FileName
                    << ':' << LineContext.LineNumber
-                   << ':' << LineContext.Column << ' '
+                   << ':' << LineContext.Column << ": "
                    << "error: " << Err << '\n'
                    << LineContext.LineRange << '\n';
       // Display the caret pointing to the point of interest.
