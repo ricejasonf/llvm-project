@@ -241,7 +241,6 @@ private:
   }
 
   BlockItrTy CallFuncOp(heavy::FuncOp F, ValueRefs Args) {
-    SourceLocation CallLoc = getSourceLocation(F.getLoc());
     heavy::Value RestList;
     // check arguments
     unsigned NumArgs = Args.size();
@@ -256,7 +255,7 @@ private:
       // are less than the amount of arguments.
       //int NumExplicitArgsMatched = NumParams - 1 - NumArgs;
       if (NumArgs < NumParams - 1) {
-        return SetError(CallLoc, "invalid arity", heavy::Undefined());
+        return RaiseError("invalid arity", Value(Undefined()));
       }
 
       ValueRefs RestArgs = Args.slice(NumParams - 1, NumArgs - (NumParams - 1));
@@ -265,7 +264,7 @@ private:
     } else {
       // The function type includes the Context as a parameter
       if (NumParams != NumArgs) {
-        return SetError(CallLoc, "invalid arity", heavy::Undefined());
+        return RaiseError("invalid arity", Value(Undefined()));
       }
     }
 
