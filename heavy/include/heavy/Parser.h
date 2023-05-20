@@ -47,6 +47,7 @@ class Parser {
   bool IsFinished = false;
   SourceLocation PrevTokLocation;
   std::string LiteralResult = {};
+  std::string ErrorMsg = {};
 
   auto ValueEmpty() { return ValueResult(); }
   auto ValueError() { return ValueResult(Context.CreateUndefined()); }
@@ -68,8 +69,7 @@ class Parser {
   ValueResult ParseSpecialEscapeSequence();
 
   void SetError(Token& Tok, StringRef Msg) {
-    SourceLocation Loc = Tok.getLocation();
-    Context.SetError(Context.CreateError(Loc, Msg, Context.CreateEmpty()));
+    ErrorMsg = Msg;
   }
 
   bool CheckTerminator() {
@@ -87,6 +87,17 @@ public:
 
   bool isFinished() const {
     return IsFinished;
+  }
+
+  bool HasError() const {
+    return !ErrorMsg.empty();
+  }
+
+  void RaiseError() {
+    assert(HasError() && "There must be an error to raise.");
+    SourceLocation Loc = Tok.getLocation();
+    Context.SetError(Context.CreateError(Loc, ErrorMsg,
+                     Context.CreateEmpty()));
   }
 
   ValueResult ParseTopLevelExpr();
