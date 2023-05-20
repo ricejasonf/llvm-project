@@ -93,17 +93,22 @@ void HeavyScheme::ProcessTopLevelCommands(
                               heavy::tok Terminator) {
   auto& Context = getContext();
   auto& SM = getSourceManager();
+  auto ParserPtr = std::make_unique<Parser>(Lexer, Context);
+  Parser& Parser = *ParserPtr;
+
   auto HandleErrorFn = [&](heavy::Context& Context, ValueRefs Args) {
     heavy::Error* Err = cast<heavy::Error>(Args[0]);
     heavy::FullSourceLocation FullLoc = SM.getFullSourceLocation(
         Args[0].getSourceLocation());
     ErrorHandler(Err->getErrorMessage(), FullLoc);
-    Context.ClearStack();
+    // Finish parsing to return control to any
+    // parent lexer. (ie So c++ does not parse scheme code)
+    while (!Parser.isFinished()) {
+      Parser.ParseTopLevelExpr();
+    }
+    //Context.ClearStack();
     Context.Cont();
   };
-
-  auto ParserPtr = std::make_unique<Parser>(Lexer, Context);
-  Parser& Parser = *ParserPtr;
 
   if (!Parser.PrimeToken(Terminator)) {
     HandleErrorFn(Context, {});
@@ -124,15 +129,15 @@ void HeavyScheme::ProcessTopLevelCommands(
     C.PushCont(C.getCallee());
 
     heavy::ValueResult ParseResult = Parser.ParseTopLevelExpr();
-    // FIXME This should probably use PushCont
-    //       ParseTopLevelExpr should use Cont.
     if (ParseResult.isUsable()) {
       Value Env = C.getCapture(0);
       Value HandleExpr = C.getCapture(1);
       Value ParseResultVal = ParseResult.get();
       std::array<Value, 2> EvalArgs{ParseResultVal, Env};
       C.Apply(HandleExpr, EvalArgs);
-    } else if (!C.CheckError()) {
+    } else if (Parser.HasError()) {
+      Parser.RaiseError();
+    } else {
       C.Cont();
     }
   }, CaptureList{Value(&Env), HandleExpr});
