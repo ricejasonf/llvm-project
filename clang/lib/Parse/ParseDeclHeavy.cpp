@@ -31,6 +31,7 @@ using namespace clang;
 bool HEAVY_CLANG_IS_LOADED = false;
 heavy::ExternLambda<1> HEAVY_CLANG_VAR(diag_error) = {};
 heavy::ExternLambda<1> HEAVY_CLANG_VAR(hello_world) = {};
+heavy::ExternLambda<1> HEAVY_CLANG_VAR(write_lexer) = {};
 
 namespace {
 void LoadParentEnv(heavy::HeavyScheme& HS, void* Handle) {
@@ -39,6 +40,90 @@ void LoadParentEnv(heavy::HeavyScheme& HS, void* Handle) {
     HS.LoadEmbeddedEnv(DC->getParent(), LoadParentEnv);
   }
 }
+
+// It is complicated to keep the TokenBuffer alive
+// for the Preprocessor, so we use an array to give
+// ownership via the EnterTokenStream overload.
+class LexerWriter {
+  clang::Parser& Parser;
+  std::unique_ptr<Token[]> TokenBuffer;
+  unsigned Capacity = 0;
+  unsigned Size = 0;
+
+  void realloc(unsigned NewCapacity) {
+    std::unique_ptr<Token[]> NewTokenBuffer(new Token[NewCapacity]());
+    std::copy(&TokenBuffer[0], &TokenBuffer[Size],
+              NewTokenBuffer.get());
+    TokenBuffer = std::move(NewTokenBuffer);
+    Capacity = NewCapacity;
+  }
+
+  void push_back(Token Tok) {
+    unsigned NewSize = Size + 1;
+    if (Capacity < NewSize) {
+      // Start with a reasonable 128 bytes and then
+      // double capacity each time it is needed.
+      unsigned NewCapacity = Capacity > 0 ? Capacity * 2 : 128;
+      realloc(NewCapacity);
+    }
+    TokenBuffer[Size] = Tok;
+    Size = NewSize;
+  }
+
+public:
+  static auto CreateDefaultFn() {
+    return [](heavy::Context& C, heavy::ValueRefs Args) {
+      C.RaiseError("token buffer is not initialized");
+    };
+  }
+
+  LexerWriter(clang::Parser& P)
+    : Parser(P),
+      TokenBuffer(nullptr)
+  {
+    HEAVY_CLANG_VAR(write_lexer) = [this](heavy::Context& C,
+                                          heavy::ValueRefs Args) mutable {
+      this->operator()(C, Args);
+    };
+  }
+
+  ~LexerWriter() {
+    HEAVY_CLANG_VAR(write_lexer) = CreateDefaultFn();
+    Capacity = 0;
+    Size = 0;
+  }
+
+  void operator()(heavy::Context& C, heavy::ValueRefs Args) {
+    if (Args.size() != 1) return C.RaiseError("invalid arity");
+    if (!isa<heavy::String>(Args[0]))
+      return C.RaiseError("expecting string");
+    llvm::StringRef Result = cast<heavy::String>(Args[0])->getView();
+    // Lex Tokens for the TokenBuffer.
+    clang::Lexer Lexer(clang::SourceLocation(), Parser.getLangOpts(),
+                       Result.data(), Result.data(), &(*(Result.end())));
+    while (true) {
+      Token Tok;
+      Lexer.LexFromRawLexer(Tok);
+
+      // Raw identifiers need to be looked up.
+      if (Tok.is(tok::raw_identifier))
+        Parser.getPreprocessor().LookUpIdentifierInfo(Tok);
+
+      if (Tok.is(tok::eof)) break;
+      push_back(Tok);
+    }
+
+    C.Cont();
+  }
+
+  // This must be called AFTER we update the Clang Lexer position.
+  void FlushTokens() {
+    if (Size == 0) return;
+    Parser.getPreprocessor().EnterTokenStream(std::move(TokenBuffer), Size,
+                    /*DisableMacroExpansion=*/false,
+                    /*IsReinject=*/false);
+  }
+};
 
 void LoadBuiltinModule(clang::Parser& P) {
   auto diag_error = [&](heavy::Context& C, heavy::ValueRefs Args) {
@@ -54,16 +139,20 @@ void LoadBuiltinModule(clang::Parser& P) {
     llvm::StringRef Err = cast<heavy::String>(Args[0])->getView();
 
     P.Diag(clang::SourceLocation{}, diag::err_heavy_scheme) << Err;
-    C.Cont(); 
+    C.Cont();
   };
 
   auto hello_world = [](heavy::Context& C, heavy::ValueRefs Args) {
-    llvm::errs() << "\nhello world (from clang)\n";
-    C.Cont(); 
+    llvm::errs() << "hello world (from clang)\n";
+    C.Cont();
   };
+
+  // LexerWriter swaps this out every time it is run.
+  auto write_lexer = LexerWriter::CreateDefaultFn();
 
   HEAVY_CLANG_VAR(diag_error)   = diag_error;
   HEAVY_CLANG_VAR(hello_world)  = hello_world;
+  HEAVY_CLANG_VAR(write_lexer)  = write_lexer;
 }
 } // end anon namespace
 
@@ -103,6 +192,7 @@ bool Parser::ParseHeavyScheme() {
   };
 
 
+  LexerWriter TheLexerWriter(*this);
   heavy::TokenKind Terminator = heavy::tok::r_brace;
   HeavyScheme->ProcessTopLevelCommands(SchemeLexer,
                                        ErrorHandler,
@@ -110,6 +200,7 @@ bool Parser::ParseHeavyScheme() {
 
   // Return control to C++ Lexer
   PP.FinishEmbeddedLexer(SchemeLexer.GetByteOffset());
+  TheLexerWriter.FlushTokens();
 
   // The Lexers position has been changed
   // so we need to re-prime the look-ahead
