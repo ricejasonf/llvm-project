@@ -54,6 +54,8 @@ class HeavyScheme {
     return *SourceManagerPtr;
   }
 
+  heavy::FullSourceLocation getFullSourceLocation(heavy::SourceLocation Loc);
+
   heavy::Lexer createEmbeddedLexer(uintptr_t ExternalRawLoc,
                                    char const* BufferStart,
                                    char const* BufferEnd,
