@@ -34,6 +34,15 @@ heavy::ExternLambda<1> HEAVY_CLANG_VAR(hello_world) = {};
 heavy::ExternLambda<1> HEAVY_CLANG_VAR(write_lexer) = {};
 
 namespace {
+// Convert to a clang::SourceLocation or an invalid location if it
+// is not external.
+clang::SourceLocation getSourceLocation(heavy::FullSourceLocation Loc) {
+  if (!Loc.isExternal()) return clang::SourceLocation();
+  return clang::SourceLocation
+    ::getFromRawEncoding(Loc.getExternalRawEncoding())
+     .getLocWithOffset(Loc.getOffset());
+}
+
 void LoadParentEnv(heavy::HeavyScheme& HS, void* Handle) {
   DeclContext* DC = reinterpret_cast<DeclContext*>(Handle);
   if (!DC->isTranslationUnit()) {
@@ -46,6 +55,7 @@ void LoadParentEnv(heavy::HeavyScheme& HS, void* Handle) {
 // ownership via the EnterTokenStream overload.
 class LexerWriter {
   clang::Parser& Parser;
+  heavy::HeavyScheme& HeavyScheme;
   std::unique_ptr<Token[]> TokenBuffer;
   unsigned Capacity = 0;
   unsigned Size = 0;
@@ -77,8 +87,9 @@ public:
     };
   }
 
-  LexerWriter(clang::Parser& P)
+  LexerWriter(clang::Parser& P, heavy::HeavyScheme& HS)
     : Parser(P),
+      HeavyScheme(HS),
       TokenBuffer(nullptr)
   {
     HEAVY_CLANG_VAR(write_lexer) = [this](heavy::Context& C,
@@ -108,6 +119,10 @@ public:
       // Raw identifiers need to be looked up.
       if (Tok.is(tok::raw_identifier))
         Parser.getPreprocessor().LookUpIdentifierInfo(Tok);
+
+
+      Tok.setLocation(getSourceLocation(
+          HeavyScheme.getFullSourceLocation(C.getLoc())));
 
       if (Tok.is(tok::eof)) break;
       push_back(Tok);
@@ -185,14 +200,12 @@ bool Parser::ParseHeavyScheme() {
   auto ErrorHandler = [&](llvm::StringRef Err,
                           heavy::FullSourceLocation EmbeddedLoc) {
     HasError = true;
-    clang::SourceLocation ErrLoc = clang::SourceLocation
-      ::getFromRawEncoding(EmbeddedLoc.getExternalRawEncoding())
-       .getLocWithOffset(EmbeddedLoc.getOffset());
+    clang::SourceLocation ErrLoc = getSourceLocation(EmbeddedLoc);
     Diag(ErrLoc, diag::err_heavy_scheme) << Err;
   };
 
 
-  LexerWriter TheLexerWriter(*this);
+  LexerWriter TheLexerWriter(*this, *HeavyScheme);
   heavy::TokenKind Terminator = heavy::tok::r_brace;
   HeavyScheme->ProcessTopLevelCommands(SchemeLexer,
                                        ErrorHandler,

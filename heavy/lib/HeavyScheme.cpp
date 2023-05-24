@@ -158,6 +158,11 @@ void HeavyScheme::RegisterModule(llvm::StringRef MangledName,
   getContext().RegisterModule(MangledName, LoadNamesFn);
 }
 
+heavy::FullSourceLocation
+HeavyScheme::getFullSourceLocation(heavy::SourceLocation Loc) {
+  return getSourceManager().getFullSourceLocation(Loc);
+}
+
 heavy::Undefined setError(heavy::Context& C, llvm::StringRef Msg) {
   C.SetError(Msg);
   return {};

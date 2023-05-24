@@ -130,6 +130,10 @@ public:
     return Loc.isValid() && File.isValid() && !File.isExternal();
   }
 
+  bool isExternal() const {
+    return File.isExternal();
+  }
+
   // This is a potentially expensive operation
   // so only call it if we intend to display
   // an error to the user.
