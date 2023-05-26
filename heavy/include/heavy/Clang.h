@@ -40,6 +40,9 @@ extern heavy::ExternLambda<1> HEAVY_CLANG_VAR(hello_world);
 // write-lexer
 extern heavy::ExternLambda<1> HEAVY_CLANG_VAR(write_lexer);
 
+// expr-eval
+extern heavy::ExternLambda<1, sizeof(void*)*2> HEAVY_CLANG_VAR(expr_eval);
+
 extern "C" {
 // initialize the module for run-time independent of the compiler
 inline void HEAVY_CLANG_INIT(heavy::Context& Context) {
@@ -52,6 +55,8 @@ inline void HEAVY_CLANG_INIT(heavy::Context& Context) {
       "external module must be preloaded");
   assert(HEAVY_CLANG_VAR(write_lexer).Value &&
       "external module must be preloaded");
+  assert(HEAVY_CLANG_VAR(expr_eval).Value &&
+      "external module must be preloaded");
 }
 
 // initializes the module and loads lookup information
@@ -61,7 +66,8 @@ inline void HEAVY_CLANG_LOAD_MODULE(heavy::Context& Context) {
   heavy::initModule(Context, HEAVY_CLANG_LIB_STR, {
     {"diag-error",  HEAVY_CLANG_VAR(diag_error)},
     {"hello-world", HEAVY_CLANG_VAR(hello_world)},
-    {"write-lexer", HEAVY_CLANG_VAR(write_lexer)}
+    {"write-lexer", HEAVY_CLANG_VAR(write_lexer)},
+    {"expr-eval",   HEAVY_CLANG_VAR(expr_eval)}
   });
 }
 }
