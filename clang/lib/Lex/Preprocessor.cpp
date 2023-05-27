@@ -1730,6 +1730,7 @@ void Preprocessor::InitHeavySchemeLexer() {
 
 void Preprocessor::InitEmbeddedLexer(
           llvm::function_ref<EmbeddedLexerInitFn> InitFn) {
+  assert(IsFileLexer() && "cannot embed scheme in macro expansion");
   InitFn(CurLexer->getFileLoc(),
          CurLexer->BufferStart,
          CurLexer->BufferEnd,
@@ -1737,6 +1738,16 @@ void Preprocessor::InitEmbeddedLexer(
 }
 
 void Preprocessor::FinishEmbeddedLexer(unsigned Offset) {
+  // Clear the cached tokens we never wanted.
+  assert(BacktrackPositions.empty() && "should not be in a tentative parse");
+  ExitCachingLexMode();
+  CachedTokens.clear();
+  CachedLexPos = 0;
+
+  // Revert to the file lexer.
+  //while (!IsFileLexer()) {
+   // RemoveTopOfLexerStack();
+  //}
   // Have the CurLexer resume on the char
   // immediately after the last char lexed
   // by the the embedded lexer (specified by Offset)
