@@ -45,6 +45,12 @@ clang::SourceLocation getSourceLocation(heavy::FullSourceLocation Loc) {
      .getLocWithOffset(Loc.getOffset());
 }
 
+// Get the current sourcelocation from the Scheme Context.
+clang::SourceLocation getSourceLocation(heavy::HeavyScheme& HS) {
+    return getSourceLocation(HS.getFullSourceLocation(
+          HS.getContext().getLoc()));
+}
+
 void LoadParentEnv(heavy::HeavyScheme& HS, void* Handle) {
   DeclContext* DC = reinterpret_cast<DeclContext*>(Handle);
   if (!DC->isTranslationUnit()) {
@@ -94,14 +100,13 @@ public:
     Size = 0;
   }
 
-  void operator()(heavy::Context& C, heavy::ValueRefs Args) {
-    if (Args.size() != 1) return C.RaiseError("invalid arity");
-    if (!isa<heavy::String>(Args[0]))
-      return C.RaiseError("expecting string");
-    llvm::StringRef Result = cast<heavy::String>(Args[0])->getView();
+  // Lex tokens from string and push to TokenBuffer.
+  // Copy to a std::string to guarantee a null terminator.
+  void Tokenize(std::string Chars) {
+    if (Chars.empty()) return;
     // Lex Tokens for the TokenBuffer.
     clang::Lexer Lexer(clang::SourceLocation(), Parser.getLangOpts(),
-                       Result.data(), Result.data(), &(*(Result.end())));
+                       Chars.data(), Chars.data(), &(*(Chars.end())));
     while (true) {
       Token Tok;
       Lexer.LexFromRawLexer(Tok);
@@ -110,15 +115,11 @@ public:
       if (Tok.is(tok::raw_identifier))
         Parser.getPreprocessor().LookUpIdentifierInfo(Tok);
 
-
-      Tok.setLocation(getSourceLocation(
-          HeavyScheme.getFullSourceLocation(C.getLoc())));
+      Tok.setLocation(getSourceLocation(HeavyScheme));
 
       if (Tok.is(tok::eof)) break;
       push_back(Tok);
     }
-
-    C.Cont();
   }
 
   // This must be called AFTER we update the Clang Lexer position.
@@ -126,133 +127,134 @@ public:
     if (Size == 0) return;
     Parser.getPreprocessor().EnterTokenStream(std::move(TokenBuffer), Size,
                     /*DisableMacroExpansion=*/true,
-                    /*IsReinject=*/false);
+                    /*IsReinject=*/true);
     Capacity = 0;
     Size = 0;
   }
 };
-
-void LoadBuiltinModule(clang::Parser& P, heavy::HeavyScheme* HS) {
-  // FIXME We are capturing Parser and storing it in globals.
-  //       This is a problem if we have multiple CompilerInvocations.
-  //       There must be a way to store "globals" with Context if
-  //       they have state.
-  //       (This is a problem for static modules in general.)
-  auto diag_error = [&](heavy::Context& C, heavy::ValueRefs Args) {
-    if (Args.size() != 1) {
-      C.RaiseError("invalid arity to function", C.getCallee());
-      return;
-    }
-    if (!isa<heavy::String>(Args[0])) {
-      C.RaiseError("expecting string", C.getCallee());
-      return;
-    }
-    llvm::StringRef Err = cast<heavy::String>(Args[0])->getView();
-
-    P.Diag(clang::SourceLocation{}, diag::err_heavy_scheme) << Err;
-    C.Cont();
-  };
-
-  auto hello_world = [](heavy::Context& C, heavy::ValueRefs Args) {
-    llvm::errs() << "hello world (from clang)\n";
-    C.Cont();
-  };
-
-  auto expr_eval = [&](heavy::Context& C, heavy::ValueRefs Args) {
-    if (Args.size() != 1) {
-      C.RaiseError("invalid arity to function", C.getCallee());
-      return;
-    }
-    if (!isa<heavy::String>(Args[0])) {
-      C.RaiseError("expecting string", C.getCallee());
-      return;
-    }
-    llvm::StringRef Source = cast<heavy::String>(Args[0])->getView();
-
-
-    // Lex and expand.
-    clang::Lexer Lexer(clang::SourceLocation(), P.getLangOpts(),
-                       Source.data(), Source.data(), &(*(Source.end())));
-    LexerWriter TheLexerWriter(P, *HS);
-    TheLexerWriter.FlushTokens();
-
-    // Parse the expression.
-    clang::ExprResult ExprResult = P.ParseExpression();
-
-    // TODO
-    // Make sure the macro expansion is popped off the include stack.
-
-    // Process the parsing result if any.
-    if (ExprResult.isInvalid()) {
-      return C.RaiseError("clang expression parsing failed");
-    }
-    clang::Expr* Expr = ExprResult.get();
-
-    // ConstantExpr eval.
-    clang::Expr::EvalResult EvalResult;
-    if (!Expr->EvaluateAsRValue(EvalResult,
-          P.getActions().getASTContext())) {
-      // The evaluation failed.
-      // TODO Have Clang emit the diagnostics (ie From EvalResult.Diag)
-      C.RaiseError("clang expression evaluation failed");
-      return;
-    }
-
-    // Convert EvalResult/APValue to Scheme value.
-    heavy::Value Result;
-    switch (EvalResult.Val.getKind()) {
-      case APValue::None:
-      case APValue::Indeterminate: {
-        // ... Or maybe we allow errors. (ie like SFINAE)
-        Result = heavy::Undefined();
-        C.RaiseError("clang expression evaluation failed");
-        return;
-      }
-      case APValue::Int: {
-        llvm::APSInt Int = EvalResult.Val.getInt();
-        if (Expr->getType()->isBooleanType()) {
-          Result = heavy::Bool(Int.getBoolValue());
-        } else if (Int.isSignedIntN(32)) {
-          Result = heavy::Int(Int.getZExtValue());
-        }
-        break;
-      }
-      // TODO Support these value types.
-      case APValue::Float:
-      case APValue::FixedPoint:
-      case APValue::ComplexInt:
-      case APValue::ComplexFloat:
-      case APValue::Vector:
-      case APValue::Array:
-      case APValue::Struct:
-
-      // Will not support.
-      case APValue::LValue:
-      case APValue::Union:
-      case APValue::MemberPointer:
-      case APValue::AddrLabelDiff:
-      default:
-        // Do nothing.
-      break;
-    }
-
-    if (Result) {
-      C.Cont(Result);
-    } else {
-      C.RaiseError("unsupported result type");
-    }
-  };
-
-  HEAVY_CLANG_VAR(diag_error)   = diag_error;
-  HEAVY_CLANG_VAR(hello_world)  = hello_world;
-  HEAVY_CLANG_VAR(expr_eval)    = expr_eval;
-}
 } // end anon namespace
 
 bool Parser::ParseHeavyScheme() {
   if (!HeavyScheme) {
     HeavyScheme = std::make_unique<heavy::HeavyScheme>();
-    LoadBuiltinModule(*this, HeavyScheme.get());
+    // Load the static builtin module.
+    Parser& P = *this;
+    heavy::HeavyScheme& HS = *HeavyScheme;
+    // FIXME We are capturing Parser and storing it in globals.
+    //       This is a problem if we have multiple CompilerInvocations.
+    //       There must be a way to store "globals" with Context if
+    //       they have state.
+    //       (This is a problem for static modules in general.)
+    auto diag_error = [&](heavy::Context& C, heavy::ValueRefs Args) {
+      if (Args.size() != 1) {
+        C.RaiseError("invalid arity to function", C.getCallee());
+        return;
+      }
+      if (!isa<heavy::String>(Args[0])) {
+        C.RaiseError("expecting string", C.getCallee());
+        return;
+      }
+      llvm::StringRef Err = cast<heavy::String>(Args[0])->getView();
+
+      P.Diag(clang::SourceLocation{}, diag::err_heavy_scheme) << Err;
+      C.Cont();
+    };
+
+    auto hello_world = [](heavy::Context& C, heavy::ValueRefs Args) {
+      llvm::errs() << "hello world (from clang)\n";
+      C.Cont();
+    };
+
+    auto expr_eval = [&](heavy::Context& C, heavy::ValueRefs Args) {
+      if (Args.size() != 1) {
+        C.RaiseError("invalid arity to function", C.getCallee());
+        return;
+      }
+      if (!isa<heavy::String>(Args[0])) {
+        C.RaiseError("expecting string", C.getCallee());
+        return;
+      }
+      llvm::StringRef Source = cast<heavy::String>(Args[0])->getView();
+
+      // Prepare to revert Parser.
+      TentativeParsingAction ParseReverter(P);
+
+      // Lex and expand.
+      LexerWriter TheLexerWriter(P, HS);
+      TheLexerWriter.Tokenize(Source.str());
+      TheLexerWriter.FlushTokens();
+      P.ConsumeAnyToken();
+
+      // Parse the expression.
+      clang::ExprResult ExprResult = P.ParseExpression();
+
+      // Revert the lexer position so we don't keep moving forward.
+      ParseReverter.Revert();
+
+      // Process the parsing result if any.
+      if (ExprResult.isInvalid()) {
+        return C.RaiseError("clang expression parsing failed");
+      }
+      clang::Expr* Expr = ExprResult.get();
+
+      // ConstantExpr eval.
+      clang::Expr::EvalResult EvalResult;
+      if (!Expr->EvaluateAsRValue(EvalResult,
+            P.getActions().getASTContext())) {
+        // The evaluation failed.
+        // TODO Have Clang emit the diagnostics (ie From EvalResult.Diag)
+        C.RaiseError("clang expression evaluation failed");
+        return;
+      }
+
+      // Convert EvalResult/APValue to Scheme value.
+      heavy::Value Result;
+      switch (EvalResult.Val.getKind()) {
+        case APValue::None:
+        case APValue::Indeterminate: {
+          // ... Or maybe we allow errors. (ie like SFINAE)
+          Result = heavy::Undefined();
+          C.RaiseError("clang expression evaluation failed");
+          return;
+        }
+        case APValue::Int: {
+          llvm::APSInt Int = EvalResult.Val.getInt();
+          if (Expr->getType()->isBooleanType()) {
+            Result = heavy::Bool(Int.getBoolValue());
+          } else if (Int.isSignedIntN(32)) {
+            Result = heavy::Int(Int.getZExtValue());
+          }
+          break;
+        }
+        // TODO Support these value types.
+        case APValue::Float:
+        case APValue::FixedPoint:
+        case APValue::ComplexInt:
+        case APValue::ComplexFloat:
+        case APValue::Vector:
+        case APValue::Array:
+        case APValue::Struct:
+
+        // Will not support.
+        case APValue::LValue:
+        case APValue::Union:
+        case APValue::MemberPointer:
+        case APValue::AddrLabelDiff:
+        default:
+          // Do nothing.
+        break;
+      }
+
+      if (Result) {
+        C.Cont(Result);
+      } else {
+        C.RaiseError("unsupported result type");
+      }
+    };
+
+    HEAVY_CLANG_VAR(diag_error)   = diag_error;
+    HEAVY_CLANG_VAR(hello_world)  = hello_world;
+    HEAVY_CLANG_VAR(expr_eval)    = expr_eval;
     HeavyScheme->RegisterModule(HEAVY_CLANG_LIB_STR, HEAVY_CLANG_LOAD_MODULE);
   }
 
@@ -282,16 +284,23 @@ bool Parser::ParseHeavyScheme() {
     Diag(ErrLoc, diag::err_heavy_scheme) << Err;
   };
 
+  // Prepare to revert Parser.
+  //TentativeParsingAction ParseReverter(*this);
 
   LexerWriter TheLexerWriter(*this, *HeavyScheme);
   HEAVY_CLANG_VAR(write_lexer) = [&](heavy::Context& C,
                                      heavy::ValueRefs Args) mutable {
-    TheLexerWriter.operator()(C, Args);
+    if (Args.size() != 1) return C.RaiseError("invalid arity");
+    if (!isa<heavy::String>(Args[0])) return C.RaiseError("expecting string");
+    llvm::StringRef Result = cast<heavy::String>(Args[0])->getView();
+    TheLexerWriter.Tokenize(Result.str());
+    C.Cont();
   };
   heavy::TokenKind Terminator = heavy::tok::r_brace;
   HeavyScheme->ProcessTopLevelCommands(SchemeLexer,
                                        ErrorHandler,
                                        Terminator);
+  //ParseReverter.Revert();
 
   // Return control to C++ Lexer
   PP.FinishEmbeddedLexer(SchemeLexer.GetByteOffset());
@@ -303,7 +312,7 @@ bool Parser::ParseHeavyScheme() {
 
   // The Lexers position has been changed
   // so we need to re-prime the look-ahead
-  this->ConsumeToken();
+  this->ConsumeAnyToken();
 
   return HasError;
 }
