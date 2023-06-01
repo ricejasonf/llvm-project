@@ -227,7 +227,6 @@ public:
   }
 
   void setLoc(SourceLocation L) {
-    assert(L.isValid() && "explicit source loc must be valid");
     Loc = L;
   }
 

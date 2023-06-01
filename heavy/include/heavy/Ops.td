@@ -27,7 +27,7 @@ def HeavyDialect : Dialect {
 //                  implies the need for garbage collection.
 class HeavyValueBase<string name> : Type<
   CPred<!strconcat("$_self.isa<::heavy::Heavy", name, "Ty>()")>,
-  name, "::heavy::HeavyValueTy"/*!strconcat("::heavy::", name)*/>;
+  name, !strconcat("::heavy::Heavy", name, "Ty")>;
 
 def HeavyValue : Type<CPred<"$_self.isa<::heavy::HeavyValueTy>()">,
                   "value", "::heavy::HeavyValueTy">;
