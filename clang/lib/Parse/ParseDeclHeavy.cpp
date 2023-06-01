@@ -150,11 +150,11 @@ bool Parser::ParseHeavyScheme() {
         C.RaiseError("invalid arity to function", C.getCallee());
         return;
       }
-      if (!isa<heavy::String>(Args[0])) {
-        C.RaiseError("expecting string", C.getCallee());
+      if (!isa<heavy::String, heavy::Symbol>(Args[0])) {
+        C.RaiseError("expecting string or identifier", C.getCallee());
         return;
       }
-      llvm::StringRef Err = cast<heavy::String>(Args[0])->getView();
+      llvm::StringRef Err = Args[0].getStringView();
 
       P.Diag(clang::SourceLocation{}, diag::err_heavy_scheme) << Err;
       C.Cont();
@@ -170,11 +170,11 @@ bool Parser::ParseHeavyScheme() {
         C.RaiseError("invalid arity to function", C.getCallee());
         return;
       }
-      if (!isa<heavy::String>(Args[0])) {
-        C.RaiseError("expecting string", C.getCallee());
+      if (!isa<heavy::String, heavy::Symbol>(Args[0])) {
+        C.RaiseError("expecting string or identifier", C.getCallee());
         return;
       }
-      llvm::StringRef Source = cast<heavy::String>(Args[0])->getView();
+      llvm::StringRef Source = Args[0].getStringView();
 
       // Prepare to revert Parser.
       TentativeParsingAction ParseReverter(P);
@@ -285,14 +285,14 @@ bool Parser::ParseHeavyScheme() {
   };
 
   // Prepare to revert Parser.
-  //TentativeParsingAction ParseReverter(*this);
 
   LexerWriter TheLexerWriter(*this, *HeavyScheme);
   HEAVY_CLANG_VAR(write_lexer) = [&](heavy::Context& C,
                                      heavy::ValueRefs Args) mutable {
     if (Args.size() != 1) return C.RaiseError("invalid arity");
-    if (!isa<heavy::String>(Args[0])) return C.RaiseError("expecting string");
-    llvm::StringRef Result = cast<heavy::String>(Args[0])->getView();
+    if (!isa<heavy::String, heavy::Symbol>(Args[0]))
+      return C.RaiseError("expecting string or identifier");
+    llvm::StringRef Result = Args[0].getStringView();
     TheLexerWriter.Tokenize(Result.str());
     C.Cont();
   };
