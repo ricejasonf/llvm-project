@@ -5977,6 +5977,9 @@ bool Parser::isDeclarationSpecifier(
   case tok::kw_static_assert:
   case tok::kw__Static_assert:
 
+    // heavy_scheme declaration
+  case tok::kw_heavy_scheme:
+
     // C23/GNU typeof support.
   case tok::kw_typeof:
   case tok::kw_typeof_unqual:

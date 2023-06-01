@@ -61,6 +61,8 @@ bool Parser::isCXXDeclarationStatement(
     // static_assert-declaration
   case tok::kw_static_assert:
   case tok::kw__Static_assert:
+    // heavy_scheme-declaration
+  case tok::kw_heavy_scheme:
     return true;
   case tok::coloncolon:
   case tok::identifier: {
