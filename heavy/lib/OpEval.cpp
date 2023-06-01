@@ -139,6 +139,7 @@ public:
   //                so provide an interface to functions
   //                to wrap non-compiled SyntaxOps.
   void InvokeSyntax(SyntaxOp Op, Value Input) {
+    Context.setLoc(Input.getSourceLocation());
     // Bind the Input to the block argument
     setValue(Op.getRegion().getArgument(0), Input);
     mlir::Block& Body = Op.getRegion().front();
@@ -567,7 +568,7 @@ private:
     pop_scope();
     mlir::Operation* NextNode = PatternOp->getNextNode();
     if (!NextNode) {
-      heavy::SourceLocation Loc = getSourceLocation(O->getLoc());
+      heavy::SourceLocation Loc = Context.getLoc();
       Context.OpGen->SetError(Loc, "no matching pattern for syntax",
                               Undefined());
       return BlockItrTy();
