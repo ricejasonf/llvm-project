@@ -147,6 +147,7 @@ public:
   bool isMutable() const { return IsMutable; }
   ValueKind getKind() const { return VKind; }
   SourceLocation getSourceLocation();
+  llvm::StringRef getStringView();
   void dump();
 };
 
@@ -392,16 +393,16 @@ public:
     llvm_unreachable("cannot get here");
   }
 
-  bool isNumber() {
+  bool isNumber() const {
     return getTag() == ValueSumType::Int ||
            getKind() == ValueKind::Float;
   }
 
-  bool isEmpty() {
+  bool isEmpty() const {
     return getKind() == ValueKind::Empty;
   }
 
-  bool isTrue() {
+  bool isTrue() const {
     // returns true for everything except
     // explicit #f (per r7rS)
     if (is<ValueSumType::Bool>())
@@ -409,12 +410,20 @@ public:
     return true;
   }
 
-  SourceLocation getSourceLocation() {
+  SourceLocation getSourceLocation() const {
     if (is<ValueSumType::ValueBase>()) {
       return get<ValueSumType::ValueBase>()
         ->getSourceLocation();
     }
     return SourceLocation();
+  }
+
+  llvm::StringRef getStringView() const {
+    if (is<ValueSumType::ValueBase>()) {
+      return get<ValueSumType::ValueBase>()
+        ->getStringView();
+    }
+    return llvm::StringRef();
   }
 
   // The car/cdr et al  return nullptr if any
@@ -1634,6 +1643,20 @@ inline SourceLocation ValueBase::getSourceLocation() {
     return SourceLocation();
   }
   return VS->getSourceLocation();
+}
+
+// Get string view for String or Symbol, or
+// get an empty string view
+inline llvm::StringRef ValueBase::getStringView() {
+  Value Self(this);
+  switch (getKind()) {
+  case ValueKind::String:
+    return cast<String>(Self)->getView();
+  case ValueKind::Symbol:
+    return cast<Symbol>(Self)->getView();
+  default:
+    return llvm::StringRef();
+  }
 }
 
 inline Value Value::car() {
