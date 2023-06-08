@@ -185,6 +185,11 @@ void UndefinedOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState) {
   UndefinedOp::build(B, OpState, B.getType<HeavyValueTy>());
 }
 
+void SourceLocOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState) {
+  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
+  SourceLocOp::build(B, OpState, HeavyValueT);
+}
+
 using namespace mlir;
 #define GET_OP_CLASSES
 #include "heavy/Ops.cpp.inc"

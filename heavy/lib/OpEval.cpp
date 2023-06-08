@@ -217,6 +217,7 @@ private:
     else if (isa<RenameOp>(Op))       return Visit(cast<RenameOp>(Op));
     else if (isa<SyntaxClosureOp>(Op))
       return Visit(cast<SyntaxClosureOp>(Op));
+    else if (isa<SourceLocOp>(Op))    return Visit(cast<SourceLocOp>(Op));
     else if (UndefinedOp UndefOp = dyn_cast<UndefinedOp>(Op)) {
       setValue(UndefOp, Context.CreateUndefined());
       return next(Op);
@@ -590,6 +591,7 @@ private:
   BlockItrTy Visit(MatchPairOp Op) {
     heavy::Value E = getValue(Op.getInput());
     if (auto* Pair = dyn_cast<heavy::Pair>(E)) {
+      Context.setLoc(E.getSourceLocation());
       setValue(Op.getCar(), Pair->Car);
       setValue(Op.getCdr(), Pair->Cdr);
       return next(Op);
@@ -610,7 +612,8 @@ private:
     // Create a SyntaxClosure with the current
     // EnvStack.
     heavy::Value Input = getValue(Op.getInput());
-    SyntaxClosure* SC = Context.CreateSyntaxClosure(Input);
+    SyntaxClosure* SC = Context.CreateSyntaxClosure(Context.getLoc(),
+                                                    Input);
     setValue(Op.getResult(), SC);
     return next(Op);
   }
@@ -640,6 +643,13 @@ private:
       Context.Cont(Output);
     }
     return BlockItrTy();
+  }
+
+  BlockItrTy Visit(SourceLocOp Op) {
+    heavy::SourceLocation Loc = getSourceLocation(Op.getLoc());
+    heavy::Value V = Context.CreateSourceValue(Loc);
+    setValue(Op.getResult(), V);
+    return next(Op);
   }
 
   // VisitExportOp - Register export vars with Context. Always run this
