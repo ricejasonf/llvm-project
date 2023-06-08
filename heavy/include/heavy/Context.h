@@ -334,8 +334,12 @@ public:
     return new (TrashHeap) BuiltinSyntax(Fn);
   }
 
-  SyntaxClosure* CreateSyntaxClosure(Value Node) {
-    return new (TrashHeap) SyntaxClosure(EnvStack, Node);
+  SyntaxClosure* CreateSyntaxClosure(SourceLocation Loc, Value Node) {
+    return new (TrashHeap) SyntaxClosure(Loc, EnvStack, Node);
+  }
+
+  SourceValue* CreateSourceValue(SourceLocation Loc) {
+    return new (TrashHeap) SourceValue(Loc);
   }
 
   Error* CreateError(SourceLocation Loc, Value Message, Value Irritants) {

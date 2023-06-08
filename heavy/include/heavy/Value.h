@@ -126,6 +126,7 @@ enum class ValueKind {
   Pair,
   PairWithSource,
   Quote,
+  SourceValue,
   String,
   Symbol,
   Syntax,
@@ -636,6 +637,25 @@ public:
   }
 };
 
+// SourceValue
+//  - A standalone value to pass source locations around
+//    in scheme to prevent forcing the use of syntax
+//    to propagate source locations all over the place.
+//    (For doing run-time programming in compilers.)
+class SourceValue : public ValueBase,
+                    public ValueWithSource {
+  public:
+    SourceValue(SourceLocation L)
+      : ValueBase(ValueKind::SourceValue),
+        ValueWithSource(L)
+  { }
+
+  static bool classof(Value V) {
+    return V.getKind() == ValueKind::SourceValue;
+  }
+  static ValueKind getKind() { return ValueKind::SourceValue; }
+};
+
 // Concrete Values
 
 class Error: public ValueBase,
@@ -1112,13 +1132,17 @@ public:
 //                 Objects of this type are meant to be
 //                 ephemeral and used only during syntax
 //                 transformation.
-class SyntaxClosure : public ValueBase {
+//                 The SourceLocation is the location of the
+//                 PairWithSource from substitution.
+class SyntaxClosure : public ValueBase,
+                      public ValueWithSource {
 public:
   Value Env;
   Value Node;
 
-  SyntaxClosure(Value Env, Value Node)
+  SyntaxClosure(SourceLocation L, Value Env, Value Node)
     : ValueBase(ValueKind::SyntaxClosure),
+      ValueWithSource(L),
       Env(Env),
       Node(Node)
   { }
@@ -1633,8 +1657,14 @@ inline SourceLocation ValueBase::getSourceLocation() {
   case ValueKind::Error:
     VS = cast<Error>(Self);
     break;
+  case ValueKind::SourceValue:
+    VS = cast<SourceValue>(Self);
+    break;
   case ValueKind::Symbol:
     VS = cast<Symbol>(Self);
+    break;
+  case ValueKind::SyntaxClosure:
+    VS = cast<SyntaxClosure>(Self);
     break;
   case ValueKind::PairWithSource:
     VS = cast<PairWithSource>(Self);
@@ -1719,6 +1749,7 @@ inline llvm::StringRef getKindName(heavy::ValueKind Kind) {
   GET_KIND_NAME_CASE(Pair)
   GET_KIND_NAME_CASE(PairWithSource)
   GET_KIND_NAME_CASE(Quote)
+  GET_KIND_NAME_CASE(SourceValue)
   GET_KIND_NAME_CASE(String)
   GET_KIND_NAME_CASE(Symbol)
   GET_KIND_NAME_CASE(Syntax)
