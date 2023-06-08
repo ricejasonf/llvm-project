@@ -78,6 +78,7 @@ mlir::Value quasiquote(OpGen& C, Pair* P); // lib/Quasiquote.cpp
 mlir::Value quote(OpGen& OG, Pair* P);     // lib/Quasiquote.cpp
 mlir::Value set(OpGen& OG, Pair* P);
 mlir::Value cond_expand(OpGen& OG, Pair* P);
+mlir::Value source_loc(OpGen& OG, Pair* P);
 
 
 // functions
@@ -121,6 +122,7 @@ extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(include);
 extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(include_ci);
 extern heavy::ExternBuiltinSyntax
   HEAVY_BASE_VAR(include_library_declarations);
+extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(source_loc);
 
 extern heavy::ExternFunction HEAVY_BASE_VAR(add);
 extern heavy::ExternFunction HEAVY_BASE_VAR(sub);
@@ -173,6 +175,7 @@ inline void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(include_ci)      = heavy::base::include_ci;
   HEAVY_BASE_VAR(include_library_declarations)
     = heavy::base::include_library_declarations;
+  HEAVY_BASE_VAR(source_loc)      = heavy::base::source_loc;
 
   // functions
   HEAVY_BASE_VAR(add)     = heavy::base::add;
@@ -220,6 +223,7 @@ inline void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"include-ci",    HEAVY_BASE_VAR(include_ci)},
     {"include-library-declarations",
       HEAVY_BASE_VAR(include_library_declarations)},
+    {"source-loc",    HEAVY_BASE_VAR(source_loc)},
 
     // functions
     {"+",       HEAVY_BASE_VAR(add)},

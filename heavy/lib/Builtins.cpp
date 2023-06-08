@@ -34,6 +34,7 @@ heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(lambda);
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(quasiquote);
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(quote);
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(set);
+heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(source_loc);
 
 
 heavy::ExternFunction HEAVY_BASE_VAR(add);
@@ -233,6 +234,19 @@ mlir::Value include_ci(OpGen& OG, Pair* P) {
 
 mlir::Value include_library_declarations(OpGen& OG, Pair* P) {
   llvm_unreachable("TODO");
+}
+
+mlir::Value source_loc(OpGen& OG, Pair* P) {
+  // Convert an unevaluated value into a SourceValue.
+  // (or rather the operation to do this).
+  Pair* P2 = dyn_cast<Pair>(P->Cdr);
+  if (!P2 || !isa<Empty>(P2->Cdr)) {
+    return OG.SetError("single argument required", P);
+  }
+  // Defer creating a SourceValue until evaluation.
+  heavy::SourceLocation Loc = P2->Car.getSourceLocation();
+  auto SourceLocOp = OG.create<heavy::SourceLocOp>(Loc);
+  return SourceLocOp.getResult();
 }
 
 }} // end of namespace heavy::base

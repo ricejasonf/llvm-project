@@ -69,6 +69,7 @@ protected:
   VISIT_FN(Pair)
   // VISIT_FN(PairWithSource) **PairWithSource Implemented below**
   VISIT_FN(Quote)
+  VISIT_FN(SourceValue)
   VISIT_FN(String)
   VISIT_FN(Symbol)
   VISIT_FN(Syntax)
@@ -108,6 +109,7 @@ public:
     case ValueKind::Pair:           DISPATCH(Pair);
     case ValueKind::PairWithSource: DISPATCH(PairWithSource);
     case ValueKind::Quote:          DISPATCH(Quote);
+    case ValueKind::SourceValue:    DISPATCH(SourceValue);
     case ValueKind::String:         DISPATCH(String);
     case ValueKind::Symbol:         DISPATCH(Symbol);
     case ValueKind::Syntax:         DISPATCH(Syntax);

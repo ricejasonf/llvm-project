@@ -406,6 +406,20 @@ def heavy_RenameOp : HeavyOp<"rename", [HasParent<"PatternOp">]> {
   ];
 }
 
+def heavy_SourceLocOp : HeavyOp<"source-loc"> {
+  let summary = "source-loc";
+  let description = [{
+    Encode a source location that is specific
+    to an instance of a SourceManager. Serialization
+    should not save this encoding.
+    This is used to allow passing source locations of
+    syntax as values.
+  }];
+
+  let arguments = (ins);
+  let results   = (outs HeavyValue:$result);
+  let builders  = [OpBuilder<(ins)>];
+}
 def heavy_SetOp : HeavyOp<"set"> {
   let summary = "set";
   let description = [{
