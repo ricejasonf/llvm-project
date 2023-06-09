@@ -129,8 +129,9 @@ mlir::Value if_(OpGen& OG, Pair* P) {
 mlir::Value set(OpGen& OG, Pair* P) {
   Pair* P2 = dyn_cast<Pair>(P->Cdr);
   if (!P2) return OG.SetError("invalid set syntax", P);
-  heavy::Symbol* S = dyn_cast<Symbol>(P2->Car);
-  if (!S) return OG.SetError("expecting symbol", P2);
+  Value S = P2->Car;
+  if (!isa<Symbol, ExternName>(S))
+    return OG.SetError("expecting symbol", P2);
   P2 = dyn_cast<Pair>(P2->Cdr);
   if (!P2) return OG.SetError("invalid set syntax", P2);
   heavy::Value Expr = P2->Car;
@@ -216,6 +217,7 @@ void begin(Context& C, ValueRefs Args) {
     OG.VisitTopLevelSequence(P->Cdr);
   } else {
     mlir::Value Result = OG.createSequence(Loc, P->Cdr);
+    if (C.CheckError()) return;
     C.Cont(OpGen::fromValue(Result));
   }
 }
