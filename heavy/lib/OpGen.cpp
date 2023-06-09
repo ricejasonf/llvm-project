@@ -854,7 +854,7 @@ mlir::Value OpGen::createSet(SourceLocation Loc, Value LHS,
                                                  Value RHS) {
   TailPosScope TPS(*this);
   IsTailPos = false;
-  assert((isa<Binding>(LHS) || isa<Symbol>(LHS)) &&
+  assert((isa<Binding, Symbol, ExternName>(LHS)) &&
       "expects a Symbol or Binding for LHS");
   // ExprVal must be evaluated first so
   // the Binding will be in the continuation scope
