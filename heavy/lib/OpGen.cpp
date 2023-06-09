@@ -1052,6 +1052,9 @@ mlir::Value OpGen::MaybeCallSyntax(Pair* P, bool& DidCallSyntax) {
     } else {
       Operator = Entry.Value;
     }
+  } else if (auto* ExternName = dyn_cast<heavy::ExternName>(P->Car)) {
+    // Unwrap the ExternName to see if it is a syntax.
+    Operator = Context.GetKnownValue(ExternName->getView());
   }
   switch (Operator.getKind()) {
     case ValueKind::BuiltinSyntax: {
