@@ -400,9 +400,13 @@ private:
   }
 
   void VisitValue(Value V) {
-    OS << "<Value of Kind:"
+    OS << "#<Value of Kind:"
        << getKindName(V.getKind())
        << ">";
+  }
+
+  void VisitSyntaxClosure(SyntaxClosure* SC) {
+    Visit(SC->Node);
   }
 
   void VisitBool(Bool V) {
