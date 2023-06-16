@@ -370,7 +370,7 @@ public:
     return new (TrashHeap) Binding(S, V);
   }
 
-  Quote* CreateQuote(Value V) { return new (TrashHeap) Quote(V); }
+  Value RebuildLiteral(Value V);
 
   // CreateImportSet - Call CC with created ImportSet.
   void CreateImportSet(Value Spec);
