@@ -83,6 +83,7 @@ private:
   }
 
   heavy::LiteralOp createLiteralOp(Value V) {
+    V = OpGen.getContext().RebuildLiteral(V);
     return OpGen.create<LiteralOp>(V.getSourceLocation(), V);
   }
 
@@ -228,7 +229,8 @@ mlir::Value quote(OpGen& OG, Pair* P) {
   Value Arg = GetSingleSyntaxArg(P);
   if (!Arg) return OG.SetError("invalid quote syntax", P);
 
-  return OG.create<LiteralOp>(P->getSourceLocation(), Arg);
+  Value Literal = OG.getContext().RebuildLiteral(Arg);
+  return OG.create<LiteralOp>(P->getSourceLocation(), Literal);
 }
 
 }}

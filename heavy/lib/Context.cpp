@@ -405,10 +405,6 @@ private:
        << ">";
   }
 
-  void VisitSyntaxClosure(SyntaxClosure* SC) {
-    Visit(SC->Node);
-  }
-
   void VisitBool(Bool V) {
     if (V)
       OS << "#t";
@@ -995,6 +991,57 @@ public:
 void Context::WithEnv(std::unique_ptr<heavy::Environment> EnvPtr,
                       heavy::Environment* Env, Value Thunk) {
   LibraryEnv::Wind(*this, std::move(EnvPtr), Env, Thunk);
+}
+
+namespace {
+class LiteralRebuilder : public ValueVisitor<LiteralRebuilder, Value> {
+  friend class ValueVisitor<LiteralRebuilder, Value>;
+  heavy::Context& Context;
+
+public:
+  LiteralRebuilder(heavy::Context& C)
+    : Context(C)
+  { }
+
+private:
+  Value VisitValue(Value V) {
+    return V;
+  }
+
+  Value VisitSyntaxClosure(SyntaxClosure* SC) {
+    // Unwrap the SyntaxClosure.
+    return Visit(SC->Node);
+  }
+
+  Value VisitPair(Pair* P) {
+    Value Car = Visit(P->Car);
+    Value Cdr = Visit(P->Cdr);
+    if (Car == P->Car && Cdr == P->Cdr)
+      return P;
+    return Context.CreatePair(Car, Cdr);
+  }
+
+  Value VisitVector(Vector* V) {
+    bool NeedsRebuild = false;
+    llvm::SmallVector<Value, 16> TempVec{};
+    for (Value X : V->getElements()) {
+      Value X2 = Visit(X);
+      if (X2 != X) NeedsRebuild = true;
+      TempVec.push_back(Visit(X));
+    }
+    if (!NeedsRebuild) return V;
+
+    return Context.CreateVector(TempVec);
+  }
+};
+} // namespace
+
+// Rebuild the parts of a literal if it contains
+// an unexpanded SyntaxClosure.
+// Otherwise, it is idempotent.
+Value Context::RebuildLiteral(Value V) {
+  LiteralRebuilder Rebuilder(*this);
+  return Rebuilder.Visit(V);
 }
 
 // Module
