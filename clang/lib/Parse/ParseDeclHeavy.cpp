@@ -194,6 +194,10 @@ bool Parser::ParseHeavyScheme() {
       }
       clang::Expr* Expr = ExprResult.get();
 
+      if (Expr->isValueDependent()) {
+        return C.RaiseError("cannot evaluate dependent expression");
+      }
+
       // ConstantExpr eval.
       clang::Expr::EvalResult EvalResult;
       if (!Expr->EvaluateAsRValue(EvalResult,
