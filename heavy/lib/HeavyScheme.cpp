@@ -106,7 +106,6 @@ void HeavyScheme::ProcessTopLevelCommands(
     while (!Parser.isFinished()) {
       Parser.ParseTopLevelExpr();
     }
-    //Context.ClearStack();
     Context.Cont();
   };
 

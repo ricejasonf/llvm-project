@@ -32,7 +32,7 @@ using namespace clang;
 bool HEAVY_CLANG_IS_LOADED = false;
 heavy::ExternLambda<1> HEAVY_CLANG_VAR(diag_error) = {};
 heavy::ExternLambda<1> HEAVY_CLANG_VAR(hello_world) = {};
-heavy::ExternLambda<1> HEAVY_CLANG_VAR(write_lexer) = {};
+heavy::ExternLambda<1, sizeof(void*)*2> HEAVY_CLANG_VAR(write_lexer) = {};
 heavy::ExternLambda<1, sizeof(void*)*2> HEAVY_CLANG_VAR(expr_eval) = {};
 
 namespace {
@@ -43,12 +43,6 @@ clang::SourceLocation getSourceLocation(heavy::FullSourceLocation Loc) {
   return clang::SourceLocation
     ::getFromRawEncoding(Loc.getExternalRawEncoding())
      .getLocWithOffset(Loc.getOffset());
-}
-
-// Get the current sourcelocation from the Scheme Context.
-clang::SourceLocation getSourceLocation(heavy::HeavyScheme& HS) {
-    return getSourceLocation(HS.getFullSourceLocation(
-          HS.getContext().getLoc()));
 }
 
 void LoadParentEnv(heavy::HeavyScheme& HS, void* Handle) {
@@ -102,7 +96,7 @@ public:
 
   // Lex tokens from string and push to TokenBuffer.
   // Copy to a std::string to guarantee a null terminator.
-  void Tokenize(std::string Chars) {
+  void Tokenize(clang::SourceLocation Loc, std::string Chars) {
     if (Chars.empty()) return;
     // Lex Tokens for the TokenBuffer.
     clang::Lexer Lexer(clang::SourceLocation(), Parser.getLangOpts(),
@@ -115,7 +109,7 @@ public:
       if (Tok.is(tok::raw_identifier))
         Parser.getPreprocessor().LookUpIdentifierInfo(Tok);
 
-      Tok.setLocation(getSourceLocation(HeavyScheme));
+      Tok.setLocation(Loc);
 
       if (Tok.is(tok::eof)) break;
       push_back(Tok);
@@ -175,13 +169,16 @@ bool Parser::ParseHeavyScheme() {
         return;
       }
       llvm::StringRef Source = Args[0].getStringView();
+      heavy::SourceLocation Loc = Args[0].getSourceLocation();
+      if (!Loc.isValid()) Loc = C.getLoc();
 
       // Prepare to revert Parser.
       TentativeParsingAction ParseReverter(P);
 
       // Lex and expand.
       LexerWriter TheLexerWriter(P, HS);
-      TheLexerWriter.Tokenize(Source.str());
+      TheLexerWriter.Tokenize(getSourceLocation(HS.getFullSourceLocation(Loc)),
+                              Source.str());
       TheLexerWriter.FlushTokens();
       P.ConsumeAnyToken();
 
@@ -289,24 +286,46 @@ bool Parser::ParseHeavyScheme() {
   LexerWriter TheLexerWriter(*this, *HeavyScheme);
   HEAVY_CLANG_VAR(write_lexer) = [&](heavy::Context& C,
                                      heavy::ValueRefs Args) mutable {
-    if (Args.size() != 1) return C.RaiseError("invalid arity");
-    if (!isa<heavy::String, heavy::Symbol>(Args[0]))
-      return C.RaiseError("expecting string or identifier");
-    llvm::StringRef Result = Args[0].getStringView();
-    TheLexerWriter.Tokenize(Result.str());
+    heavy::SourceLocation Loc;
+    heavy::Value Output;
+    if (Args.size() == 2) {
+      // Accept any value that may have a source location.
+      Loc = Args[0].getSourceLocation();
+      Output = Args[1];
+    } else if (Args.size() == 1) {
+      Output = Args[0];
+    } else {
+      return C.RaiseError("invalid arity");
+    }
+    if (!isa<heavy::String, heavy::Symbol>(Output))
+      return C.RaiseError(C.CreateString(
+            "invalid type: ",
+            heavy::getKindName(Output.getKind()),
+            ", expecting string or identifier"
+            ), Output);
+
+    // Try to get a valid source location.
+    if (!Loc.isValid()) Loc = Output.getSourceLocation();
+    if (!Loc.isValid()) Loc = C.getLoc();
+
+    llvm::StringRef Result = Output.getStringView();
+    TheLexerWriter.Tokenize(getSourceLocation(
+          this->HeavyScheme->getFullSourceLocation(Loc)),
+          Result.str());
     C.Cont();
   };
+
   heavy::TokenKind Terminator = heavy::tok::r_brace;
   HeavyScheme->ProcessTopLevelCommands(SchemeLexer,
                                        ErrorHandler,
                                        Terminator);
-  //ParseReverter.Revert();
 
   // Return control to C++ Lexer
   PP.FinishEmbeddedLexer(SchemeLexer.GetByteOffset());
-  TheLexerWriter.FlushTokens();
-  HEAVY_CLANG_VAR(write_lexer) = [&](heavy::Context& C,
-                                     heavy::ValueRefs Args) mutable {
+  if (!HasError)
+    TheLexerWriter.FlushTokens();
+  HEAVY_CLANG_VAR(write_lexer) = [](heavy::Context& C,
+                                    heavy::ValueRefs Args) {
     C.RaiseError("lexer writer is not initialized");
   };
 
