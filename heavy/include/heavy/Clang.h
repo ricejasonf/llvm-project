@@ -38,7 +38,7 @@ extern heavy::ExternLambda<1> HEAVY_CLANG_VAR(diag_error);
 extern heavy::ExternLambda<1> HEAVY_CLANG_VAR(hello_world);
 
 // write-lexer
-extern heavy::ExternLambda<1> HEAVY_CLANG_VAR(write_lexer);
+extern heavy::ExternLambda<1, sizeof(void*)*2> HEAVY_CLANG_VAR(write_lexer);
 
 // expr-eval
 extern heavy::ExternLambda<1, sizeof(void*)*2> HEAVY_CLANG_VAR(expr_eval);
