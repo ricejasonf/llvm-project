@@ -264,6 +264,7 @@ void OpGen::VisitTopLevel(Value V) {
     if (TopLevelOp && TopLevelHandler) {
       // Call the TopLevelHandler
       Value Result = TopLevelOp;
+      TopLevelOp = nullptr;
       Ctx.Apply(TopLevelHandler, Result);
     } else {
       Ctx.Cont();
