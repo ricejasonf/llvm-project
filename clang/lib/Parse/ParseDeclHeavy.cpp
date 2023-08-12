@@ -253,22 +253,54 @@ bool Parser::ParseHeavyScheme() {
       }
     };
 
+    // This is a special system specific function so we can
+    // use Clang's file search and source locations.
+    auto get_file_lexer = [&](heavy::SourceLocation Loc,
+                              llvm::StringRef Filename) 
+        -> std::optional<heavy::Lexer> {
+      heavy::FullSourceLocation
+        FullLoc = this->HeavyScheme->getFullSourceLocation(Loc);
+      clang::SourceLocation ClangLoc = getSourceLocation(FullLoc);
+      OptionalFileEntryRef File = this->PP.LookupFile(ClangLoc, Filename,
+          false, nullptr, nullptr, nullptr, nullptr, nullptr,
+          nullptr, nullptr, nullptr);
+      if (!File) return std::nullopt;
+      // Determine if file is a system file... as if!
+      SrcMgr::CharacteristicKind FileChar = 
+        this->PP.getHeaderSearchInfo()
+          .getFileDirFlavor(&File->getFileEntry());
+      FileID FileId = 
+        this->PP.getSourceManager().createFileID(*File, ClangLoc, FileChar);
+      clang::SourceLocation StartLoc =
+        this->PP.getSourceManager().getLocForStartOfFile(FileId);
+      std::optional<llvm::MemoryBufferRef> Buffer =
+        this->PP.getSourceManager().getBufferOrNone(FileId, ClangLoc);
+      if (!Buffer) return std::nullopt;
+      // Is it over yet?
+      return this->HeavyScheme->createEmbeddedLexer(
+                                             StartLoc.getRawEncoding(),
+                                             Filename,
+                                             Buffer->getBufferStart(),
+                                             Buffer->getBufferEnd(),
+                                             Buffer->getBufferStart());
+    };
+
     HEAVY_CLANG_VAR(diag_error)   = diag_error;
     HEAVY_CLANG_VAR(hello_world)  = hello_world;
     HEAVY_CLANG_VAR(expr_eval)    = expr_eval;
     HeavyScheme->RegisterModule(HEAVY_CLANG_LIB_STR, HEAVY_CLANG_LOAD_MODULE);
+    HeavyScheme->setGetSourceFileLexer(get_file_lexer);
   }
 
   heavy::Lexer SchemeLexer;
   auto LexerInitFn = [&](clang::SourceLocation Loc,
+                         llvm::StringRef Name,
                          char const* BufferStart,
                          char const* BufferEnd,
                          char const* BufferPtr) {
     SchemeLexer = HeavyScheme->createEmbeddedLexer(
-                        Loc.getRawEncoding(),
-                        BufferStart,
-                        BufferEnd,
-                        BufferPtr);
+                        Loc.getRawEncoding(), Name,
+                        BufferStart, BufferEnd, BufferPtr);
   };
 
   PP.InitEmbeddedLexer(LexerInitFn);

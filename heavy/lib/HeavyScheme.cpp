@@ -39,7 +39,9 @@ HeavyScheme::HeavyScheme()
 
 HeavyScheme::~HeavyScheme() = default;
 
+// Create a Lexer using a "file" from some externally managed source.
 heavy::Lexer HeavyScheme::createEmbeddedLexer(uintptr_t ExternalRawLoc,
+                                              llvm::StringRef Name,
                                               char const* BufferStart,
                                               char const* BufferEnd,
                                               char const* BufferPos) {
@@ -47,7 +49,7 @@ heavy::Lexer HeavyScheme::createEmbeddedLexer(uintptr_t ExternalRawLoc,
   size_t BufferLen = BufferEnd - BufferStart;
   llvm::StringRef FileBuffer(BufferStart, BufferLen);
   heavy::SourceFile File = SM.getOrCreateExternal(ExternalRawLoc, FileBuffer,
-                                                  /*Name=*/"");
+                                                  Name);
   return Lexer(File, BufferPos);
 }
 

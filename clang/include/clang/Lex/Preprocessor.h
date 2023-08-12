@@ -2940,6 +2940,7 @@ private:
 
 public:
   using EmbeddedLexerInitFn = void (clang::SourceLocation /*FileLoc*/,
+                                    llvm::StringRef       /*Filename*/,
                                     const char*           /*BufferStart*/,
                                     const char*           /*BufferEnd*/,
                                     const char*           /*BufferPtr*/);

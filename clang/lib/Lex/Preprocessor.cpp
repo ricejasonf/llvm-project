@@ -1599,6 +1599,7 @@ void Preprocessor::InitEmbeddedLexer(
           llvm::function_ref<EmbeddedLexerInitFn> InitFn) {
   assert(IsFileLexer() && "cannot embed scheme in macro expansion");
   InitFn(CurLexer->getFileLoc(),
+         getSourceManager().getFilename(CurLexer->getFileLoc()),
          CurLexer->BufferStart,
          CurLexer->BufferEnd,
          CurLexer->BufferPtr);

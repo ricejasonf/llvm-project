@@ -17,6 +17,7 @@
 #include "heavy/Value.h"
 #include "llvm/ADT/STLExtras.h" // function_ref
 #include "llvm/ADT/StringRef.h"
+#include <functional>
 #include <memory>
 #include <type_traits>
 
@@ -28,6 +29,8 @@ class Undefined;
 class Environment;
 class FullSourceLocation;
 using ModuleLoadNamesFn = void(heavy::Context&);
+using GetSourceFileLexerFn = std::function<void(heavy::SourceLocation,
+                                                llvm::StringRef)>;
 
 // HeavyScheme - Opaque wrapper for heavy::Context and common operations
 //               needed for embedding scheme
@@ -38,25 +41,27 @@ class HeavyScheme {
 
   public:
 
+  //FIXME make this private
+  heavy::SourceManager& getSourceManager() {
+    assert(SourceManagerPtr && "HeavyScheme must be initialized");
+    return *SourceManagerPtr;
+  }
+
   HeavyScheme(std::unique_ptr<heavy::Context>);
   HeavyScheme();
   ~HeavyScheme();
 
-  heavy::Context& getContext() {
-    assert(ContextPtr && SourceManagerPtr &&
-        "HeavyScheme must be initialized");
-    return *ContextPtr;
-  }
+  void setGetSourceFileLexer(GetSourceFileLexerFn Fn);
 
-  heavy::SourceManager& getSourceManager() {
-    assert(ContextPtr && SourceManagerPtr &&
-        "HeavyScheme must be initialized");
-    return *SourceManagerPtr;
+  heavy::Context& getContext() {
+    assert(ContextPtr && "HeavyScheme must be initialized");
+    return *ContextPtr;
   }
 
   heavy::FullSourceLocation getFullSourceLocation(heavy::SourceLocation Loc);
 
   heavy::Lexer createEmbeddedLexer(uintptr_t ExternalRawLoc,
+                                   llvm::StringRef Name,
                                    char const* BufferStart,
                                    char const* BufferEnd,
                                    char const* BufferPos);
