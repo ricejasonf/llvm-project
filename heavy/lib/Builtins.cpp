@@ -223,19 +223,29 @@ void begin(Context& C, ValueRefs Args) {
 }
 
 mlir::Value cond_expand(OpGen& OG, Pair* P) {
-  llvm_unreachable("TODO");
+  return OG.SetError("TODO cond_expand", P);
 }
 
 mlir::Value include_(OpGen& OG, Pair* P) {
-  llvm_unreachable("TODO");
+  return OG.SetError("TODO include", P);
+  Pair* P2 = dyn_cast<Pair>(P->Cdr);
+  if (!P2 || !isa<Empty>(P2->Cdr)) {
+    return OG.SetError("single argument required", P);
+  }
+  String* S = dyn_cast<String>(P2->Car);
+  if (!S) return OG.SetError("expecting string", P2);
+  // TODO Track include stack and load file relative
+  //      to current include.
+  //      (Put this in SourceManager?)
+  //return OG.getContext
 }
 
 mlir::Value include_ci(OpGen& OG, Pair* P) {
-  llvm_unreachable("TODO");
+  return OG.SetError("TODO include-ci", P);
 }
 
 mlir::Value include_library_declarations(OpGen& OG, Pair* P) {
-  llvm_unreachable("TODO");
+  return OG.SetError("TODO include-library-declarations", P);
 }
 
 mlir::Value source_loc(OpGen& OG, Pair* P) {
@@ -388,11 +398,11 @@ void div(Context& C, ValueRefs Args) {
 }
 
 void gt(Context& C, ValueRefs Args) {
-  llvm_unreachable("TODO");
+  C.RaiseError("TODO gt");
 }
 
 void lt(Context& C, ValueRefs Args) {
-  llvm_unreachable("TODO");
+  C.RaiseError("TODO lt");
 }
 
 void equal(Context& C, ValueRefs Args) {
@@ -415,7 +425,7 @@ void list(Context& C, ValueRefs Args) {
 }
 
 void append(Context& C, ValueRefs Args) {
-  llvm_unreachable("TODO append");
+  C.RaiseError("TODO append");
 }
 
 void with_exception_handler(Context& C, ValueRefs Args) {
