@@ -19,6 +19,7 @@
 #include "llvm/ADT/StringRef.h"
 #include <functional>
 #include <memory>
+#include <optional>
 #include <type_traits>
 
 namespace heavy {
@@ -29,8 +30,6 @@ class Undefined;
 class Environment;
 class FullSourceLocation;
 using ModuleLoadNamesFn = void(heavy::Context&);
-using GetSourceFileLexerFn = std::function<void(heavy::SourceLocation,
-                                                llvm::StringRef)>;
 
 // HeavyScheme - Opaque wrapper for heavy::Context and common operations
 //               needed for embedding scheme
@@ -51,8 +50,6 @@ class HeavyScheme {
   HeavyScheme();
   ~HeavyScheme();
 
-  void setGetSourceFileLexer(GetSourceFileLexerFn Fn);
-
   heavy::Context& getContext() {
     assert(ContextPtr && "HeavyScheme must be initialized");
     return *ContextPtr;
@@ -65,6 +62,12 @@ class HeavyScheme {
                                    char const* BufferStart,
                                    char const* BufferEnd,
                                    char const* BufferPos);
+  heavy::Value ParseSourceFile(uintptr_t ExternalRawLoc,
+                               llvm::StringRef Name,
+                               char const* BufferStart,
+                               char const* BufferEnd,
+                               char const* BufferPos);
+  void setParseSourceFileFn(heavy::Lambda* Fn);
 
   // LoadEmbeddedEnv
   //              - Associates an opaque pointer with a scheme environment

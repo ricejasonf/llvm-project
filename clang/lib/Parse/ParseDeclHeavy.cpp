@@ -255,16 +255,18 @@ bool Parser::ParseHeavyScheme() {
 
     // This is a special system specific function so we can
     // use Clang's file search and source locations.
-    auto get_file_lexer = [&](heavy::SourceLocation Loc,
-                              llvm::StringRef Filename) 
-        -> std::optional<heavy::Lexer> {
+    auto ParseSourceFileFn = [&](heavy::Context& C, heavy::ValueRefs Args) {
+      // Args are already validated.
+      heavy::SourceLocation Loc = Args[0].getSourceLocation();
+      llvm::StringRef Filename = dyn_cast<Lambda>(Args[1])->getView();
       heavy::FullSourceLocation
         FullLoc = this->HeavyScheme->getFullSourceLocation(Loc);
       clang::SourceLocation ClangLoc = getSourceLocation(FullLoc);
       OptionalFileEntryRef File = this->PP.LookupFile(ClangLoc, Filename,
           false, nullptr, nullptr, nullptr, nullptr, nullptr,
           nullptr, nullptr, nullptr);
-      if (!File) return std::nullopt;
+      if (!File)
+        return C.RaiseError("error opening file", Args[0]);
       // Determine if file is a system file... as if!
       SrcMgr::CharacteristicKind FileChar = 
         this->PP.getHeaderSearchInfo()
@@ -275,15 +277,17 @@ bool Parser::ParseHeavyScheme() {
         this->PP.getSourceManager().getLocForStartOfFile(FileId);
       std::optional<llvm::MemoryBufferRef> Buffer =
         this->PP.getSourceManager().getBufferOrNone(FileId, ClangLoc);
-      if (!Buffer) return std::nullopt;
+      if (!Buffer)
+        return C.RaiseError("error opening file buffer", Args[0]);
       // Is it over yet?
-      return this->HeavyScheme->createEmbeddedLexer(
-                                             StartLoc.getRawEncoding(),
-                                             Filename,
-                                             Buffer->getBufferStart(),
-                                             Buffer->getBufferEnd(),
-                                             Buffer->getBufferStart());
+      C.Cont(this->HeavyScheme->ParseSourceFile(
+                                          StartLoc.getRawEncoding(),
+                                          Filename,
+                                          Buffer->getBufferStart(),
+                                          Buffer->getBufferEnd(),
+                                          Buffer->getBufferStart()));
     };
+    HeavyScheme.setParseSourceFileFn(C.CreateLambda(ParseSourceFileFn, {}));
 
     HEAVY_CLANG_VAR(diag_error)   = diag_error;
     HEAVY_CLANG_VAR(hello_world)  = hello_world;

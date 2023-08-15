@@ -169,4 +169,49 @@ heavy::Undefined setError(heavy::Context& C, llvm::StringRef Msg) {
   return {};
 }
 
+heavy::Value HeavyScheme::ParseSourceFile(uintptr_t ExternalRawLoc,
+                                          llvm::StringRef Name,
+                                          char const* BufferStart,
+                                          char const* BufferEnd,
+                                          char const* BufferPos) {
+  heavy::Context& C = getContext();
+  heavy::Lexer Lexer = createEmbeddedLexer(ExternalRawLoc, Name,
+                                           BufferStart, BufferEnd,
+                                           BufferPos);
+  heavy::Parser Parser(Lexer, C);
+  heavy::ValueResult Result = Parser.Parse();
+  if (Parser.HasError()) {
+    Parser.RaiseError();
+    return Undefined();
+  }
+  return Result.get();
+}
+
+// (parse-source-file loc filename)
+void HeavyScheme::setParseSourceFileFn(heavy::Lambda* Fn) {
+  assert(Fn != nullptr && "expecting a lambda");
+  heavy::Context& C = getContext();
+
+  auto ParseFn = C.CreateLambda([](heavy::Context& C, heavy::ValueRefs Args) {
+    // Do all of the validation for the user and
+    // then forward to the supplied function.
+    heavy::Value Fn = C.getCapture(0);
+    if (Args.size() != 2)
+      return C.RaiseError("invalid arity");
+    heavy::SourceLocation Loc = Args[0].getSourceLocation();
+    if (!Loc.isValid())
+      return C.RaiseError("expecting valid source location");
+    heavy::String* Filename = dyn_cast<heavy::String>(Args[1]);
+    if (!Filename)
+      return C.RaiseError("expecting filename");
+    C.Apply(Fn, Args);
+  }, CaptureList{heavy::Value(Fn)});
+  // TODO Use context local instead of mangled name.
+#define HEAVY_MACRO_TO_STRING(NAME) #NAME
+  llvm::StringRef MangledName
+    = HEAVY_MACRO_TO_STRING(HEAVY_BASE_VAR(parse_source_file));
+#undef HEAVY_MACRO_TO_STRING
+  C.AddKnownAddress(MangledName, ParseFn);
+}
+
 }

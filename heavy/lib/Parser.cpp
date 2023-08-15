@@ -113,6 +113,19 @@ ValueResult Parser::ParseTopLevelExpr() {
   return ParseExpr();
 }
 
+ValueResult Parser::Parse(heavy::TokenKind Term) {
+  if (CheckTerminator()) {
+    return ValueEmpty();
+  }
+  PrimeToken(Term);
+  // ParseList uses the terminator token when
+  // supplied with tok::eof.
+  Token TempTok{{}, tok::eof};
+  ValueResult Result = ParseList(TempTok);
+  IsFinished = true;
+  return Result;
+}
+
 ValueResult Parser::ParseExpr() {
   switch (Tok.getKind()) {
   case tok::l_paren:
@@ -229,7 +242,8 @@ ValueResult Parser::ParseList(Token const& StartTok) {
     ParseExpr();
   }
 
-  if (Tok.is(tok::r_paren)) {
+  if ((StartTok.is(tok::l_paren) && Tok.is(tok::r_paren)) ||
+      (StartTok.is(tok::eof) && Tok.is(Terminator))) {
     ConsumeToken();
     return Value(Empty{});
   }
