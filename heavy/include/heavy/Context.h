@@ -316,6 +316,11 @@ public:
   }
 
   template <typename F>
+  Lambda* CreateLambda(F Fn) {
+    return CreateLambda(Fn, {});
+  }
+
+  template <typename F>
   Syntax* CreateSyntax(F Fn) {
     auto FnData = createOpaqueFn(Fn);
     void* Mem = Syntax::allocate(getAllocator(), FnData);

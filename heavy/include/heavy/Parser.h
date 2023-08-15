@@ -21,6 +21,7 @@
 namespace heavy {
 
 // TODO Rename to ParseResult
+// TODO Determine if we need this since we have RaiseError.
 class ValueResult {
   Value V = nullptr;
 
@@ -30,7 +31,10 @@ public:
     : V(V)
   { }
 
-  Value get() { return V; }
+  Value get() {
+    assert(isUsable() && "should not get unusable result");
+    return V;
+  }
 
   bool isUsable() {
     return V && V.getKind() != ValueKind::Undefined;
@@ -101,6 +105,7 @@ public:
   }
 
   ValueResult ParseTopLevelExpr();
+  ValueResult Parse(heavy::TokenKind Term = tok::eof);
 
   // Consumes the first token for parsing.
   // If the terminator is brace-like, the

@@ -21,11 +21,12 @@ bool HEAVY_BASE_IS_LOADED = false;
 heavy::ExternSyntax<>      HEAVY_BASE_VAR(define_library);
 heavy::ExternSyntax<>      HEAVY_BASE_VAR(begin);
 heavy::ExternSyntax<>      HEAVY_BASE_VAR(export);
-heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(cond_expand);
-heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(include);
-heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(include_ci);
-heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(include_library_declarations);
+heavy::ExternSyntax<>      HEAVY_BASE_VAR(include);
+heavy::ExternSyntax<>      HEAVY_BASE_VAR(include_ci);
+heavy::ExternSyntax<>      HEAVY_BASE_VAR(include_library_declarations);
+heavy::ExternSyntax<>      HEAVY_BASE_VAR(parse_source_file);
 
+heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(cond_expand);
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(define);
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(define_syntax);
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(syntax_rules);
@@ -209,43 +210,75 @@ void define_library(Context& C, ValueRefs Args) {
   OG.VisitLibrary(Loc, std::move(MangledName), LibraryDecls);
 }
 
-void begin(Context& C, ValueRefs Args) {
-  OpGen& OG = *C.OpGen;
-  Pair* P = cast<Pair>(Args[0]);
-  auto Loc = P->getSourceLocation();
-  if (OG.isTopLevel()) {
-    OG.VisitTopLevelSequence(P->Cdr);
-  } else {
-    mlir::Value Result = OG.createSequence(Loc, P->Cdr);
-    if (C.CheckError()) return;
-    C.Cont(OpGen::fromValue(Result));
-  }
-}
-
 mlir::Value cond_expand(OpGen& OG, Pair* P) {
   return OG.SetError("TODO cond_expand", P);
 }
 
-mlir::Value include_(OpGen& OG, Pair* P) {
-  return OG.SetError("TODO include", P);
+namespace {
+  void handleSequence(Context&C, ValueRefs Args) {
+    // Args are valid.
+    heavy::Value Sequence = Args[0];
+    heavy::SourceLocation Loc = Sequence.getSourceLocation();
+    OpGen& OG = *C.OpGen;
+    if (OG.isTopLevel()) {
+      OG.VisitTopLevelSequence(Sequence);
+    } else {
+      mlir::Value Result = OG.createSequence(Loc, Sequence);
+      if (C.CheckError()) return;
+      C.Cont(OpGen::fromValue(Result));
+    }
+  }
+}
+
+void begin(Context& C, ValueRefs Args) {
+  Pair* P = cast<Pair>(Args[0]);
+  heavy::Value SourceVal = C.CreateSourceValue(P->getSourceLocation());
+  std::array<Value, 2> NextArgs = {SourceVal, P->Cdr};
+  handleSequence(C, NextArgs);
+}
+
+void include_(Context& C, ValueRefs Args) {
+  Pair* P = cast<Pair>(Args[0]);
   Pair* P2 = dyn_cast<Pair>(P->Cdr);
   if (!P2 || !isa<Empty>(P2->Cdr)) {
-    return OG.SetError("single argument required", P);
+    return C.RaiseError("single argument required", Value(P));
   }
-  String* S = dyn_cast<String>(P2->Car);
-  if (!S) return OG.SetError("expecting string", P2);
-  // TODO Track include stack and load file relative
-  //      to current include.
-  //      (Put this in SourceManager?)
-  //return OG.getContext
+  String* Filename = dyn_cast<String>(P2->Car);
+  heavy::Value SourceVal = C.CreateSourceValue(P->getSourceLocation());
+  if (!Filename) return C.RaiseError("expecting filename", Value(P2));
+
+  C.PushCont(&handleSequence);
+
+  std::array<Value, 2> ParseFileArgs = {SourceVal, Filename};
+  // TODO Use "context local" overload of GetKnownValue feature
+  //      instead of using the mangled name.
+  // heavy::Value ParseSourceFile
+  //    = C.GetKnownValue(HEAVY_BASE_VAR(parse_source_file));
+#define HEAVY_MACRO_TO_STRING(NAME) #NAME
+  llvm::StringRef MangledName
+    = HEAVY_MACRO_TO_STRING(HEAVY_BASE_VAR(parse_source_file));
+  heavy::Value ParseSourceFile = C.GetKnownValue(MangledName);;
+#undef HEAVY_MACRO_TO_STRING
+  if (!ParseSourceFile || isa<Undefined>(ParseSourceFile))
+    return C.RaiseError("parse-source-file is undefined", Value(P));
+  C.Apply(ParseSourceFile, ParseFileArgs);
 }
 
-mlir::Value include_ci(OpGen& OG, Pair* P) {
-  return OG.SetError("TODO include-ci", P);
+void include_ci(Context& C, ValueRefs Args) {
+  // TODO We need to dynamic-wind and set the
+  //      context flag for case insensitive parsing
+  //      and lookup. The do what `include` does.
+  C.RaiseError("TODO include-ci", Args[0]);
 }
 
-mlir::Value include_library_declarations(OpGen& OG, Pair* P) {
-  return OG.SetError("TODO include-library-declarations", P);
+void include_library_declarations(Context& C, ValueRefs Args) {
+  C.RaiseError("TODO include-library-declarations", Args[0]);
+}
+
+void parse_source_file(Context& C, ValueRefs Args) {
+  // The user must use HeavyScheme::setParseSourceFileFn
+  // to define how source files are loaded and stored.
+  C.RaiseError("parse-source-file is undefined", Args[0]);
 }
 
 mlir::Value source_loc(OpGen& OG, Pair* P) {
