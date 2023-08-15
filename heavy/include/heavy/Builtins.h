@@ -21,6 +21,7 @@
 #define HEAVY_BASE_IS_LOADED          HEAVY_BASE_LIB_(_is_loaded)
 #define HEAVY_BASE_LOAD_MODULE        HEAVY_BASE_LIB_(_load_module)
 #define HEAVY_BASE_INIT               HEAVY_BASE_LIB_(_init)
+
 #define HEAVY_BASE_VAR(NAME)          HEAVY_BASE_VAR__##NAME
 #define HEAVY_BASE_VAR__export        HEAVY_BASE_LIB_(V6Sexport)
 #define HEAVY_BASE_VAR__add           HEAVY_BASE_LIB_(Vpl)
@@ -38,6 +39,8 @@
 #define HEAVY_BASE_VAR__eval          HEAVY_BASE_LIB_(V4Seval)
 #define HEAVY_BASE_VAR__callcc        HEAVY_BASE_LIB_(V4Scalldv2Scc)
 #define HEAVY_BASE_VAR__include       HEAVY_BASE_LIB_(V7Sinclude)
+#define HEAVY_BASE_VAR__parse_source_file \
+                                      HEAVY_BASE_LIB_(V5Sparse6Ssource4Sfile)
 
 namespace mlir {
 
@@ -63,10 +66,10 @@ void begin(Context& C, ValueRefs Args);
 void define_library(Context& C, ValueRefs Args);
 void export_(Context&, ValueRefs);
 void import_(Context&, ValueRefs);
-// TODO Change signature to continuable Syntax functions.
-mlir::Value include_(OpGen& OG, Pair* P);
-mlir::Value include_ci(OpGen& OG, Pair* P);
-mlir::Value include_library_declarations(OpGen& OG, Pair* P);
+void include_(Context&, ValueRefs);
+void include_ci(Context&, ValueRefs);
+void include_library_declarations(Context&, ValueRefs);
+void parse_source_file(Context&, ValueRefs);
 
 // syntax
 mlir::Value define(OpGen& OG, Pair* P);
@@ -106,9 +109,17 @@ void compile(Context& C, ValueRefs Args);
 
 }}
 
+
 extern heavy::ExternSyntax<>        HEAVY_BASE_VAR(begin);
 extern heavy::ExternSyntax<>        HEAVY_BASE_VAR(define_library);
 extern heavy::ExternSyntax<>        HEAVY_BASE_VAR(export);
+extern heavy::ExternSyntax<>        HEAVY_BASE_VAR(include);
+extern heavy::ExternSyntax<>        HEAVY_BASE_VAR(include_ci);
+extern heavy::ExternSyntax<>     
+  HEAVY_BASE_VAR(include_library_declarations);
+// TODO Make parse_source_file ContextLocalSyntax.
+extern heavy::ExternSyntax<>        HEAVY_BASE_VAR(parse_source_file);
+
 extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(define);
 extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(define_syntax);
 extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(syntax_rules);
@@ -118,10 +129,6 @@ extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(quasiquote);
 extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(quote);
 extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(set);
 extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(cond_expand);
-extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(include);
-extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(include_ci);
-extern heavy::ExternBuiltinSyntax
-  HEAVY_BASE_VAR(include_library_declarations);
 extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(source_loc);
 
 extern heavy::ExternFunction HEAVY_BASE_VAR(add);
@@ -176,6 +183,8 @@ inline void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(include_library_declarations)
     = heavy::base::include_library_declarations;
   HEAVY_BASE_VAR(source_loc)      = heavy::base::source_loc;
+  HEAVY_BASE_VAR(parse_source_file) 
+    = heavy::base::parse_source_file;
 
   // functions
   HEAVY_BASE_VAR(add)     = heavy::base::add;
@@ -224,6 +233,7 @@ inline void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"include-library-declarations",
       HEAVY_BASE_VAR(include_library_declarations)},
     {"source-loc",    HEAVY_BASE_VAR(source_loc)},
+    {"parse-source-file", HEAVY_BASE_VAR(parse_source_file)},
 
     // functions
     {"+",       HEAVY_BASE_VAR(add)},
