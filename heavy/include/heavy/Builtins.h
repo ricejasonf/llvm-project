@@ -117,8 +117,8 @@ extern heavy::ExternSyntax<>        HEAVY_BASE_VAR(include);
 extern heavy::ExternSyntax<>        HEAVY_BASE_VAR(include_ci);
 extern heavy::ExternSyntax<>     
   HEAVY_BASE_VAR(include_library_declarations);
-// TODO Make parse_source_file ContextLocalSyntax.
-extern heavy::ExternSyntax<>        HEAVY_BASE_VAR(parse_source_file);
+// TODO Make parse_source_file ContextLocalFunction.
+extern heavy::ExternLambda<1>       HEAVY_BASE_VAR(parse_source_file);
 
 extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(define);
 extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(define_syntax);

@@ -26,6 +26,7 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/PointerLikeTypeTraits.h"
 #include "llvm/Support/TrailingObjects.h"
+#include <array>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -1059,7 +1060,7 @@ public:
     return FnPtr(getStoragePtr(), C, Args);
   }
 
-  Value getCapture(unsigned I) {
+  Value& getCapture(unsigned I) {
     return getCaptures()[I];
   }
 
@@ -1838,11 +1839,14 @@ struct ExternLambda : public ExternValue<
                   Lambda::sizeToAlloc(CaptureCount, sizeof(f)),
         "storage must have sufficient size");
     auto FnData = createOpaqueFn(f);
-    void* Mem = Lambda::allocate(*this, FnData, /*Captures=*/{});
-    Lambda* New = new (Mem) Lambda(FnData, /*Captures=*/{});
+    std::array<heavy::Value, CaptureCount> Captures = {};
+    void* Mem = Lambda::allocate(*this, FnData, Captures);
+    Lambda* New = new (Mem) Lambda(FnData, Captures);
 
     this->Value = New;
   }
+
+  heavy::Lambda* operator->() { return cast<Lambda>(this->Value); }
 };
 
 struct ExternFunction : ExternValue<sizeof(Builtin)> {
