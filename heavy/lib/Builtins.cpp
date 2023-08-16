@@ -24,7 +24,7 @@ heavy::ExternSyntax<>      HEAVY_BASE_VAR(export);
 heavy::ExternSyntax<>      HEAVY_BASE_VAR(include);
 heavy::ExternSyntax<>      HEAVY_BASE_VAR(include_ci);
 heavy::ExternSyntax<>      HEAVY_BASE_VAR(include_library_declarations);
-heavy::ExternSyntax<>      HEAVY_BASE_VAR(parse_source_file);
+heavy::ExternLambda<1>     HEAVY_BASE_VAR(parse_source_file);
 
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(cond_expand);
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(define);
@@ -250,17 +250,8 @@ void include_(Context& C, ValueRefs Args) {
   C.PushCont(&handleSequence);
 
   std::array<Value, 2> ParseFileArgs = {SourceVal, Filename};
-  // TODO Use "context local" overload of GetKnownValue feature
-  //      instead of using the mangled name.
-  // heavy::Value ParseSourceFile
-  //    = C.GetKnownValue(HEAVY_BASE_VAR(parse_source_file));
-#define HEAVY_MACRO_TO_STRING(NAME) #NAME
-  llvm::StringRef MangledName
-    = HEAVY_MACRO_TO_STRING(HEAVY_BASE_VAR(parse_source_file));
-  heavy::Value ParseSourceFile = C.GetKnownValue(MangledName);;
-#undef HEAVY_MACRO_TO_STRING
-  if (!ParseSourceFile || isa<Undefined>(ParseSourceFile))
-    return C.RaiseError("parse-source-file is undefined", Value(P));
+  // TODO Use "context local".
+  heavy::Value ParseSourceFile = HEAVY_BASE_VAR(parse_source_file);
   C.Apply(ParseSourceFile, ParseFileArgs);
 }
 
