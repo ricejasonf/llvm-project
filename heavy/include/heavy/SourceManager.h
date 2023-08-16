@@ -87,7 +87,7 @@ public:
                                       SourceLocation Loc) const;
   char const* getBufferPos(SourceFile const& File,
                            SourceLocation Loc) const {
-    return File.Buffer.data() + Loc.Loc;
+    return File.Buffer.data() + Loc.Loc - File.StartLoc.Loc;
   }
 
 };
