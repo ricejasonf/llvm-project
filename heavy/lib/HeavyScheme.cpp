@@ -169,16 +169,31 @@ heavy::Undefined setError(heavy::Context& C, llvm::StringRef Msg) {
   return {};
 }
 
+heavy::Value HeavyScheme::ParseSourceFile(llvm::StringRef Filename) {
+  // TODO Use multiple search directories.
+  llvm::ErrorOr<heavy::SourceFile>
+    FileResult = getSourceManager().Open(Filename);
+  if (std::error_code ec = FileResult.getError()) {
+    getContext().RaiseError("include file not found");
+    return Undefined{};
+  }
+  heavy::Lexer Lexer(FileResult.get());
+  return ParseSourceFile(Lexer);
+}
+
 heavy::Value HeavyScheme::ParseSourceFile(uintptr_t ExternalRawLoc,
                                           llvm::StringRef Name,
                                           char const* BufferStart,
                                           char const* BufferEnd,
                                           char const* BufferPos) {
-  heavy::Context& C = getContext();
   heavy::Lexer Lexer = createEmbeddedLexer(ExternalRawLoc, Name,
                                            BufferStart, BufferEnd,
                                            BufferPos);
-  heavy::Parser Parser(Lexer, C);
+  return ParseSourceFile(Lexer);
+}
+
+heavy::Value HeavyScheme::ParseSourceFile(heavy::Lexer Lexer) {
+  heavy::Parser Parser(Lexer, getContext());
   heavy::ValueResult Result = Parser.Parse();
   if (Parser.HasError()) {
     Parser.RaiseError();
@@ -190,9 +205,8 @@ heavy::Value HeavyScheme::ParseSourceFile(uintptr_t ExternalRawLoc,
 // (parse-source-file loc filename)
 void HeavyScheme::setParseSourceFileFn(heavy::Lambda* Fn) {
   assert(Fn != nullptr && "expecting a lambda");
-  heavy::Context& C = getContext();
 
-  auto ParseFn = C.CreateLambda([](heavy::Context& C, heavy::ValueRefs Args) {
+  auto ParseFn = [](heavy::Context& C, heavy::ValueRefs Args) {
     // Do all of the validation for the user and
     // then forward to the supplied function.
     heavy::Value Fn = C.getCapture(0);
@@ -205,13 +219,10 @@ void HeavyScheme::setParseSourceFileFn(heavy::Lambda* Fn) {
     if (!Filename)
       return C.RaiseError("expecting filename");
     C.Apply(Fn, Args);
-  }, CaptureList{heavy::Value(Fn)});
-  // TODO Use context local instead of mangled name.
-#define HEAVY_MACRO_TO_STRING(NAME) #NAME
-  llvm::StringRef MangledName
-    = HEAVY_MACRO_TO_STRING(HEAVY_BASE_VAR(parse_source_file));
-#undef HEAVY_MACRO_TO_STRING
-  C.AddKnownAddress(MangledName, ParseFn);
+  };
+  // TODO Use context local instead of static global.
+  HEAVY_BASE_VAR(parse_source_file) = ParseFn;
+  HEAVY_BASE_VAR(parse_source_file)->getCapture(0) = Fn;
 }
 
 }

@@ -62,6 +62,8 @@ class HeavyScheme {
                                    char const* BufferStart,
                                    char const* BufferEnd,
                                    char const* BufferPos);
+  heavy::Value ParseSourceFile(heavy::Lexer Lexer);
+  heavy::Value ParseSourceFile(llvm::StringRef Filename);
   heavy::Value ParseSourceFile(uintptr_t ExternalRawLoc,
                                llvm::StringRef Name,
                                char const* BufferStart,

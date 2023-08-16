@@ -258,7 +258,7 @@ bool Parser::ParseHeavyScheme() {
     auto ParseSourceFileFn = [&](heavy::Context& C, heavy::ValueRefs Args) {
       // Args are already validated.
       heavy::SourceLocation Loc = Args[0].getSourceLocation();
-      llvm::StringRef Filename = dyn_cast<Lambda>(Args[1])->getView();
+      llvm::StringRef Filename = cast<heavy::String>(Args[1])->getView();
       heavy::FullSourceLocation
         FullLoc = this->HeavyScheme->getFullSourceLocation(Loc);
       clang::SourceLocation ClangLoc = getSourceLocation(FullLoc);
@@ -287,13 +287,13 @@ bool Parser::ParseHeavyScheme() {
                                           Buffer->getBufferEnd(),
                                           Buffer->getBufferStart()));
     };
-    HeavyScheme.setParseSourceFileFn(C.CreateLambda(ParseSourceFileFn, {}));
+    HeavyScheme->setParseSourceFileFn(HeavyScheme->getContext()
+        .CreateLambda(ParseSourceFileFn, {}));
 
     HEAVY_CLANG_VAR(diag_error)   = diag_error;
     HEAVY_CLANG_VAR(hello_world)  = hello_world;
     HEAVY_CLANG_VAR(expr_eval)    = expr_eval;
     HeavyScheme->RegisterModule(HEAVY_CLANG_LIB_STR, HEAVY_CLANG_LOAD_MODULE);
-    HeavyScheme->setGetSourceFileLexer(get_file_lexer);
   }
 
   heavy::Lexer SchemeLexer;
