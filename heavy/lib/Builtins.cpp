@@ -245,6 +245,7 @@ void include_(Context& C, ValueRefs Args) {
   }
   String* Filename = dyn_cast<String>(P2->Car);
   heavy::Value SourceVal = C.CreateSourceValue(P->getSourceLocation());
+  C.setLoc(SourceVal);
   if (!Filename) return C.RaiseError("expecting filename", Value(P2));
 
   C.PushCont(&handleSequence);
