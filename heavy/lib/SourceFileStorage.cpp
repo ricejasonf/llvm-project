@@ -16,6 +16,7 @@
 #include "heavy/SourceFileStorage.h"
 #include "heavy/SourceManager.h"
 #include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/Support/Path.h"
 
 namespace heavy {
@@ -37,13 +38,34 @@ void HeavyScheme::InitSourceFileStorage() {
   });
 }
 
+void HeavyScheme::ProcessTopLevelCommands(llvm::StringRef Filename,
+                          llvm::function_ref<ValueFnTy> ExprHandler,
+                          llvm::function_ref<ErrorHandlerFn> ErrorHandler) {
+  heavy::SourceManager& SM = getSourceManager();
+  if (!SourceFileStoragePtr) {
+    ErrorHandler("source file storage not initialized",
+                 SM.getFullSourceLocation({}));
+    return;
+  }
+  llvm::ErrorOr<heavy::SourceFile>
+    FileResult = SourceFileStoragePtr->Open(SM, heavy::SourceLocation(),
+                                            Filename);
+  if (std::error_code ec = FileResult.getError()) {
+    ErrorHandler(llvm::Twine("unable to open file", ec.message()).str(),
+                 SM.getFullSourceLocation({}));
+    return;
+  }
+  heavy::Lexer Lexer(FileResult.get());
+  ProcessTopLevelCommands(Lexer, ExprHandler, ErrorHandler, tok::eof);
+}
+
 // This overload provides the default file system
 // access for opening source files.
 // The user must call InitSourceFileStorage.
 heavy::Value HeavyScheme::ParseSourceFile(heavy::SourceLocation Loc,
                                           llvm::StringRef Filename) {
   assert(SourceFileStoragePtr &&
-      "InitSourceFileStorage should called initialized by user.");
+      "source file storage not initialized");
   llvm::ErrorOr<heavy::SourceFile>
     FileResult = SourceFileStoragePtr->Open(getSourceManager(), Loc, Filename);
   if (std::error_code ec = FileResult.getError()) {
