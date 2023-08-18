@@ -114,6 +114,11 @@ class HeavyScheme {
                                llvm::function_ref<ValueFnTy> ExprHandler,
                                llvm::function_ref<ErrorHandlerFn> ErrorHandler,
                                heavy::tok Terminator = heavy::tok::eof);
+  // ProcessTopLevelCommands
+  //              - Filename overload requires calling InitSourceFileStorage.
+  void ProcessTopLevelCommands(llvm::StringRef Filename,
+                               llvm::function_ref<ValueFnTy> ExprHandler,
+                               llvm::function_ref<ErrorHandlerFn> ErrorHandler);
 
   // Registers a module import function
   void RegisterModule(llvm::StringRef MangledName,
