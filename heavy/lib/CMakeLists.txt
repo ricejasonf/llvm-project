@@ -11,6 +11,7 @@ add_llvm_library(heavy
   ${HEAVY_LIB}/OpGen.cpp
   ${HEAVY_LIB}/Parser.cpp
   ${HEAVY_LIB}/Quasiquote.cpp
+  ${HEAVY_LIB}/SourceFileStorage.cpp
   ${HEAVY_LIB}/SourceManager.cpp
   ${HEAVY_LIB}/../../clang/lib/Basic/CharInfo.cpp)
 

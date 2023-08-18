@@ -14,16 +14,15 @@
 #define LLVM_HEAVY_HEAVYSCHEME_H
 
 #include "heavy/Lexer.h"
-#include "heavy/Value.h"
+//#include "heavy/Value.h"
 #include "llvm/ADT/STLExtras.h" // function_ref
 #include "llvm/ADT/StringRef.h"
-#include <functional>
 #include <memory>
-#include <optional>
 #include <type_traits>
 
 namespace heavy {
 class Context;
+class SourceFileStorage;
 class SourceManager;
 class Value;
 class Undefined;
@@ -34,17 +33,27 @@ using ModuleLoadNamesFn = void(heavy::Context&);
 // HeavyScheme - Opaque wrapper for heavy::Context and common operations
 //               needed for embedding scheme
 class HeavyScheme {
+  friend class SourceFileStorage;
+
   std::unique_ptr<heavy::Context> ContextPtr;
   std::unique_ptr<heavy::Environment> EnvPtr;
   std::unique_ptr<heavy::SourceManager> SourceManagerPtr;
+  std::unique_ptr<heavy::SourceFileStorage, 
+                  void(*)(SourceFileStorage*)> SourceFileStoragePtr;
 
-  public:
-
-  //FIXME make this private
   heavy::SourceManager& getSourceManager() {
     assert(SourceManagerPtr && "HeavyScheme must be initialized");
     return *SourceManagerPtr;
   }
+
+  heavy::SourceFileStorage& getSourceFileStorage() {
+    assert(SourceFileStoragePtr &&
+        "InitSourceFileStorage must be called for "
+        "optional file system support");
+    return *SourceFileStoragePtr;
+  }
+
+  public:
 
   HeavyScheme(std::unique_ptr<heavy::Context>);
   HeavyScheme();
@@ -63,13 +72,14 @@ class HeavyScheme {
                                    char const* BufferEnd,
                                    char const* BufferPos);
   heavy::Value ParseSourceFile(heavy::Lexer Lexer);
-  heavy::Value ParseSourceFile(llvm::StringRef Filename);
+  heavy::Value ParseSourceFile(heavy::SourceLocation Loc,
+                               llvm::StringRef Filename);
   heavy::Value ParseSourceFile(uintptr_t ExternalRawLoc,
                                llvm::StringRef Name,
                                char const* BufferStart,
                                char const* BufferEnd,
                                char const* BufferPos);
-  void setParseSourceFileFn(heavy::Lambda* Fn);
+  void InitSourceFileStorage();
 
   // LoadEmbeddedEnv
   //              - Associates an opaque pointer with a scheme environment
@@ -110,8 +120,6 @@ class HeavyScheme {
                       heavy::ModuleLoadNamesFn*);
 };
 
-// Functions for working with heavy::Context and values
-heavy::Undefined setError(heavy::Context&, llvm::StringRef Msg);
 }
 
 #endif
