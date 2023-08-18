@@ -51,7 +51,8 @@ void HeavyScheme::ProcessTopLevelCommands(llvm::StringRef Filename,
     FileResult = SourceFileStoragePtr->Open(SM, heavy::SourceLocation(),
                                             Filename);
   if (std::error_code ec = FileResult.getError()) {
-    ErrorHandler(llvm::Twine("unable to open file", ec.message()).str(),
+    ErrorHandler((llvm::Twine("opening ", Filename) + 
+                             llvm::Twine(": ", ec.message())).str(),
                  SM.getFullSourceLocation({}));
     return;
   }
