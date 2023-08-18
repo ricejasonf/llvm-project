@@ -27,7 +27,8 @@ namespace heavy {
 HeavyScheme::HeavyScheme(std::unique_ptr<heavy::Context> C)
   : ContextPtr(std::move(C)),
     EnvPtr(std::make_unique<heavy::Environment>(*ContextPtr)),
-    SourceManagerPtr(std::make_unique<heavy::SourceManager>())
+    SourceManagerPtr(std::make_unique<heavy::SourceManager>()),
+    SourceFileStoragePtr(nullptr, [](SourceFileStorage*) { })
 {
   ContextPtr->setEnvironment(EnvPtr.get());
   HEAVY_BASE_INIT(*ContextPtr);
@@ -164,23 +165,6 @@ HeavyScheme::getFullSourceLocation(heavy::SourceLocation Loc) {
   return getSourceManager().getFullSourceLocation(Loc);
 }
 
-heavy::Undefined setError(heavy::Context& C, llvm::StringRef Msg) {
-  C.SetError(Msg);
-  return {};
-}
-
-heavy::Value HeavyScheme::ParseSourceFile(llvm::StringRef Filename) {
-  // TODO Use multiple search directories.
-  llvm::ErrorOr<heavy::SourceFile>
-    FileResult = getSourceManager().Open(Filename);
-  if (std::error_code ec = FileResult.getError()) {
-    getContext().RaiseError("include file not found");
-    return Undefined{};
-  }
-  heavy::Lexer Lexer(FileResult.get());
-  return ParseSourceFile(Lexer);
-}
-
 heavy::Value HeavyScheme::ParseSourceFile(uintptr_t ExternalRawLoc,
                                           llvm::StringRef Name,
                                           char const* BufferStart,
@@ -200,29 +184,6 @@ heavy::Value HeavyScheme::ParseSourceFile(heavy::Lexer Lexer) {
     return Undefined();
   }
   return Result.get();
-}
-
-// (parse-source-file loc filename)
-void HeavyScheme::setParseSourceFileFn(heavy::Lambda* Fn) {
-  assert(Fn != nullptr && "expecting a lambda");
-
-  auto ParseFn = [](heavy::Context& C, heavy::ValueRefs Args) {
-    // Do all of the validation for the user and
-    // then forward to the supplied function.
-    heavy::Value Fn = C.getCapture(0);
-    if (Args.size() != 2)
-      return C.RaiseError("invalid arity");
-    heavy::SourceLocation Loc = Args[0].getSourceLocation();
-    if (!Loc.isValid())
-      return C.RaiseError("expecting valid source location");
-    heavy::String* Filename = dyn_cast<heavy::String>(Args[1]);
-    if (!Filename)
-      return C.RaiseError("expecting filename");
-    C.Apply(Fn, Args);
-  };
-  // TODO Use context local instead of static global.
-  HEAVY_BASE_VAR(parse_source_file) = ParseFn;
-  HEAVY_BASE_VAR(parse_source_file)->getCapture(0) = Fn;
 }
 
 }

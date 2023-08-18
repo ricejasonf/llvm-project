@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <heavy/Builtins.h>
 #include <heavy/Lexer.h>
 #include <heavy/Parser.h>
 #include <heavy/HeavyScheme.h>
@@ -74,6 +75,7 @@ int main(int argc, char const** argv) {
 #endif
   llvm::InitLLVM LLVM_(argc, argv);
   heavy::HeavyScheme HeavyScheme;
+  HeavyScheme.InitSourceFileStorage();
   cl::ParseCommandLineOptions(argc, argv);
   llvm::StringRef Filename = InputFilename;
   llvm::ErrorOr<heavy::SourceFile>
@@ -83,20 +85,6 @@ int main(int argc, char const** argv) {
     return 1;
   }
   heavy::SourceFile File = FileResult.get();
-
-  // ParseSourceFile
-  // FIXME The user should not have to define this for default behaviour.
-  //       (But they should have to explicitly enable it so we do not
-  //        have to link filesystem operations in a sandboxed environement.)
-  HeavyScheme.setParseSourceFileFn(HeavyScheme.getContext().CreateLambda(
-    [&](heavy::Context& C, heavy::ValueRefs Args) {
-      llvm::StringRef Filename = llvm::cast<heavy::String>(Args[1])->getView();
-      heavy::Value Result = HeavyScheme.ParseSourceFile(Filename);
-      // The parser already raised an error.
-      if (llvm::isa<heavy::Undefined>(Result))
-        return;
-      C.Cont(Result);
-    }));
 
   // Top level Scheme parse/eval stuff
 

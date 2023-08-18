@@ -238,22 +238,10 @@ void begin(Context& C, ValueRefs Args) {
 }
 
 void include_(Context& C, ValueRefs Args) {
-  Pair* P = cast<Pair>(Args[0]);
-  Pair* P2 = dyn_cast<Pair>(P->Cdr);
-  if (!P2 || !isa<Empty>(P2->Cdr)) {
-    return C.RaiseError("single argument required", Value(P));
-  }
-  String* Filename = dyn_cast<String>(P2->Car);
-  heavy::Value SourceVal = C.CreateSourceValue(P->getSourceLocation());
-  C.setLoc(SourceVal);
-  if (!Filename) return C.RaiseError("expecting filename", Value(P2));
-
   C.PushCont(&handleSequence);
-
-  std::array<Value, 2> ParseFileArgs = {SourceVal, Filename};
   // TODO Use "context local".
   heavy::Value ParseSourceFile = HEAVY_BASE_VAR(parse_source_file);
-  C.Apply(ParseSourceFile, ParseFileArgs);
+  C.Apply(ParseSourceFile, Args);
 }
 
 void include_ci(Context& C, ValueRefs Args) {

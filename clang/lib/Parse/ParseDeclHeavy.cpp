@@ -258,11 +258,13 @@ bool Parser::ParseHeavyScheme() {
     auto ParseSourceFileFn = [&](heavy::Context& C, heavy::ValueRefs Args) {
       // Args are already validated.
       heavy::SourceLocation Loc = Args[0].getSourceLocation();
-      llvm::StringRef Filename = cast<heavy::String>(Args[1])->getView();
+      llvm::StringRef RequestedFilename = cast<heavy::String>(Args[1])
+        ->getView();
       heavy::FullSourceLocation
         FullLoc = this->HeavyScheme->getFullSourceLocation(Loc);
       clang::SourceLocation ClangLoc = getSourceLocation(FullLoc);
-      OptionalFileEntryRef File = this->PP.LookupFile(ClangLoc, Filename,
+      OptionalFileEntryRef File = this->PP.LookupFile(
+          ClangLoc, RequestedFilename,
           false, nullptr, nullptr, nullptr, nullptr, nullptr,
           nullptr, nullptr, nullptr);
       if (!File)
@@ -282,7 +284,7 @@ bool Parser::ParseHeavyScheme() {
       // Is it over yet?
       C.Cont(this->HeavyScheme->ParseSourceFile(
                                           StartLoc.getRawEncoding(),
-                                          Filename,
+                                          File->getName(),
                                           Buffer->getBufferStart(),
                                           Buffer->getBufferEnd(),
                                           Buffer->getBufferStart()));
