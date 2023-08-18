@@ -82,7 +82,7 @@ protected:
       BufferEnd(FileBuffer.end()),
       BufferPtr(BufferPos)
   { 
-    assert((BufferPtr >= BufferStart && BufferPtr < BufferEnd) &&
+    assert((BufferPtr >= BufferStart && BufferPtr <= BufferEnd) &&
         "BufferPtr must be in range");
   }
 public:
