@@ -16,6 +16,7 @@
 #include <cassert>
 
 namespace heavy {
+SourceManager::SourceManager() = default;
 
 SourceLocation
 SourceManager::getNextStartLoc() {
@@ -28,29 +29,26 @@ SourceManager::getNextStartLoc() {
   return SourceLocation(Start.Loc + Len);
 }
 
+// The lifetime of Buffer must exist for the lifetime
+// of SourceManager.
+// Name is copied.
 SourceFile
 SourceManager::createEntry(llvm::StringRef Buffer,
                            llvm::StringRef Name,
                            uintptr_t ExternalRawEncoding) {
+  // Store the name for stability in memory.
+  llvm::StringRef StoredName = Name.copy(StringAllocator);
+
   SourceLocation StartLoc = getNextStartLoc();
-  Entries.push_back(SourceFile{Buffer, Name, StartLoc,
+  Entries.push_back(SourceFile{Buffer, StoredName, StartLoc,
                                ExternalRawEncoding});
   return Entries.back();
 }
 
-llvm::ErrorOr<SourceFile>
-SourceManager::Open(llvm::StringRef Filename) {
-  auto File = std::make_unique<SourceFileStorage>();
-  if (std::error_code ec = File->Open(Filename)) {
-    return ec;
-  }
-  SourceFile Entry = createEntry(File->getBuffer(), File->Name);
-  StoredEntries.push_back(std::move(File));
-  return Entry;
-}
-
 SourceFile
 SourceManager::getFile(SourceLocation Loc) const {
+  if (!Loc.isValid()) return SourceFile{};
+
   for (SourceFile const& X : Entries) {
     if (X.hasLoc(Loc)) return X;
   }
@@ -149,18 +147,6 @@ FullSourceLocation::getLineContext() const {
                            llvm::StringRef(LineStartPos, LineLen),
                            static_cast<unsigned>(TargetPos - LineStartPos),
                            CurrentLineNumber};
-}
-
-// SourceFileStorage
-
-std::error_code
-SourceFileStorage::Open(llvm::StringRef Filename) {
-  llvm::ErrorOr<StorageTy> File =
-    llvm::MemoryBuffer::getFileOrSTDIN(Filename);
-  if (!File) return File.getError();
-  Name = Filename.str();
-  Storage = std::move(File.get());
-  return std::error_code();
 }
 
 }

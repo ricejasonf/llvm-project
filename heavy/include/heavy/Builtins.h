@@ -13,6 +13,7 @@
 #ifndef LLVM_HEAVY_BUILTINS_H
 #define LLVM_HEAVY_BUILTINS_H
 
+#include "heavy/Context.h"
 #include "heavy/Value.h"
 
 #define HEAVY_BASE_LIB                _HEAVYL5SheavyL4Sbase
@@ -257,6 +258,42 @@ inline void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"op-eval", HEAVY_BASE_VAR(op_eval)},
     {"compile", HEAVY_BASE_VAR(compile)},
   });
+}
+
+}
+
+namespace heavy::base {
+/* InitParseSourceFile
+ *  - Provide a hook for including source files by
+ *    setting parse-source-file.
+ *  - Inside Fn, the user can call HeavyScheme::ParseSourceFile
+ *    to allow them to implement file lookup and storage
+ *    and manage their own source locations.
+ *  - Fn is a more documentative interface for the user
+ *    that might not be interested in writing Syntax in C++.
+ *  - Fn must still call C.Cont(..) or C.RaiseError(..).
+ *
+ *  using ParseSourceFileFn = void(heavy::Context&,
+ *                                 heavy::SourceLocation,
+ *                                 heavy::String*);
+ */
+template <typename ParseSourceFileFn>
+void InitParseSourceFile(ParseSourceFileFn Fn) {
+  auto ParseFn = [Fn](heavy::Context& C, heavy::ValueRefs Args) {
+    Pair* P = cast<Pair>(Args[0]);
+    Pair* P2 = dyn_cast<Pair>(P->Cdr);
+    if (!P2 || !isa<Empty>(P2->Cdr)) {
+      return C.RaiseError("single argument required", Value(P));
+    }
+    heavy::SourceLocation Loc = P->getSourceLocation();
+    String* Filename = dyn_cast<String>(P2->Car);
+
+    if (!Filename)
+      return C.RaiseError("expecting filename", Value(P2));
+    Fn(C, Loc, Filename);
+  };
+  // TODO Use context local instead of static global.
+  HEAVY_BASE_VAR(parse_source_file) = ParseFn;
 }
 }
 

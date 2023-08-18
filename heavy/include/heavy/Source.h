@@ -14,8 +14,8 @@
 #define LLVM_HEAVY_SOURCE_H
 
 #include "llvm/ADT/StringRef.h"
-#include <utility>
 #include <cassert>
+#include <utility>
 
 namespace heavy {
 class SourceManager;

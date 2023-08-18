@@ -15,16 +15,16 @@
 
 #include "heavy/Source.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/Allocator.h"
+#include "llvm/Support/ErrorOr.h"
 #include <cassert>
+#include <memory>
 #include <string>
 #include <system_error>
 #include <unordered_map>
 #include <vector>
 
 namespace heavy {
-class SourceManager;
-
 struct SourceLineStart {
   SourceLocation Loc = {};
   unsigned LineNumber = 1;
@@ -38,26 +38,8 @@ struct SourceLineStart {
   }
 };
 
-class SourceFileStorage {
-  friend class SourceManager;
-  using StorageTy = std::unique_ptr<llvm::MemoryBuffer>;
-
-  StorageTy Storage = {};
-  std::string Name = {};
-
-  llvm::StringRef getBuffer() const {
-    return Storage->getBuffer();
-  }
-
-  std::error_code Open(llvm::StringRef Filename);
-
-public:
-  SourceFileStorage() = default;
-};
-
 class SourceManager {
-  std::vector<std::unique_ptr<SourceFileStorage>> StoredEntries;
-
+  llvm::BumpPtrAllocator StringAllocator;
   std::vector<SourceFile> Entries;
   std::unordered_map<uintptr_t, SourceFile> ExternalLookup;
 
@@ -65,11 +47,10 @@ class SourceManager {
 
   SourceFile createEntry(llvm::StringRef Buffer,
                          llvm::StringRef Name,
-                         uintptr_t ExternalRawEncoding = 0);
+                         uintptr_t ExternalRawEncoding);
 
 public:
-
-  SourceManager() = default;
+  SourceManager();
   SourceManager(SourceManager const&) = delete;
 
   llvm::ErrorOr<SourceFile> Open(llvm::StringRef Filename);
@@ -83,13 +64,17 @@ public:
                                  llvm::StringRef Buffer,
                                  llvm::StringRef Name);
 
+  SourceFile createEntry(llvm::StringRef Buffer,
+                         llvm::StringRef Name) {
+    return createEntry(Buffer, Name, 0);
+  }
+
   SourceLineStart getClosestLineStart(SourceFile File,
                                       SourceLocation Loc) const;
   char const* getBufferPos(SourceFile const& File,
                            SourceLocation Loc) const {
     return File.Buffer.data() + Loc.Loc - File.StartLoc.Loc;
   }
-
 };
 
 }
