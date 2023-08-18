@@ -77,17 +77,7 @@ int main(int argc, char const** argv) {
   heavy::HeavyScheme HeavyScheme;
   HeavyScheme.InitSourceFileStorage();
   cl::ParseCommandLineOptions(argc, argv);
-  llvm::StringRef Filename = InputFilename;
-  llvm::ErrorOr<heavy::SourceFile>
-    FileResult = HeavyScheme.getSourceManager().Open(Filename);
-  if (std::error_code ec = FileResult.getError()) {
-    llvm::errs() << "Could not open input file: " << ec.message() << "\n";
-    return 1;
-  }
-  heavy::SourceFile File = FileResult.get();
-
-  // Top level Scheme parse/eval stuff
-
+  // Create error handler.
   bool HasErrors = false;
   auto OnError = [&HasErrors](llvm::StringRef Err,
                               heavy::FullSourceLocation const& SL) {
@@ -109,8 +99,10 @@ int main(int argc, char const** argv) {
     }
   };
 
-  heavy::Lexer Lexer(File);
-  HeavyScheme.ProcessTopLevelCommands(Lexer, ProcessTopLevelExpr, OnError);
+  // Run the top level expressions in the file.
+  HeavyScheme.ProcessTopLevelCommands(InputFilename,
+                                      ProcessTopLevelExpr,
+                                      OnError);
 
   if (InputMode.getValue() == ExecutionMode::mlir) {
     HeavyScheme.getContext().verifyModule();
