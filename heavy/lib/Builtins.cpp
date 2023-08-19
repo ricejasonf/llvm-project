@@ -24,7 +24,7 @@ heavy::ExternSyntax<>      HEAVY_BASE_VAR(export);
 heavy::ExternSyntax<>      HEAVY_BASE_VAR(include);
 heavy::ExternSyntax<>      HEAVY_BASE_VAR(include_ci);
 heavy::ExternSyntax<>      HEAVY_BASE_VAR(include_library_declarations);
-heavy::ExternLambda<1>     HEAVY_BASE_VAR(parse_source_file);
+heavy::ContextLocal        HEAVY_BASE_VAR(parse_source_file);
 
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(cond_expand);
 heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(define);
@@ -240,7 +240,7 @@ void begin(Context& C, ValueRefs Args) {
 void include_(Context& C, ValueRefs Args) {
   C.PushCont(&handleSequence);
   // TODO Use "context local".
-  heavy::Value ParseSourceFile = HEAVY_BASE_VAR(parse_source_file);
+  heavy::Value ParseSourceFile = HEAVY_BASE_VAR(parse_source_file).get(C);
   C.Apply(ParseSourceFile, Args);
 }
 

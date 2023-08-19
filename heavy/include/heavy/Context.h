@@ -61,7 +61,13 @@ void opEval(mlir::Operation*);
 void invokeSyntaxOp(heavy::Context& C, mlir::Operation* Op,
                     heavy::Value Value);
 
-class Context : public ContinuationStack<Context> {
+class ContextLocalLookup {
+  friend class ContextLocal;
+  llvm::DenseMap<uintptr_t, Value> Lookup;
+};
+
+class Context : public ContinuationStack<Context>,
+                public ContextLocalLookup {
   friend class OpGen;
   friend class OpEvalImpl;
   friend class HeavyScheme;

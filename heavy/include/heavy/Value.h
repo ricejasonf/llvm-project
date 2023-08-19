@@ -82,6 +82,7 @@ class Value;
 // other forward decls
 class OpGen;
 class Context;
+class ContextLocalLookup;
 class Pair;
 class Binding;
 class Symbol;
@@ -111,6 +112,7 @@ enum class ValueKind {
   BuiltinSyntax,
   Char,
   ContArg,
+  ContextLocal,
   Empty,
   EnvFrame,
   Environment,
@@ -1897,6 +1899,36 @@ struct ExternString : public ExternValue<String::sizeToAlloc(Len)> {
     return cast<String>(this->Value);
   }
 };
-}
+
+//  ContextLocal
+//  - For globals that may contain state specific to a context,
+//    use an empty object to provide a pointer to be used
+//    as a key for the map to the context specific value.
+//  - Serve only as an indicator for the Context to lookup the
+//    stored value.
+//  - Instances should not be passed around ever.
+struct ContextLocal : ValueBase {
+  ContextLocal()
+    : ValueBase(ValueKind::ContextLocal)
+  { }
+
+  // Use this for name lookup (ie in initModule).
+  heavy::Value getContextLocal() const {
+    heavy::ValueBase const* ValueBase = this;
+    return heavy::Value(ValueBase);
+  }
+
+  uintptr_t key() const { return reinterpret_cast<uintptr_t>(this); }
+  heavy::Value get(heavy::ContextLocalLookup const& C) const;
+  void set(heavy::ContextLocalLookup& C, heavy::Value Value);
+  void init(heavy::ContextLocalLookup& C) { set(C, Undefined()); }
+
+  static bool classof(Value V) {
+    return V.getKind() == ValueKind::ContextLocal;
+  }
+  static ValueKind getKind() { return ValueKind::ContextLocal; }
+};
+
+} // end namespace heavy
 
 #endif
