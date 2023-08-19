@@ -51,11 +51,12 @@ heavy::ExternString<20> NameForImportVar;
 heavy::ExternSyntax<> _HEAVY_import;
 
 Context::Context()
-  : ContinuationStack<Context>()
-  , TrashHeap()
-  , EnvStack(Empty())
-  , MLIRContext(std::make_unique<mlir::MLIRContext>())
-  , OpGen(nullptr)
+  : ContinuationStack<Context>(),
+    ContextLocalLookup(),
+    TrashHeap(),
+    EnvStack(Empty()),
+    MLIRContext(std::make_unique<mlir::MLIRContext>()),
+    OpGen(nullptr)
 {
   NameForImportVar = "_HEAVY_import";
   _HEAVY_import = heavy::base::import_;
@@ -333,6 +334,9 @@ EnvEntry Context::Lookup(Symbol* Name, Value Stack) {
   EnvEntry Result = {};
   Value V    = cast<Pair>(Stack)->Car;
   Value Next = cast<Pair>(Stack)->Cdr;
+  if (auto* CL = dyn_cast<ContextLocal>(V)) {
+    V = CL->get(*this);
+  }
   switch (V.getKind()) {
     case ValueKind::Binding:
       Result = cast<Binding>(V)->Lookup(Name);
@@ -802,7 +806,11 @@ Value Context::GetKnownValue(llvm::StringRef MangledName) {
   String* Name = CreateIdTableEntry(MangledName);
   // Could we possibly use dlsym or something here
   // for actual external values?
-  return KnownAddresses.lookup(Name);
+  heavy::Value Result = KnownAddresses.lookup(Name);
+  if (auto* CL = dyn_cast<heavy::ContextLocal>(Result)) {
+    Result = CL->get(*this);
+  }
+  return Result;
 }
 
 void heavy::initModule(heavy::Context& C, llvm::StringRef ModuleMangledName,
@@ -1043,6 +1051,18 @@ Value Context::RebuildLiteral(Value V) {
   LiteralRebuilder Rebuilder(*this);
   return Rebuilder.Visit(V);
 }
+
+// ContextLocal
+
+void ContextLocal::set(heavy::ContextLocalLookup& C,
+                       heavy::Value Value) {
+  C.Lookup[key()] = Value;
+}
+
+heavy::Value ContextLocal::get(heavy::ContextLocalLookup const& C) const {
+  return C.Lookup.lookup(key());
+}
+
 
 // Module
 
