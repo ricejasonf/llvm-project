@@ -11,6 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "heavy/Builtins.h"
 #include "heavy/Clang.h"
 #include "heavy/Context.h"
 #include "heavy/HeavyScheme.h"
@@ -255,20 +256,19 @@ bool Parser::ParseHeavyScheme() {
 
     // This is a special system specific function so we can
     // use Clang's file search and source locations.
-    auto ParseSourceFileFn = [&](heavy::Context& C, heavy::ValueRefs Args) {
-      // Args are already validated.
-      heavy::SourceLocation Loc = Args[0].getSourceLocation();
-      llvm::StringRef RequestedFilename = cast<heavy::String>(Args[1])
-        ->getView();
+    auto ParseSourceFileFn = [this](heavy::Context& C,
+                                    heavy::SourceLocation Loc,
+                                    heavy::String* RequestedFilename) {
       heavy::FullSourceLocation
         FullLoc = this->HeavyScheme->getFullSourceLocation(Loc);
       clang::SourceLocation ClangLoc = getSourceLocation(FullLoc);
       OptionalFileEntryRef File = this->PP.LookupFile(
-          ClangLoc, RequestedFilename,
+          ClangLoc, RequestedFilename->getView(),
           false, nullptr, nullptr, nullptr, nullptr, nullptr,
           nullptr, nullptr, nullptr);
       if (!File)
-        return C.RaiseError("error opening file", Args[0]);
+        return C.RaiseError("error opening file",
+                            heavy::Value(RequestedFilename));
       // Determine if file is a system file... as if!
       SrcMgr::CharacteristicKind FileChar = 
         this->PP.getHeaderSearchInfo()
@@ -280,7 +280,8 @@ bool Parser::ParseHeavyScheme() {
       std::optional<llvm::MemoryBufferRef> Buffer =
         this->PP.getSourceManager().getBufferOrNone(FileId, ClangLoc);
       if (!Buffer)
-        return C.RaiseError("error opening file buffer", Args[0]);
+        return C.RaiseError("error opening file buffer",
+                            heavy::Value(RequestedFilename));
       // Is it over yet?
       C.Cont(this->HeavyScheme->ParseSourceFile(
                                           StartLoc.getRawEncoding(),
@@ -289,8 +290,7 @@ bool Parser::ParseHeavyScheme() {
                                           Buffer->getBufferEnd(),
                                           Buffer->getBufferStart()));
     };
-    HeavyScheme->setParseSourceFileFn(HeavyScheme->getContext()
-        .CreateLambda(ParseSourceFileFn, {}));
+    heavy::base::InitParseSourceFile(ParseSourceFileFn);
 
     HEAVY_CLANG_VAR(diag_error)   = diag_error;
     HEAVY_CLANG_VAR(hello_world)  = hello_world;

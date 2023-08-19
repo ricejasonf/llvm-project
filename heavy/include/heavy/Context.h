@@ -227,14 +227,13 @@ public:
   }
 
   void setLoc(SourceLocation L) {
-    Loc = L;
-  }
-
-  Value setLoc(Value V) {
-    SourceLocation L = V.getSourceLocation();
     if (L.isValid()) {
       Loc = L;
     }
+  }
+
+  Value setLoc(Value V) {
+    setLoc(V.getSourceLocation());
     return V;
   }
 
