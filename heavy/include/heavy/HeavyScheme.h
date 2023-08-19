@@ -14,7 +14,7 @@
 #define LLVM_HEAVY_HEAVYSCHEME_H
 
 #include "heavy/Lexer.h"
-//#include "heavy/Value.h"
+#include "heavy/Source.h"
 #include "llvm/ADT/STLExtras.h" // function_ref
 #include "llvm/ADT/StringRef.h"
 #include <memory>
