@@ -118,8 +118,7 @@ extern heavy::ExternSyntax<>        HEAVY_BASE_VAR(include);
 extern heavy::ExternSyntax<>        HEAVY_BASE_VAR(include_ci);
 extern heavy::ExternSyntax<>     
   HEAVY_BASE_VAR(include_library_declarations);
-// TODO Make parse_source_file ContextLocalFunction.
-extern heavy::ExternLambda<1>       HEAVY_BASE_VAR(parse_source_file);
+extern heavy::ContextLocal          HEAVY_BASE_VAR(parse_source_file);
 
 extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(define);
 extern heavy::ExternBuiltinSyntax   HEAVY_BASE_VAR(define_syntax);
@@ -184,8 +183,7 @@ inline void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(include_library_declarations)
     = heavy::base::include_library_declarations;
   HEAVY_BASE_VAR(source_loc)      = heavy::base::source_loc;
-  HEAVY_BASE_VAR(parse_source_file) 
-    = heavy::base::parse_source_file;
+  HEAVY_BASE_VAR(parse_source_file).init(Context);
 
   // functions
   HEAVY_BASE_VAR(add)     = heavy::base::add;
@@ -234,7 +232,8 @@ inline void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"include-library-declarations",
       HEAVY_BASE_VAR(include_library_declarations)},
     {"source-loc",    HEAVY_BASE_VAR(source_loc)},
-    {"parse-source-file", HEAVY_BASE_VAR(parse_source_file)},
+    {"parse-source-file",
+                      HEAVY_BASE_VAR(parse_source_file).getContextLocal()},
 
     // functions
     {"+",       HEAVY_BASE_VAR(add)},
@@ -278,7 +277,7 @@ namespace heavy::base {
  *                                 heavy::String*);
  */
 template <typename ParseSourceFileFn>
-void InitParseSourceFile(ParseSourceFileFn Fn) {
+void InitParseSourceFile(heavy::Context& C, ParseSourceFileFn Fn) {
   auto ParseFn = [Fn](heavy::Context& C, heavy::ValueRefs Args) {
     Pair* P = cast<Pair>(Args[0]);
     Pair* P2 = dyn_cast<Pair>(P->Cdr);
@@ -293,8 +292,7 @@ void InitParseSourceFile(ParseSourceFileFn Fn) {
       return C.RaiseError("expecting filename", Value(P2));
     Fn(C, Loc, Filename);
   };
-  // TODO Use context local instead of static global.
-  HEAVY_BASE_VAR(parse_source_file) = ParseFn;
+  HEAVY_BASE_VAR(parse_source_file).set(C, C.CreateSyntax(ParseFn));
 }
 }
 

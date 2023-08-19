@@ -290,7 +290,8 @@ bool Parser::ParseHeavyScheme() {
                                           Buffer->getBufferEnd(),
                                           Buffer->getBufferStart()));
     };
-    heavy::base::InitParseSourceFile(ParseSourceFileFn);
+    heavy::base::InitParseSourceFile(HeavyScheme->getContext(),
+                                     ParseSourceFileFn);
 
     HEAVY_CLANG_VAR(diag_error)   = diag_error;
     HEAVY_CLANG_VAR(hello_world)  = hello_world;
