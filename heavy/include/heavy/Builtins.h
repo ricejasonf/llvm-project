@@ -286,7 +286,8 @@ void InitParseSourceFile(ParseSourceFileFn Fn) {
       return C.RaiseError("single argument required", Value(P));
     }
     heavy::SourceLocation Loc = P->getSourceLocation();
-    String* Filename = dyn_cast<String>(P2->Car);
+    heavy::Value RebuiltArg = C.RebuildLiteral(P2->Car);
+    String* Filename = dyn_cast<String>(RebuiltArg);
 
     if (!Filename)
       return C.RaiseError("expecting filename", Value(P2));
