@@ -1059,11 +1059,13 @@ mlir::Value OpGen::MaybeCallSyntax(Pair* P, bool& DidCallSyntax) {
   }
   switch (Operator.getKind()) {
     case ValueKind::BuiltinSyntax: {
+      Context.setLoc(P->getSourceLocation());
       DidCallSyntax = true;
       BuiltinSyntax* BS = cast<BuiltinSyntax>(Operator);
       return BS->Fn(*this, P);
     }
     case ValueKind::Syntax: {
+      Context.setLoc(P->getSourceLocation());
       DidCallSyntax = true;
       Value Input = P;
       Context.Run(Operator, ValueRefs(Input));
