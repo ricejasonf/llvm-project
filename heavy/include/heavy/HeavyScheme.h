@@ -15,10 +15,10 @@
 
 #include "heavy/Lexer.h"
 #include "heavy/Source.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h" // function_ref
 #include "llvm/ADT/StringRef.h"
 #include <memory>
-#include <type_traits>
 
 namespace heavy {
 class Context;
@@ -29,6 +29,8 @@ class Undefined;
 class Environment;
 class FullSourceLocation;
 using ModuleLoadNamesFn = void(heavy::Context&);
+using ValueRefs   = llvm::MutableArrayRef<heavy::Value>;
+using ValueFnTy   = void (Context&, ValueRefs);
 
 // HeavyScheme - Opaque wrapper for heavy::Context and common operations
 //               needed for embedding scheme

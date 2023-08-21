@@ -198,7 +198,7 @@ Module* Context::RegisterModule(llvm::StringRef MangledName,
         std::make_unique<Module>(*this, LoadNames));
   auto Itr = Result.first;
   bool DidInsert = Result.second;
- 
+
   assert(DidInsert && "module should be created only once");
   return Itr->second.get();
 }
@@ -206,7 +206,7 @@ Module* Context::RegisterModule(llvm::StringRef MangledName,
 #if 0 // TODO Make this create a module storing a function
               to initialize it from a ModuleOp
 Module* Context::RegisterModule(mlir::Operation* ModuleOp) {
-  // TODO Get the "load_module" FuncOp 
+  // TODO Get the "load_module" FuncOp
   mlir::ModuleOp Op = cast<mlir::ModuleOp>(ModuleOp);
   llvm::StringRef MangledName = Op.getName().getValueOr("");
   return RegisterModule(MangledName,
@@ -334,9 +334,6 @@ EnvEntry Context::Lookup(Symbol* Name, Value Stack) {
   EnvEntry Result = {};
   Value V    = cast<Pair>(Stack)->Car;
   Value Next = cast<Pair>(Stack)->Cdr;
-  if (auto* CL = dyn_cast<ContextLocal>(V)) {
-    V = CL->get(*this);
-  }
   switch (V.getKind()) {
     case ValueKind::Binding:
       Result = cast<Binding>(V)->Lookup(Name);
@@ -504,19 +501,11 @@ void write(llvm::raw_ostream& OS, Value V) {
 }
 
 void compile(Context& C, Value V, Value Env, Value Handler) {
-  // TODO This should be the (heavy eval) module
-  if (!HEAVY_BASE_IS_LOADED) {
-    HEAVY_BASE_INIT(C);
-  }
   heavy::Value Args[3] = {V, Env, Handler};
   C.Apply(HEAVY_BASE_VAR(compile), ValueRefs(Args));
 }
 
 void eval(Context& C, Value V, Value Env) {
-  // TODO This should be the (heavy eval) module
-  if (!HEAVY_BASE_IS_LOADED) {
-    HEAVY_BASE_INIT(C);
-  }
   heavy::Value Args[2] = {V, Env};
   C.Apply(HEAVY_BASE_VAR(eval), ValueRefs(Args));
 }
@@ -791,7 +780,7 @@ void Context::PushModuleCleanup(llvm::StringRef MangledName, Value Fn) {
         Value(CreateString(MangledName)));
   }
   if (heavy::Lambda* Lambda = dyn_cast<heavy::Lambda>(Fn)) {
-    M->PushCleanup(Lambda); 
+    M->PushCleanup(Lambda);
   } else {
     return RaiseError("expecting function", Fn);
   }
@@ -807,9 +796,6 @@ Value Context::GetKnownValue(llvm::StringRef MangledName) {
   // Could we possibly use dlsym or something here
   // for actual external values?
   heavy::Value Result = KnownAddresses.lookup(Name);
-  if (auto* CL = dyn_cast<heavy::ContextLocal>(Result)) {
-    Result = CL->get(*this);
-  }
   return Result;
 }
 
@@ -823,14 +809,6 @@ void heavy::initModule(heavy::Context& C, llvm::StringRef ModuleMangledName,
     llvm::StringRef Id = X.first;
     std::string MangledName = Mangler.mangleVariable(ModuleMangledName, Id);
     registerModuleVar(C, M, MangledName, Id, Val);
-#if 0
-    String* Id = C.CreateIdTableEntry(X.first);
-    Value Val = X.second;
-    String* MangledName = C.CreateIdTableEntry(
-        Mangler.mangleVariable(ModuleMangledName, Id));
-    assert(Val && "value must not be nullptr");
-    M->Insert(EnvBucket{Id, EnvEntry{Val, MangledName}});
-#endif
     // Track valid values by their mangled names
     if (Val) {
       C.AddKnownAddress(MangledName, Val);
@@ -861,7 +839,7 @@ bool Context::CheckKind(ValueKind VK, Value V) {
 bool Context::CheckNumber(Value V) {
   if (V.isNumber()) return false;
   String* S = CreateStringHelper(getAllocator(),
-      llvm::StringRef("invalid type "), 
+      llvm::StringRef("invalid type "),
       getKindName(V.getKind()),
       llvm::StringRef(", expecting number"));
   RaiseError(S, V);
@@ -899,7 +877,7 @@ void Context::WithExceptionHandlers(Value NewHandlers, Value Thunk) {
 
 void Context::WithExceptionHandler(Value Handler, Value Thunk) {
   Value NewHandlers = CreatePair(Handler, ExceptionHandlers);
-  WithExceptionHandlers(NewHandlers, Thunk); 
+  WithExceptionHandlers(NewHandlers, Thunk);
 }
 
 void Context::Raise(Value Obj) {
@@ -1054,13 +1032,32 @@ Value Context::RebuildLiteral(Value V) {
 
 // ContextLocal
 
-void ContextLocal::set(heavy::ContextLocalLookup& C,
-                       heavy::Value Value) {
-  C.Lookup[key()] = Value;
+heavy::Value ContextLocal::init(heavy::Context& C, heavy::Value Value) {
+  heavy::ContextLocalLookup& CL = C;
+  heavy::Value& Result = CL.LookupTable[key()];
+  // Allow init to be called after the user already called init.
+  if (Result != nullptr && Value == nullptr)
+    return Result;
+  assert(Result == nullptr &&
+      "context local should be initialized only once");
+  Result = Value ? Value : C.CreateBinding(heavy::Undefined());
+  return Result;
 }
 
+void ContextLocal::set(heavy::ContextLocalLookup& C,
+                       heavy::Value Value) {
+  heavy::Value& Result = C.LookupTable[key()];
+  auto* Binding = dyn_cast<heavy::Binding>(Result);
+  assert(Binding && "context local must be initialized as binding");
+  Binding->setValue(Value);
+}
+
+// Return the value pointed to by Binding or nullptr.
 heavy::Value ContextLocal::get(heavy::ContextLocalLookup const& C) const {
-  return C.Lookup.lookup(key());
+  heavy::Value Value = C.LookupTable.lookup(key());
+  if (auto* Binding = dyn_cast<heavy::Binding>(Value))
+    return Binding->getValue();
+  return Value;
 }
 
 

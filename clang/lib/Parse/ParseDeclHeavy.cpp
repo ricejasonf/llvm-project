@@ -31,10 +31,10 @@
 using namespace clang;
 
 bool HEAVY_CLANG_IS_LOADED = false;
-heavy::ExternLambda<1> HEAVY_CLANG_VAR(diag_error) = {};
-heavy::ExternLambda<1> HEAVY_CLANG_VAR(hello_world) = {};
-heavy::ExternLambda<1, sizeof(void*)*2> HEAVY_CLANG_VAR(write_lexer) = {};
-heavy::ExternLambda<1, sizeof(void*)*2> HEAVY_CLANG_VAR(expr_eval) = {};
+heavy::ContextLocal HEAVY_CLANG_VAR(diag_error);
+heavy::ContextLocal HEAVY_CLANG_VAR(hello_world);
+heavy::ContextLocal HEAVY_CLANG_VAR(write_lexer);
+heavy::ContextLocal HEAVY_CLANG_VAR(expr_eval);
 
 namespace {
 // Convert to a clang::SourceLocation or an invalid location if it
@@ -290,12 +290,16 @@ bool Parser::ParseHeavyScheme() {
                                           Buffer->getBufferEnd(),
                                           Buffer->getBufferStart()));
     };
-    heavy::base::InitParseSourceFile(HeavyScheme->getContext(),
-                                     ParseSourceFileFn);
 
-    HEAVY_CLANG_VAR(diag_error)   = diag_error;
-    HEAVY_CLANG_VAR(hello_world)  = hello_world;
-    HEAVY_CLANG_VAR(expr_eval)    = expr_eval;
+    heavy::Context& Context = HeavyScheme->getContext();
+    heavy::base::InitParseSourceFile(Context, ParseSourceFileFn);
+    HEAVY_CLANG_VAR(diag_error).init(Context,
+                                     Context.CreateLambda(diag_error));
+    HEAVY_CLANG_VAR(hello_world).init(Context,
+                                      Context.CreateLambda(hello_world));
+    HEAVY_CLANG_VAR(expr_eval).init(Context,
+                                    Context.CreateLambda(expr_eval));
+    HEAVY_CLANG_VAR(write_lexer).init(Context);
     HeavyScheme->RegisterModule(HEAVY_CLANG_LIB_STR, HEAVY_CLANG_LOAD_MODULE);
   }
 
@@ -327,8 +331,10 @@ bool Parser::ParseHeavyScheme() {
   // Prepare to revert Parser.
 
   LexerWriter TheLexerWriter(*this, *HeavyScheme);
-  HEAVY_CLANG_VAR(write_lexer) = [&](heavy::Context& C,
-                                     heavy::ValueRefs Args) mutable {
+  heavy::Context& Context = HeavyScheme->getContext();
+  HEAVY_CLANG_VAR(write_lexer).set(Context, 
+      Context.CreateLambda([&](heavy::Context& C,
+                               heavy::ValueRefs Args) mutable {
     heavy::SourceLocation Loc;
     heavy::Value Output;
     if (Args.size() == 2) {
@@ -356,7 +362,7 @@ bool Parser::ParseHeavyScheme() {
           this->HeavyScheme->getFullSourceLocation(Loc)),
           Result.str());
     C.Cont();
-  };
+  }));
 
   heavy::TokenKind Terminator = heavy::tok::r_brace;
   HeavyScheme->ProcessTopLevelCommands(SchemeLexer,
@@ -367,10 +373,10 @@ bool Parser::ParseHeavyScheme() {
   PP.FinishEmbeddedLexer(SchemeLexer.GetByteOffset());
   if (!HasError)
     TheLexerWriter.FlushTokens();
-  HEAVY_CLANG_VAR(write_lexer) = [](heavy::Context& C,
-                                    heavy::ValueRefs Args) {
+  HEAVY_CLANG_VAR(write_lexer).set(Context,
+        Context.CreateBuiltin([](heavy::Context& C, heavy::ValueRefs Args) {
     C.RaiseError("lexer writer is not initialized");
-  };
+  }));
 
   // The Lexers position has been changed
   // so we need to re-prime the look-ahead

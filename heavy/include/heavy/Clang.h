@@ -21,7 +21,6 @@
 #define HEAVY_CLANG_LIB               _HEAVYL5Sclang
 #define HEAVY_CLANG_LIB_(NAME)        _HEAVYL5Sclang ## NAME
 #define HEAVY_CLANG_LIB_STR           "_HEAVYL5SheavyL5Sclang"
-#define HEAVY_CLANG_IS_LOADED         HEAVY_CLANG_LIB##_is_loaded
 #define HEAVY_CLANG_LOAD_MODULE       HEAVY_CLANG_LIB##_load_module
 #define HEAVY_CLANG_INIT              HEAVY_CLANG_LIB##_init
 #define HEAVY_CLANG_VAR(NAME)         HEAVY_CLANG_VAR__##NAME
@@ -29,33 +28,28 @@
 #define HEAVY_CLANG_VAR__hello_world  HEAVY_CLANG_LIB_(V5Shellomi5Sworld)
 #define HEAVY_CLANG_VAR__write_lexer  HEAVY_CLANG_LIB_(V5Swritemi5Slexer)
 
-extern bool HEAVY_CLANG_IS_LOADED;
-
 // diag-error
-extern heavy::ExternLambda<1> HEAVY_CLANG_VAR(diag_error);
+extern heavy::ContextLocal HEAVY_CLANG_VAR(diag_error);
 
 // hello-world
-extern heavy::ExternLambda<1> HEAVY_CLANG_VAR(hello_world);
+extern heavy::ContextLocal HEAVY_CLANG_VAR(hello_world);
 
 // write-lexer
-extern heavy::ExternLambda<1, sizeof(void*)*2> HEAVY_CLANG_VAR(write_lexer);
+extern heavy::ContextLocal HEAVY_CLANG_VAR(write_lexer);
 
 // expr-eval
-extern heavy::ExternLambda<1, sizeof(void*)*2> HEAVY_CLANG_VAR(expr_eval);
+extern heavy::ContextLocal HEAVY_CLANG_VAR(expr_eval);
 
 extern "C" {
 // initialize the module for run-time independent of the compiler
 inline void HEAVY_CLANG_INIT(heavy::Context& Context) {
-  assert(!HEAVY_CLANG_IS_LOADED &&
-    "module should not be loaded more than once");
-  HEAVY_CLANG_IS_LOADED = true;
-  assert(HEAVY_CLANG_VAR(diag_error).Value &&
+  assert(HEAVY_CLANG_VAR(diag_error).get(Context) &&
       "external module must be preloaded");
-  assert(HEAVY_CLANG_VAR(hello_world).Value &&
+  assert(HEAVY_CLANG_VAR(hello_world).get(Context) &&
       "external module must be preloaded");
-  assert(HEAVY_CLANG_VAR(write_lexer).Value &&
+  assert(HEAVY_CLANG_VAR(write_lexer).get(Context) &&
       "external module must be preloaded");
-  assert(HEAVY_CLANG_VAR(expr_eval).Value &&
+  assert(HEAVY_CLANG_VAR(expr_eval).get(Context) &&
       "external module must be preloaded");
 }
 
@@ -64,10 +58,10 @@ inline void HEAVY_CLANG_INIT(heavy::Context& Context) {
 inline void HEAVY_CLANG_LOAD_MODULE(heavy::Context& Context) {
   HEAVY_CLANG_INIT(Context);
   heavy::initModule(Context, HEAVY_CLANG_LIB_STR, {
-    {"diag-error",  HEAVY_CLANG_VAR(diag_error)},
-    {"hello-world", HEAVY_CLANG_VAR(hello_world)},
-    {"write-lexer", HEAVY_CLANG_VAR(write_lexer)},
-    {"expr-eval",   HEAVY_CLANG_VAR(expr_eval)}
+    {"diag-error",  HEAVY_CLANG_VAR(diag_error).init(Context)},
+    {"hello-world", HEAVY_CLANG_VAR(hello_world).init(Context)},
+    {"write-lexer", HEAVY_CLANG_VAR(write_lexer).init(Context)},
+    {"expr-eval",   HEAVY_CLANG_VAR(expr_eval).init(Context)}
   });
 }
 }
