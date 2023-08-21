@@ -458,7 +458,6 @@ void error(Context& C, ValueRefs Args) {
 }
 
 void eval(Context& C, ValueRefs Args) {
-  assert(HEAVY_BASE_IS_LOADED && "eval lib must be loaded");
   if (Args.size() != 2) {
     return C.RaiseError("invalid arity");
   }

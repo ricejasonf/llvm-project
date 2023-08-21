@@ -63,7 +63,7 @@ void invokeSyntaxOp(heavy::Context& C, mlir::Operation* Op,
 
 class ContextLocalLookup {
   friend class ContextLocal;
-  llvm::DenseMap<uintptr_t, Value> Lookup;
+  llvm::DenseMap<uintptr_t, Value> LookupTable;
 };
 
 class Context : public ContinuationStack<Context>,
