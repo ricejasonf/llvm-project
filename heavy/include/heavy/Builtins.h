@@ -19,7 +19,6 @@
 #define HEAVY_BASE_LIB                _HEAVYL5SheavyL4Sbase
 #define HEAVY_BASE_LIB_(NAME)         _HEAVYL5SheavyL4Sbase ## NAME
 #define HEAVY_BASE_LIB_STR            "_HEAVYL5SheavyL4Sbase"
-#define HEAVY_BASE_IS_LOADED          HEAVY_BASE_LIB_(_is_loaded)
 #define HEAVY_BASE_LOAD_MODULE        HEAVY_BASE_LIB_(_load_module)
 #define HEAVY_BASE_INIT               HEAVY_BASE_LIB_(_init)
 
@@ -152,19 +151,9 @@ extern heavy::ExternFunction HEAVY_BASE_VAR(eval);
 extern heavy::ExternFunction HEAVY_BASE_VAR(op_eval);
 extern heavy::ExternFunction HEAVY_BASE_VAR(compile);
 
-extern bool HEAVY_BASE_IS_LOADED;
-
 extern "C" {
 // initialize the module for run-time independent of the compiler
 inline void HEAVY_BASE_INIT(heavy::Context& Context) {
-  if (HEAVY_BASE_IS_LOADED) return; // TODO Remove
-#if 0 // TODO Temp disable this until we break out (heavy eval)
-  assert(!HEAVY_BASE_IS_LOADED &&
-    "module should not be loaded more than once");
-#endif
-
-  HEAVY_BASE_IS_LOADED = true;
-
   // syntax
   HEAVY_BASE_VAR(define)          = heavy::base::define;
   HEAVY_BASE_VAR(define_syntax)   = heavy::base::define_syntax;
@@ -233,7 +222,7 @@ inline void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
       HEAVY_BASE_VAR(include_library_declarations)},
     {"source-loc",    HEAVY_BASE_VAR(source_loc)},
     {"parse-source-file",
-                      HEAVY_BASE_VAR(parse_source_file).getContextLocal()},
+                      HEAVY_BASE_VAR(parse_source_file).get(Context)},
 
     // functions
     {"+",       HEAVY_BASE_VAR(add)},
