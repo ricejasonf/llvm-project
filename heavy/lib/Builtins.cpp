@@ -215,10 +215,8 @@ mlir::Value cond_expand(OpGen& OG, Pair* P) {
 }
 
 namespace {
-  void handleSequence(Context&C, ValueRefs Args) {
-    // Args are valid.
-    heavy::Value Sequence = Args[0];
-    heavy::SourceLocation Loc = Sequence.getSourceLocation();
+  void handleSequence(Context&C, heavy::SourceLocation Loc,
+                                 heavy::Value Sequence) {
     OpGen& OG = *C.OpGen;
     if (OG.isTopLevel()) {
       OG.VisitTopLevelSequence(Sequence);
@@ -232,14 +230,14 @@ namespace {
 
 void begin(Context& C, ValueRefs Args) {
   Pair* P = cast<Pair>(Args[0]);
-  heavy::Value SourceVal = C.CreateSourceValue(P->getSourceLocation());
-  std::array<Value, 2> NextArgs = {SourceVal, P->Cdr};
-  handleSequence(C, NextArgs);
+  handleSequence(C, P->getSourceLocation(), P->Cdr);
 }
 
 void include_(Context& C, ValueRefs Args) {
-  C.PushCont(&handleSequence);
-  // TODO Use "context local".
+  heavy::SourceLocation Loc = Args[0].getSourceLocation();
+  C.PushCont([Loc](Context& C, ValueRefs Args) {
+    handleSequence(C, Loc, Args[0]);
+  });
   heavy::Value ParseSourceFile = HEAVY_BASE_VAR(parse_source_file).get(C);
   C.Apply(ParseSourceFile, Args);
 }
