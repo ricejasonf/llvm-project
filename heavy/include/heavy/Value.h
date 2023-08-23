@@ -1564,10 +1564,18 @@ public:
   static BuiltinSyntax* getImportSyntax();
 
   // ImportValue returns false if the name already exists
+  // and points to a different location.
   bool ImportValue(EnvBucket X) {
     assert(X.first && "name should point to a string in identifier table");
     assert(X.second.MangledName && "import requires external name");
-    return EnvMap.insert(X).second;
+    EnvEntry& Entry = EnvMap[X.first];
+    if (Entry.MangledName == nullptr) {
+      // Result of `insert` is pair<iterator, bool>
+      Entry = X.second;
+      return true;
+    }
+    // Do nothing if the value is the same "location".
+    return X.second.MangledName == Entry.MangledName;
   }
 
   // Insert - Add a named mutable location. Overwriting
