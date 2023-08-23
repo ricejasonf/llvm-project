@@ -241,6 +241,8 @@ void OpGen::VisitLibrarySpec(Value LibSpec) {
     Context.SetError("expecting library spec", LibSpec);
     return;
   }
+  if (Context.CheckError())
+    return;
   Context.Cont();
 }
 
