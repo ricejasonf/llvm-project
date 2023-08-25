@@ -238,14 +238,21 @@ void include_(Context& C, ValueRefs Args) {
   C.PushCont([Loc](Context& C, ValueRefs Args) {
     handleSequence(C, Loc, Args[0]);
   });
+
+  auto* P = cast<Pair>(Args[0]);
+  auto* P2 = cast<Pair>(P->Cdr);
+
   heavy::Value ParseSourceFile = HEAVY_BASE_VAR(parse_source_file).get(C);
-  C.Apply(ParseSourceFile, Args);
+  heavy::Value SourceVal = C.CreateSourceValue(Loc);
+  heavy::Value Filename = C.RebuildLiteral(P2->Car);
+  std::array<heavy::Value, 2> NewArgs = {SourceVal, Filename};
+  C.Apply(ParseSourceFile, NewArgs);
 }
 
 void include_ci(Context& C, ValueRefs Args) {
   // TODO We need to dynamic-wind and set the
   //      context flag for case insensitive parsing
-  //      and lookup. The do what `include` does.
+  //      and lookup. Then do what `include` does.
   C.RaiseError("TODO include-ci", Args[0]);
 }
 
@@ -256,7 +263,7 @@ void include_library_declarations(Context& C, ValueRefs Args) {
 void parse_source_file(Context& C, ValueRefs Args) {
   // The user must use HeavyScheme::setParseSourceFileFn
   // to define how source files are loaded and stored.
-  C.RaiseError("parse-source-file is undefined", Args[0]);
+  C.RaiseError("parse-source-file is undefined");
 }
 
 mlir::Value source_loc(OpGen& OG, Pair* P) {
