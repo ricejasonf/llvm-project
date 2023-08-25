@@ -268,20 +268,15 @@ namespace heavy::base {
 template <typename ParseSourceFileFn>
 void InitParseSourceFile(heavy::Context& C, ParseSourceFileFn Fn) {
   auto ParseFn = [Fn](heavy::Context& C, heavy::ValueRefs Args) {
-    Pair* P = cast<Pair>(Args[0]);
-    Pair* P2 = dyn_cast<Pair>(P->Cdr);
-    if (!P2 || !isa<Empty>(P2->Cdr)) {
-      return C.RaiseError("single argument required", Value(P));
-    }
-    heavy::SourceLocation Loc = P->getSourceLocation();
-    heavy::Value RebuiltArg = C.RebuildLiteral(P2->Car);
-    String* Filename = dyn_cast<String>(RebuiltArg);
-
+    if (Args.size() != 2)
+      return C.RaiseError("parse-source-file expects 2 arguments");
+    heavy::SourceLocation Loc = Args[0].getSourceLocation();
+    auto* Filename = dyn_cast<heavy::String>(Args[1]);
     if (!Filename)
-      return C.RaiseError("expecting filename", Value(P2));
+      return C.RaiseError("expecting filename");
     Fn(C, Loc, Filename);
   };
-  HEAVY_BASE_VAR(parse_source_file).set(C, C.CreateSyntax(ParseFn));
+  HEAVY_BASE_VAR(parse_source_file).set(C, C.CreateLambda(ParseFn));
 }
 }
 

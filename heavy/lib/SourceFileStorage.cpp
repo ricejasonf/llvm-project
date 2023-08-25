@@ -72,8 +72,8 @@ heavy::Value HeavyScheme::ParseSourceFile(heavy::SourceLocation Loc,
     FileResult = SourceFileStoragePtr->Open(getSourceManager(), Loc, Filename);
   if (std::error_code ec = FileResult.getError()) {
     heavy::Context& C = getContext();
-    C.RaiseError((llvm::Twine("include ", Filename) + 
-                  llvm::Twine(": ", ec.message())).str());
+    C.RaiseError((llvm::Twine("\"", Filename) + 
+                  llvm::Twine("\": ", ec.message())).str());
     return Undefined{};
   }
   heavy::Lexer Lexer(FileResult.get());
