@@ -119,6 +119,11 @@ public:
   //           the environment object if necessary.
   void WithEnv(std::unique_ptr<heavy::Environment> E, heavy::Environment* Env,
                Value Thunk);
+  void WithEnv(std::unique_ptr<heavy::Environment> EnvPtr, Value Thunk) {
+    heavy::Environment* Env = EnvPtr.get();
+    WithEnv(std::move(EnvPtr), Env, Thunk);
+  }
+
 
   mlir::Operation* getModuleOp();
   void dumpModuleOp();
@@ -164,6 +169,8 @@ public:
   // LoadModule - Idempotently load a library
   void LoadModule(Value Spec);
   void PushModuleCleanup(llvm::StringRef MangledName, Value Fn);
+  void IncludeModuleFile(heavy::String* Filename);
+
 
   Context();
   ~Context();
