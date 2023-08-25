@@ -169,7 +169,7 @@ public:
   // LoadModule - Idempotently load a library
   void LoadModule(Value Spec);
   void PushModuleCleanup(llvm::StringRef MangledName, Value Fn);
-  void IncludeModuleFile(heavy::String* Filename);
+  void IncludeModuleFile(heavy::SourceLocation Loc, heavy::String* Filename);
 
 
   Context();

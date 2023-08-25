@@ -740,6 +740,8 @@ void Context::CreateImportSet(Value Spec) {
 }
 
 void Context::LoadModule(Value Spec) {
+  heavy::SourceLocation Loc = Spec.getSourceLocation();
+  setLoc(Loc);
   heavy::Mangler Mangler(*this);
   std::string Name = Mangler.mangleModule(Spec);
   if (CheckError())
@@ -786,7 +788,7 @@ void Context::LoadModule(Value Spec) {
     FilenameBuffer += ".sld";
     Filename = CreateString(FilenameBuffer);
   }
-  IncludeModuleFile(Filename);
+  IncludeModuleFile(Loc, Filename);
 }
 
 // Allow the user to add cleanup routines to unload a module/library.
@@ -809,16 +811,19 @@ void Context::PushModuleCleanup(llvm::StringRef MangledName, Value Fn) {
 //                   - Create a temporary environment with
 //                     the define-library syntax and library
 //                     declarations already defined.
-void Context::IncludeModuleFile(heavy::String* Filename) {
+void Context::IncludeModuleFile(heavy::SourceLocation Loc,
+                                heavy::String* Filename) {
   heavy::Value Thunk = CreateLambda(
-    [](heavy::Context& C, heavy::ValueRefs Args) {
+    [Loc](heavy::Context& C, heavy::ValueRefs Args) {
       C.PushCont(
         [](heavy::Context& C, heavy::ValueRefs Args) {
           C.OpGen->VisitTopLevelSequence(Args[0]);
         });
       heavy::Value Parse = HEAVY_BASE_VAR(parse_source_file).get(C);
-      // We captured Filename.
-      C.Apply(Parse, C.getCaptures());
+      heavy::Value SourceVal = C.CreateSourceValue(Loc);
+      heavy::Value Filename = C.getCapture(0);
+      std::array<heavy::Value, 2> NewArgs = {SourceVal, Filename};
+      C.Apply(Parse, NewArgs);
     }, CaptureList{Filename});
 
   // Make a new environment with `define-library`
