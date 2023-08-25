@@ -742,6 +742,9 @@ void Context::CreateImportSet(Value Spec) {
 void Context::LoadModule(Value Spec) {
   heavy::Mangler Mangler(*this);
   std::string Name = Mangler.mangleModule(Spec);
+  if (CheckError())
+    return;
+
   std::unique_ptr<Module>& M = Modules[Name];
   if (M) {
     // Idempotently register the names of the globals.
@@ -763,11 +766,27 @@ void Context::LoadModule(Value Spec) {
     return;
   }
 
-  // TODO
-  // Load the file and compile the scheme code and try again.
-  // We might need the SourceManager to accessible to Context.
-
-  SetError("unable to load module (not supported)", Spec);
+  // Load the module from an sld file.
+  // Spec is validated by the above call to mangleModule.
+  // Expect valid data, but use dyn_cast just in case.
+  heavy::String* Filename = nullptr;
+  {
+    llvm::SmallString<128> FilenameBuffer;
+    heavy::Value Current = Spec;
+    auto* P = dyn_cast<heavy::Pair>(Current);
+    auto* Symbol = dyn_cast<heavy::Symbol>(P->Car);
+    FilenameBuffer += Symbol->getView();
+    Current = P->Cdr;
+    while ((P = dyn_cast<heavy::Pair>(Current))) {
+      FilenameBuffer += '/';
+      auto* Symbol = dyn_cast<heavy::Symbol>(P->Car);
+      FilenameBuffer += Symbol->getView();
+      Current = P->Cdr;
+    }
+    FilenameBuffer += ".sld";
+    Filename = CreateString(FilenameBuffer);
+  }
+  IncludeModuleFile(Filename);
 }
 
 // Allow the user to add cleanup routines to unload a module/library.
@@ -784,6 +803,40 @@ void Context::PushModuleCleanup(llvm::StringRef MangledName, Value Fn) {
   } else {
     return RaiseError("expecting function", Fn);
   }
+}
+
+// IncludeModuleFile - Fulfill loading a module for `import`.
+//                   - Create a temporary environment with
+//                     the define-library syntax and library
+//                     declarations already defined.
+void Context::IncludeModuleFile(heavy::String* Filename) {
+  heavy::Value Thunk = CreateLambda(
+    [](heavy::Context& C, heavy::ValueRefs Args) {
+      C.PushCont(
+        [](heavy::Context& C, heavy::ValueRefs Args) {
+          C.OpGen->VisitTopLevelSequence(Args[0]);
+        });
+      heavy::Value Parse = HEAVY_BASE_VAR(parse_source_file).get(C);
+      // We captured Filename.
+      C.Apply(Parse, C.getCaptures());
+    }, CaptureList{Filename});
+
+  // Make a new environment with `define-library`
+  // and related syntax preloaded.
+  heavy::Module* Base = Modules[HEAVY_BASE_LIB_STR].get();
+  auto Env = std::make_unique<heavy::Environment>(*this);
+  for (llvm::StringRef Name : {"define-library",
+                               "export",
+                               "begin",
+                               "include",
+                               "include-ci",
+                               "include-library-declarations",
+                               "cond-expand"}) {
+    String* Id = CreateIdTableEntry(Name);
+    Env->ImportValue(EnvBucket{Id, Base->Lookup(Id)});
+  }
+
+  WithEnv(std::move(Env), Thunk);
 }
 
 void Context::AddKnownAddress(llvm::StringRef MangledName, heavy::Value Value) {
