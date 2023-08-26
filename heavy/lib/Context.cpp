@@ -788,6 +788,22 @@ void Context::LoadModule(Value Spec) {
     FilenameBuffer += ".sld";
     Filename = CreateString(FilenameBuffer);
   }
+  heavy::Value MangledName = CreateString(Name);
+  PushCont(
+    [Loc](heavy::Context& C, heavy::ValueRefs Args) {
+      auto* MangledName = cast<heavy::String>(C.getCapture(0));
+      auto* Filename = cast<heavy::String>(C.getCapture(1));
+      // Require the module this time.
+      std::unique_ptr<Module>& M = C.Modules[MangledName->getView()];
+      if (!M) {
+        C.setLoc(Loc);
+        heavy::String* ErrMsg = C.CreateString(Filename->getView(),
+                                  ": library was not defined");
+        return C.RaiseError(ErrMsg, Value(Filename));
+      }
+      M->LoadNames();
+      C.Cont(M.get());
+    }, CaptureList{MangledName, Filename});
   IncludeModuleFile(Loc, Filename);
 }
 
