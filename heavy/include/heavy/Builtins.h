@@ -33,6 +33,8 @@
 #define HEAVY_BASE_VAR__list          HEAVY_BASE_LIB_(V4Slist)
 #define HEAVY_BASE_VAR__append        HEAVY_BASE_LIB_(V6Sappend)
 #define HEAVY_BASE_VAR__dump          HEAVY_BASE_LIB_(V4Sdump)
+#define HEAVY_BASE_VAR__write         HEAVY_BASE_LIB_(V5Swrite)
+#define HEAVY_BASE_VAR__newline       HEAVY_BASE_LIB_(V7Snewline)
 #define HEAVY_BASE_VAR__eq            HEAVY_BASE_LIB_(V2Seqqu)
 #define HEAVY_BASE_VAR__equal         HEAVY_BASE_LIB_(V5Sequalqu)
 #define HEAVY_BASE_VAR__eqv           HEAVY_BASE_LIB_(V3Seqvqu)
@@ -86,6 +88,8 @@ mlir::Value source_loc(OpGen& OG, Pair* P);
 
 // functions
 void dump(Context& C, ValueRefs Args);
+void write(Context& C, ValueRefs Args);
+void newline(Context& C, ValueRefs Args);
 void add(Context& C, ValueRefs Args);
 void mul(Context&C, ValueRefs Args);
 void sub(Context&C, ValueRefs Args);
@@ -139,6 +143,8 @@ extern heavy::ExternFunction HEAVY_BASE_VAR(lt);
 extern heavy::ExternFunction HEAVY_BASE_VAR(list);
 extern heavy::ExternFunction HEAVY_BASE_VAR(append);
 extern heavy::ExternFunction HEAVY_BASE_VAR(dump);
+extern heavy::ExternFunction HEAVY_BASE_VAR(write);
+extern heavy::ExternFunction HEAVY_BASE_VAR(newline);
 extern heavy::ExternFunction HEAVY_BASE_VAR(eq);
 extern heavy::ExternFunction HEAVY_BASE_VAR(equal);
 extern heavy::ExternFunction HEAVY_BASE_VAR(eqv);
@@ -184,6 +190,8 @@ inline void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(list)    = heavy::base::list;
   HEAVY_BASE_VAR(append)  = heavy::base::append;
   HEAVY_BASE_VAR(dump)    = heavy::base::dump;
+  HEAVY_BASE_VAR(write)   = heavy::base::write;
+  HEAVY_BASE_VAR(newline) = heavy::base::newline;
   HEAVY_BASE_VAR(eq)      = heavy::base::eqv;
   HEAVY_BASE_VAR(equal)   = heavy::base::equal;
   HEAVY_BASE_VAR(eqv)     = heavy::base::eqv;
@@ -234,6 +242,8 @@ inline void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"list",    HEAVY_BASE_VAR(list)},
     {"append",  HEAVY_BASE_VAR(append)},
     {"dump",    HEAVY_BASE_VAR(dump)},
+    {"write",   HEAVY_BASE_VAR(write)},
+    {"newline", HEAVY_BASE_VAR(newline)},
     {"eq?",     HEAVY_BASE_VAR(eq)},
     {"equal?",  HEAVY_BASE_VAR(equal)},
     {"eqv?",    HEAVY_BASE_VAR(eqv)},
