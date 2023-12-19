@@ -47,6 +47,8 @@ heavy::ExternFunction HEAVY_BASE_VAR(lt);
 heavy::ExternFunction HEAVY_BASE_VAR(list);
 heavy::ExternFunction HEAVY_BASE_VAR(append);
 heavy::ExternFunction HEAVY_BASE_VAR(dump);
+heavy::ExternFunction HEAVY_BASE_VAR(write);
+heavy::ExternFunction HEAVY_BASE_VAR(newline);
 heavy::ExternFunction HEAVY_BASE_VAR(eq);
 heavy::ExternFunction HEAVY_BASE_VAR(equal);
 heavy::ExternFunction HEAVY_BASE_VAR(eqv);
@@ -335,6 +337,29 @@ void callcc(Context& C, ValueRefs Args) {
 void dump(Context& C, ValueRefs Args) {
   if (Args.size() != 1) return C.RaiseError("invalid arity");
   Args[0].dump();
+  C.Cont(heavy::Undefined());
+}
+
+void write(Context& C, ValueRefs Args) {
+  // TODO Write to specified output port.
+  if (Args.size() == 2) return C.RaiseError("port argument unsupported");
+  if (Args.size() != 1) return C.RaiseError("invalid arity");
+  // TODO Write to specified output port.
+  heavy::write(llvm::outs(), Args[0]);
+  C.Cont(heavy::Undefined());
+}
+
+void newline(Context& C, ValueRefs Args) {
+  // TODO Write to specified output port.
+  if (Args.size() == 1) {
+    return C.RaiseError("port argument unsupported");
+  } else if (Args.size() != 0) {
+    return C.RaiseError("invalid arity");
+  }
+
+  // heavy::write(llvm::outs(), heavy::Char('\n'));
+  // If output port wraps an llvm::ostream then this would be fine.
+  llvm::outs() << '\n';
   C.Cont(heavy::Undefined());
 }
 
