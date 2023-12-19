@@ -3,4 +3,12 @@ function(add_heavy_unittest test_name)
   add_unittest(HeavyUnitTests ${test_name} ${ARGN})
 endfunction()
 
-add_heavy_unittest(HeavyValueTest ValueTest.cpp)
+add_heavy_unittest(HeavyValueTest
+                   ValueTest.cpp
+                   ContextTest.cpp)
+
+target_link_libraries(
+  HeavyValueTest
+  PRIVATE
+  heavy
+)

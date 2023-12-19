@@ -6,15 +6,9 @@
 //
 //===--------------------------------------------------------------------------===//
 
-#include "heavy/Context.h"
-#include "llvm/Support/Casting.h"
+#include "heavy/Value.h"
 
 #include <gtest/gtest.h>
-
-using llvm::cast;
-using llvm::dyn_cast;
-using llvm::dyn_cast_or_null;
-using llvm::isa;
 
 namespace heavy {
 
@@ -37,7 +31,7 @@ TEST(ValueTest, IntTest) {
     << "value should be true for non-nullptr";
 
   heavy::Value V = heavy::Int{42}; 
-  ASSERT_TRUE(isa<heavy::Int>(V));
+  ASSERT_TRUE(llvm::isa<heavy::Int>(V));
   heavy::Int I = llvm::cast<heavy::Int>(V);
   EXPECT_EQ(I, heavy::Int{42});
   EXPECT_NE(heavy::Int{12}, heavy::Int{0});
@@ -55,8 +49,8 @@ TEST(ValueTest, BoolTest) {
   EXPECT_FALSE(heavy::Bool{false});
 
   heavy::Value V = heavy::Bool{true}; 
-  ASSERT_TRUE(isa<heavy::Bool>(V));
-  heavy::Bool B = cast<heavy::Bool>(V);
+  ASSERT_TRUE(llvm::isa<heavy::Bool>(V));
+  heavy::Bool B = llvm::cast<heavy::Bool>(V);
   EXPECT_EQ(B, heavy::Bool{true});
 
   // isTrue is for Scheme conditional expressions
