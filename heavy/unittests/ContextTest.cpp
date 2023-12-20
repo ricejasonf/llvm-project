@@ -33,11 +33,16 @@ TEST(ContextTest, DynamicWindNormalExit) {
   auto Context = heavy::Context();
   bool IsAlive = false;
   bool Check_1 = false;
+  bool Check_2 = false;
   auto TrackerPtr = std::make_unique<LifetimeTracker>(IsAlive);
 
   auto ThunkFn = [&](heavy::Context& C, heavy::ValueRefs) {
     Check_1 = IsAlive;
     // Continue normally.
+    C.PushCont([&](heavy::Context& C, heavy::ValueRefs) {
+      Check_2 = IsAlive;
+      C.Cont();
+    });
     C.Cont();
   };
 
@@ -50,6 +55,7 @@ TEST(ContextTest, DynamicWindNormalExit) {
   EXPECT_TRUE(IsAlive);
   Context.Resume();
   EXPECT_TRUE(Check_1);
+  EXPECT_TRUE(Check_2);
   EXPECT_FALSE(IsAlive);
 }
 
