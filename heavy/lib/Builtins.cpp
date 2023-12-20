@@ -52,10 +52,11 @@ heavy::ExternFunction HEAVY_BASE_VAR(newline);
 heavy::ExternFunction HEAVY_BASE_VAR(eq);
 heavy::ExternFunction HEAVY_BASE_VAR(equal);
 heavy::ExternFunction HEAVY_BASE_VAR(eqv);
-heavy::ExternFunction HEAVY_BASE_VAR(callcc);
+heavy::ExternFunction HEAVY_BASE_VAR(call_cc);
 heavy::ExternFunction HEAVY_BASE_VAR(with_exception_handler);
 heavy::ExternFunction HEAVY_BASE_VAR(raise);
 heavy::ExternFunction HEAVY_BASE_VAR(error);
+heavy::ExternFunction HEAVY_BASE_VAR(dynamic_wind);
 
 heavy::ExternFunction HEAVY_BASE_VAR(eval);
 heavy::ExternFunction HEAVY_BASE_VAR(op_eval);
@@ -132,9 +133,18 @@ mlir::Value if_(OpGen& OG, Pair* P) {
 mlir::Value set(OpGen& OG, Pair* P) {
   Pair* P2 = dyn_cast<Pair>(P->Cdr);
   if (!P2) return OG.SetError("invalid set syntax", P);
+
   Value S = P2->Car;
-  if (!isa<Symbol, ExternName>(S))
+  // Unwrap to check that we are looking at a symbol or binding.
+  if (heavy::SyntaxClosure* SC = llvm::dyn_cast<SyntaxClosure>(S))
+    S = SC->Node;
+
+  if (!isa<Binding, Symbol, ExternName, SyntaxClosure>(S))
     return OG.SetError("expecting symbol", P2);
+
+  // Go with the original unwrapped expression.
+  S = P2->Car;
+
   P2 = dyn_cast<Pair>(P2->Cdr);
   if (!P2) return OG.SetError("invalid set syntax", P2);
   heavy::Value Expr = P2->Car;
@@ -328,9 +338,8 @@ struct NumberOp {
 } // end namespace heavy
 
 namespace heavy { namespace base {
-void callcc(Context& C, ValueRefs Args) {
-  unsigned Len = Args.size();
-  assert(Len == 1 && "Invalid arity to builtin `callcc`");
+void call_cc(Context& C, ValueRefs Args) {
+  if (Args.size() != 1) return C.RaiseError("invalid arity");
   C.CallCC(Args[0]);
 }
 
@@ -485,6 +494,11 @@ void error(Context& C, ValueRefs Args) {
   if (Args.size() == 0) return C.RaiseError("invalid arity");
   if (C.CheckKind<String>(Args[0])) return;
   C.RaiseError(cast<String>(Args[0]), Args.drop_front());
+}
+
+void dynamic_wind(Context& C, ValueRefs Args) {
+  if (Args.size() != 3) return C.RaiseError("invalid arity");
+  C.DynamicWind(Args[0], Args[1], Args[2]);
 }
 
 void eval(Context& C, ValueRefs Args) {
