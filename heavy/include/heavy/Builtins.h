@@ -39,10 +39,11 @@
 #define HEAVY_BASE_VAR__equal         HEAVY_BASE_LIB_(V5Sequalqu)
 #define HEAVY_BASE_VAR__eqv           HEAVY_BASE_LIB_(V3Seqvqu)
 #define HEAVY_BASE_VAR__eval          HEAVY_BASE_LIB_(V4Seval)
-#define HEAVY_BASE_VAR__callcc        HEAVY_BASE_LIB_(V4Scalldv2Scc)
+#define HEAVY_BASE_VAR__call_cc       HEAVY_BASE_LIB_(V4Scalldv2Scc)
 #define HEAVY_BASE_VAR__include       HEAVY_BASE_LIB_(V7Sinclude)
 #define HEAVY_BASE_VAR__parse_source_file \
-                                      HEAVY_BASE_LIB_(V5Sparse6Ssource4Sfile)
+                                      HEAVY_BASE_LIB_(V5Sparsemi6Ssourcemi4Sfile)
+#define HEAVY_BASE_VAR__dynamic_wind  HEAVY_BASE_LIB_(V7Sdynamicmi4Swind)
 
 namespace mlir {
 
@@ -101,10 +102,11 @@ void equal(Context& C, ValueRefs Args);
 void eqv(Context& C, ValueRefs Args);
 void list(Context& C, ValueRefs Args);
 void append(Context& C, ValueRefs Args);
-void callcc(Context& C, ValueRefs Args);
+void call_cc(Context& C, ValueRefs Args);
 void with_exception_handler(Context& C, ValueRefs Args);
 void raise(Context& C, ValueRefs Args);
 void error(Context& C, ValueRefs Args);
+void dynamic_wind(Context& C, ValueRefs Args);
 
 // TODO These should go in (heavy eval)
 void eval(Context& C, ValueRefs Args);
@@ -148,10 +150,11 @@ extern heavy::ExternFunction HEAVY_BASE_VAR(newline);
 extern heavy::ExternFunction HEAVY_BASE_VAR(eq);
 extern heavy::ExternFunction HEAVY_BASE_VAR(equal);
 extern heavy::ExternFunction HEAVY_BASE_VAR(eqv);
-extern heavy::ExternFunction HEAVY_BASE_VAR(callcc);
+extern heavy::ExternFunction HEAVY_BASE_VAR(call_cc);
 extern heavy::ExternFunction HEAVY_BASE_VAR(with_exception_handler);
 extern heavy::ExternFunction HEAVY_BASE_VAR(raise);
 extern heavy::ExternFunction HEAVY_BASE_VAR(error);
+extern heavy::ExternFunction HEAVY_BASE_VAR(dynamic_wind);
 
 extern heavy::ExternFunction HEAVY_BASE_VAR(eval);
 extern heavy::ExternFunction HEAVY_BASE_VAR(op_eval);
@@ -195,11 +198,12 @@ inline void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(eq)      = heavy::base::eqv;
   HEAVY_BASE_VAR(equal)   = heavy::base::equal;
   HEAVY_BASE_VAR(eqv)     = heavy::base::eqv;
-  HEAVY_BASE_VAR(callcc)  = heavy::base::callcc;
+  HEAVY_BASE_VAR(call_cc) = heavy::base::call_cc;
   HEAVY_BASE_VAR(with_exception_handler)
     = heavy::base::with_exception_handler;
   HEAVY_BASE_VAR(raise)   = heavy::base::raise;
   HEAVY_BASE_VAR(error)   = heavy::base::error;
+  HEAVY_BASE_VAR(dynamic_wind) = heavy::base::dynamic_wind;
 
   HEAVY_BASE_VAR(eval)    = heavy::base::eval;
   HEAVY_BASE_VAR(op_eval) = heavy::base::op_eval;
@@ -247,10 +251,11 @@ inline void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"eq?",     HEAVY_BASE_VAR(eq)},
     {"equal?",  HEAVY_BASE_VAR(equal)},
     {"eqv?",    HEAVY_BASE_VAR(eqv)},
-    {"call/cc", HEAVY_BASE_VAR(callcc)},
+    {"call/cc", HEAVY_BASE_VAR(call_cc)},
     {"with-exception-handler", HEAVY_BASE_VAR(with_exception_handler)},
     {"raise", HEAVY_BASE_VAR(raise)},
     {"error", HEAVY_BASE_VAR(error)},
+    {"dynamic-wind", HEAVY_BASE_VAR(dynamic_wind)},
 
     {"eval",    HEAVY_BASE_VAR(eval)},
     {"op-eval", HEAVY_BASE_VAR(op_eval)},
