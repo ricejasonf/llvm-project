@@ -107,9 +107,12 @@ class ContinuationStack {
     return reinterpret_cast<Lambda*>(NewPtr);
   }
 
+public:
   // PopCont
   //  - Note that a call to PushCont will invalidate
   //    the returned Lambda*
+  //  - Use only when you really, really know what you
+  //    are doing.
   Value PopCont() {
     if (Top == Bottom) return Bottom;
     assert(Top < Bottom && "top is out of bounds");
@@ -124,6 +127,7 @@ class ContinuationStack {
     return Value(OldTop);
   }
 
+private:
   void ApplyHelper(Value Callee, ValueRefs Args) {
     assert(!DidCallContinuation &&
         "continuation should be specified only once");
