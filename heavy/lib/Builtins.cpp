@@ -507,10 +507,27 @@ void eval(Context& C, ValueRefs Args) {
   }
   Value ExprOrDef       = Args[0];
   Value EnvSpec         = Args[1];
-  Value Eval = Args.size() == 3 ? Args[2] : HEAVY_BASE_VAR(op_eval);
+  Value EvalRaw = Args.size() == 3 ? Args[2] : HEAVY_BASE_VAR(op_eval);
+  // Wrap Eval as escape procedure to prevent the
+  // user from capturing the environment with compiler objects
+  // that will be deleted.
+  Value Eval = C.CreateBinding(Undefined());
 
-  std::array<Value, 3> NewArgs = {ExprOrDef, EnvSpec, Eval};
-  C.Apply(HEAVY_BASE_VAR(compile), NewArgs);
+  // Push the compile step.
+  C.PushCont([](heavy::Context& C, heavy::ValueRefs) {
+    heavy::ValueRefs NewArgs = C.getCaptures();
+    // Unwrap the escape proc.
+    NewArgs[2] = cast<heavy::Binding>(NewArgs[2])->getValue();
+    C.Apply(HEAVY_BASE_VAR(compile), NewArgs);
+  }, CaptureList{ExprOrDef, EnvSpec, Eval});
+
+  // Save the 
+  C.SaveEscapeProc(Eval, [](heavy::Context& C, ValueRefs Args) {
+    Value EvalRaw = C.getCapture(0);
+    // Skip the compile step that we just pushed above.
+    C.PopCont();
+    C.Apply(EvalRaw, Args);
+  }, CaptureList{EvalRaw});
 }
 
 void compile(Context& C, ValueRefs Args) {
