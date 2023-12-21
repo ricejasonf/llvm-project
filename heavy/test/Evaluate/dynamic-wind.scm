@@ -50,4 +50,13 @@
 ; CHECK: enter-environment-2
 ; CHECK: within-environment-2
 ; CHECK: exit-environment-2
-(enter)
+; FIXME These escape procedures should not take an argument.
+(enter 0)
+; CHECK: enter-environment-3
+; CHECK: within-environment-3
+; CHECK: exit-environment-3
+(enter 0)
+; CHECK: enter-environment-4
+; CHECK: within-environment-4
+; CHECK: exit-environment-4
+(enter 0)
