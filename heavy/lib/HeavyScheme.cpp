@@ -100,10 +100,13 @@ void HeavyScheme::ProcessTopLevelCommands(
   Parser& Parser = *ParserPtr;
 
   auto HandleErrorFn = [&](heavy::Context& Context, ValueRefs Args) {
-    heavy::Error* Err = cast<heavy::Error>(Args[0]);
     heavy::FullSourceLocation FullLoc = SM.getFullSourceLocation(
         Args[0].getSourceLocation());
-    ErrorHandler(Err->getErrorMessage(), FullLoc);
+    if (heavy::Error* Err = dyn_cast<heavy::Error>(Args[0])) {
+      ErrorHandler(Err->getErrorMessage(), FullLoc);
+    } else {
+      ErrorHandler("errorhandler received a non-error", FullLoc);
+    }
     // Finish parsing to return control to any
     // parent lexer. (ie So c++ does not parse scheme code)
     while (!Parser.isFinished()) {

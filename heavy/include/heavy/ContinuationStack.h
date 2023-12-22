@@ -271,18 +271,6 @@ public:
     return getCallee() == Bottom;
   }
 
-  // Run - Call a function and run the continuation
-  //       loop breaking once the function or any
-  //       called escape procedure is complete.
-  //       This is used for nested calls in C++.
-  Value Run(Value Callee, ValueRefs Args) {
-    PushBreak();
-    Apply(Callee, Args);
-    Resume();
-    return getCurrentResult();
-  }
-
-
   // Begins evaluation by calling what is set
   // in ApplyArgs
   void Resume() {
