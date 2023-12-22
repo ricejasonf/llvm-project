@@ -124,6 +124,11 @@ public:
     WithEnv(std::move(EnvPtr), Env, Thunk);
   }
 
+  // RunSync - Run in a nested loop. This breaks
+  //           when the callee finishes or on
+  //           exception so the parent loop can
+  //           finish execution such as clean up.
+  Value RunSync(Value Callee, Value Arg);
 
   mlir::Operation* getModuleOp();
   void dumpModuleOp();

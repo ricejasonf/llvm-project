@@ -978,10 +978,11 @@ void Context::Raise(Value Obj) {
     Value Handler = C.getCapture(0);
     Value Obj = C.getCapture(1);
     C.PushCont([](Context& C, ValueRefs Args) {
-      assert(Args.size() == 1 && "expecting a single argument");
-      Value Handler = C.getCapture(0);
-      C.RaiseError("error handler returned", Handler);
-    }, {Handler});
+      if (Args.size() != 1)
+        C.RaiseError("exception handler expecting single argument");
+      else
+        C.Raise(Args[0]);
+    });
     C.Apply(Handler, Obj);
   }, {Handler, Obj}));
 }
@@ -1036,7 +1037,7 @@ public:
     }, CaptureList{Value((Ptr->Env))});
 
     // Since we don't own PrevEnv do not capture it in scheme land.
-    Value After = Context.CreateLambda([PrevOpGen, PrevEnv, OpGen](heavy::Context& C,
+    Value After = Context.CreateLambda([PrevOpGen, PrevEnv, OpGen, Env](heavy::Context& C,
                                                             ValueRefs) {
       C.setEnvironment(PrevEnv);
       C.OpGen = PrevOpGen;
@@ -1051,6 +1052,33 @@ public:
 void Context::WithEnv(std::unique_ptr<heavy::Environment> EnvPtr,
                       heavy::Environment* Env, Value Thunk) {
   LibraryEnv::Wind(*this, std::move(EnvPtr), Env, Thunk);
+}
+
+// RunSync - Call a function and run the continuation loop
+//           synchronously breaking once the function or any
+//           called escape procedure is complete.
+//           This is used for *nested* calls in C++ when finishing
+//           the operation on the current C++ call stack is needed.
+Value Context::RunSync(Value Callee, Value SingleArg) {
+  PushBreak();
+  heavy::Value Thunk = CreateLambda([](heavy::Context& C,
+                                       heavy::ValueRefs) {
+    heavy::Value Callee = C.getCapture(0);
+    heavy::Value SingleArg = C.getCapture(1);
+    C.Apply(Callee, ValueRefs{SingleArg});
+  }, CaptureList{Callee, SingleArg});
+  heavy::Value HandleError = CreateLambda([](heavy::Context& C,
+                                            heavy::ValueRefs Args) {
+    // Defer error propagation to the parent loop.
+    C.PushCont([](heavy::Context& C, ValueRefs) {
+      heavy::ValueRefs ErrorArgs = C.getCaptures();
+      C.Cont(ErrorArgs);
+    }, Args);
+    C.Yield(Args);
+  });
+  WithExceptionHandler(HandleError, Thunk);
+  Resume();
+  return getCurrentResult();
 }
 
 namespace {

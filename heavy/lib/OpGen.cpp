@@ -220,6 +220,7 @@ void OpGen::VisitLibrary(heavy::SourceLocation Loc, std::string MangledName,
         cast<Binding>(HandleLibraryDecls)->setValue(Empty());
         C.OpGen->LibraryEnvProc->setValue(Empty());
         C.Apply(Finish, {});
+       // C.Cont(); // See what happens
       } else {
         C.SetError("expected proper list for library declarations",
                    LibraryDecls->getValue());
@@ -233,6 +234,10 @@ void OpGen::VisitLibrary(heavy::SourceLocation Loc, std::string MangledName,
 }
 
 void OpGen::VisitLibrarySpec(Value LibSpec) {
+  // Store the Context reference as a stack variable
+  // because this can get deleted inside Context::Run
+  // (inside MaybeCallSyntax)
+  heavy::Context& Context = this->Context;
   bool DidCallSyntax = false;
   if (Pair* P = dyn_cast<Pair>(LibSpec)) {
     MaybeCallSyntax(P, DidCallSyntax);
@@ -241,8 +246,6 @@ void OpGen::VisitLibrarySpec(Value LibSpec) {
     Context.SetError("expecting library spec", LibSpec);
     return;
   }
-  if (Context.CheckError())
-    return;
   Context.Cont();
 }
 
@@ -274,24 +277,11 @@ void OpGen::VisitTopLevel(Value V) {
 
     Builder.restoreInsertionPoint(PrevIp);
   });
-
-  // Top Level Syntax may be async and use continuations.
-  // (e.g. for `import` etc.)
-  if (Pair* P = dyn_cast<Pair>(V)) {
-    Value Operator = P->Car;
-    // FIXME Why don't we need to perform lookup here?
-    if (isa<Syntax>(Operator)) {
-      Value Input = P;
-      Context.Apply(Operator, Input);
-      return;
-    }
-  }
-
-  // At this point we stipulate any custom syntax
-  // routines are strictly sync/blocking.
-  // The pushed continuation will handle the result.
-  Visit(V);
-  if (Context.CheckError()) return;
+  Context.PushCont([](heavy::Context& C, ValueRefs) {
+    heavy::Value V = C.getCapture(0);
+    C.OpGen->Visit(V);
+    C.Cont();
+  }, CaptureList{V});
   Context.Cont();
 }
 
@@ -504,7 +494,7 @@ mlir::Value OpGen::createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall) {
       }
       case ValueKind::Syntax: {
         Value Input = SyntaxSpec;
-        Context.Run(Operator, ValueRefs(Input));
+        Context.RunSync(Operator, Input);
         Result = toValue(Context.getCurrentResult());
         break;
       }
@@ -1067,10 +1057,13 @@ mlir::Value OpGen::MaybeCallSyntax(Pair* P, bool& DidCallSyntax) {
       return BS->Fn(*this, P);
     }
     case ValueKind::Syntax: {
+      // Store the Context reference as a stack variable
+      // because this can get deleted inside Run.
+      heavy::Context& Context = this->Context;
       Context.setLoc(P->getSourceLocation());
       DidCallSyntax = true;
       Value Input = P;
-      Context.Run(Operator, ValueRefs(Input));
+      Context.RunSync(Operator, Input);
       return toValue(Context.getCurrentResult());
     }
     default: {
