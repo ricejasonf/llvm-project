@@ -681,11 +681,11 @@ void Context::CreateImportSet(Value Spec) {
     if (Kind == ImportSet::ImportKind::Prefix) {
       Symbol* Prefix = dyn_cast_or_null<Symbol>(C.car(Spec));
       if (!Prefix) {
-        C.SetError("expected identifier for prefix");
+        C.SetError("expected identifier for prefix", Spec);
         return;
       }
       if (!isa_and_nonnull<Empty>(C.cdr(Spec))) {
-        C.SetError("expected end of list");
+        C.SetError("expected end of list", Spec);
         return;
       }
       C.Cont(new (C.TrashHeap) ImportSet(Kind, Parent, Prefix));
@@ -739,10 +739,11 @@ void Context::CreateImportSet(Value Spec) {
   CreateImportSet(ParentSpec);
 }
 
-void Context::LoadModule(Value Spec) {
+void Context::LoadModule(Value Spec, bool IsFileLoaded) {
   heavy::SourceLocation Loc = Spec.getSourceLocation();
   setLoc(Loc);
   heavy::Mangler Mangler(*this);
+  // Name - The mangled module name
   std::string Name = Mangler.mangleModule(Spec);
   if (CheckError())
     return;
@@ -759,11 +760,13 @@ void Context::LoadModule(Value Spec) {
   // Lookup the Module in ModuleOp
   mlir::ModuleOp TopOp = cast<mlir::ModuleOp>(ModuleOp);
   if (auto Op = dyn_cast_or_null<mlir::ModuleOp>(TopOp.lookupSymbol(Name))) {
-    M = std::make_unique<Module>(*this);
+    auto M = std::make_unique<Module>(*this);
+    Module* MPtr = M.get();
+    Modules[Name] = std::move(M);
     Value Args[] = {Op.getOperation()};
     PushCont([](Context& C, ValueRefs) {
       C.Cont(C.getCapture(0));
-    }, CaptureList{M.get()});
+    }, CaptureList{MPtr});
     Apply(HEAVY_BASE_VAR(op_eval), Args);
     return;
   }
@@ -788,22 +791,20 @@ void Context::LoadModule(Value Spec) {
     FilenameBuffer += ".sld";
     Filename = CreateString(FilenameBuffer);
   }
-  heavy::Value MangledName = CreateString(Name);
+
+  if (IsFileLoaded) {
+    // The file was already loaded, but we still do not have a module.
+    heavy::String* ErrMsg = CreateString(Filename->getView(),
+                              ": library was not defined");
+    return RaiseError(ErrMsg, Value(Filename));
+  }
+
   PushCont(
     [Loc](heavy::Context& C, heavy::ValueRefs Args) {
-      auto* MangledName = cast<heavy::String>(C.getCapture(0));
-      auto* Filename = cast<heavy::String>(C.getCapture(1));
+      Value Spec = C.getCapture(0);
       // Require the module this time.
-      std::unique_ptr<Module>& M = C.Modules[MangledName->getView()];
-      if (!M) {
-        C.setLoc(Loc);
-        heavy::String* ErrMsg = C.CreateString(Filename->getView(),
-                                  ": library was not defined");
-        return C.RaiseError(ErrMsg, Value(Filename));
-      }
-      M->LoadNames();
-      C.Cont(M.get());
-    }, CaptureList{MangledName, Filename});
+      C.LoadModule(Spec, /*IsFileLoaded=*/true);
+    }, CaptureList{Spec});
   IncludeModuleFile(Loc, Filename);
 }
 

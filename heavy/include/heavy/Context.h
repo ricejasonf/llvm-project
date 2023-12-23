@@ -172,7 +172,7 @@ public:
   std::unique_ptr<Environment> CreateEnvironment(heavy::ImportSet* ImportSet);
 
   // LoadModule - Idempotently load a library
-  void LoadModule(Value Spec);
+  void LoadModule(Value Spec, bool IsFileLoaded = false);
   void PushModuleCleanup(llvm::StringRef MangledName, Value Fn);
   void IncludeModuleFile(heavy::SourceLocation Loc, heavy::String* Filename);
 
