@@ -214,13 +214,10 @@ void OpGen::VisitLibrary(heavy::SourceLocation Loc, std::string MangledName,
         C.OpGen->VisitLibrarySpec(P->Car);
       } else if (isa<Empty>(LibraryDecls->getValue())) {
         // The library is done.
-        // Call LibraryEnvProc to allow it to complete
-        // to clean up the librarys environment.
-        Value Finish = C.OpGen->LibraryEnvProc->getValue();
+        // Unset stuff so the cleanups will run.
         cast<Binding>(HandleLibraryDecls)->setValue(Empty());
         C.OpGen->LibraryEnvProc->setValue(Empty());
-        C.Apply(Finish, {});
-       // C.Cont(); // See what happens
+        C.Cont();
       } else {
         C.SetError("expected proper list for library declarations",
                    LibraryDecls->getValue());
