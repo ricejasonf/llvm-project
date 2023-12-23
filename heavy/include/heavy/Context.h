@@ -174,7 +174,8 @@ public:
   // LoadModule - Idempotently load a library
   void LoadModule(Value Spec, bool IsFileLoaded = false);
   void PushModuleCleanup(llvm::StringRef MangledName, Value Fn);
-  void IncludeModuleFile(heavy::SourceLocation Loc, heavy::String* Filename);
+  void IncludeModuleFile(heavy::SourceLocation Loc, heavy::String* Filename,
+                         std::string ModuleMangledName);
 
 
   Context();
