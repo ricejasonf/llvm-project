@@ -805,7 +805,7 @@ void Context::LoadModule(Value Spec, bool IsFileLoaded) {
       // Require the module this time.
       C.LoadModule(Spec, /*IsFileLoaded=*/true);
     }, CaptureList{Spec});
-  IncludeModuleFile(Loc, Filename);
+  IncludeModuleFile(Loc, Filename, std::move(Name));
 }
 
 // Allow the user to add cleanup routines to unload a module/library.
@@ -829,7 +829,8 @@ void Context::PushModuleCleanup(llvm::StringRef MangledName, Value Fn) {
 //                     the define-library syntax and library
 //                     declarations already defined.
 void Context::IncludeModuleFile(heavy::SourceLocation Loc,
-                                heavy::String* Filename) {
+                                heavy::String* Filename,
+                                std::string ModuleMangledName) {
   heavy::Value Thunk = CreateLambda(
     [Loc](heavy::Context& C, heavy::ValueRefs Args) {
       C.PushCont(
@@ -846,7 +847,10 @@ void Context::IncludeModuleFile(heavy::SourceLocation Loc,
   // Make a new environment with `define-library`
   // and related syntax preloaded.
   heavy::Module* Base = Modules[HEAVY_BASE_LIB_STR].get();
-  auto Env = std::make_unique<heavy::Environment>(*this);
+  // The ModuleMangledName becomes the name of the module that
+  // is generated from the top level of the file.
+  ModuleMangledName += "__module_file";
+  auto Env = std::make_unique<heavy::Environment>(*this, ModuleMangledName);
   for (llvm::StringRef Name : {"define-library",
                                "export",
                                "begin",
@@ -858,6 +862,17 @@ void Context::IncludeModuleFile(heavy::SourceLocation Loc,
     Env->ImportValue(EnvBucket{Id, Base->Lookup(Id)});
   }
 
+  heavy::String* MetaModuleName = CreateString(ModuleMangledName);
+  PushCont([](heavy::Context& C, ValueRefs) {
+    // Delete the meta module file module.
+    heavy::String* ModuleName = cast<heavy::String>(C.getCapture(0));
+    mlir::ModuleOp TopOp = cast<mlir::ModuleOp>(C.ModuleOp);
+    if (mlir::Operation* Op = TopOp.lookupSymbol(ModuleName->getView())) {
+      Op->erase();
+    }
+
+    C.Cont();
+  }, CaptureList{MetaModuleName});
   WithEnv(std::move(Env), Thunk);
 }
 
