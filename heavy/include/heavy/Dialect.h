@@ -46,6 +46,7 @@ struct HeavyValueTy : public mlir::Type::TypeBase<
                             HeavyValueTy,
                             mlir::Type,
                             mlir::TypeStorage> {
+  static constexpr llvm::StringLiteral name = "heavy.value";
   using Base::Base;
 };
 
@@ -53,6 +54,7 @@ struct HeavyRestTy : public mlir::Type::TypeBase<
                             HeavyRestTy,
                             mlir::Type,
                             mlir::TypeStorage> {
+  static constexpr llvm::StringLiteral name = "heavy.rest";
   using Base::Base;
 };
 
@@ -82,19 +84,23 @@ class HeavyValueAttr : public mlir::Attribute::AttrBase<
   using Base::Base;
 
 public:
+  static constexpr llvm::StringLiteral name = "heavy.value_attr";
   heavy::Value getValue() const;
 };
 
 // Additional Types
-#define HEAVY_TYPE(NAME) \
+#define HEAVY_TYPE(NAME, PRINT_NAME) \
 struct Heavy##NAME##Ty : public mlir::Type::TypeBase< \
-Heavy##NAME##Ty, mlir::Type, mlir::TypeStorage> { using Base::Base; }
+Heavy##NAME##Ty, mlir::Type, mlir::TypeStorage> { \
+  static constexpr llvm::StringLiteral name = PRINT_NAME; \
+  using Base::Base; \
+} \
 
-HEAVY_TYPE(Pair);
+HEAVY_TYPE(Pair, "heavy.pair");
 
-HEAVY_TYPE(Syntax);
-HEAVY_TYPE(OpGen);
-HEAVY_TYPE(MlirValue);
+HEAVY_TYPE(Syntax, "heavy.syntax");
+HEAVY_TYPE(OpGen, "heavy.opgen");
+HEAVY_TYPE(MlirValue, "heavy.mlir_value");
 
 
 #undef HEAVY_TYPE
