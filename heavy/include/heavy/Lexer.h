@@ -43,7 +43,8 @@ enum class TokenKind {
   r_paren,
   r_square,
   string_literal,
-  string_literal_eof,
+  string_literal_eof,       // unexpected EOF while lexing literal
+  symbol_literal,
   true_,
   unquote,                  // ,
   unquote_splicing,         // ,(
@@ -118,7 +119,8 @@ class Lexer : public EmbeddedLexer {
   void LexNumberOrEllipsis(Token& Tok, const char *CurPtr);
   void LexNumber(Token& Tok, const char *CurPtr);
   void LexSharpLiteral(Token& Tok, const char *CurPtr);
-  void LexStringLiteral(Token& Tok, const char *CurPtr);
+  void LexStringLiteral(Token& Tok, const char *CurPtr,
+                        TokenKind TokKind, char Terminator);
   void LexUnknown(Token& Tok, const char *CurPtr);
   void SkipUntilDelimiter(const char *&CurPtr);
   void ProcessWhitespace(const char *&CurPtr);
@@ -152,6 +154,10 @@ class Lexer : public EmbeddedLexer {
 
 public:
   Lexer() = default;
+
+  Lexer(llvm::StringRef Str)
+    : EmbeddedLexer(heavy::SourceLocation(), Str, Str.begin())
+  { }
 
   Lexer(SourceFile File)
     : EmbeddedLexer(File.StartLoc, File.Buffer, File.Buffer.begin())

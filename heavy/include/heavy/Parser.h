@@ -55,6 +55,7 @@ class Parser {
 
   auto ValueEmpty() { return ValueResult(); }
   auto ValueError() { return ValueResult(Context.CreateUndefined()); }
+  bool ParseLiteralImpl();
 
   ValueResult ParseExpr();
   ValueResult ParseExprAbbrev(char const* Name);
@@ -66,6 +67,7 @@ class Parser {
   ValueResult ParseNumber();
   ValueResult ParseString();
   ValueResult ParseSymbol();
+  ValueResult ParseEscapedSymbol();
   ValueResult ParseVectorStart();
   ValueResult ParseVector(llvm::SmallVectorImpl<Value>& Xs);
 
