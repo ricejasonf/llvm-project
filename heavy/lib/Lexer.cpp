@@ -72,6 +72,7 @@ void Lexer::Lex(Token& Tok) {
   char c = *CurPtr++;
   // These are all considered "initial characters".
   switch(c) {
+#if 0 // FIXME I guess characters can have all sorts of stuff in them.
   // Identifiers.
   case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G':
   case 'H': case 'I': case 'J': case 'K': case 'L': case 'M': case 'N':
@@ -85,7 +86,8 @@ void Lexer::Lex(Token& Tok) {
   case '*': case '/': case '<': case '=': case '>': case '!':
   case '?': case ':': case '$': case '%': case '_':
   case '&': case '~': case '^':
-    return LexIdentifier(Tok, CurPtr);
+    return LexIdentifier(Tok, CurPtr, c);
+#endif
   // Integer constants
   case '-': case '+':
     return LexNumberOrIdentifier(Tok, CurPtr);
@@ -144,7 +146,8 @@ void Lexer::Lex(Token& Tok) {
     break;
   }
   default:
-    Kind = tok::unknown;
+    return LexIdentifier(Tok, CurPtr, c);
+    //Kind = tok::unknown;
     break;
   }
 
@@ -152,18 +155,39 @@ void Lexer::Lex(Token& Tok) {
   FormTokenWithChars(Tok, CurPtr, Kind);
 }
 
-void Lexer::LexIdentifier(Token& Tok, const char *CurPtr) {
-  bool IsInvalid = false;
+void Lexer::LexIdentifier(Token& Tok, const char *CurPtr, char InitChar) {
+  // Non-strict identifiers are not conforming to the formal specification
+  // but are accepted as if by wrapping in | |.
+  bool IsStrict = true;
+  switch (InitChar) {
+    case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G':
+    case 'H': case 'I': case 'J': case 'K': case 'L': case 'M': case 'N':
+    case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T': case 'U':
+    case 'V': case 'W': case 'X': case 'Y': case 'Z':
+    case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g':
+    case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n':
+    case 'o': case 'p': case 'q': case 'r': case 's': case 't': case 'u':
+    case 'v': case 'w': case 'x': case 'y': case 'z':
+    // Identifiers (extended alphabet)
+    case '*': case '/': case '<': case '=': case '>': case '!':
+    case '?': case ':': case '$': case '%': case '_':
+    case '&': case '~': case '^':
+      break;
+    case '-': case '+':
+      // '+' | '-' are the only valid identifiers starting with + or -
+      if (!isDelimiter(*CurPtr))
+        IsStrict = false;
+      break;
+    default:
+      IsStrict = false;
+  }
   char c = *CurPtr;
   while (!isDelimiter(c)) {
-    IsInvalid |= !isExtendedAlphabet(c);
+    IsStrict = IsStrict && isExtendedAlphabet(c);
     c = ConsumeChar(CurPtr);
   }
-
-  if (IsInvalid) {
-    return LexUnknown(Tok, CurPtr);
-  }
-
+  if (!IsStrict)
+    return FormTokenWithChars(Tok, CurPtr, tok::relaxed_identifier);
   return FormIdentifier(Tok, CurPtr);
 }
 
