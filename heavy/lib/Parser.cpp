@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "heavy/Builtins.h"
 #include "heavy/Context.h"
 #include "heavy/Lexer.h"
 #include "heavy/Parser.h"
@@ -358,22 +359,57 @@ ValueResult Parser::ParseString() {
   LiteralResult.clear();
   while (TokenSpan.size() > 0) {
     char c = TokenSpan[0];
-    // Try to allow standalone backslashes so they can be proxied
-    // through to the host language. Otherwise users would get
-    // stuck escaping everything twice making things tedious and
-    // confusing.
     if (c == '\\') {
-      // TODO support R7RS escape sequences
-      if (TokenSpan.consume_front("\\\"")) {
-        // escaped double quote
-        c = '"';
+      TokenSpan = TokenSpan.drop_front();
+      assert(TokenSpan.size() > 0 &&
+        "string literal should be properly formed");
+      switch (TokenSpan[0]) {
+        case '\\':
+        case '"':
+        case '|':
+          c = TokenSpan[0];
+          break;
+        case 'a':
+          c = '\a';
+          break;
+        case 'b':
+          c = '\b';
+          break;
+        case 't':
+          c = '\t';
+          break;
+        case 'n':
+          c = '\n';
+          break;
+        case 'r':
+          c = '\r';
+          break;
+        case 'x': {
+          TokenSpan = TokenSpan.drop_front();
+          unsigned SemiColonPos = TokenSpan.find(';');
+          if (SemiColonPos == llvm::StringRef::npos) {
+            SetError(Tok, "char hex scalar value missing terminating semicolon");
+            ConsumeToken();
+            return ValueError();
+          } else {
+            llvm::SmallVector<char, 4> ByteSequence;
+            llvm::StringRef HexCode = TokenSpan.slice(0, SemiColonPos);
+            auto [HexValue, IsError] = detail::from_hex(HexCode);
+            if (!IsError) {
+              detail::encode_utf8(HexValue, ByteSequence);
+              llvm::append_range(LiteralResult, ByteSequence);
+              TokenSpan = TokenSpan.drop_front(SemiColonPos + 1);
+              continue;
+            }
+            SetError(Tok, "invalid utf8 codepoint");
+            ConsumeToken();
+            return ValueError();
+          }
+          break;
+        }
       }
-      else if (TokenSpan.consume_front("\\\\")) {
-        // escaped backslash
-        c = '\\';
-      }
-    }
-    else if (TokenSpan.consume_front("\r\n")) {
+      TokenSpan = TokenSpan.drop_front();
+    } else if (TokenSpan.consume_front("\r\n")) {
       // normalize source-file newlines
       c = '\n';
     } else {
