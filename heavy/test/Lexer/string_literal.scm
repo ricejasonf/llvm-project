@@ -1,4 +1,4 @@
-; RUN: heavy-scheme --mode=read %s 2>&1 | FileCheck  %s
+; RUN: heavy-scheme --mode=read %s 2>&1 | FileCheck  %s --strict-whitespace
 
 ; CHECK: "foo"
 "foo"
@@ -26,3 +26,19 @@
 ; Normalize printable UTF8 codepoints.
 ; CHECK: "☕"
 "\x2615;"
+
+; Omit escaped whitespace
+; CHECK: "Hello, world!"
+"Hello, \  
+  world!"
+
+; Just render characters that do no represent
+; an escape character;
+; CHECK: "ml\n"
+"\m\l\n"
+
+; Support actual newlines
+; CHECK: "Hello,\n\n    World!"
+"Hello,
+
+    World!"
