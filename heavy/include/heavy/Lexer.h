@@ -42,6 +42,7 @@ enum class TokenKind {
   r_brace,
   r_paren,
   r_square,
+  relaxed_identifier,       // like symbol_literal but not escaped
   string_literal,
   string_literal_eof,       // unexpected EOF while lexing literal
   symbol_literal,
@@ -114,7 +115,7 @@ class Lexer : public EmbeddedLexer {
     }
   };
 
-  void LexIdentifier(Token& Tok, const char *CurPtr);
+  void LexIdentifier(Token& Tok, const char *CurPtr, char InitChar);
   void LexNumberOrIdentifier(Token& Tok, const char *CurPtr);
   void LexNumberOrEllipsis(Token& Tok, const char *CurPtr);
   void LexNumber(Token& Tok, const char *CurPtr);

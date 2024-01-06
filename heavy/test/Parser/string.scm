@@ -1,5 +1,8 @@
 ; RUN: heavy-scheme --mode=read %s 2>&1 | FileCheck  %s --strict-whitespace --match-full-lines
 
+; CHECK:""
+""
+
 ; CHECK:"foo"
 "foo"
 ; CHECK:"bar"
@@ -8,6 +11,8 @@
 "foo\\nbar"
 ; CHECK:"escape\nnewline"
 "escape\nnewline"
+
+; Support mnemonic escapes
 ; CHECK:"\a\b\t\n\r\"\\|"
 "\a\b\t\n\r\"\\\|"
 
