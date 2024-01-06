@@ -152,6 +152,8 @@ ValueResult Parser::ParseExpr() {
   }
   case tok::string_literal:
     return ParseString();
+  case tok::symbol_literal:
+    return ParseEscapedSymbol();
   case tok::quote:
     return ParseExprAbbrev("quote");
   case tok::quasiquote:
@@ -352,11 +354,12 @@ ValueResult Parser::ParseNumber() {
   return Value(Context.CreateFloat(FloatVal));
 }
 
-ValueResult Parser::ParseString() {
-  // the literal must include the ""
+bool Parser::ParseLiteralImpl() {
+  // The literal must include the "" or ||
   assert(Tok.getLength() >= 2);
   llvm::StringRef TokenSpan = Tok.getLiteralData()
     .substr(1, Tok.getLength() - 2);
+
   LiteralResult.clear();
   while (TokenSpan.size() > 0) {
     char c = TokenSpan[0];
@@ -391,7 +394,7 @@ ValueResult Parser::ParseString() {
           if (SemiColonPos == llvm::StringRef::npos) {
             SetError(Tok, "char hex scalar value missing terminating semicolon");
             ConsumeToken();
-            return ValueError();
+            return true;
           } else {
             llvm::SmallVector<char, 4> ByteSequence;
             llvm::StringRef HexCode = TokenSpan.slice(0, SemiColonPos);
@@ -404,7 +407,7 @@ ValueResult Parser::ParseString() {
             }
             SetError(Tok, "invalid utf8 codepoint");
             ConsumeToken();
-            return ValueError();
+            return true;
           }
           break;
         }
@@ -429,11 +432,23 @@ ValueResult Parser::ParseString() {
     LiteralResult.push_back(c);
   }
   ConsumeToken();
-  return Value(Context.CreateString(StringRef(LiteralResult)));
+  return false;
+}
+
+ValueResult Parser::ParseString() {
+  if (ParseLiteralImpl())
+    return ValueError();
+  return Value(Context.CreateString(llvm::StringRef(LiteralResult)));
+}
+
+ValueResult Parser::ParseEscapedSymbol() {
+  if (ParseLiteralImpl())
+    return ValueError();
+  return Value(Context.CreateSymbol(llvm::StringRef(LiteralResult)));
 }
 
 ValueResult Parser::ParseSymbol() {
-  StringRef Str = Tok.getLiteralData();
+  llvm::StringRef Str = Tok.getLiteralData();
   SourceLocation Loc = Tok.getLocation();
   ConsumeToken();
   return Value(Context.CreateSymbol(Str, Loc));

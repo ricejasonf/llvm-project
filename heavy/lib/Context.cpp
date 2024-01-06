@@ -13,6 +13,7 @@
 #include "heavy/Builtins.h"
 #include "heavy/Dialect.h"
 #include "heavy/Context.h"
+#include "heavy/Lexer.h"
 #include "heavy/OpGen.h"
 #include "heavy/Mangle.h"
 #include "heavy/Source.h"
@@ -384,6 +385,15 @@ class Writer : public ValueVisitor<Writer>
   unsigned IndentationLevel = 0;
   llvm::raw_ostream &OS;
 
+  bool isIdentifier(llvm::StringRef Str) {
+    // Use the lexer to identify an identifier.
+    heavy::Lexer Lexer(Str);
+    heavy::Token Tok;
+    Lexer.Lex(Tok);
+    return (Tok.Kind == tok::identifier &&
+            Tok.getLength() == Str.size());
+  }
+
 public:
   Writer(llvm::raw_ostream& OS)
     : OS(OS)
@@ -482,13 +492,8 @@ private:
     OS << ')';
   }
 
-  void VisitSymbol(Symbol* S) {
-    OS << S->getView();
-  }
-
-  void VisitString(String* S) {
-    llvm::StringRef Str = S->getView();
-    OS << '"';
+  void WriteLiteral(llvm::StringRef Str, char Delimiter) {
+    OS << Delimiter;
     while (Str.size() > 0) {
       unsigned ConsumeLen = 1;
       // Escape all special characters.
@@ -509,7 +514,10 @@ private:
           OS << "\\r";
           break;
         case '"':
-          OS << "\\\"";
+          if (Delimiter == '"')
+            OS << "\\\"";
+          else
+            OS << '"';
           break;
         case '\\':
           // Output an escaped backslash.
@@ -517,7 +525,10 @@ private:
           OS << "\\\\";
           break;
         case '|':
-          OS << "\\|";
+          if (Delimiter == '|')
+            OS << "\\|";
+          else
+            OS << '|';
           break;
         default: {
           auto [Decoded, Length] = detail::Utf8View(Str).decode_front();
@@ -536,7 +547,21 @@ private:
       }
       Str = Str.drop_front(ConsumeLen);
     }
-    OS << '"';
+    OS << Delimiter;
+  }
+
+  void VisitSymbol(Symbol* S) {
+    // If the symbol is a valid identifer then print it raw.
+    if (isIdentifier(S->getView())) {
+      OS << S->getView();
+    } else {
+      // Otherwise it must be escaped via | |
+      WriteLiteral(S->getView(), '|');
+    }
+  }
+
+  void VisitString(String* S) {
+    WriteLiteral(S->getView(), '"');
   }
 };
 
