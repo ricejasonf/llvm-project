@@ -97,7 +97,9 @@ void Lexer::Lex(Token& Tok) {
   case '#':
     return LexSharpLiteral(Tok, CurPtr);
   case '"':
-    return LexStringLiteral(Tok, CurPtr);
+    return LexStringLiteral(Tok, CurPtr, tok::string_literal, '"');
+  case '|':
+    return LexStringLiteral(Tok, CurPtr, tok::symbol_literal, '|');
   case '(':
     Kind = tok::l_paren;
     break;
@@ -256,13 +258,13 @@ void Lexer::LexSharpLiteral(Token& Tok, const char *CurPtr) {
   }
 }
 
-void Lexer::LexStringLiteral(Token& Tok, const char *CurPtr) {
+void Lexer::LexStringLiteral(Token& Tok, const char *CurPtr,
+                             TokenKind TokKind, char Terminator) {
   // Already consumed the "
   char c = *CurPtr;
-  while (c != '"') {
+  while (c != Terminator) {
     if (c == '\\') {
-      // TODO Support R7RS escape sequences
-      // currently we only escape arbitrary characters
+      // Skip over escaped characters.
       ConsumeChar(CurPtr);
     } else if (c == '\0') {
       FormTokenWithChars(Tok, --CurPtr, tok::string_literal_eof);
@@ -272,7 +274,7 @@ void Lexer::LexStringLiteral(Token& Tok, const char *CurPtr) {
   }
   // Consume the "
   ConsumeChar(CurPtr);
-  FormLiteral(Tok, CurPtr, tok::string_literal);
+  FormLiteral(Tok, CurPtr, TokKind);
 }
 
 void Lexer::LexUnknown(Token& Tok, const char *CurPtr) {
