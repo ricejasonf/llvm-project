@@ -14,6 +14,7 @@
 #include "heavy/Context.h"
 #include "heavy/Lexer.h"
 #include "heavy/Parser.h"
+#include "clang/Basic/CharInfo.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/SmallVector.h"
@@ -406,6 +407,15 @@ ValueResult Parser::ParseString() {
             return ValueError();
           }
           break;
+        }
+        default: {
+          if (clang::isWhitespace(TokenSpan[0])) {
+            TokenSpan = TokenSpan.drop_while(clang::isWhitespace);
+            continue;
+          } else {
+            // Default to using the escaped character.
+            c = TokenSpan[0];
+          }
         }
       }
       TokenSpan = TokenSpan.drop_front();
