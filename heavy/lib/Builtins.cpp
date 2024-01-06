@@ -13,6 +13,7 @@
 #include "heavy/Builtins.h"
 #include "heavy/Context.h"
 #include "heavy/OpGen.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
 #include "memory"
 
@@ -421,7 +422,7 @@ void sub(Context&C, ValueRefs Args) {
 
   if (Args.size() > 1) {
     Initial = Args[0];
-    Args = Args.drop_front(); 
+    Args = Args.drop_front();
   } else {
     // Additive inverse
     Initial = Int{0};
@@ -438,7 +439,7 @@ void div(Context& C, ValueRefs Args) {
 
   if (Args.size() > 1) {
     Initial = Args[0];
-    Args = Args.drop_front(); 
+    Args = Args.drop_front();
   } else {
     // Multiplicative inverse
     Initial = Int{1};
@@ -571,3 +572,113 @@ void compile(Context& C, ValueRefs Args) {
 }
 
 }} // end of namespace heavy::base
+
+namespace heavy::detail {
+// Borrowed from YAMLParser.
+std::pair<uint32_t, unsigned> Utf8View::decode_front() const {
+  StringRef::iterator Position= Range.begin();
+  StringRef::iterator End = Range.end();
+  // 1 byte: [0x00, 0x7f]
+  // Bit pattern: 0xxxxxxx
+  if (Position < End && (*Position & 0x80) == 0) {
+    return std::make_pair(*Position, 1);
+  }
+  // 2 bytes: [0x80, 0x7ff]
+  // Bit pattern: 110xxxxx 10xxxxxx
+  if (Position + 1 < End && ((*Position & 0xE0) == 0xC0) &&
+      ((*(Position + 1) & 0xC0) == 0x80)) {
+    uint32_t codepoint = ((*Position & 0x1F) << 6) |
+                          (*(Position + 1) & 0x3F);
+    if (codepoint >= 0x80)
+      return std::make_pair(codepoint, 2);
+  }
+  // 3 bytes: [0x8000, 0xffff]
+  // Bit pattern: 1110xxxx 10xxxxxx 10xxxxxx
+  if (Position + 2 < End && ((*Position & 0xF0) == 0xE0) &&
+      ((*(Position + 1) & 0xC0) == 0x80) &&
+      ((*(Position + 2) & 0xC0) == 0x80)) {
+    uint32_t codepoint = ((*Position & 0x0F) << 12) |
+                         ((*(Position + 1) & 0x3F) << 6) |
+                          (*(Position + 2) & 0x3F);
+    // Codepoints between 0xD800 and 0xDFFF are invalid, as
+    // they are high / low surrogate halves used by UTF-16.
+    if (codepoint >= 0x800 &&
+        (codepoint < 0xD800 || codepoint > 0xDFFF))
+      return std::make_pair(codepoint, 3);
+  }
+  // 4 bytes: [0x10000, 0x10FFFF]
+  // Bit pattern: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+  if (Position + 3 < End && ((*Position & 0xF8) == 0xF0) &&
+      ((*(Position + 1) & 0xC0) == 0x80) &&
+      ((*(Position + 2) & 0xC0) == 0x80) &&
+      ((*(Position + 3) & 0xC0) == 0x80)) {
+    uint32_t codepoint = ((*Position & 0x07) << 18) |
+                         ((*(Position + 1) & 0x3F) << 12) |
+                         ((*(Position + 2) & 0x3F) << 6) |
+                          (*(Position + 3) & 0x3F);
+    if (codepoint >= 0x10000 && codepoint <= 0x10FFFF)
+      return std::make_pair(codepoint, 4);
+  }
+  return std::make_pair(0, 0);
+}
+
+// Borrowed from YAMLParser.
+// Encode \a UnicodeScalarValue in UTF-8 and append it to result.
+void encode_utf8(uint32_t UnicodeScalarValue,
+                 llvm::SmallVectorImpl<char> &Result) {
+  if (UnicodeScalarValue <= 0x7F) {
+    Result.push_back(UnicodeScalarValue & 0x7F);
+  } else if (UnicodeScalarValue <= 0x7FF) {
+    uint8_t FirstByte = 0xC0 | ((UnicodeScalarValue & 0x7C0) >> 6);
+    uint8_t SecondByte = 0x80 | (UnicodeScalarValue & 0x3F);
+    Result.push_back(FirstByte);
+    Result.push_back(SecondByte);
+  } else if (UnicodeScalarValue <= 0xFFFF) {
+    uint8_t FirstByte = 0xE0 | ((UnicodeScalarValue & 0xF000) >> 12);
+    uint8_t SecondByte = 0x80 | ((UnicodeScalarValue & 0xFC0) >> 6);
+    uint8_t ThirdByte = 0x80 | (UnicodeScalarValue & 0x3F);
+    Result.push_back(FirstByte);
+    Result.push_back(SecondByte);
+    Result.push_back(ThirdByte);
+  } else if (UnicodeScalarValue <= 0x10FFFF) {
+    uint8_t FirstByte = 0xF0 | ((UnicodeScalarValue & 0x1F0000) >> 18);
+    uint8_t SecondByte = 0x80 | ((UnicodeScalarValue & 0x3F000) >> 12);
+    uint8_t ThirdByte = 0x80 | ((UnicodeScalarValue & 0xFC0) >> 6);
+    uint8_t FourthByte = 0x80 | (UnicodeScalarValue & 0x3F);
+    Result.push_back(FirstByte);
+    Result.push_back(SecondByte);
+    Result.push_back(ThirdByte);
+    Result.push_back(FourthByte);
+  }
+}
+
+void encode_hex(uint32_t Code, llvm::SmallVectorImpl<char> &Result) {
+  llvm::StringRef Digits = "0123456789ABCDEF";
+  unsigned Digit = 0;
+
+  // Interval [16^0, 16^8).
+  for (unsigned i = 0; i < 8; ++i) {
+    Digit = (Code >> (4 * (7 - i))) % 16;
+    // Do not push leading zeros.
+    if (Digit > 0 || !Result.empty() || i == 7)
+      Result.push_back(Digits[Digit]);
+  }
+}
+
+// Note that we do not validate UTF8 here. (Should we?)
+std::pair</*CodePoint=*/uint32_t, /*IsError=*/bool>
+from_hex(llvm::StringRef Chars) {
+  llvm::StringRef Digits = "0123456789ABCDEF";
+  uint32_t Output = 0;
+
+  for (unsigned i = 0; i < Chars.size(); ++i) {
+    size_t Digit = Digits.find(llvm::toUpper(Chars[Chars.size() - i - 1]));
+    if (Digit == llvm::StringRef::npos)
+      return {0, true};
+    Output += Digit << (i * 4);
+  }
+
+  return {Output, false};
+}
+
+} // end of namespace heavy::detail

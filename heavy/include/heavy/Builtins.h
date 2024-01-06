@@ -15,6 +15,7 @@
 
 #include "heavy/Context.h"
 #include "heavy/Value.h"
+#include "llvm/ADT/SmallVector.h"
 
 #define HEAVY_BASE_LIB                _HEAVYL5SheavyL4Sbase
 #define HEAVY_BASE_LIB_(NAME)         _HEAVYL5SheavyL4Sbase ## NAME
@@ -295,6 +296,45 @@ void InitParseSourceFile(heavy::Context& C, ParseSourceFileFn Fn) {
 }
 }
 
+namespace heavy::detail {
+// Declare utility functions for iterating UTF-8 characters.
+class Utf8View {
+  llvm::StringRef Range;
+public:
+  Utf8View(llvm::StringRef StrView)
+    : Range(StrView)
+  { }
+
+  bool empty() const {
+    return Range.empty();
+  }
+
+  std::pair<uint32_t, unsigned> decode_front() const;
+
+  // Return a single heavy::Char or nullptr on error.
+  heavy::Value drop_front() {
+    auto [codepoint, length] = decode_front();
+    if (length == 0) return nullptr;
+
+    Range = Range.substr(length);
+    return heavy::Char(codepoint);
+  }
+};
+void encode_utf8(uint32_t UnicodeScalarValue,
+                 llvm::SmallVectorImpl<char> &Result);
+
+// Convert to a hexadecimal string for
+// writing character constants and escaped
+// hexadecimal codes.
+void encode_hex(uint32_t Code,
+                llvm::SmallVectorImpl<char> &Result);
+
+// from_hex
+std::pair</*CodePoint=*/  uint32_t,
+          /*IsError=*/    bool>
+from_hex(llvm::StringRef Chars);
+
+}
 
 #endif
 

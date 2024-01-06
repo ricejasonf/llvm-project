@@ -28,6 +28,7 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/Unicode.h"
 #include <algorithm>
 #include <cstring>
 
@@ -486,9 +487,56 @@ private:
   }
 
   void VisitString(String* S) {
-    // TODO we might want to escape special
-    // characters other than newline
-    OS << '"' << S->getView() << '"';
+    llvm::StringRef Str = S->getView();
+    OS << '"';
+    while (Str.size() > 0) {
+      unsigned ConsumeLen = 1;
+      // Escape all special characters.
+      switch(Str[0]) {
+        case '\a':
+          OS << "\\a";
+          break;
+        case '\b':
+          OS << "\\b";
+          break;
+        case '\t':
+          OS << "\\t";
+          break;
+        case '\n':
+          OS << "\\n";
+          break;
+        case '\r':
+          OS << "\\r";
+          break;
+        case '"':
+          OS << "\\\"";
+          break;
+        case '\\':
+          // Output an escaped backslash.
+          // ie Output 2 backslashes.
+          OS << "\\\\";
+          break;
+        case '|':
+          OS << "\\|";
+          break;
+        default: {
+          auto [Decoded, Length] = detail::Utf8View(Str).decode_front();
+          if (llvm::sys::unicode::isPrintable(Decoded)) {
+            OS << Str.take_front(Length);
+            ConsumeLen = Length;
+          } else {
+            // Handle non-printable characters as escaped
+            // hexadecimal codes.
+            llvm::SmallVector<char, 8> HexCode;
+            detail::encode_hex(Decoded, HexCode);
+            OS << "\\x" << HexCode << ';';
+          }
+
+        }
+      }
+      Str = Str.drop_front(ConsumeLen);
+    }
+    OS << '"';
   }
 };
 
