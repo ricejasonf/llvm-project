@@ -137,6 +137,7 @@ ValueResult Parser::ParseExpr() {
   case tok::numeric_constant:
     return ParseNumber();
   case tok::identifier:
+  case tok::relaxed_identifier:
     return ParseSymbol();
   case tok::extern_name:
     return ParseExternName();

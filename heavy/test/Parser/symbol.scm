@@ -3,6 +3,9 @@
 ; Invalid identitifiers must write as escaped symbols.
 ; Otherwise, they should write as identifiers.
 
+; CHECK:||
+||
+
 ; Valid identifiers should write as identifiers.
 ; CHECK:foo
 |foo|
@@ -10,11 +13,29 @@
 |bar|
 ; CHECK:hello
 |hello|
+
+; Support relaxed identifiers and write as escaped symbols.
+; CHECK:|\\lambda|
+\lambda
+; CHECK:|foo\\lambda|
+foo\lambda
+
+; Support printable UTF8 characters
+; as relaxed identifiers.
+; CHECK:|λ|
+λ
+; CHECK:|ΣλΣ|
+ΣλΣ
+; CHECK:|ΣλΣfooΣλΣ|
+ΣλΣfooΣλΣ
+
 ; Invalid identifiers should write as escaped symbols.
 ; CHECK:|foo\\nbar|
 |foo\\nbar|
 ; CHECK:|escape\nnewline|
 |escape\nnewline|
+
+; Support mnemonic escapes
 ; CHECK:|\a\b\t\n\r"\|\\|
 |\a\b\t\n\r\"\|\\|
 
@@ -31,8 +52,8 @@
 |\x00c;|
 
 ; Normalize printable UTF8 codepoints.
-;; TODO-CHECK:☕
-;|\x2615;|
+; TODO-CHECK:☕
+|\x2615;|
 
 ; Omit escaped whitespace
 ; CHECK:|Hello, world!|
