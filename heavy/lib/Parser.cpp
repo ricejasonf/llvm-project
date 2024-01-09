@@ -164,23 +164,17 @@ ValueResult Parser::ParseExpr() {
   case tok::unquote_splicing:
     return ParseExprAbbrev("unquote-splicing");
   case tok::r_paren: {
-    SetError(Tok, "extraneous closing paren (')')");
     CheckTerminator();
-    ConsumeToken();
-    return ValueError();
+    return SetError(Tok, "extraneous closing paren (')')");
   }
   case tok::r_square: {
-    SetError(Tok, "extraneous closing bracket (']')");
     CheckTerminator();
-    ConsumeToken();
-    return ValueError();
+    return SetError(Tok, "extraneous closing bracket (']')");
   }
   case tok::r_brace: {
-    // extraneous brace should end parsing
-    SetError(Tok, "extraneous closing brace ('}')");
     CheckTerminator();
-    ConsumeToken();
-    return ValueEmpty();
+    // extraneous brace should end parsing
+    return SetError(Tok, "extraneous closing brace ('}')");
   }
   case tok::comment_datum: {
     // the expr that immediately follows the
@@ -193,24 +187,19 @@ ValueResult Parser::ParseExpr() {
     // TODO Track the start token of the current
     //      list being parsed if any and note it
     //      in the diagnostic output
-    SetError(Tok, "unexpected end of file");
     IsFinished = true;
-    return ValueError();
+    return SetError(Tok, "unexpected end of file");
   }
   case tok::string_literal_eof: {
-    SetError(Tok, "unterminated string literal");
     IsFinished = true;
-    return ValueError();
+    return SetError(Tok, "unterminated string literal");
   }
   case tok::block_comment_eof: {
-    SetError(Tok, "unterminated block comment");
     IsFinished = true;
-    return ValueError();
+    return SetError(Tok, "unterminated block comment");
   }
   default: {
-    SetError(Tok, "expected expression");
-    ConsumeToken();
-    return ValueError();
+    return SetError(Tok, "expected expression");
   }
   }
 }
@@ -309,7 +298,36 @@ ValueResult Parser::ParseVector(llvm::SmallVectorImpl<Value>& Xs) {
 }
 
 ValueResult Parser::ParseCharConstant() {
-  llvm_unreachable("TODO");
+  assert(Tok.getLiteralData().starts_with("#\\") &&
+      "expecting leading #/ in the token");
+  llvm::StringRef TokData = Tok.getLiteralData().drop_front(2);
+  uint32_t C = 0;
+
+  if (TokData.size() == 1) C = TokData.front();
+  else if (TokData.equals("alarm")) C = '\a';
+  else if (TokData.equals("backspace")) C = '\b';
+  else if (TokData.equals("delete")) C = '\x7F';
+  else if (TokData.equals("escape")) C = '\x1B';
+  else if (TokData.equals("newline")) C = '\n';
+  else if (TokData.equals("null")) C = '\0';
+  else if (TokData.equals("return")) C = '\r';
+  else if (TokData.equals("space")) C = ' ';
+  else if (TokData.equals("tab")) C = '\t';
+  else if (TokData.size() > 0 && TokData.front() == 'x') {
+    // Handle hex code or bust.
+    auto [HexValue, IsError] = detail::from_hex(TokData.drop_front());
+    if (IsError)
+      return SetError(Tok, "invalid hex code");
+    C = HexValue;
+  } else {
+    auto Utf8View = detail::Utf8View(TokData);
+    heavy::Value Result = Utf8View.drop_front();
+    if (!Result || !Utf8View.empty())
+      return SetError(Tok, "invalid character constant");
+    C = uint32_t(llvm::cast<heavy::Char>(Result));
+  }
+  ConsumeToken();
+  return Value(Context.CreateChar(C));
 }
 
 ValueResult Parser::ParseNumber() {
@@ -394,7 +412,6 @@ bool Parser::ParseLiteralImpl() {
           unsigned SemiColonPos = TokenSpan.find(';');
           if (SemiColonPos == llvm::StringRef::npos) {
             SetError(Tok, "char hex scalar value missing terminating semicolon");
-            ConsumeToken();
             return true;
           } else {
             llvm::SmallVector<char, 4> ByteSequence;
@@ -407,7 +424,6 @@ bool Parser::ParseLiteralImpl() {
               continue;
             }
             SetError(Tok, "invalid utf8 codepoint");
-            ConsumeToken();
             return true;
           }
           break;
