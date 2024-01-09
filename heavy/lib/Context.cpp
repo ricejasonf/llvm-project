@@ -25,6 +25,7 @@
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/Casting.h"
@@ -562,6 +563,54 @@ private:
 
   void VisitString(String* S) {
     WriteLiteral(S->getView(), '"');
+  }
+
+  void VisitChar(heavy::Char Char) {
+    uint32_t C = uint32_t(Char);
+    OS << "#\\";
+    switch (char(C)) {
+      case '\0':
+        OS << "null";
+        break; 
+      case '\a':
+        OS << "alarm";
+        break; 
+      case '\b':
+        OS << "backspace";
+        break; 
+      case '\x7F':
+        OS << "delete";
+        break; 
+      case '\x1B':
+        OS << "escape";
+        break; 
+      case '\n':
+        OS << "newline";
+        break; 
+      case '\r':
+        OS << "return";
+        break; 
+      case ' ':
+        OS << "space";
+        break; 
+      case '\t':
+        OS << "tab";
+        break; 
+      default:
+        if (llvm::sys::unicode::isPrintable(C) &&
+            !llvm::sys::unicode::isFormatting(C)) {
+          llvm::SmallVector<char, 4> ByteSequence;
+          detail::encode_utf8(C, ByteSequence);
+          OS << ByteSequence;
+        } else {
+          // Handle non-printable characters as escaped
+          // hexadecimal codes.
+          llvm::SmallVector<char, 8> HexCode;
+          detail::encode_hex(C, HexCode);
+          OS << "x" << HexCode;
+        }
+        break;
+    }
   }
 };
 
