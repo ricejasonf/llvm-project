@@ -52,6 +52,7 @@ class Parser {
   SourceLocation PrevTokLocation;
   std::string LiteralResult = {};
   std::string ErrorMsg = {};
+  Token ErrTok = {};
 
   auto ValueEmpty() { return ValueResult(); }
   auto ValueError() { return ValueResult(Context.CreateUndefined()); }
@@ -74,8 +75,12 @@ class Parser {
   ValueResult ParseDottedCdr(Token const& StartTok);
   ValueResult ParseSpecialEscapeSequence();
 
-  void SetError(Token& Tok, StringRef Msg) {
+  ValueResult SetError(Token& Tok, StringRef Msg) {
+    ErrTok = Tok;
     ErrorMsg = Msg;
+    // Prevent infinite loops in the absence of error checks.
+    ConsumeToken();
+    return ValueError();
   }
 
   bool CheckTerminator() {
@@ -101,7 +106,8 @@ public:
 
   void RaiseError() {
     assert(HasError() && "There must be an error to raise.");
-    SourceLocation Loc = Tok.getLocation();
+    Token TempTok = ErrTok.getLength() > 0 ? ErrTok : Tok;
+    SourceLocation Loc = TempTok.getLocation();
     Context.SetError(Context.CreateError(Loc, ErrorMsg,
                      Context.CreateEmpty()));
   }

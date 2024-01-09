@@ -169,6 +169,9 @@ public:
   { }
 
   void Lex(Token& Tok);
+
+  static bool isDelimiter(char c);
+  static bool isExtendedAlphabet(char c);
 };
 
 } // namespace heavy
