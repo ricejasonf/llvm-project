@@ -18,6 +18,53 @@
 
 using namespace heavy;
 
+namespace {
+// Check if char is <initial> for <identifier>.
+bool isInitialChar(char c) {
+  switch (c) {
+    case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G':
+    case 'H': case 'I': case 'J': case 'K': case 'L': case 'M': case 'N':
+    case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T': case 'U':
+    case 'V': case 'W': case 'X': case 'Y': case 'Z':
+    case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g':
+    case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n':
+    case 'o': case 'p': case 'q': case 'r': case 's': case 't': case 'u':
+    case 'v': case 'w': case 'x': case 'y': case 'z':
+    // Identifiers (extended alphabet)
+    case '*': case '/': case '<': case '=': case '>': case '!':
+    case '?': case ':': case '$': case '%': case '_':
+    case '&': case '~': case '^':
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool isSignSubsequent(char c, char next_c) {
+  bool IsSignSub1 = isInitialChar(c) || c == '+' || c == '-' || c == '@';
+  if (Lexer::isDelimiter(c) || IsSignSub1) {
+    return true;
+  } else if (c == '.') {
+    // <dot-subsequent>
+    c = next_c;
+    return isInitialChar(c) || c == '+' || c == '-' || c == '@' || c == '.';
+  }
+  return false;
+}
+
+// This is checked after the '+' or '-'.
+// c - char immediately after the <explicit sign>
+// next_c - char immediately after c
+bool isPeculiarIdentifierPrefix(char InitChar, char Char, char NextChar) {
+  if (InitChar == '+' || InitChar == '-')
+    return Lexer::isDelimiter(Char) || isSignSubsequent(Char, NextChar);
+  else if (InitChar == '.') // <dot-subsequent>
+    return Lexer::isDelimiter(NextChar) &&
+      (Char == '.' || isSignSubsequent(Char, NextChar));
+  return false;
+}
+}
+
 bool Lexer::isExtendedAlphabet(char c) {
   // TODO
   // We could make a table similar to clang::charinfo::InfoTable
@@ -40,6 +87,7 @@ bool Lexer::isExtendedAlphabet(char c) {
   }
   return false;
 }
+
 
 bool Lexer::isDelimiter(char c) {
   switch(c) {
@@ -71,10 +119,12 @@ void Lexer::Lex(Token& Tok) {
   // These are all considered "initial characters".
   switch(c) {
   // Integer constants
-  case '-': case '+':
-    return LexNumberOrIdentifier(Tok, CurPtr);
+  case '+': case '-':
+    return LexNumberOrIdentifier(Tok, CurPtr, c);
   case '.':
-    return LexNumberOrEllipsis(Tok, CurPtr);
+    return isDelimiter(*CurPtr) ?
+      FormTokenWithChars(Tok, CurPtr, tok::period) :
+      LexNumberOrIdentifier(Tok, CurPtr, c);
   case '0': case '1': case '2': case '3': case '4':
   case '5': case '6': case '7': case '8': case '9':
     return LexNumber(Tok, CurPtr);
@@ -139,29 +189,14 @@ void Lexer::Lex(Token& Tok) {
 void Lexer::LexIdentifier(Token& Tok, const char *CurPtr, char InitChar) {
   // Non-strict identifiers are not conforming to the formal specification
   // but are accepted as if by wrapping in | |.
-  bool IsStrict = true;
-  switch (InitChar) {
-    case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G':
-    case 'H': case 'I': case 'J': case 'K': case 'L': case 'M': case 'N':
-    case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T': case 'U':
-    case 'V': case 'W': case 'X': case 'Y': case 'Z':
-    case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g':
-    case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n':
-    case 'o': case 'p': case 'q': case 'r': case 's': case 't': case 'u':
-    case 'v': case 'w': case 'x': case 'y': case 'z':
-    // Identifiers (extended alphabet)
-    case '*': case '/': case '<': case '=': case '>': case '!':
-    case '?': case ':': case '$': case '%': case '_':
-    case '&': case '~': case '^':
-      break;
-    case '-': case '+':
-      // '+' | '-' are the only valid identifiers starting with + or -
-      if (!isDelimiter(*CurPtr))
-        IsStrict = false;
-      break;
-    default:
-      IsStrict = false;
+  // (For non-ascii UTF8 character sequences)
+  bool IsStrict = false;
+  if (isInitialChar(InitChar) || isPeculiarIdentifierPrefix(InitChar,
+                                                            *CurPtr,
+                                                            *(CurPtr + 1))) {
+    IsStrict = true;
   }
+
   char c = *CurPtr;
   while (!isDelimiter(c)) {
     IsStrict = IsStrict && isExtendedAlphabet(c);
@@ -172,34 +207,11 @@ void Lexer::LexIdentifier(Token& Tok, const char *CurPtr, char InitChar) {
   return FormIdentifier(Tok, CurPtr);
 }
 
-void Lexer::LexNumberOrIdentifier(Token& Tok, const char *CurPtr) {
-  // + and - are valid characters by themselves
-  assert(*(CurPtr - 1) == '+' ||
-         *(CurPtr - 1) == '-');
-  if (isDelimiter(*CurPtr)) {
-    // '+' | '-' are valid identifiers
-    return FormIdentifier(Tok, CurPtr);
+void Lexer::LexNumberOrIdentifier(Token& Tok, const char *CurPtr, char InitChar) {
+  if (isPeculiarIdentifierPrefix(InitChar, *CurPtr, *(CurPtr + 1))) {
+    return LexIdentifier(Tok, CurPtr, InitChar);
   }
-  // Lex as a number
   LexNumber(Tok, CurPtr);
-}
-
-void Lexer::LexNumberOrEllipsis(Token& Tok, const char *CurPtr) {
-  const char *OrigPtr = CurPtr;
-  // We already consumed a dot .
-  char c1 = *CurPtr;
-  if (isDelimiter(c1)) {
-    return FormTokenWithChars(Tok, CurPtr, tok::period);
-  }
-  char c2 = ConsumeChar(CurPtr);
-  char c3 = ConsumeChar(CurPtr);
-  if (c1 == '.' && c2 ==  '.' && isDelimiter(c3)) {
-    // '...' is a valid identifier (via <dot subsequent>)
-    // TODO Implement <peculiar identifier>.
-    return FormIdentifier(Tok, CurPtr);
-  }
-  // Lex as a number
-  LexNumber(Tok, OrigPtr);
 }
 
 void Lexer::LexNumber(Token& Tok, const char *CurPtr) {

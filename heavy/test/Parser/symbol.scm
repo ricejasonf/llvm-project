@@ -70,3 +70,11 @@ foo\lambda
 |Hello,
 
     World!|
+
+; Support peculiar identifiers starting with explicit sign +-.
+; Check:+hello
++hello
+; Check:..
+..
+; Check:+..
++..
