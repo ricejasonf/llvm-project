@@ -75,7 +75,7 @@ class Parser {
   ValueResult ParseDottedCdr(Token const& StartTok);
   ValueResult ParseSpecialEscapeSequence();
 
-  ValueResult SetError(Token& Tok, StringRef Msg) {
+  ValueResult SetError(Token const& Tok, StringRef Msg) {
     ErrTok = Tok;
     ErrorMsg = Msg;
     // Prevent infinite loops in the absence of error checks.
