@@ -116,8 +116,7 @@ class Lexer : public EmbeddedLexer {
   };
 
   void LexIdentifier(Token& Tok, const char *CurPtr, char InitChar);
-  void LexNumberOrIdentifier(Token& Tok, const char *CurPtr);
-  void LexNumberOrEllipsis(Token& Tok, const char *CurPtr);
+  void LexNumberOrIdentifier(Token& Tok, const char *CurPtr, char InitChar);
   void LexNumber(Token& Tok, const char *CurPtr);
   void LexSharpLiteral(Token& Tok, const char *CurPtr);
   void LexStringLiteral(Token& Tok, const char *CurPtr,

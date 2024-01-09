@@ -266,10 +266,13 @@ ValueResult Parser::ParseList(Token const& StartTok) {
 ValueResult Parser::ParseDottedCdr(Token const& StartTok) {
   assert(Tok.is(tok::period));
   ConsumeToken();
+  Token DotTok = Tok;
   ValueResult Cdr = ParseExpr();
-  if (!TryConsumeToken(tok::r_paren, "invalid dot notation")) {
-    return ValueError();
+  if (Tok.isNot(tok::r_paren)) {
+    return SetError(DotTok, "invalid dot notation");
   }
+  // Consume the tok::r_paren.
+  ConsumeToken();
   return Cdr;
 }
 
@@ -365,9 +368,9 @@ ValueResult Parser::ParseNumber() {
   } else {
     auto Result = FloatVal.convertFromString(
         TokenSpan, llvm::APFloat::rmNearestTiesToEven);
-    if (!Result) {
-      llvm_unreachable("TODO invalid numerical syntax");
-      return ValueError();
+    if (llvm::Error Error = Result.takeError()) {
+      llvm::consumeError(std::move(Error));
+      return SetError(Tok, "invalid numerical syntax");
     }
   }
   return Value(Context.CreateFloat(FloatVal));
