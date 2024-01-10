@@ -444,6 +444,7 @@ private:
   void VisitFloat(Float* V) {
     llvm::SmallVector<char, 16> Buffer;
     V->getVal().toString(Buffer);
+    llvm::transform(Buffer, Buffer.begin(), llvm::toLower);
     OS << Buffer;
   }
 

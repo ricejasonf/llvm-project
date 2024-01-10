@@ -215,7 +215,7 @@ void Lexer::LexNumberOrIdentifier(Token& Tok, const char *CurPtr, char InitChar)
 }
 
 void Lexer::LexNumber(Token& Tok, const char *CurPtr) {
-  // let the parser figure it out
+  // Let the parser figure it out.
   SkipUntilDelimiter(CurPtr);
   FormLiteral(Tok, CurPtr, tok::numeric_constant);
 }
@@ -259,11 +259,12 @@ void Lexer::LexSharpLiteral(Token& Tok, const char *CurPtr) {
     Kind = tok::extern_name;
     RequiresDelimiter = true;
     break;
-  // unsupported radix R specifiers
+  // Support radix R specifiers.
   case 'd':
   case 'b': case 'o': case 'x':
-  // unsupported exactness specifiers
+  // Support exactness specifiers.
   case 'i': case 'e':
+    return LexNumber(Tok, CurPtr);
   default:
     Kind = tok::unknown;
     SkipUntilDelimiter(CurPtr);
