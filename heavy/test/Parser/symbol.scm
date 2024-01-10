@@ -3,78 +3,78 @@
 ; Invalid identitifiers must write as escaped symbols.
 ; Otherwise, they should write as identifiers.
 
-; CHECK:||
 ||
+; CHECK:||
 
 ; Valid identifiers should write as identifiers.
-; CHECK:foo
 |foo|
-; CHECK:bar
+; CHECK:foo
 |bar|
-; CHECK:hello
+; CHECK:bar
 |hello|
+; CHECK:hello
 
 ; Support relaxed identifiers and write as escaped symbols.
-; CHECK:|\\lambda|
 \lambda
-; CHECK:|foo\\lambda|
+; CHECK:|\\lambda|
 foo\lambda
+; CHECK:|foo\\lambda|
 
 ; Support printable UTF8 characters
 ; as relaxed identifiers.
-; CHECK:|λ|
 λ
-; CHECK:|ΣλΣ|
+; CHECK:|λ|
 ΣλΣ
-; CHECK:|ΣλΣfooΣλΣ|
+; CHECK:|ΣλΣ|
 ΣλΣfooΣλΣ
+; CHECK:|ΣλΣfooΣλΣ|
 
 ; Invalid identifiers should write as escaped symbols.
-; CHECK:|foo\\nbar|
 |foo\\nbar|
-; CHECK:|escape\nnewline|
+; CHECK:|foo\\nbar|
 |escape\nnewline|
+; CHECK:|escape\nnewline|
 
 ; Support mnemonic escapes
-; CHECK:|\a\b\t\n\r"\|\\|
 |\a\b\t\n\r\"\|\\|
+; CHECK:|\a\b\t\n\r"\|\\|
 
 ; All relevant hex codes should
 ; normalize to relevant escape codes
 ; or a hex code if there is no escape code.
 ; Normalize to uppercase escape code.
-; CHECK:|\a\b\t\n\r\\|
 |\x007;\x8;\x9;\xA;\xd;\x5C;|
+; CHECK:|\a\b\t\n\r\\|
 
 ; Normalize to uppercase escape code
 ; with no leading zeros.
-; CHECK:|\xC;|
 |\x00c;|
+; CHECK:|\xC;|
 
 ; Normalize printable UTF8 codepoints.
-; TODO-CHECK:☕
 |\x2615;|
+; CHECK:|☕|
 
 ; Omit escaped whitespace
-; CHECK:|Hello, world!|
 |Hello, \  
   world!|
+; CHECK:|Hello, world!|
 
 ; Just render characters that do no represent
 ; an escape character;
-; CHECK:|ml\n|
 |\m\l\n|
+; CHECK:|ml\n|
 
 ; Support actual newlines
-; CHECK:|Hello,\n\n    World!|
 |Hello,
 
     World!|
+; CHECK:|Hello,\n\n    World!|
 
 ; Support peculiar identifiers starting with explicit sign +-.
-; Check:+hello
 +hello
-; Check:..
+; Check:+hello
 ..
-; Check:+..
+; Check:..
 +..
+; Check:+..
