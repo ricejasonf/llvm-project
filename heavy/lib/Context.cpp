@@ -443,9 +443,20 @@ private:
   void VisitInt(Int V) { OS << int32_t{V}; }
   void VisitFloat(Float* V) {
     llvm::SmallVector<char, 16> Buffer;
-    V->getVal().toString(Buffer);
-    llvm::transform(Buffer, Buffer.begin(), llvm::toLower);
-    OS << Buffer;
+    llvm::APFloat Val = V->getVal();
+    if (!Val.isInfinity() && !Val.isNaN()) {
+      Val.toString(Buffer);
+      llvm::transform(Buffer, Buffer.begin(), llvm::toLower);
+      OS << Buffer;
+    } else if (Val.isInfinity() && !Val.isNegative()) {
+      OS << "+inf.0";
+    } else if (Val.isInfinity()) {
+      OS << "-inf.0";
+    } else if (Val.isNegative()) {
+      OS << "-nan.0";
+    } else {
+      OS << "+nan.0";
+    }
   }
 
   void VisitPair(Pair* P) {

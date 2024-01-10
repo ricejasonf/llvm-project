@@ -78,3 +78,17 @@ foo\lambda
 ; Check:..
 +..
 ; Check:+..
+
+; Handle escaped symbols that look like numbers.
+|+inf.0| |-inf.0| |+nan.0| |-nan.0| |+i| |-i| |0| |5| |5.0| |+5| |#xFF|
+; CHECK:|+inf.0|
+; CHECK:|-inf.0|
+; CHECK:|+nan.0|
+; CHECK:|-nan.0|
+; CHECK:|+i|
+; CHECK:|-i|
+; CHECK:|0|
+; CHECK:|5|
+; CHECK:|5.0|
+; CHECK:|+5|
+; CHECK:|#xFF|
