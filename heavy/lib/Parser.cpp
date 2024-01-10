@@ -39,35 +39,44 @@ namespace {
 
     ++CurPtr;
     char c = *CurPtr;
-    if (Radix.has_value() ||
-        (IsExact.has_value() &&
-         (c == 'e' || c == 'i'))) {
-      return true;
-    }
+    ++CurPtr;
 
     switch (c) {
     case 'e':
+      if (IsExact.has_value())
+        return true;
       IsExact = true;
       break;
     case 'i':
+      if (IsExact.has_value())
+        return true;
       IsExact = false;
       break;
     case 'b':
+      if (Radix.has_value())
+        return true;
       Radix = 2;
       break;
     case 'o':
+      if (Radix.has_value())
+        return true;
       Radix = 8;
       break;
     case 'd':
+      if (Radix.has_value())
+        return true;
       Radix = 10;
       break;
-    case 'h':
+    case 'x':
+      if (Radix.has_value())
+        return true;
       Radix = 16;
       break;
     default:
       return true;
     }
-    ++CurPtr;
+    if (Radix.has_value() && IsExact.has_value())
+      return false;
     return parseNumberPrefix(CurPtr, IsExact, Radix);
   }
 
@@ -341,9 +350,10 @@ ValueResult Parser::ParseNumber() {
   std::optional<unsigned> RadixOpt;
   std::optional<llvm::APInt> IntOpt;
 
+  // FIXME Tok should point to current token.
+  // (It is pointing to the next token for some reason.)
   if (parseNumberPrefix(Current, IsExactOpt, RadixOpt)) {
-    llvm_unreachable("TODO diagnose invalid number prefix");
-    return ValueError();
+    return SetError(Tok, "unsupported number prefix");
   }
 
   StringRef TokenSpan(Current, End - Current);
@@ -354,6 +364,7 @@ ValueResult Parser::ParseNumber() {
   //      and just use a fixed BitWidth
   IntOpt = tryParseInteger(TokenSpan, BitWidth, Radix);
 
+  Token OrigTok = Tok;
   ConsumeToken();
 
   if (IsExact && IntOpt.has_value()) {
@@ -370,7 +381,7 @@ ValueResult Parser::ParseNumber() {
         TokenSpan, llvm::APFloat::rmNearestTiesToEven);
     if (llvm::Error Error = Result.takeError()) {
       llvm::consumeError(std::move(Error));
-      return SetError(Tok, "invalid numerical syntax");
+      return SetError(OrigTok, "invalid numerical syntax");
     }
   }
   return Value(Context.CreateFloat(FloatVal));
