@@ -52,12 +52,22 @@ bool isSignSubsequent(char c, char next_c) {
   return false;
 }
 
-// This is checked after the '+' or '-'.
-// c - char immediately after the <explicit sign>
-// next_c - char immediately after c
-bool isPeculiarIdentifierPrefix(char InitChar, char Char, char NextChar) {
-  if (InitChar == '+' || InitChar == '-')
+// InitChar - The '+', '-' or '.'
+bool isPeculiarIdentifierPrefix(char InitChar, char const* CurPtr) {
+  char Char = *CurPtr;
+  char NextChar = *(CurPtr + 1);
+  if (InitChar == '+' || InitChar == '-') {
+    if (Char == 'i' || Char == 'n') {
+      // Check for infnan and complex number.
+      auto Rest = llvm::StringRef(CurPtr, 5);
+      if (Char == 'i' && Lexer::isDelimiter(NextChar))
+        return false;
+      if (Rest.starts_with("nan.0") ||
+          Rest.starts_with("inf.0"))
+        return false;
+    }
     return Lexer::isDelimiter(Char) || isSignSubsequent(Char, NextChar);
+  }
   else if (InitChar == '.') // <dot-subsequent>
     return Lexer::isDelimiter(NextChar) &&
       (Char == '.' || isSignSubsequent(Char, NextChar));
@@ -191,9 +201,7 @@ void Lexer::LexIdentifier(Token& Tok, const char *CurPtr, char InitChar) {
   // but are accepted as if by wrapping in | |.
   // (For non-ascii UTF8 character sequences)
   bool IsStrict = false;
-  if (isInitialChar(InitChar) || isPeculiarIdentifierPrefix(InitChar,
-                                                            *CurPtr,
-                                                            *(CurPtr + 1))) {
+  if (isInitialChar(InitChar) || isPeculiarIdentifierPrefix(InitChar, CurPtr)) {
     IsStrict = true;
   }
 
@@ -208,7 +216,7 @@ void Lexer::LexIdentifier(Token& Tok, const char *CurPtr, char InitChar) {
 }
 
 void Lexer::LexNumberOrIdentifier(Token& Tok, const char *CurPtr, char InitChar) {
-  if (isPeculiarIdentifierPrefix(InitChar, *CurPtr, *(CurPtr + 1))) {
+  if (isPeculiarIdentifierPrefix(InitChar, CurPtr)) {
     return LexIdentifier(Tok, CurPtr, InitChar);
   }
   LexNumber(Tok, CurPtr);

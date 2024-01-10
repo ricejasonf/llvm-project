@@ -381,7 +381,19 @@ ValueResult Parser::ParseNumber() {
         TokenSpan, llvm::APFloat::rmNearestTiesToEven);
     if (llvm::Error Error = Result.takeError()) {
       llvm::consumeError(std::move(Error));
-      return SetError(OrigTok, "invalid numerical syntax");
+      // Check for infnan or something more complex.
+      llvm::StringRef FullTok = OrigTok.getLiteralData();
+      using APFloat = llvm::APFloat;
+      if (FullTok.equals("+inf.0"))
+        FloatVal = APFloat::getInf(APFloat::IEEEdouble(), /*Neg=*/false);
+      else if (FullTok.equals("-inf.0"))
+        FloatVal = APFloat::getInf(APFloat::IEEEdouble(), /*Neg=*/true);
+      else if (FullTok.equals("+nan.0"))
+        FloatVal = APFloat::getNaN(APFloat::IEEEdouble(), /*Neg=*/false);
+      else if (FullTok.equals("-nan.0"))
+        FloatVal = APFloat::getNaN(APFloat::IEEEdouble(), /*Neg=*/true);
+      else
+        return SetError(OrigTok, "invalid numerical syntax");
     }
   }
   return Value(Context.CreateFloat(FloatVal));
