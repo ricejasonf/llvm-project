@@ -1,55 +1,49 @@
 ; RUN: heavy-scheme --mode=read %s 2>&1 | FileCheck  %s --strict-whitespace --match-full-lines
 
-; CHECK:#\a
 #\a
+; CHECK:#\a
 
-; CHECK:#\A
 #\A
+; CHECK:#\A
 
-; CHECK:#\b
 #\b
+; CHECK:#\b
 
-; CHECK:#\alarm
-; CHECK:#\alarm
 #\x7 #\alarm
+; CHECK:#\alarm
+; CHECK:#\alarm
 
-; CHECK:#\backspace
-; CHECK:#\backspace
 #\x08 #\backspace
+; CHECK:#\backspace
+; CHECK:#\backspace
 
-; CHECK:#\delete
-; CHECK:#\delete
 #\x7F #\delete
+; CHECK:#\delete
+; CHECK:#\delete
 
-; CHECK:#\escape
-; CHECK:#\escape
 #\x1b #\escape
+; CHECK:#\escape
+; CHECK:#\escape
 
-; CHECK:#\newline
-; CHECK:#\newline
 #\xA #\newline
+; CHECK:#\newline
+; CHECK:#\newline
 
-; CHECK:#\null
-; CHECK:#\null
-; CHECK:#\null
 #\x00 #\x0 #\null
+; CHECK-COUNT-3:#\null
 
-; CHECK:#\return
-; CHECK:#\return
 #\x000d #\return
+; CHECK-COUNT-2:#\return
 
-; CHECK:#\space
-; CHECK:#\space
 #\  #\space
+; CHECK-COUNT-2:#\space
 
-; CHECK:#\tab
-; CHECK:#\tab
 #\x09  #\tab
+; CHECK-COUNT-2:#\tab
 
-; CHECK:#\λ
 #\λ
+; CHECK:#\λ
 
-; CHECK:#\☕
-; CHECK:#\☕
 #\☕
 #\x2615
+; CHECK-COUNT-2:#\☕
