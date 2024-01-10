@@ -97,3 +97,10 @@
 
 #i5.0
 ; CHECK:5
+
+; Note we do not actually check that these are numbers here.
++inf.0 -inf.0 +nan.0 -nan.0
+; CHECK:+inf.0
+; CHECK:-inf.0
+; CHECK:+nan.0
+; CHECK:-nan.0
