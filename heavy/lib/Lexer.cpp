@@ -256,6 +256,12 @@ void Lexer::LexSharpLiteral(Token& Tok, const char *CurPtr) {
   case '(':
     Kind = tok::vector_lparen;
     break;
+  case 'u':
+    if (*CurPtr == '8' && *(CurPtr + 1) == '(') {
+      Kind = tok::bytevector_lparen;
+      CurPtr += 2;
+    }
+    break;
   case ';':
     // The datum that follows this token
     // is treated as a comment but we still

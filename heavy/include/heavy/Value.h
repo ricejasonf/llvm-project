@@ -110,6 +110,7 @@ enum class ValueKind {
   Bool,
   Builtin,
   BuiltinSyntax,
+  ByteVector,
   Char,
   ContArg,
   Empty,
@@ -850,6 +851,49 @@ public:
     return V.getKind() == ValueKind::String;
   }
   static ValueKind getKind() { return ValueKind::String; }
+};
+
+class ByteVector final
+  : public ValueBase,
+    private llvm::TrailingObjects<ByteVector, char> {
+  friend class Context;
+  friend class llvm::TrailingObjects<ByteVector, char>;
+
+  unsigned Len = 0;
+  size_t numTrailingObjects(OverloadToken<char> const) const {
+    return Len;
+  }
+
+public:
+  ByteVector(llvm::StringRef S)
+    : ValueBase(ValueKind::ByteVector),
+      Len(S.size())
+  {
+    std::memcpy(getTrailingObjects<char>(), S.data(), S.size());
+  }
+  ByteVector(unsigned Size)
+    : ValueBase(ValueKind::ByteVector),
+      Len(Size)
+  {
+    std::memset(getTrailingObjects<char>(), 0, Size);
+  }
+
+  static constexpr size_t sizeToAlloc(unsigned Length) {
+    return totalSizeToAlloc<char>(Length);
+  }
+
+  llvm::StringRef getView() const {
+    return llvm::StringRef(getTrailingObjects<char>(), Len);
+  }
+
+  llvm::MutableArrayRef<char> getData() {
+    return llvm::MutableArrayRef<char>(getTrailingObjects<char>(), Len);
+  }
+
+  static bool classof(Value V) {
+    return V.getKind() == ValueKind::ByteVector;
+  }
+  static ValueKind getKind() { return ValueKind::ByteVector; }
 };
 
 // Symbol - Is an identifier with source information
@@ -1744,6 +1788,7 @@ inline llvm::StringRef getKindName(heavy::ValueKind Kind) {
   GET_KIND_NAME_CASE(Bool)
   GET_KIND_NAME_CASE(Builtin)
   GET_KIND_NAME_CASE(BuiltinSyntax)
+  GET_KIND_NAME_CASE(ByteVector)
   GET_KIND_NAME_CASE(Char)
   GET_KIND_NAME_CASE(Empty)
   GET_KIND_NAME_CASE(EnvFrame)
