@@ -310,6 +310,7 @@ public:
 
   Vector*     CreateVector(ArrayRef<Value> Xs);
   Vector*     CreateVector(unsigned N);
+  ByteVector* CreateByteVector(llvm::ArrayRef<Value> Xs);
   EnvFrame*   CreateEnvFrame(llvm::ArrayRef<Symbol*> Names);
 
   String* CreateMutableString(StringRef V) {

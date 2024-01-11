@@ -143,6 +143,8 @@ ValueResult Parser::ParseExpr() {
     return ParseListStart();
   case tok::vector_lparen:
     return ParseVectorStart();
+  case tok::bytevector_lparen:
+    return ParseVectorStart(/*IsByteVector=*/true);
   case tok::numeric_constant:
     return ParseNumber();
   case tok::identifier:
@@ -285,28 +287,44 @@ ValueResult Parser::ParseDottedCdr(Token const& StartTok) {
   return Cdr;
 }
 
-ValueResult Parser::ParseVectorStart() {
-  // consume the heavy_vector_lparen
+ValueResult Parser::ParseVectorStart(bool IsByteVector) {
+  // Consume the vector_lparen or bytevector_lparen.
   ConsumeToken();
   llvm::SmallVector<Value, 16> Xs;
-  return ParseVector(Xs);
+  return ParseVector(Xs, IsByteVector);
 }
 
-ValueResult Parser::ParseVector(llvm::SmallVectorImpl<Value>& Xs) {
-  // discard commented exprs
+ValueResult Parser::ParseVector(llvm::SmallVectorImpl<Value>& Xs,
+                                bool IsByteVector) {
+  // Discard commented exprs
   while (Tok.is(tok::comment_datum)) {
     ConsumeToken();
     ParseExpr();
   }
   if (Tok.is(tok::r_paren)) {
     ConsumeToken();
-    return Value(Context.CreateVector(Xs));
+    return IsByteVector ? Value(Context.CreateByteVector(Xs)) :
+                          Value(Context.CreateVector(Xs));
   }
+  Token ExprTok = Tok;
   ValueResult Result = ParseExpr();
   if (!Result.isUsable()) return Result;
 
+  if (IsByteVector) {
+    // Check that the literal element is an exact integer 0-255.
+    bool Valid = isa<heavy::Int>(Result.get());
+    if (Valid) {
+      int32_t Byte = cast<heavy::Int>(Result.get());
+      if (Byte < 0 || Byte > 255)
+        Valid = false;
+    }
+
+    if (!Valid)
+      return SetError(ExprTok, "invalid bytevector byte literal");
+  }
+  
   Xs.push_back(Result.get());
-  return ParseVector(Xs);
+  return ParseVector(Xs, IsByteVector);
 }
 
 ValueResult Parser::ParseCharConstant() {
