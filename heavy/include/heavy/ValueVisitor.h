@@ -51,6 +51,7 @@ protected:
   VISIT_FN(Bool)
   VISIT_FN(Builtin)
   VISIT_FN(BuiltinSyntax)
+  VISIT_FN(ByteVector)
   VISIT_FN(Char)
   VISIT_FN(ContArg)
   VISIT_FN(Empty)
@@ -91,6 +92,7 @@ public:
     case ValueKind::Bool:           DISPATCH(Bool);
     case ValueKind::Builtin:        DISPATCH(Builtin);
     case ValueKind::BuiltinSyntax:  DISPATCH(BuiltinSyntax);
+    case ValueKind::ByteVector:     DISPATCH(ByteVector);
     case ValueKind::Char:           DISPATCH(Char);
     case ValueKind::ContArg:        DISPATCH(ContArg);
     case ValueKind::Empty:          DISPATCH(Empty);

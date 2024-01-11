@@ -26,6 +26,7 @@ namespace heavy {
 enum class TokenKind {
   unknown = 0,
   block_comment_eof,        // #| ... EOF (only used for unexpected EOF)
+  bytevector_lparen,        // #u8(
   char_constant,
   comment_datum,            // #;
   eof,

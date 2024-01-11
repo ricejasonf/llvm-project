@@ -69,8 +69,9 @@ class Parser {
   ValueResult ParseString();
   ValueResult ParseSymbol();
   ValueResult ParseEscapedSymbol();
-  ValueResult ParseVectorStart();
-  ValueResult ParseVector(llvm::SmallVectorImpl<Value>& Xs);
+  ValueResult ParseVectorStart(bool IsByteVector = false);
+  ValueResult ParseVector(llvm::SmallVectorImpl<Value>& Xs,
+                          bool IsByteVector);
 
   ValueResult ParseDottedCdr(Token const& StartTok);
   ValueResult ParseSpecialEscapeSequence();

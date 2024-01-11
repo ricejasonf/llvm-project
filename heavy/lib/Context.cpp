@@ -179,6 +179,22 @@ Vector* Context::CreateVector(ArrayRef<Value> Xs) {
   return new (Mem) Vector(Xs);
 }
 
+ByteVector* Context::CreateByteVector(ArrayRef<Value> Xs) {
+  // Convert the Values to bytes.
+  // Invalid inputs will be set to zero.
+  size_t MemSize = ByteVector::sizeToAlloc(Xs.size());
+  void* Mem = TrashHeap.Allocate(MemSize, alignof(Vector));
+  ByteVector* BV = new (Mem) ByteVector(Xs.size());
+  llvm::MutableArrayRef<char> Data = BV->getData();
+  for (unsigned I = 0; I < Xs.size(); ++I) {
+    if (isa<heavy::Int>(Xs[I])) {
+      auto Byte = cast<heavy::Int>(Xs[I]);
+      Data[I] = int32_t(Byte);
+    }
+  }
+  return BV;
+}
+
 Vector* Context::CreateVector(unsigned N) {
   size_t size = Vector::sizeToAlloc(N);
   void* Mem = TrashHeap.Allocate(size, alignof(Vector));
@@ -423,6 +439,29 @@ private:
       OS << "#t";
     else
       OS << "#f";
+  }
+
+  void VisitByteVector(ByteVector* BV) {
+    OS << "#u8(";
+    llvm::StringRef Bytes = BV->getView();
+    llvm::SmallVector<char, 4> HexCode;
+    auto encode_hex = [&HexCode](unsigned char c) {
+      detail::encode_hex(c, HexCode);
+      if (HexCode.size() == 1)
+        HexCode.insert(HexCode.begin(), '0');
+    };
+    if (!Bytes.empty()) {
+      unsigned char c = Bytes[0];
+      encode_hex(c);
+      OS << "#x" << HexCode;
+      Bytes = Bytes.drop_front();
+    }
+    for (unsigned char c : Bytes) {
+      HexCode.clear();
+      encode_hex(c);
+      OS << " #x" << HexCode;
+    }
+    OS << ")";
   }
 
   void VisitEmpty(Empty) {
