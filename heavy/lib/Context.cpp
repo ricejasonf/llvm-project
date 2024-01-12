@@ -110,6 +110,12 @@ static String* CreateStringHelper(Allocator& Alloc, StringRefs ...S) {
   return new (Mem) String(TotalLen, S...);
 }
 
+String* Context::CreateString(unsigned Length, char InitChar) {
+  unsigned MemSize = String::sizeToAlloc(Length);
+  void* Mem = heavy::allocate(getAllocator(), MemSize, alignof(String));
+  return new (Mem) String(Length, InitChar);
+}
+
 String* Context::CreateString(llvm::StringRef S) {
   return CreateStringHelper(getAllocator(), S);
 }
@@ -182,10 +188,9 @@ Vector* Context::CreateVector(ArrayRef<Value> Xs) {
 ByteVector* Context::CreateByteVector(ArrayRef<Value> Xs) {
   // Convert the Values to bytes.
   // Invalid inputs will be set to zero.
-  size_t MemSize = ByteVector::sizeToAlloc(Xs.size());
-  void* Mem = TrashHeap.Allocate(MemSize, alignof(Vector));
-  ByteVector* BV = new (Mem) ByteVector(Xs.size());
-  llvm::MutableArrayRef<char> Data = BV->getData();
+  heavy::String* String = CreateString(Xs.size(), '\0');
+  ByteVector* BV =  new (TrashHeap) ByteVector(String);
+  llvm::MutableArrayRef<char> Data = String->getMutableView();
   for (unsigned I = 0; I < Xs.size(); ++I) {
     if (isa<heavy::Int>(Xs[I])) {
       auto Byte = cast<heavy::Int>(Xs[I]);
@@ -402,13 +407,13 @@ class Writer : public ValueVisitor<Writer>
   unsigned IndentationLevel = 0;
   llvm::raw_ostream &OS;
 
-  bool isIdentifier(llvm::StringRef Str) {
+  bool isIdentifier(heavy::String* Str) {
     // Use the lexer to identify an identifier.
-    heavy::Lexer Lexer(Str);
+    heavy::Lexer Lexer(Str->getView());
     heavy::Token Tok;
     Lexer.Lex(Tok);
     return (Tok.Kind == tok::identifier &&
-            Tok.getLength() == Str.size());
+            Tok.getLength() == Str->size());
   }
 
 public:
@@ -604,7 +609,7 @@ private:
 
   void VisitSymbol(Symbol* S) {
     // If the symbol is a valid identifer then print it raw.
-    if (isIdentifier(S->getView())) {
+    if (isIdentifier(S->getString())) {
       OS << S->getView();
     } else {
       // Otherwise it must be escaped via | |

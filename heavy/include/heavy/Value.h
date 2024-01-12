@@ -815,11 +815,22 @@ class String final
   }
 
 public:
+  String(unsigned Length, char InitChar)
+    : ValueBase(ValueKind::String),
+      Len(Length)
+  {
+    std::memset(getTrailingObjects<char>(), InitChar, Len);
+    // Set trailing null byte.
+    *(getTrailingObjects<char>() + Len) = '\0';
+  }
+
   String(llvm::StringRef S)
     : ValueBase(ValueKind::String),
       Len(S.size())
   {
     std::memcpy(getTrailingObjects<char>(), S.data(), S.size());
+    // Set trailing null byte.
+    *(getTrailingObjects<char>() + Len) = '\0';
   }
 
   template <typename ...StringRefs>
@@ -833,14 +844,23 @@ public:
       std::memcpy(StrData, S.data(), S.size());
       StrData += S.size();
     }
+    // Set trailing null byte.
+    *(getTrailingObjects<char>() + Len) = '\0';
   }
 
   static constexpr size_t sizeToAlloc(unsigned Length) {
-    return totalSizeToAlloc<char>(Length);
+    // Allocate an extra byte for trailing null byte.
+    return totalSizeToAlloc<char>(Length) + 1;
   }
+
+  unsigned size() const { return Len; }
 
   llvm::StringRef getView() const {
     return llvm::StringRef(getTrailingObjects<char>(), Len);
+  }
+
+  llvm::MutableArrayRef<char> getMutableView() {
+    return llvm::MutableArrayRef(getTrailingObjects<char>(), Len);
   }
 
   bool equals(String* S) const {
@@ -853,42 +873,17 @@ public:
   static ValueKind getKind() { return ValueKind::String; }
 };
 
-class ByteVector final
-  : public ValueBase,
-    private llvm::TrailingObjects<ByteVector, char> {
-  friend class Context;
-  friend class llvm::TrailingObjects<ByteVector, char>;
-
-  unsigned Len = 0;
-  size_t numTrailingObjects(OverloadToken<char> const) const {
-    return Len;
-  }
+class ByteVector : public ValueBase {
+  String* Val;
 
 public:
-  ByteVector(llvm::StringRef S)
-    : ValueBase(ValueKind::ByteVector),
-      Len(S.size())
-  {
-    std::memcpy(getTrailingObjects<char>(), S.data(), S.size());
-  }
-  ByteVector(unsigned Size)
-    : ValueBase(ValueKind::ByteVector),
-      Len(Size)
-  {
-    std::memset(getTrailingObjects<char>(), 0, Size);
-  }
+  ByteVector(String* V)
+    : ValueBase(ValueKind::ByteVector)
+    , Val(V)
+  { }
 
-  static constexpr size_t sizeToAlloc(unsigned Length) {
-    return totalSizeToAlloc<char>(Length);
-  }
-
-  llvm::StringRef getView() const {
-    return llvm::StringRef(getTrailingObjects<char>(), Len);
-  }
-
-  llvm::MutableArrayRef<char> getData() {
-    return llvm::MutableArrayRef<char>(getTrailingObjects<char>(), Len);
-  }
+  llvm::StringRef getView() const { return Val->getView(); }
+  String* getString() const { return Val; }
 
   static bool classof(Value V) {
     return V.getKind() == ValueKind::ByteVector;
