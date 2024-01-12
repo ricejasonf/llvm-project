@@ -156,16 +156,19 @@ class Lexer : public EmbeddedLexer {
 public:
   Lexer() = default;
 
-  Lexer(llvm::StringRef Str)
-    : EmbeddedLexer(heavy::SourceLocation(), Str, Str.begin())
-  { }
-
   Lexer(SourceFile File)
     : EmbeddedLexer(File.StartLoc, File.Buffer, File.Buffer.begin())
   { }
 
   Lexer(SourceFile File, char const* BufferPos)
     : EmbeddedLexer(File.StartLoc, File.Buffer, BufferPos)
+  { }
+
+  // Str - The user must ensure the lifetime of the String
+  //     - The string must have an initialized zero byte at the end.
+  //     - Use heavy::String for this.
+  Lexer(llvm::StringRef Str)
+    : EmbeddedLexer(heavy::SourceLocation(), Str, Str.begin())
   { }
 
   void Lex(Token& Tok);
