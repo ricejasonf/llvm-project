@@ -215,6 +215,7 @@ private:
     else if (isa<MatchPairOp>(Op))    return Visit(cast<MatchPairOp>(Op));
     else if (isa<MatchOp>(Op))        return Visit(cast<MatchOp>(Op));
     else if (isa<RenameOp>(Op))       return Visit(cast<RenameOp>(Op));
+    else if (isa<ToVectorOp>(Op))     return Visit(cast<ToVectorOp>(Op));
     else if (isa<SyntaxClosureOp>(Op))
       return Visit(cast<SyntaxClosureOp>(Op));
     else if (isa<SourceLocOp>(Op))    return Visit(cast<SourceLocOp>(Op));
@@ -517,6 +518,32 @@ private:
     heavy::Binding* B = cast<heavy::Binding>(getBindingOrValue(Op.getBinding()));
     heavy::Value RHS = getValue(Op.getInput());
     B->setValue(RHS);
+    return next(Op);
+  }
+
+  BlockItrTy Visit(ToVectorOp Op) {
+    heavy::SourceLocation Loc = getSourceLocation(Op.getLoc());
+    heavy::Value Input = getValue(Op.getInput());
+    heavy::Vector* Vector = nullptr;
+
+    if (isa<Empty>(Input)) {
+      Vector = Context.CreateVector({});
+    } else {
+      if(!isa<Pair>(Input))
+        return SetError(Loc, "should be a non-empty list", Input);
+
+      llvm::SmallVector<heavy::Value, 8> Xs;
+      heavy::Value Next = Input;
+      while (heavy::Pair* P = dyn_cast<Pair>(Next)) {
+        Xs.push_back(P->Car);
+        Next = P->Cdr;
+      }
+      if (!isa<Empty>(Next))
+        return SetError(Loc, "should be a proper list", Next);
+
+      Vector = Context.CreateVector(Xs);
+    }
+    setValue(Op, Vector);
     return next(Op);
   }
 

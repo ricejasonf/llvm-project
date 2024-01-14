@@ -181,6 +181,12 @@ void SyntaxOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState) {
   SyntaxOp::build(B, OpState, HeavySyntaxT);
 }
 
+void ToVectorOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                            mlir::Value input) {
+  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
+  ToVectorOp::build(B, OpState, HeavyValueT, input);
+}
+
 void UndefinedOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState) {
   UndefinedOp::build(B, OpState, B.getType<HeavyValueTy>());
 }
