@@ -15,6 +15,7 @@
 #include "heavy/OpGen.h"
 #include "heavy/Value.h"
 #include "heavy/ValueVisitor.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 
 namespace {
@@ -155,7 +156,8 @@ private:
   heavy::Value HandleUnquoteSplicing(Pair* Parent, Pair* P, Value Next,
                                      bool& Rebuilt, int Depth) {
     Value Input = GetSingleSyntaxArg(P);
-    if (!Input) return setError("invalid unquote-splicing syntax", P);
+    if (!Input)
+      return setError("invalid unquote-splicing syntax", P);
     heavy::Value Result = HandleQQTemplate(Input, Rebuilt, Depth - 1);
     bool NextRebuilt = false;
     heavy::Value NextResult = Visit(Next, NextRebuilt, Depth);
@@ -210,7 +212,27 @@ private:
     }
   }
 
-  // TODO VisitVector
+  heavy::Value VisitVector(Vector* V, bool& Rebuilt, int Depth) {
+    assert(Depth > 0 && "Depth cannot be zero here.");
+    heavy::Context& Context = OpGen.getContext();
+    if (Context.CheckError()) return Undefined{};
+
+    llvm::ArrayRef<heavy::Value> Xs = V->getElements();
+    if (Xs.empty())
+      return V;
+
+    // Convert the whole thing to a list.
+    heavy::Value Result = Visit(Context.CreateList(Xs), Rebuilt, Depth);
+
+    if (!Rebuilt)
+      return V;
+
+    // Convert the result back to a vector.
+    heavy::SourceLocation Loc{};
+    mlir::Value MlirResult = createValue(Result);
+    mlir::Operation* ToVector = OpGen.create<ToVectorOp>(Loc, MlirResult).getOperation();
+    return Value(ToVector);
+  }
 };
 
 }
