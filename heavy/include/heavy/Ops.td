@@ -483,6 +483,21 @@ def heavy_SyntaxOp: HeavyOp<"syntax", [IsolatedFromAbove, NoTerminator]> {
   let builders  = [OpBuilder<(ins)>];
 }
 
+def heavy_ToVectorOp : HeavyOp<"to_vector"> {
+  let summary = "to_vector";
+  let description = [{
+    ToVectorOp converts a list into a vector.
+    This is used for the simplification of quasiquote
+    of vector literals.
+  }];
+
+  let arguments = (ins HeavyValue:$input);
+  let results   = (outs HeavyValue:$result);
+  let builders = [
+    OpBuilder<(ins "::mlir::Value":$input)>
+  ];
+}
+
 def heavy_UndefinedOp : HeavyOp<"undefined", [Pure]> {
   let summary = "undefined";
   let description = [{
