@@ -56,7 +56,6 @@ heavy::ExternSyntax<> _HEAVY_import;
 Context::Context()
   : ContinuationStack<Context>(),
     ContextLocalLookup(),
-    TrashHeap(),
     EnvStack(Empty()),
     MLIRContext(std::make_unique<mlir::MLIRContext>()),
     OpGen(nullptr)
@@ -94,116 +93,6 @@ Environment* Context::getTopLevelEnvironment() {
     }
   }
   llvm_unreachable("EnvStack should have an Environment.");
-}
-
-template <typename Allocator, typename ...StringRefs>
-static String* CreateStringHelper(Allocator& Alloc, StringRefs ...S) {
-  std::array<unsigned, sizeof...(S)> Sizes{static_cast<unsigned>(S.size())...};
-  unsigned TotalLen = 0;
-  for (unsigned Size : Sizes) {
-    TotalLen += Size;
-  }
-
-  unsigned MemSize = String::sizeToAlloc(TotalLen);
-  void* Mem = heavy::allocate(Alloc, MemSize, alignof(String));
-
-  return new (Mem) String(TotalLen, S...);
-}
-
-String* Context::CreateString(unsigned Length, char InitChar) {
-  unsigned MemSize = String::sizeToAlloc(Length);
-  void* Mem = heavy::allocate(getAllocator(), MemSize, alignof(String));
-  return new (Mem) String(Length, InitChar);
-}
-
-String* Context::CreateString(llvm::StringRef S) {
-  return CreateStringHelper(getAllocator(), S);
-}
-
-String* Context::CreateString(llvm::StringRef S1, StringRef S2) {
-  return CreateStringHelper(getAllocator(), S1, S2);
-}
-
-String* Context::CreateString(llvm::StringRef S1,
-                              llvm::StringRef S2,
-                              llvm::StringRef S3) {
-  return CreateStringHelper(getAllocator(), S1, S2, S3);
-}
-
-String* Context::CreateIdTableEntry(llvm::StringRef S) {
-  String*& Str = IdTable[S];
-  if (!Str) {
-    Str = CreateString(S);
-  }
-  return Str;
-}
-
-String* Context::CreateIdTableEntry(llvm::StringRef Prefix,
-                                    llvm::StringRef S) {
-  // unfortunately we have to create a garbage string
-  // just to check this
-  String* Temp = CreateString(Prefix, S);
-  return CreateIdTableEntry(Temp->getView());
-}
-
-Symbol* Context::CreateSymbol(llvm::StringRef S,
-                         SourceLocation Loc) {
-  String* Str = CreateIdTableEntry(S);
-  return new (TrashHeap) Symbol(Str, Loc);
-}
-
-Value Context::CreateList(llvm::ArrayRef<Value> Vs) {
-  // Returns a *newly allocated* list of its arguments.
-  heavy::Value List = CreateEmpty();
-  for (auto Itr = Vs.rbegin(); Itr != Vs.rend(); ++Itr) {
-    List = CreatePair(*Itr, List);
-  }
-  return List;
-}
-
-#if 0 // not sure if we want to create symbols for every possible import
-// for import prefixes
-Symbol* Context::CreateSymbol(llvm::StringRef S1, StringRef S2) {
-  // settle for a std::string so we don't create a garbage String
-  // every time we encounter this. (there has to be a better way)
-  std::string Temp{};
-  Temp.reserve(S1.size() + S2.size());
-  Temp += S1;
-  Temp += S2;
-  return CreateSymbol(TrashHeap, Temp);
-}
-#endif
-
-Float* Context::CreateFloat(llvm::APFloat Val) {
-  return new (TrashHeap) Float(Val);
-}
-
-Vector* Context::CreateVector(ArrayRef<Value> Xs) {
-  // Copy the list of Value to our heap
-  size_t size = Vector::sizeToAlloc(Xs.size());
-  void* Mem = TrashHeap.Allocate(size, alignof(Vector));
-  return new (Mem) Vector(Xs);
-}
-
-ByteVector* Context::CreateByteVector(ArrayRef<Value> Xs) {
-  // Convert the Values to bytes.
-  // Invalid inputs will be set to zero.
-  heavy::String* String = CreateString(Xs.size(), '\0');
-  ByteVector* BV =  new (TrashHeap) ByteVector(String);
-  llvm::MutableArrayRef<char> Data = String->getMutableView();
-  for (unsigned I = 0; I < Xs.size(); ++I) {
-    if (isa<heavy::Int>(Xs[I])) {
-      auto Byte = cast<heavy::Int>(Xs[I]);
-      Data[I] = int32_t(Byte);
-    }
-  }
-  return BV;
-}
-
-Vector* Context::CreateVector(unsigned N) {
-  size_t size = Vector::sizeToAlloc(N);
-  void* Mem = TrashHeap.Allocate(size, alignof(Vector));
-  return new (Mem) Vector(CreateUndefined(), N);
 }
 
 Syntax* Context::CreateSyntaxWithOp(mlir::Operation* Op) {
@@ -306,20 +195,6 @@ void Context::PushLocalBinding(Binding* B) {
   EnvStack = CreatePair(B, EnvStack);
 }
 
-EnvFrame* Context::CreateEnvFrame(llvm::ArrayRef<Symbol*> Names) {
-  unsigned MemSize = EnvFrame::sizeToAlloc(Names.size());
-
-  void* Mem = TrashHeap.Allocate(MemSize, alignof(EnvFrame));
-
-  EnvFrame* E = new (Mem) EnvFrame(Names.size());
-  auto Bindings = E->getBindings();
-  for (unsigned i = 0; i < Bindings.size(); i++) {
-    Bindings[i] = CreateBinding(Names[i], CreateUndefined());
-  }
-  return E;
-}
-
-
 // CheckLambdaFormals - Returns true on error
 bool Context::CheckLambdaFormals(Value Formals,
                                llvm::SmallVectorImpl<Symbol*>& Names,
@@ -401,8 +276,7 @@ void Context::PushTopLevel(heavy::Value V) {
 }
 
 namespace {
-class Writer : public ValueVisitor<Writer>
-{
+class Writer : public ValueVisitor<Writer> {
   friend class ValueVisitor<Writer>;
   unsigned IndentationLevel = 0;
   llvm::raw_ostream &OS;
@@ -841,9 +715,9 @@ void Context::CreateImportSet(Value Spec) {
     Kind = ImportSet::ImportKind::Prefix;
   } else {
     // ImportSet::ImportKind::Library;
-    PushCont([](Context& C, ValueRefs Args) {
+    PushCont([this](Context& C, ValueRefs Args) {
       Module* M = cast<heavy::Module>(Args[0]);
-      C.Cont(new (C.TrashHeap) ImportSet(M));
+      C.Cont(this->CreateImportSetImpl(M));
     });
     LoadModule(Spec);
     return;
@@ -852,7 +726,7 @@ void Context::CreateImportSet(Value Spec) {
   Value ParentSpec = cadr(Spec);
   Spec = Spec.cdr().cdr();
 
-  PushCont([Kind](Context& C, ValueRefs Args) {
+  PushCont([this, Kind](Context& C, ValueRefs Args) {
     ImportSet* Parent = cast<ImportSet>(Args[0]);
     Value Spec = C.getCapture(0);
 
@@ -866,7 +740,7 @@ void Context::CreateImportSet(Value Spec) {
         C.SetError("expected end of list", Spec);
         return;
       }
-      C.Cont(new (C.TrashHeap) ImportSet(Kind, Parent, Prefix));
+      C.Cont(this->CreateImportSetImpl(Kind, Parent, Prefix));
       return;
     }
 
@@ -912,7 +786,7 @@ void Context::CreateImportSet(Value Spec) {
       }
       Current = P->Cdr;
     }
-    C.Cont(new (C.TrashHeap) ImportSet(Kind, Parent, Spec));
+    C.Cont(CreateImportSetImpl(Kind, Parent, Spec));
   }, CaptureList{Spec});
   CreateImportSet(ParentSpec);
 }
@@ -1096,20 +970,18 @@ void heavy::registerModuleVar(heavy::Context& C,
 
 bool Context::CheckKind(ValueKind VK, Value V) {
   if (V.getKind() == VK) return false;
-  String* S = CreateStringHelper(getAllocator(),
-      llvm::StringRef("invalid type "),
-      getKindName(V.getKind()),
-      llvm::StringRef(", expecting "),
-      getKindName(VK));
+  String* S = CreateString(llvm::StringRef("invalid type "),
+                           getKindName(V.getKind()),
+                           llvm::StringRef(", expecting "),
+                           getKindName(VK));
   RaiseError(S, V);
   return true;
 }
 bool Context::CheckNumber(Value V) {
   if (V.isNumber()) return false;
-  String* S = CreateStringHelper(getAllocator(),
-      llvm::StringRef("invalid type "),
-      getKindName(V.getKind()),
-      llvm::StringRef(", expecting number"));
+  String* S = CreateString(llvm::StringRef("invalid type "),
+                           getKindName(V.getKind()),
+                           llvm::StringRef(", expecting number"));
   RaiseError(S, V);
   return true;
 }
@@ -1381,3 +1253,20 @@ void Module::PushCleanup(heavy::Lambda* Fn) {
     C.ApplyThunk(Fn);
   }, CaptureList{Cleanup, Fn});
 }
+
+String* Context::CreateIdTableEntry(llvm::StringRef S) {
+  String*& Str = IdTable[S];
+  if (!Str) {
+    Str = CreateString(S);
+  }
+  return Str;
+}
+
+String* Context::CreateIdTableEntry(llvm::StringRef Prefix,
+                                    llvm::StringRef S) {
+  // Unfortunately, we have to create a garbage string
+  // just to check this.
+  String* Temp = CreateString(Prefix, S);
+  return CreateIdTableEntry(Temp->getView());
+}
+

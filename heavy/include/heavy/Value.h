@@ -81,6 +81,7 @@ class Value;
 
 // other forward decls
 class OpGen;
+class Heap;
 class Context;
 class ContextLocalLookup;
 class Pair;
@@ -735,6 +736,7 @@ public:
 class BigInt : public Number {
   friend class Number;
   friend class NumberOp;
+  friend class CopyCollector;
   llvm::APInt Val;
 
 public:
@@ -942,6 +944,10 @@ class ExternName : public ValueBase,
 
   using ValueWithSource::getSourceLocation;
 
+  String* getName() const {
+    return Name;
+  }
+
   llvm::StringRef getView() const {
     return Name->getView();
   }
@@ -1035,7 +1041,7 @@ class Lambda final
 
 public:
   friend class llvm::TrailingObjects<Lambda, Value, char>;
-  friend Context;
+  friend Heap;
 
 private:
   OpaqueFnPtrTy FnPtr;
@@ -1071,6 +1077,12 @@ public:
       V = *CapturesItr;
       ++CapturesItr;
     }
+  }
+
+  // Accessor for copying.
+  OpaqueFn getFnData() {
+    return OpaqueFn{FnPtr, llvm::StringRef(
+        static_cast<char const*>(getStoragePtr()), StorageLen)};
   }
 
   static bool classof(Value V) {
@@ -1150,6 +1162,12 @@ public:
     std::memcpy(StoragePtr, OrigStorage, StorageLen);
   }
 
+  // Accessor for copying.
+  OpaqueFn getFnData() {
+    return OpaqueFn{FnPtr, llvm::StringRef(
+        static_cast<char const*>(getStoragePtr()), StorageLen)};
+  }
+
   void call(Context& C, ValueRefs Args) {
     return FnPtr(getStoragePtr(), C, Args);
   }
@@ -1190,6 +1208,8 @@ public:
       Node(Node)
   { }
 
+  using ValueWithSource::getSourceLocation;
+
   static bool classof(Value V) {
     return V.getKind() == ValueKind::SyntaxClosure;
   }
@@ -1200,7 +1220,8 @@ class Vector final
   : public ValueBase,
     private llvm::TrailingObjects<Vector, Value> {
 
-  friend class Context;
+  friend class Heap;
+  friend class CopyCollector;
   friend class llvm::TrailingObjects<Vector, Value>;
 
   unsigned Len = 0;
@@ -1342,6 +1363,7 @@ void registerModuleVar(heavy::Context& C,
 
 class Module : public ValueBase {
   friend class Context;
+  friend class CopyCollector;
   using MapTy = llvm::DenseMap<String*, EnvEntry>;
   using MapIteratorTy  = typename MapTy::iterator;
   heavy::Context& Context; // for String lookup
@@ -1475,6 +1497,11 @@ public:
       Specifier(M),
       Kind(ImportKind::Library)
   { }
+
+  // Accessors used for the CopyCollector
+  ImportKind getImportKind() const { return Kind; }
+  heavy::Value getParent() const { return Parent; }
+  heavy::Value getSpecifier() const { return Specifier; }
 
   EnvEntry Lookup(heavy::Context& C, Symbol* S);
 
@@ -1648,7 +1675,8 @@ class EnvFrame final
     private llvm::TrailingObjects<EnvFrame, Binding*> {
 
   friend class llvm::TrailingObjects<EnvFrame, Binding*>;
-  friend class Context;
+  friend class Heap;
+  friend class CopyCollector;
 
   unsigned NumBindings;
   size_t numTrailingObjects(OverloadToken<Binding*> const) const {

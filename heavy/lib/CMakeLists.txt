@@ -4,6 +4,7 @@ add_llvm_library(heavy
   ${HEAVY_LIB}/Builtins.cpp
   ${HEAVY_LIB}/Context.cpp
   ${HEAVY_LIB}/Dialect.cpp
+  ${HEAVY_LIB}/Heap.cpp
   ${HEAVY_LIB}/HeavyScheme.cpp
   ${HEAVY_LIB}/Lexer.cpp
   ${HEAVY_LIB}/Mangle.cpp

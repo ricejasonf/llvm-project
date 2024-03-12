@@ -14,6 +14,7 @@
 #define LLVM_HEAVY_CONTEXT_H
 
 #include "heavy/ContinuationStack.h"
+#include "heavy/Heap.h"
 #include "heavy/Source.h"
 #include "heavy/Value.h"
 #include "llvm/ADT/APFloat.h"
@@ -39,7 +40,6 @@ namespace mlir {
 }
 
 namespace heavy {
-using AllocatorTy = llvm::BumpPtrAllocator;
 using llvm::ArrayRef;
 using llvm::StringRef;
 using llvm::cast;
@@ -67,6 +67,7 @@ class ContextLocalLookup {
 };
 
 class Context : public ContinuationStack<Context>,
+                public Heap,
                 public ContextLocalLookup {
   friend class OpGen;
   friend class OpEvalImpl;
@@ -79,11 +80,9 @@ class Context : public ContinuationStack<Context>,
                                 llvm::StringRef VarSymbol,
                                 llvm::StringRef VarId,
                                 Value Val);
-  AllocatorTy TrashHeap;
 
-  llvm::AllocatorBase<AllocatorTy>& getAllocator() { return TrashHeap; }
-  llvm::StringMap<String*> IdTable = {};
   llvm::StringMap<std::unique_ptr<Module>> Modules;
+  llvm::StringMap<String*> IdTable = {};
   // TODO probably move EmbeddedEnvs to class HeavyScheme
   llvm::DenseMap<void*, std::unique_ptr<Environment>> EmbeddedEnvs;
   llvm::DenseMap<String*, Value> KnownAddresses;
@@ -274,131 +273,38 @@ public:
     }
   }
 
-  Undefined   CreateUndefined() { return {}; }
-  Bool        CreateBool(bool V) { return V; }
-  Char        CreateChar(uint32_t V) { return V; }
-  Int         CreateInt(int32_t x) { return Int(x); }
-  Empty       CreateEmpty() { return {}; }
-  BigInt*     CreateBigInt(llvm::APInt V);
-  BigInt*     CreateBigInt(int64_t X) {
-    llvm::APInt Val(64, X, /*IsSigned=*/true);
-    return CreateBigInt(Val);
-  }
-  Float*      CreateFloat(double Double) {
-    return CreateFloat(llvm::APFloat(Double));
-  }
-  Float*      CreateFloat(llvm::APFloat V);
-  Pair*       CreatePair(Value V1, Value V2) {
-    return new (TrashHeap) Pair(V1, V2);
-  }
-  Pair*       CreatePair(Value V1) {
-    return new (TrashHeap) Pair(V1, CreateEmpty());
-  }
-  PairWithSource* CreatePairWithSource(Value V1, Value V2,
-                                       SourceLocation Loc) {
-    return new (TrashHeap) PairWithSource(V1, V2, Loc);
-  }
-  Value       CreateList(llvm::ArrayRef<Value> Vs);
-  String*     CreateString(unsigned Length, char InitChar);
-  String*     CreateString(StringRef S);
-  String*     CreateString(StringRef S1, StringRef S2);
-  String*     CreateString(StringRef, StringRef, StringRef);
-  String*     CreateIdTableEntry(llvm::StringRef S);
-  String*     CreateIdTableEntry(llvm::StringRef Prefix,
-                                 llvm::StringRef S);
-  Symbol*     CreateSymbol(StringRef S,
-                           SourceLocation Loc = SourceLocation());
-
-  Vector*     CreateVector(ArrayRef<Value> Xs);
-  Vector*     CreateVector(unsigned N);
-  ByteVector* CreateByteVector(llvm::ArrayRef<Value> Xs);
-  EnvFrame*   CreateEnvFrame(llvm::ArrayRef<Symbol*> Names);
-
-  String* CreateMutableString(StringRef V) {
-    String* New = CreateString(V);
-    New->IsMutable = true;
-    return New;
-  }
-
-  Vector* CreateMutableVector(llvm::ArrayRef<Value> Vs) {
-    Vector* New = CreateVector(Vs);
-    New->IsMutable = true;
-    return New;
-  }
-
-  template <typename F>
-  Lambda* CreateLambda(F Fn, llvm::ArrayRef<heavy::Value> Captures) {
-    auto FnData = createOpaqueFn(Fn);
-    void* Mem = Lambda::allocate(getAllocator(), FnData, Captures);
-    Lambda* New = new (Mem) Lambda(FnData, Captures);
-
-    return New;
-  }
-
-  template <typename F>
-  Lambda* CreateLambda(F Fn) {
-    return CreateLambda(Fn, {});
-  }
-
-  template <typename F>
-  Syntax* CreateSyntax(F Fn) {
-    auto FnData = createOpaqueFn(Fn);
-    void* Mem = Syntax::allocate(getAllocator(), FnData);
-    Syntax* New = new (Mem) Syntax(FnData);
-
-    return New;
-  }
-
+  String* CreateIdTableEntry(llvm::StringRef S);
+  String* CreateIdTableEntry(llvm::StringRef Prefix, llvm::StringRef S);
   Syntax* CreateSyntaxWithOp(mlir::Operation* SyntaxOp);
-
-  Builtin* CreateBuiltin(ValueFn Fn) {
-    return new (TrashHeap) Builtin(Fn);
-  }
-
-  BuiltinSyntax* CreateBuiltinSyntax(SyntaxFn Fn) {
-    return new (TrashHeap) BuiltinSyntax(Fn);
-  }
-
-  SyntaxClosure* CreateSyntaxClosure(SourceLocation Loc, Value Node) {
-    return new (TrashHeap) SyntaxClosure(Loc, EnvStack, Node);
-  }
-
-  SourceValue* CreateSourceValue(SourceLocation Loc) {
-    return new (TrashHeap) SourceValue(Loc);
-  }
-
-  Error* CreateError(SourceLocation Loc, Value Message, Value Irritants) {
-    return new (TrashHeap) Error(Loc, Message, Irritants);
-  }
-  Error* CreateError(SourceLocation Loc, StringRef Str, Value Irritants) {
-    return CreateError(Loc, CreateString(Str), Irritants);
-  }
-
-  ExternName* CreateExternName(SourceLocation Loc, String* Str) {
-    return new (TrashHeap) ExternName(Str, Loc);
-  }
-  ExternName* CreateExternName(SourceLocation Loc, llvm::StringRef Name) {
-    String* Str = CreateIdTableEntry(Name);
-    return CreateExternName(Loc, Str);
-  }
-
-  Exception* CreateException(Value V) {
-    return new (TrashHeap) Exception(V);
-  }
-
-  Binding* CreateBinding(Symbol* S, Value V) {
-    return new (TrashHeap) Binding(S, V);
-  }
-  Binding* CreateBinding(Value V) {
-    // TODO create Binding class with no symbol
-    Symbol* S = CreateSymbol("NONAME");
-    return new (TrashHeap) Binding(S, V);
-  }
 
   Value RebuildLiteral(Value V);
 
   // CreateImportSet - Call CC with created ImportSet.
   void CreateImportSet(Value Spec);
+
+  Binding* CreateBinding(Value V) {
+    // TODO create Binding class with no symbol maybe?
+    Symbol* S = CreateSymbol("NONAME");
+    return Heap::CreateBinding(S, V);
+  }
+  using Heap::CreateBinding;
+
+
+  Symbol* CreateSymbol(llvm::StringRef S,
+                       SourceLocation Loc = SourceLocation()) {
+    String* Str = CreateIdTableEntry(S);
+    return Heap::CreateSymbol(Str, Loc);
+  }
+
+  SyntaxClosure* CreateSyntaxClosure(SourceLocation Loc, Value Node) {
+    return Heap::CreateSyntaxClosure(Loc, EnvStack, Node);
+  }
+
+  ExternName* CreateExternName(SourceLocation Loc, llvm::StringRef Name) {
+    String* Str = CreateIdTableEntry(Name);
+    return Heap::CreateExternName(Loc, Str);
+  }
+  using Heap::CreateExternName;
 
   // These accessors help track the location
   // so it is convenient to overwrite a variable
