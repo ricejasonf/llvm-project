@@ -10,22 +10,28 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "heavy/Context.h"
 #include "heavy/Heap.h"
 #include "heavy/Value.h"
 #include "heavy/ValueVisitor.h"
+#include "llvm/Support/Allocator.h"
 
 namespace heavy {
 // CopyCollector
 //  - Visit a Root node, copy the value to the current heap
 //    and overwrite the heavy::Value with its replacement.
-class CopyCollector : public ValueVisitor<CopyCollector, heavy::Value> {
+class CopyCollector : private ValueVisitor<CopyCollector, heavy::Value> {
+  using AllocatorTy = llvm::BumpPtrAllocator;
+  using Base = ValueVisitor<CopyCollector, heavy::Value>;
   friend class ValueVisitor<CopyCollector, heavy::Value>;
+
   AllocatorTy& NewHeap;
   AllocatorTy& OldHeap;
   llvm::AllocatorBase<AllocatorTy>& getAllocator() { return NewHeap; }
 
   // Handle all of the types that are embedded in the pointer,
   // and, therefore do not require a heap allocation.
+  // FIXME These are unreachable.
   heavy::Value VisitInt(heavy::Int V)               { return V; }
   heavy::Value VisitBool(heavy::Bool V)             { return V; }
   heavy::Value VisitChar(heavy::Char V)             { return V; }
@@ -179,9 +185,25 @@ class CopyCollector : public ValueVisitor<CopyCollector, heavy::Value> {
   // Vector
   heavy::Value VisitVector(heavy::Vector* Vector) {
     heavy::ArrayRef<heavy::Value> Xs = Vector->getElements();
-    size_t size = Vector::sizeToAlloc(Xs.size());
-    void* Mem = NewHeap.Allocate(size, alignof(heavy::Vector));
-    return new (Mem) heavy::Vector(Xs);
+    return new (NewHeap, Xs) heavy::Vector(Xs);
+  }
+
+  template <typename ...Args>
+  heavy::Value Visit(heavy::Value OldVal) {
+    void* ValueBase = OldVal.get<ValueSumType::ValueBase>();
+    if (ValueBase == nullptr)
+      return OldVal;
+
+    // This runs two comparisons to see if the pointer
+    // is within the bounds of OldHeap.
+    if (!OldHeap.identifyObject(ValueBase).has_value())
+      return OldVal;
+
+    heavy::Value NewVal = Base::Visit(OldVal);
+    // Overwrite the OldVal with a ForwardRef.
+    new (ValueBase) ForwardRef(NewVal);
+
+    return NewVal;
   }
 
 public:
@@ -195,105 +217,9 @@ public:
   }
 };
 
-// Create Functions
-
-template <typename Allocator, typename ...StringRefs>
-static String* CreateStringHelper(Allocator& Alloc, StringRefs ...S) {
-  std::array<unsigned, sizeof...(S)> Sizes{static_cast<unsigned>(S.size())...};
-  unsigned TotalLen = 0;
-  for (unsigned Size : Sizes) {
-    TotalLen += Size;
-  }
-
-  unsigned MemSize = String::sizeToAlloc(TotalLen);
-  void* Mem = heavy::allocate(Alloc, MemSize, alignof(String));
-
-  return new (Mem) String(TotalLen, S...);
+void Context::CollectGarbage() {
+  // TODO CollectGarbage
 }
 
-Heap::Heap() = default;
-Heap::~Heap() = default;
-
-String* Heap::CreateString(unsigned Length, char InitChar) {
-  unsigned MemSize = String::sizeToAlloc(Length);
-  void* Mem = heavy::allocate(getAllocator(), MemSize, alignof(String));
-  return new (Mem) String(Length, InitChar);
-}
-
-String* Heap::CreateString(llvm::StringRef S) {
-  return CreateStringHelper(getAllocator(), S);
-}
-
-String* Heap::CreateString(llvm::StringRef S1, StringRef S2) {
-  return CreateStringHelper(getAllocator(), S1, S2);
-}
-
-String* Heap::CreateString(llvm::StringRef S1,
-                           llvm::StringRef S2,
-                           llvm::StringRef S3) {
-  return CreateStringHelper(getAllocator(), S1, S2, S3);
-}
-
-String* Heap::CreateString(llvm::StringRef S1,
-                           llvm::StringRef S2,
-                           llvm::StringRef S3,
-                           llvm::StringRef S4) {
-  return CreateStringHelper(getAllocator(), S1, S2, S3, S4);
-}
-
-Value Heap::CreateList(llvm::ArrayRef<Value> Vs) {
-  // Returns a *newly allocated* list of its arguments.
-  heavy::Value List = CreateEmpty();
-  for (auto Itr = Vs.rbegin(); Itr != Vs.rend(); ++Itr) {
-    List = CreatePair(*Itr, List);
-  }
-  return List;
-}
-
-Float* Heap::CreateFloat(llvm::APFloat Val) {
-  return new (TrashHeap) Float(Val);
-}
-
-Vector* Heap::CreateVector(unsigned N) {
-  size_t size = Vector::sizeToAlloc(N);
-  void* Mem = TrashHeap.Allocate(size, alignof(Vector));
-  return new (Mem) Vector(CreateUndefined(), N);
-}
-
-Vector* Heap::CreateVector(ArrayRef<Value> Xs) {
-  // Copy the list of Value to our heap
-  size_t size = Vector::sizeToAlloc(Xs.size());
-  void* Mem = TrashHeap.Allocate(size, alignof(Vector));
-  return new (Mem) Vector(Xs);
-}
-
-ByteVector* Heap::CreateByteVector(ArrayRef<Value> Xs) {
-  // Convert the Values to bytes.
-  // Invalid inputs will be set to zero.
-  heavy::String* String = CreateString(Xs.size(), '\0');
-  ByteVector* BV =  new (TrashHeap) ByteVector(String);
-  llvm::MutableArrayRef<char> Data = String->getMutableView();
-  for (unsigned I = 0; I < Xs.size(); ++I) {
-    if (isa<heavy::Int>(Xs[I])) {
-      auto Byte = cast<heavy::Int>(Xs[I]);
-      Data[I] = int32_t(Byte);
-    }
-  }
-  return BV;
-}
-
-EnvFrame* Heap::CreateEnvFrame(llvm::ArrayRef<Symbol*> Names) {
-  unsigned MemSize = EnvFrame::sizeToAlloc(Names.size());
-
-  void* Mem = TrashHeap.Allocate(MemSize, alignof(EnvFrame));
-
-  EnvFrame* E = new (Mem) EnvFrame(Names.size());
-  auto Bindings = E->getBindings();
-  for (unsigned i = 0; i < Bindings.size(); i++) {
-    Bindings[i] = CreateBinding(Names[i], CreateUndefined());
-  }
-  return E;
-}
-  
 }  // namespace heavy
 
