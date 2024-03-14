@@ -56,6 +56,7 @@ heavy::ExternSyntax<> _HEAVY_import;
 Context::Context()
   : ContinuationStack<Context>(),
     ContextLocalLookup(),
+    Heap(MiB),
     EnvStack(Empty()),
     MLIRContext(std::make_unique<mlir::MLIRContext>()),
     OpGen(nullptr)
@@ -717,7 +718,7 @@ void Context::CreateImportSet(Value Spec) {
     // ImportSet::ImportKind::Library;
     PushCont([this](Context& C, ValueRefs Args) {
       Module* M = cast<heavy::Module>(Args[0]);
-      C.Cont(this->CreateImportSetImpl(M));
+      C.Cont(new (*this) ImportSet(M));
     });
     LoadModule(Spec);
     return;
@@ -740,7 +741,7 @@ void Context::CreateImportSet(Value Spec) {
         C.SetError("expected end of list", Spec);
         return;
       }
-      C.Cont(this->CreateImportSetImpl(Kind, Parent, Prefix));
+      C.Cont(new (*this) ImportSet(Kind, Parent, Prefix));
       return;
     }
 
@@ -786,7 +787,7 @@ void Context::CreateImportSet(Value Spec) {
       }
       Current = P->Cdr;
     }
-    C.Cont(CreateImportSetImpl(Kind, Parent, Spec));
+    C.Cont(new (*this) ImportSet(Kind, Parent, Spec));
   }, CaptureList{Spec});
   CreateImportSet(ParentSpec);
 }
@@ -1270,3 +1271,94 @@ String* Context::CreateIdTableEntry(llvm::StringRef Prefix,
   return CreateIdTableEntry(Temp->getView());
 }
 
+// Create Functions
+
+template <typename Allocator, typename ...StringRefs>
+static String* CreateStringHelper(Allocator& Alloc, StringRefs ...S) {
+  std::array<unsigned, sizeof...(S)> Sizes{static_cast<unsigned>(S.size())...};
+  unsigned TotalLen = 0;
+  for (unsigned Size : Sizes) {
+    TotalLen += Size;
+  }
+
+  unsigned MemSize = String::sizeToAlloc(TotalLen);
+  void* Mem = Alloc.BigAllocate(MemSize, alignof(String));
+
+  return new (Mem) String(TotalLen, S...);
+}
+
+String* Context::CreateString(unsigned Length, char InitChar) {
+  unsigned MemSize = String::sizeToAlloc(Length);
+  void* Mem = BigAllocate(MemSize, alignof(String));
+  return new (Mem) String(Length, InitChar);
+}
+
+String* Context::CreateString(llvm::StringRef S) {
+  return CreateStringHelper(getAllocator(), S);
+}
+
+String* Context::CreateString(llvm::StringRef S1, StringRef S2) {
+  return CreateStringHelper(getAllocator(), S1, S2);
+}
+
+String* Context::CreateString(llvm::StringRef S1,
+                           llvm::StringRef S2,
+                           llvm::StringRef S3) {
+  return CreateStringHelper(getAllocator(), S1, S2, S3);
+}
+
+String* Context::CreateString(llvm::StringRef S1,
+                           llvm::StringRef S2,
+                           llvm::StringRef S3,
+                           llvm::StringRef S4) {
+  return CreateStringHelper(getAllocator(), S1, S2, S3, S4);
+}
+
+Value Context::CreateList(llvm::ArrayRef<Value> Vs) {
+  // Returns a *newly allocated* list of its arguments.
+  heavy::Value List = CreateEmpty();
+  for (auto Itr = Vs.rbegin(); Itr != Vs.rend(); ++Itr) {
+    List = CreatePair(*Itr, List);
+  }
+  return List;
+}
+
+Float* Context::CreateFloat(llvm::APFloat Val) {
+  return new (getAllocator()) Float(Val);
+}
+
+Vector* Context::CreateVector(unsigned N) {
+  return new (getAllocator(), N) Vector(Undefined(), N);
+}
+
+Vector* Context::CreateVector(ArrayRef<Value> Xs) {
+  return new (getAllocator(), Xs) Vector(Xs);
+}
+
+ByteVector* Context::CreateByteVector(ArrayRef<Value> Xs) {
+  // Convert the Values to bytes.
+  // Invalid inputs will be set to zero.
+  heavy::String* String = CreateString(Xs.size(), '\0');
+  ByteVector* BV =  new (*this) ByteVector(String);
+  llvm::MutableArrayRef<char> Data = String->getMutableView();
+  for (unsigned I = 0; I < Xs.size(); ++I) {
+    if (isa<heavy::Int>(Xs[I])) {
+      auto Byte = cast<heavy::Int>(Xs[I]);
+      Data[I] = int32_t(Byte);
+    }
+  }
+  return BV;
+}
+
+EnvFrame* Context::CreateEnvFrame(llvm::ArrayRef<Symbol*> Names) {
+  unsigned MemSize = EnvFrame::sizeToAlloc(Names.size());
+
+  void* Mem = Allocate(MemSize, alignof(EnvFrame));
+
+  EnvFrame* E = new (Mem) EnvFrame(Names.size());
+  auto Bindings = E->getBindings();
+  for (unsigned i = 0; i < Bindings.size(); i++) {
+    Bindings[i] = CreateBinding(Names[i], CreateUndefined());
+  }
+  return E;
+}

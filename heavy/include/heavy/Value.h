@@ -81,7 +81,6 @@ class Value;
 
 // other forward decls
 class OpGen;
-class Heap;
 class Context;
 class ContextLocalLookup;
 class Pair;
@@ -1041,7 +1040,7 @@ class Lambda final
 
 public:
   friend class llvm::TrailingObjects<Lambda, Value, char>;
-  friend Heap;
+  friend Context;
 
 private:
   OpaqueFnPtrTy FnPtr;
@@ -1220,7 +1219,7 @@ class Vector final
   : public ValueBase,
     private llvm::TrailingObjects<Vector, Value> {
 
-  friend class Heap;
+  friend class Context;
   friend class CopyCollector;
   friend class llvm::TrailingObjects<Vector, Value>;
 
@@ -1229,6 +1228,7 @@ class Vector final
     return Len;
   }
 
+public:
   Vector(llvm::ArrayRef<Value> Vs)
     : ValueBase(ValueKind::Vector),
       Len(Vs.size())
@@ -1247,7 +1247,21 @@ class Vector final
     }
   }
 
-public:
+  template <typename Allocator>
+  void* operator new(size_t, Allocator& Heap, unsigned N) {
+    size_t Size = Vector::sizeToAlloc(N);
+    void* Mem = Heap.Allocate(Size, alignof(Vector));
+    return ::operator new (Size, Mem);
+  }
+
+  template <typename Allocator>
+  void* operator new(size_t, Allocator& Heap, llvm::ArrayRef<Value> Xs) {
+    // Copy the list of Value to our heap
+    size_t Size = Vector::sizeToAlloc(Xs.size());
+    void* Mem = Heap.Allocate(Size, alignof(Vector));
+    return ::operator new (Size, Mem);
+  }
+
   Value& get(unsigned I) {
     assert(I < Len && "invalid index for vector");
     return *(getTrailingObjects<Value>() + I);
@@ -1675,7 +1689,7 @@ class EnvFrame final
     private llvm::TrailingObjects<EnvFrame, Binding*> {
 
   friend class llvm::TrailingObjects<EnvFrame, Binding*>;
-  friend class Heap;
+  friend class Context;
   friend class CopyCollector;
 
   unsigned NumBindings;
@@ -1683,12 +1697,12 @@ class EnvFrame final
     return NumBindings;
   }
 
+public:
   EnvFrame(unsigned NumBindings)
     : ValueBase(ValueKind::EnvFrame),
       NumBindings(NumBindings)
   { }
 
-public:
   llvm::ArrayRef<Binding*> getBindings() const {
     return llvm::ArrayRef<Binding*>(
         getTrailingObjects<Binding*>(), NumBindings);
