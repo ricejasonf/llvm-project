@@ -23,7 +23,6 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Allocator.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/raw_ostream.h"
@@ -51,7 +50,6 @@ using llvm::isa;
 class OpGen;
 class Context;
 
-
 void compile(Context&, Value V, Value Env, Value Handler);
 void eval(Context&, Value V, Value Env);
 void write(llvm::raw_ostream&, Value);
@@ -67,11 +65,13 @@ class ContextLocalLookup {
 };
 
 class Context : public ContinuationStack<Context>,
-                public Heap,
-                public ContextLocalLookup {
+                public ContextLocalLookup,
+                protected Heap<Context>
+{
   friend class OpGen;
   friend class OpEvalImpl;
   friend class HeavyScheme;
+  friend class Heap<Context>;
   friend void* allocate(Context& C, size_t Size, size_t Alignment);
   friend void initModule(heavy::Context&, llvm::StringRef MangledName,
                          ModuleInitListTy InitList);
@@ -81,11 +81,22 @@ class Context : public ContinuationStack<Context>,
                                 llvm::StringRef VarId,
                                 Value Val);
 
+  static constexpr size_t MiB = 1024 * 1024;
+
   llvm::StringMap<std::unique_ptr<Module>> Modules;
   llvm::StringMap<String*> IdTable = {};
   // TODO probably move EmbeddedEnvs to class HeavyScheme
   llvm::DenseMap<void*, std::unique_ptr<Environment>> EmbeddedEnvs;
   llvm::DenseMap<String*, Value> KnownAddresses;
+
+  // MaxMemHint
+  //         - The threshold used to determine if a garbage
+  //           collection run is needed. This value is not a
+  //           hard limit and the limit is increased when a
+  //           collection run yields a low return. The limit
+  //           may also increase with the allocation of a large
+  //           object.
+  size_t MaxMemHint;
 
   // EnvStack
   //  - an improper list ending with an Environment
@@ -113,6 +124,8 @@ public:
   void RaiseError(llvm::StringRef Msg, llvm::ArrayRef<Value> IrrArgs = {}) {
     RaiseError(CreateString(Msg), IrrArgs);
   }
+
+  void CollectGarbage();
 
   // WithEnv - Call a thunk with an environment and the ability to clean up
   //           the environment object if necessary.
@@ -279,32 +292,125 @@ public:
 
   Value RebuildLiteral(Value V);
 
+  Heap<Context>& getAllocator() { return *this; }
+
+  // Factory functions should only be concerned with
+  // allocating the objects.
+  Undefined   CreateUndefined() { return {}; }
+  Bool        CreateBool(bool V) { return V; }
+  Char        CreateChar(uint32_t V) { return V; }
+  Int         CreateInt(int32_t x) { return Int(x); }
+  Empty       CreateEmpty() { return {}; }
+  BigInt*     CreateBigInt(llvm::APInt V) {
+    return new (*this) BigInt(V);
+  }
+  BigInt*     CreateBigInt(int64_t X) {
+    llvm::APInt Val(64, X, /*IsSigned=*/true);
+    return CreateBigInt(Val);
+  }
+  Float*      CreateFloat(double Double) {
+    return CreateFloat(llvm::APFloat(Double));
+  }
+  Float*      CreateFloat(llvm::APFloat V);
+  Pair*       CreatePair(Value V1, Value V2) {
+    return new (*this) Pair(V1, V2);
+  }
+  Pair*       CreatePair(Value V1) {
+    return new (*this) Pair(V1, CreateEmpty());
+  }
+  PairWithSource* CreatePairWithSource(Value V1, Value V2,
+                                       SourceLocation Loc) {
+    return new (*this) PairWithSource(V1, V2, Loc);
+  }
+  Value       CreateList(llvm::ArrayRef<Value> Vs);
+  String*     CreateString(unsigned Length, char InitChar);
+  String*     CreateString(StringRef S);
+  String*     CreateString(StringRef S1, StringRef S2);
+  String*     CreateString(StringRef, StringRef, StringRef);
+  String*     CreateString(StringRef, StringRef, StringRef, StringRef);
+  Vector*     CreateVector(ArrayRef<Value> Xs);
+  Vector*     CreateVector(unsigned N);
+  ByteVector* CreateByteVector(llvm::ArrayRef<Value> Xs);
+  EnvFrame*   CreateEnvFrame(llvm::ArrayRef<Symbol*> Names);
+
+  template <typename F>
+  Lambda* CreateLambda(F Fn, llvm::ArrayRef<heavy::Value> Captures) {
+    OpaqueFn FnData = createOpaqueFn(Fn);
+    void* Mem = Lambda::allocate(getAllocator(), FnData, Captures);
+    Lambda* New = new (Mem) Lambda(FnData, Captures);
+
+    return New;
+  }
+
+  template <typename F>
+  Lambda* CreateLambda(F Fn) {
+    return CreateLambda(Fn, {});
+  }
+
+  template <typename F>
+  Syntax* CreateSyntax(F Fn) {
+    auto FnData = createOpaqueFn(Fn);
+    void* Mem = Syntax::allocate(getAllocator(), FnData);
+    Syntax* New = new (Mem) Syntax(FnData);
+
+    return New;
+  }
+
+  Builtin* CreateBuiltin(ValueFn Fn) {
+    return new (*this) Builtin(Fn);
+  }
+
+  BuiltinSyntax* CreateBuiltinSyntax(SyntaxFn Fn) {
+    return new (*this) BuiltinSyntax(Fn);
+  }
+
+  SyntaxClosure* CreateSyntaxClosure(SourceLocation Loc, Value Node) {
+    return new (*this) SyntaxClosure(Loc, EnvStack, Node);
+  }
+
+  SourceValue* CreateSourceValue(SourceLocation Loc) {
+    return new (*this) SourceValue(Loc);
+  }
+
+  Error* CreateError(SourceLocation Loc, Value Message, Value Irritants) {
+    return new (*this) Error(Loc, Message, Irritants);
+  }
+  Error* CreateError(SourceLocation Loc, StringRef Str, Value Irritants) {
+    return CreateError(Loc, CreateString(Str), Irritants);
+  }
+
+  ExternName* CreateExternName(SourceLocation Loc, String* Str) {
+    return new (*this) ExternName(Str, Loc);
+  }
+
+  ExternName* CreateExternName(SourceLocation Loc, llvm::StringRef Name) {
+    String* Str = CreateIdTableEntry(Name);
+    return CreateExternName(Loc, Str);
+  }
+
+  Exception* CreateException(Value V) {
+    return new (*this) Exception(V);
+  }
+
+  Binding* CreateBinding(Symbol* S, Value V) {
+    return new (*this) Binding(S, V);
+  }
+
   // CreateImportSet - Call CC with created ImportSet.
   void CreateImportSet(Value Spec);
 
   Binding* CreateBinding(Value V) {
     // TODO create Binding class with no symbol maybe?
     Symbol* S = CreateSymbol("NONAME");
-    return Heap::CreateBinding(S, V);
+    return CreateBinding(S, V);
   }
-  using Heap::CreateBinding;
 
 
   Symbol* CreateSymbol(llvm::StringRef S,
                        SourceLocation Loc = SourceLocation()) {
     String* Str = CreateIdTableEntry(S);
-    return Heap::CreateSymbol(Str, Loc);
+    return new (*this) Symbol(Str, Loc);
   }
-
-  SyntaxClosure* CreateSyntaxClosure(SourceLocation Loc, Value Node) {
-    return Heap::CreateSyntaxClosure(Loc, EnvStack, Node);
-  }
-
-  ExternName* CreateExternName(SourceLocation Loc, llvm::StringRef Name) {
-    String* Str = CreateIdTableEntry(Name);
-    return Heap::CreateExternName(Loc, Str);
-  }
-  using Heap::CreateExternName;
 
   // These accessors help track the location
   // so it is convenient to overwrite a variable
@@ -314,6 +420,6 @@ public:
   Value cddr(Value V) { return setLoc(V).cddr(); }
 };
 
-}
+}  // end namespace heavy
 
 #endif
