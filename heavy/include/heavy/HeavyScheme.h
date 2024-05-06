@@ -40,7 +40,7 @@ class HeavyScheme {
   std::unique_ptr<heavy::Context> ContextPtr;
   std::unique_ptr<heavy::Environment> EnvPtr;
   std::unique_ptr<heavy::SourceManager> SourceManagerPtr;
-  std::unique_ptr<heavy::SourceFileStorage, 
+  std::unique_ptr<heavy::SourceFileStorage,
                   void(*)(SourceFileStorage*)> SourceFileStoragePtr;
 
   heavy::SourceManager& getSourceManager() {
@@ -109,10 +109,6 @@ class HeavyScheme {
                                llvm::function_ref<ErrorHandlerFn> ErrorHandler,
                                heavy::tok Terminator);
   void ProcessTopLevelCommands(heavy::Lexer& Lexer,
-                               llvm::function_ref<ValueFnTy> ExprHandler,
-                               llvm::function_ref<ErrorHandlerFn> ErrorHandler,
-                               heavy::tok Terminator = heavy::tok::eof);
-  void ProcessTopLevelCommands(heavy::Lexer& Lexer, heavy::Environment& Env,
                                llvm::function_ref<ValueFnTy> ExprHandler,
                                llvm::function_ref<ErrorHandlerFn> ErrorHandler,
                                heavy::tok Terminator = heavy::tok::eof);

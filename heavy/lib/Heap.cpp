@@ -12,6 +12,7 @@
 
 #include "heavy/Context.h"
 #include "heavy/Heap.h"
+#include "heavy/OpGen.h"
 #include "heavy/Value.h"
 #include "heavy/ValueVisitor.h"
 #include "llvm/Support/Allocator.h"
@@ -40,6 +41,22 @@ class CopyCollector : private ValueVisitor<CopyCollector, heavy::Value> {
   heavy::Value VisitOperation(heavy::Operation* V)  { return V; }
   heavy::Value VisitContArg(heavy::ContArg* V)      { return V; }
 
+  // String
+  heavy::String* VisitString(heavy::String* String) {
+    llvm::StringRef StringRef = String->getView();
+    unsigned MemSize = String::sizeToAlloc(StringRef.size());
+    void* Mem = heavy::allocate(getAllocator(), MemSize, alignof(heavy::String));
+    return new (Mem) heavy::String(StringRef);
+  }
+
+
+  heavy::EnvEntry VisitEnvEntry(heavy::EnvEntry const& EnvEntry) {
+    heavy::Value Value = Visit(EnvEntry.Value);
+    heavy::String* MangledName
+      = VisitString(EnvEntry.MangledName);
+    return heavy::EnvEntry{Value, MangledName};
+  }
+
   heavy::Value VisitBigInt(heavy::BigInt* B) {
     return new (NewHeap) heavy::BigInt(B->Val);
   }
@@ -61,7 +78,10 @@ class CopyCollector : private ValueVisitor<CopyCollector, heavy::Value> {
   }
 
   // ByteVector
-  heavy::Value VisitByteVector(heavy::ByteVector* ByteVector);
+  heavy::Value VisitByteVector(heavy::ByteVector* ByteVector) {
+    heavy::String* NewString = VisitString(ByteVector->getString());
+    return new (NewHeap) heavy::ByteVector(NewString);
+  }
 
   // EnvFrame
   heavy::Value VisitEnvFrame(heavy::EnvFrame* EnvFrame) {
@@ -79,7 +99,27 @@ class CopyCollector : private ValueVisitor<CopyCollector, heavy::Value> {
   }
 
   // Environment
-  heavy::Value VisitEnvironment(heavy::Environment* Environment);
+  heavy::Value VisitEnvironment(heavy::Environment* Env) {
+    // Environment itself is not garbage collected, but it
+    // contains objects that are.
+    if (heavy::OpGen* OpGen = Env->OpGen.get()) {
+      if (OpGen->TopLevelHandler)
+        OpGen->TopLevelHandler = Visit(OpGen->TopLevelHandler);
+      if (OpGen->LibraryEnvProc)
+        OpGen->LibraryEnvProc = VisitBinding(OpGen->LibraryEnvProc);
+      // Note that the BindingTable has no unique ownership of the Bindings
+      // as they are all pushed to the Environment.
+    }
+
+    for (auto& DensePair : Env->EnvMap) {
+      DensePair.getFirst() = VisitString(DensePair.getFirst());
+      DensePair.getSecond() = VisitEnvEntry(DensePair.getSecond());
+    }
+
+    if (Env->Parent)
+      VisitEnvironment(Env->Parent);
+    return Env;
+  }
 
   // Error
   heavy::Value VisitError(heavy::Error* Error) {
@@ -132,17 +172,49 @@ class CopyCollector : private ValueVisitor<CopyCollector, heavy::Value> {
 
   // Module
   heavy::Value VisitModule(heavy::Module* Module) {
-    // The module itself is never garbage collected,
-    // but it has a Cleanup object that is.
+    // The module itself is not garbage collected,
+    // but it has contained objects that are.
     Module->Cleanup = cast_or_null<Lambda>(Visit(Module->Cleanup));
+    for (auto& DensePair : Module->Map) {
+      DensePair.getFirst() = VisitString(DensePair.getFirst());
+      DensePair.getSecond() = VisitEnvEntry(DensePair.getSecond());
+    }
     return Module;
   }
 
   // Pair
-  heavy::Value VisitPair(heavy::Pair* Pair);
+  heavy::Value VisitPair(heavy::Pair* Pair) {
+    heavy::Value Car = Visit(Pair->Car);
+    heavy::Pair* Bottom = isa<heavy::PairWithSource>(heavy::Value(Pair))
+        ? new (NewHeap) heavy::PairWithSource(Car, heavy::Empty(),
+                                              Pair->getSourceLocation())
+        : new (NewHeap) heavy::Pair(Car, heavy::Empty());
+    heavy::Value OldCdr = Pair->Cdr;
+
+    heavy::Pair* Top = Bottom;
+    while (heavy::Pair* P = dyn_cast<heavy::Pair>(OldCdr)) {
+      heavy::Value Car = Visit(P->Car);
+      Top->Cdr = isa<heavy::PairWithSource>(heavy::Value(P))
+          ? new (NewHeap) heavy::PairWithSource(Car, heavy::Empty(),
+                                                P->getSourceLocation())
+          : new (NewHeap) heavy::Pair(Car, heavy::Empty());
+      Top = cast<heavy::Pair>(Top->Cdr);
+      OldCdr = P->Cdr;
+    }
+
+    // Handle improper list. (ie OldCdr was not a Pair or Empty)
+    if (!isa<heavy::Empty>(OldCdr)) {
+      Top->Cdr = Visit(OldCdr);
+      // Do not update Top since we are done.
+    }
+
+    return Bottom;
+  }
 
   // PairWithSource
-  heavy::Value VisitPairWithSource(heavy::PairWithSource* PairWithSource);
+  heavy::Value VisitPairWithSource(heavy::PairWithSource* PairWithSource) {
+    return VisitPair(PairWithSource);
+  }
 
   // Quote
   heavy::Value VisitQuote(heavy::Quote* Quote) {
@@ -152,14 +224,6 @@ class CopyCollector : private ValueVisitor<CopyCollector, heavy::Value> {
   // SourceValue
   heavy::Value VisitSourceValue(heavy::SourceValue* SourceValue) {
     return new (NewHeap) heavy::SourceValue(*SourceValue);
-  }
-
-  // String
-  heavy::Value VisitString(heavy::String* String) {
-    llvm::StringRef StringRef = String->getView();
-    unsigned MemSize = String::sizeToAlloc(StringRef.size());
-    void* Mem = heavy::allocate(getAllocator(), MemSize, alignof(heavy::String));
-    return new (Mem) heavy::String(StringRef);
   }
 
   // Symbol
@@ -198,6 +262,9 @@ class CopyCollector : private ValueVisitor<CopyCollector, heavy::Value> {
     // is within the bounds of OldHeap.
     if (!OldHeap.identifyObject(ValueBase).has_value())
       return OldVal;
+    // NOTE: The above check allows us to have special allocators
+    //       for identifiers and other "static" objects that we
+    //       can avoid unnecessary copying.
 
     heavy::Value NewVal = Base::Visit(OldVal);
     // Overwrite the OldVal with a ForwardRef.
@@ -219,6 +286,12 @@ public:
 
 void Context::CollectGarbage() {
   // TODO CollectGarbage
+  // Visit all Context.Modules
+  // Visit all Context.EmbeddedEnvs
+  // Visit Context.EnvStack
+
+  // Note that Environments are captured in LibraryEnv or
+  // HeavyScheme::ProcessTopLevelCommands
 }
 
 }  // namespace heavy

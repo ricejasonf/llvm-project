@@ -79,21 +79,15 @@ void HeavyScheme::ProcessTopLevelCommands(
   return ProcessTopLevelCommands(Lexer, base::eval, ErrorHandler,
                                  Terminator);
 }
-void HeavyScheme::ProcessTopLevelCommands(
-                              heavy::Lexer& Lexer,
-                              llvm::function_ref<ValueFnTy> ExprHandler,
-                              llvm::function_ref<ErrorHandlerFn> ErrorHandler,
-                              heavy::tok Terminator) {
-  return ProcessTopLevelCommands(Lexer, *EnvPtr, ExprHandler, ErrorHandler,
-                                 Terminator);
-}
 
 void HeavyScheme::ProcessTopLevelCommands(
                               heavy::Lexer& Lexer,
-                              Environment& Env,
                               llvm::function_ref<ValueFnTy> ExprHandler,
                               llvm::function_ref<ErrorHandlerFn> ErrorHandler,
                               heavy::tok Terminator) {
+  // This should be the only entry point so that Env is captured and
+  // participates in garbage collection.
+  heavy::Environment* Env = EnvPtr.get();
   auto& Context = getContext();
   auto& SM = getSourceManager();
   auto ParserPtr = std::make_unique<Parser>(Lexer, Context);
@@ -145,7 +139,7 @@ void HeavyScheme::ProcessTopLevelCommands(
     } else {
       C.Cont();
     }
-  }, CaptureList{Value(&Env), HandleExpr});
+  }, CaptureList{Value(Env), HandleExpr});
 
   Context.DynamicWind(std::move(ParserPtr), Context.CreateLambda(
     [](heavy::Context& Context, ValueRefs) {
