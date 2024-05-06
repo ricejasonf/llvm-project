@@ -1609,6 +1609,7 @@ public:
 //    is forbidden
 class Environment : public ValueBase {
   friend class Context;
+  friend class CopyCollector;
 
 private:
   using MapTy = llvm::DenseMap<String*, EnvEntry>;
