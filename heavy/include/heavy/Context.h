@@ -66,6 +66,7 @@ class ContextLocalLookup {
 
 class Context : public ContinuationStack<Context>,
                 public ContextLocalLookup,
+                public IdTable,
                 protected Heap<Context>
 {
   friend class OpGen;
@@ -84,8 +85,6 @@ class Context : public ContinuationStack<Context>,
   static constexpr size_t MiB = 1024 * 1024;
 
   llvm::StringMap<std::unique_ptr<Module>> Modules;
-  llvm::StringMap<String*> IdTable = {};
-  // TODO probably move EmbeddedEnvs to class HeavyScheme
   llvm::DenseMap<void*, std::unique_ptr<Environment>> EmbeddedEnvs;
   llvm::DenseMap<String*, Value> KnownAddresses;
 
@@ -286,8 +285,6 @@ public:
     }
   }
 
-  String* CreateIdTableEntry(llvm::StringRef S);
-  String* CreateIdTableEntry(llvm::StringRef Prefix, llvm::StringRef S);
   Syntax* CreateSyntaxWithOp(mlir::Operation* SyntaxOp);
 
   Value RebuildLiteral(Value V);

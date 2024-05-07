@@ -170,18 +170,6 @@ class CopyCollector : private ValueVisitor<CopyCollector, heavy::Value> {
     return new (Mem) Lambda(FnData, Captures);
   }
 
-  // Module
-  heavy::Value VisitModule(heavy::Module* Module) {
-    // The module itself is not garbage collected,
-    // but it has contained objects that are.
-    Module->Cleanup = cast_or_null<Lambda>(Visit(Module->Cleanup));
-    for (auto& DensePair : Module->Map) {
-      DensePair.getFirst() = VisitString(DensePair.getFirst());
-      DensePair.getSecond() = VisitEnvEntry(DensePair.getSecond());
-    }
-    return Module;
-  }
-
   // Pair
   heavy::Value VisitPair(heavy::Pair* Pair) {
     heavy::Value Car = Visit(Pair->Car);
@@ -282,16 +270,57 @@ public:
   void VisitRootNode(heavy::Value& Val) {
     Val = Visit(Val);
   }
+
+  // Module
+  heavy::Value VisitModule(heavy::Module* Module) {
+    // The module itself is not garbage collected,
+    // but it has contained objects that are.
+    Module->Cleanup = cast_or_null<Lambda>(Visit(Module->Cleanup));
+    for (auto& DensePair : Module->Map) {
+      DensePair.getFirst() = VisitString(DensePair.getFirst());
+      DensePair.getSecond() = VisitEnvEntry(DensePair.getSecond());
+    }
+    return Module;
+  }
+
 };
 
 void Context::CollectGarbage() {
-  // TODO CollectGarbage
-  // Visit all Context.Modules
-  // Visit all Context.EmbeddedEnvs
-  // Visit Context.EnvStack
+  // Create NewHeap
+  Heap::AllocatorTy NewHeap;
+  CopyCollector GC(NewHeap, this->TrashHeap);
 
-  // Note that Environments are captured in LibraryEnv or
-  // HeavyScheme::ProcessTopLevelCommands
+  // Note that Environments are captured in Lambdas.
+
+  // Visit all Context.Modules
+  for (auto& StringMapEntry : this->Modules) {
+    GC.VisitModule(StringMapEntry.second.get());
+  }
+
+  // Visit all Context.EmbeddedEnvs
+  GC.VisitRootNode(EnvStack);
+
+  // EmbeddedEnvs
+  // KnownAddresses
+}
+
+String* IdTable::CreateIdTableEntry(llvm::StringRef Str) {
+  String*& Entry = IdTableMap[Str];
+  if (Entry)
+    return Entry;
+
+  unsigned MemSize = String::sizeToAlloc(Str.size());
+  void* Mem = IdHeap.Allocate(MemSize, alignof(String));
+
+  Entry = new (Mem) String(Str);
+  return Entry;
+}
+String* IdTable::CreateIdTableEntry(llvm::StringRef Prefix,
+                                    llvm::StringRef Str) {
+  Buffer.clear();
+  Buffer += Prefix;
+  Buffer += Str;
+  return CreateIdTableEntry(Buffer);
 }
 
 }  // namespace heavy
