@@ -66,7 +66,7 @@ void Dialect::printType(mlir::Type Type,
   P.getStream() << Name;
 }
 
-heavy::Value HeavyValueAttr::getValue() const {
+heavy::Value& HeavyValueAttr::getValue() const {
   return getImpl()->Val;
 }
 

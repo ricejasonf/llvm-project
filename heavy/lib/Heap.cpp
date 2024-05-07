@@ -16,6 +16,7 @@
 #include "heavy/Value.h"
 #include "heavy/ValueVisitor.h"
 #include "llvm/Support/Allocator.h"
+#include <algorithm>
 
 namespace heavy {
 // CopyCollector
@@ -29,6 +30,18 @@ class CopyCollector : private ValueVisitor<CopyCollector, heavy::Value> {
   AllocatorTy& NewHeap;
   AllocatorTy& OldHeap;
   llvm::AllocatorBase<AllocatorTy>& getAllocator() { return NewHeap; }
+  // Track objects that are visited but not themselves collected.
+  std::vector<void*> VisitedSpecials;
+
+  // Return false if Special was already visited.
+  bool markSpecialVisited(void* Ptr) {
+    auto Itr = std::find(VisitedSpecials.begin(), VisitedSpecials.end(), Ptr);
+    if (Itr != VisitedSpecials.end())
+      return false;
+
+    VisitedSpecials.push_back(Ptr);
+    return true;
+  }
 
   // Handle all of the types that are embedded in the pointer,
   // and, therefore do not require a heap allocation.
@@ -96,29 +109,6 @@ class CopyCollector : private ValueVisitor<CopyCollector, heavy::Value> {
       NewBindings[i] = cast<heavy::Binding>(Visit(Bindings[i]));
     }
     return NewE;
-  }
-
-  // Environment
-  heavy::Value VisitEnvironment(heavy::Environment* Env) {
-    // Environment itself is not garbage collected, but it
-    // contains objects that are.
-    if (heavy::OpGen* OpGen = Env->OpGen.get()) {
-      if (OpGen->TopLevelHandler)
-        OpGen->TopLevelHandler = Visit(OpGen->TopLevelHandler);
-      if (OpGen->LibraryEnvProc)
-        OpGen->LibraryEnvProc = VisitBinding(OpGen->LibraryEnvProc);
-      // Note that the BindingTable has no unique ownership of the Bindings
-      // as they are all pushed to the Environment.
-    }
-
-    for (auto& DensePair : Env->EnvMap) {
-      DensePair.getFirst() = VisitString(DensePair.getFirst());
-      DensePair.getSecond() = VisitEnvEntry(DensePair.getSecond());
-    }
-
-    if (Env->Parent)
-      VisitEnvironment(Env->Parent);
-    return Env;
   }
 
   // Error
@@ -273,6 +263,9 @@ public:
 
   // Module
   heavy::Value VisitModule(heavy::Module* Module) {
+    if (!markSpecialVisited(Module))
+      return Module;
+
     // The module itself is not garbage collected,
     // but it has contained objects that are.
     Module->Cleanup = cast_or_null<Lambda>(Visit(Module->Cleanup));
@@ -283,6 +276,33 @@ public:
     return Module;
   }
 
+  // Environment
+  heavy::Value VisitEnvironment(heavy::Environment* Env) {
+    // Check if previously visited.
+    if (!markSpecialVisited(Env))
+      return Env;
+
+    // Environment itself is not garbage collected, but it
+    // contains objects that are.
+    if (heavy::OpGen* OpGen = Env->OpGen.get()) {
+      if (OpGen->TopLevelHandler)
+        OpGen->TopLevelHandler = Visit(OpGen->TopLevelHandler);
+      if (OpGen->LibraryEnvProc)
+        OpGen->LibraryEnvProc = VisitBinding(OpGen->LibraryEnvProc);
+      // Note that the BindingTable has no unique ownership of the Bindings
+      // as they are all pushed to the Environment.
+    }
+
+    for (auto& DensePair : Env->EnvMap) {
+      DensePair.getFirst() = VisitString(DensePair.getFirst());
+      DensePair.getSecond() = VisitEnvEntry(DensePair.getSecond());
+    }
+
+    VisitedSpecials.push_back(Env);
+    if (Env->Parent)
+      VisitEnvironment(Env->Parent);
+    return Env;
+  }
 };
 
 void Context::CollectGarbage() {
@@ -297,11 +317,35 @@ void Context::CollectGarbage() {
     GC.VisitModule(StringMapEntry.second.get());
   }
 
-  // Visit all Context.EmbeddedEnvs
   GC.VisitRootNode(EnvStack);
 
   // EmbeddedEnvs
+  for (auto& DensePair : EmbeddedEnvs) {
+    heavy::Environment* Env = DensePair.second.get(); 
+    GC.VisitEnvironment(Env);
+  }
+
   // KnownAddresses
+  for (auto& DensePair : KnownAddresses) {
+    // The String* key is allocated with IdTable.
+    GC.VisitRootNode(DensePair.second);
+  }
+
+  GC.VisitRootNode(Err);
+  GC.VisitRootNode(ExceptionHandlers);
+
+  // Visit ModuleOp (for contained LiteralOps, MatchOps)
+  if (ModuleOp) {
+    auto WalkerFn = [&GC](mlir::Operation* Op) {
+      heavy::HeavyValueAttr ValAttr;
+      if (auto LiteralOp = dyn_cast<heavy::LiteralOp>(Op))
+        ValAttr = LiteralOp.getInputAttr();
+      else if (auto MatchOp = dyn_cast<heavy::MatchOp>(Op))
+        ValAttr = MatchOp.getValAttr();
+      GC.VisitRootNode(ValAttr.getValue());
+    };
+    ModuleOp->walk(WalkerFn);
+  }
 }
 
 String* IdTable::CreateIdTableEntry(llvm::StringRef Str) {

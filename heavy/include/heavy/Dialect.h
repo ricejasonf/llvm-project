@@ -85,7 +85,7 @@ class HeavyValueAttr : public mlir::Attribute::AttrBase<
 
 public:
   static constexpr llvm::StringLiteral name = "heavy.value_attr";
-  heavy::Value getValue() const;
+  heavy::Value& getValue() const;
 };
 
 // Additional Types
