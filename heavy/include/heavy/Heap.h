@@ -48,12 +48,12 @@ class CopyCollector;
 // VisitRootGC(Value) for each root node.
 template <typename Derived>
 class Heap : public llvm::AllocatorBase<Heap<Derived>> {
+  friend Derived;
   using AllocatorTy = llvm::BumpPtrAllocator;
 
   Derived& getDerived() {
     return *static_cast<Derived*>(this);
   }
-  using Base = llvm::AllocatorBase<Derived>;
 
   AllocatorTy TrashHeap;
 
@@ -106,6 +106,21 @@ public:
   void Deallocate(void const*, size_t, size_t) {
     // Do nothing.
   }
+};
+
+class IdTable {
+  using AllocatorTy = llvm::BumpPtrAllocator;
+
+  // Provide a special heap for identifiers
+  // so their pointers are stable to be used
+  // as keys in maps like Module, Context, etc.
+  AllocatorTy IdHeap;
+  llvm::StringMap<String*> IdTableMap = {};
+  std::string Buffer = {};
+
+public:
+  String* CreateIdTableEntry(llvm::StringRef S);
+  String* CreateIdTableEntry(llvm::StringRef Prefix, llvm::StringRef S);
 };
 
 }  // namespace heavy
