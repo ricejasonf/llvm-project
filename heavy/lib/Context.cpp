@@ -502,31 +502,31 @@ private:
     switch (char(C)) {
       case '\0':
         OS << "null";
-        break; 
+        break;
       case '\a':
         OS << "alarm";
-        break; 
+        break;
       case '\b':
         OS << "backspace";
-        break; 
+        break;
       case '\x7F':
         OS << "delete";
-        break; 
+        break;
       case '\x1B':
         OS << "escape";
-        break; 
+        break;
       case '\n':
         OS << "newline";
-        break; 
+        break;
       case '\r':
         OS << "return";
-        break; 
+        break;
       case ' ':
         OS << "space";
-        break; 
+        break;
       case '\t':
         OS << "tab";
-        break; 
+        break;
       default:
         if (llvm::sys::unicode::isPrintable(C) &&
             !llvm::sys::unicode::isFormatting(C)) {
@@ -1253,22 +1253,6 @@ void Module::PushCleanup(heavy::Lambda* Fn) {
     C.PushCont(Value(Next));
     C.ApplyThunk(Fn);
   }, CaptureList{Cleanup, Fn});
-}
-
-String* Context::CreateIdTableEntry(llvm::StringRef S) {
-  String*& Str = IdTable[S];
-  if (!Str) {
-    Str = CreateString(S);
-  }
-  return Str;
-}
-
-String* Context::CreateIdTableEntry(llvm::StringRef Prefix,
-                                    llvm::StringRef S) {
-  // Unfortunately, we have to create a garbage string
-  // just to check this.
-  String* Temp = CreateString(Prefix, S);
-  return CreateIdTableEntry(Temp->getView());
 }
 
 // Create Functions
