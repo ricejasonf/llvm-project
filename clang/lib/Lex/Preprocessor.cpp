@@ -1688,7 +1688,6 @@ const char *Preprocessor::getCheckPoint(FileID FID, const char *Start) const {
   return nullptr;
 }
 
-<<<<<<< HEAD
 bool Preprocessor::hasSeenNoTrivialPPDirective() const {
   return DirTracer && DirTracer->hasSeenNoTrivialPPDirective();
 }
