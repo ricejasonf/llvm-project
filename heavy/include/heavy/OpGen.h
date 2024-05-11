@@ -266,10 +266,10 @@ public:
 
   static heavy::Value fromValue(mlir::Value V) {
     if (!V) return heavy::Value();
-    if (auto OpResult = V.dyn_cast<mlir::OpResult>()) {
+    if (auto OpResult = mlir::dyn_cast<mlir::OpResult>(V)) {
       return heavy::Value(OpResult.getOwner());
     }
-    if (auto BlockArg = V.dyn_cast<mlir::BlockArgument>()) {
+    if (auto BlockArg = mlir::dyn_cast<mlir::BlockArgument>(V)) {
       mlir::Block* B = BlockArg.getOwner();
       return heavy::Value(reinterpret_cast<heavy::ContArg*>(B));
     }

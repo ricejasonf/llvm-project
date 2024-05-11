@@ -68,10 +68,10 @@ class OpEvalImpl {
   }
 
   static heavy::SourceLocation getSourceLocation(mlir::Location Loc) {
-    if (!Loc.isa<mlir::OpaqueLoc>()) return {};
+    if (!mlir::isa<mlir::OpaqueLoc>(Loc)) return {};
     return heavy::SourceLocation(
       mlir::OpaqueLoc::getUnderlyingLocation<heavy::SourceLocationEncoding*>(
-        Loc.cast<mlir::OpaqueLoc>()));
+        mlir::cast<mlir::OpaqueLoc>(Loc)));
   }
 
 public:
@@ -247,12 +247,12 @@ private:
     heavy::Value RestList;
     // check arguments
     unsigned NumArgs = Args.size();
-    mlir::FunctionType FT = F.getFunctionType()
-                             .cast<mlir::FunctionType>();
+    mlir::FunctionType FT = mlir::cast<mlir::FunctionType>(
+        F.getFunctionType());
     // The functions type includes the argument
     // for the context object.
     unsigned NumParams = FT.getNumInputs() - 1;
-    if (NumParams > 0 && FT.getInputs().back().isa<HeavyRestTy>()) {
+    if (NumParams > 0 && mlir::isa<HeavyRestTy>(FT.getInputs().back())) {
       // Handle a rest param.
       // Check that the number of explicit params
       // are less than the amount of arguments.

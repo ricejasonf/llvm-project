@@ -92,7 +92,7 @@ mlir::Value OpGen::GetSingleResult(heavy::Value V) {
   if (!Result) {
       return SetError("expecting expression", V);
   }
-  if (auto BlockArg = Result.dyn_cast<mlir::BlockArgument>()) {
+  if (auto BlockArg = mlir::dyn_cast<mlir::BlockArgument>(Result)) {
     // the size includes the closure object
     if (BlockArg.getOwner()->getArguments().size() != 2) {
       return SetError("invalid continuation arity", V);
@@ -102,11 +102,11 @@ mlir::Value OpGen::GetSingleResult(heavy::Value V) {
 }
 
 mlir::ValueRange OpGen::ExpandResults(mlir::Value Result) {
-  if (Result.isa<mlir::OpResult>()) {
+  if (mlir::isa<mlir::OpResult>(Result)) {
     return Result.getDefiningOp()->getResults();
   }
   else {
-    auto BlockArg = Result.cast<mlir::BlockArgument>();
+    auto BlockArg = mlir::cast<mlir::BlockArgument>(Result);
     return BlockArg.getOwner()->getArguments().drop_front();
   }
 }
@@ -1126,7 +1126,7 @@ mlir::Value OpGen::LocalizeValue(mlir::Value V, heavy::Value B) {
       return NewVal;
     }
   } else {
-    mlir::BlockArgument BlockArg = V.cast<mlir::BlockArgument>();
+    mlir::BlockArgument BlockArg = mlir::cast<mlir::BlockArgument>(V);
     Owner = BlockArg.getOwner()->getParentOp();
   }
 
