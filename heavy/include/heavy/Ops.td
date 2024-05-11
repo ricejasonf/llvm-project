@@ -26,10 +26,10 @@ def HeavyDialect : Dialect {
 //                  of Value and derives from ValueBase which
 //                  implies the need for garbage collection.
 class HeavyValueBase<string name> : Type<
-  CPred<!strconcat("$_self.isa<::heavy::Heavy", name, "Ty>()")>,
+  CPred<!strconcat("mlir::isa<::heavy::Heavy", name, "Ty>($_self)")>,
   name, !strconcat("::heavy::Heavy", name, "Ty")>;
 
-def HeavyValue : Type<CPred<"$_self.isa<::heavy::HeavyValueTy>()">,
+def HeavyValue : Type<CPred<"mlir::isa<::heavy::HeavyValueTy>($_self)">,
                   "value", "::heavy::HeavyValueTy">;
 
 def HeavyValueAttr : Attr<CPred<"true">,
@@ -43,9 +43,9 @@ def HeavyRest : HeavyValueBase<"Pair">; // For rest arguments.
 def HeavyPair : HeavyValueBase<"Pair">;
 def HeavySyntax : HeavyValueBase<"Syntax">;
 
-def HeavyOpGen : Type<CPred<"$_self.isa<::heavy::HeavyOpGenTy>()">,
+def HeavyOpGen : Type<CPred<"mlir::isa<::heavy::HeavyOpGenTy>($_self)">,
                   "OpGen", "::heavy::OpGen&">;
-def HeavyMlirValue : Type<CPred<"$_self.isa<::heavy::HeavyMlirValueTy>()">,
+def HeavyMlirValue : Type<CPred<"mlir::isa<::heavy::HeavyMlirValueTy>($_self)">,
                   "MlirValue", "::mlir::Value">;
 
 class HeavyOp<string mnemonic, list<Trait> traits = []> :

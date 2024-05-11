@@ -41,23 +41,23 @@ void Dialect::printAttribute(
                         mlir::Attribute Attr,
                         mlir::DialectAsmPrinter& P) const {
   // All attributes are HeavyValueAttr
-  heavy::Value V = Attr.cast<HeavyValueAttr>().getValue();
+  heavy::Value V = mlir::cast<HeavyValueAttr>(Attr).getValue();
   heavy::write(P.getStream(), V);
 }
 void Dialect::printType(mlir::Type Type,
                         mlir::DialectAsmPrinter& P) const {
   char const* Name;
-  if (Type.isa<HeavyValueTy>()) {
+  if (mlir::isa<HeavyValueTy>(Type)) {
     Name = "value";
-  } else if (Type.isa<HeavyRestTy>()) {
+  } else if (mlir::isa<HeavyRestTy>(Type)) {
     Name = "rest";
-  } else if (Type.isa<HeavyPairTy>()) {
+  } else if (mlir::isa<HeavyPairTy>(Type)) {
     Name = "pair";
-  } else if (Type.isa<HeavySyntaxTy>()) {
+  } else if (mlir::isa<HeavySyntaxTy>(Type)) {
     Name = "syntax";
-  } else if (Type.isa<HeavyOpGenTy>()) {
+  } else if (mlir::isa<HeavyOpGenTy>(Type)) {
     Name = "OpGen&";
-  } else if (Type.isa<HeavyMlirValueTy>()) {
+  } else if (mlir::isa<HeavyMlirValueTy>(Type)) {
     Name = "MlirValue";
   } else {
     llvm_unreachable("no other types in dialect");
