@@ -3177,7 +3177,7 @@ defm pch_debuginfo: OptInCC1FFlag<"pch-debuginfo", "Generate ", "Do not generate
   "debug info for types in an object file built from this PCH and do not generate them elsewhere">;
 
 def fheavy : Flag <["-"], "fheavy">, Group<f_clang_Group>,
-  Flags<[NoXarchOption, CC1Option]>,
+  Flags<[NoXarchOption]>, Visibility<[CC1Option]>,
   HelpText<"Enable support for HeavyScheme compile-time scripting">;
 
 def fimplicit_module_maps : Flag <["-"], "fimplicit-module-maps">, Group<f_Group>,

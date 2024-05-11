@@ -1584,17 +1584,6 @@ const char *Preprocessor::getCheckPoint(FileID FID, const char *Start) const {
   return nullptr;
 }
 
-void Preprocessor::InitHeavySchemeLexer() {
-  if (!TheHeavySchemeLexer) {
-    TheHeavySchemeLexer = std::unique_ptr<HeavySchemeLexer>(
-        new HeavySchemeLexer(*this));
-  }
-  TheHeavySchemeLexer->Init(CurLexer->getFileLoc(),
-                            CurLexer->BufferStart,
-                            CurLexer->BufferEnd,
-                            CurLexer->BufferPtr);
-}
-
 void Preprocessor::InitEmbeddedLexer(
           llvm::function_ref<EmbeddedLexerInitFn> InitFn) {
   assert(IsFileLexer() && "cannot embed scheme in macro expansion");
