@@ -272,7 +272,7 @@ bool Parser::ParseHeavyScheme() {
       // Determine if file is a system file... as if!
       SrcMgr::CharacteristicKind FileChar = 
         this->PP.getHeaderSearchInfo()
-          .getFileDirFlavor(&File->getFileEntry());
+          .getFileDirFlavor(*File);
       FileID FileId = 
         this->PP.getSourceManager().createFileID(*File, ClangLoc, FileChar);
       clang::SourceLocation StartLoc =
