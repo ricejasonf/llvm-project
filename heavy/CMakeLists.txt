@@ -12,7 +12,7 @@ endif()
 set(HEAVY_LIB ${CMAKE_CURRENT_SOURCE_DIR}/lib)
 set(HEAVY_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
 set(HEAVY_GEN_INC ${CMAKE_BINARY_DIR}/tools/heavy/include)
-set(CLANG_LIB ../clang/lib)
+set(CLANG_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../clang/lib)
 include_directories(BEFORE
                     ${CMAKE_CURRENT_SOURCE_DIR}/include
                     ${CMAKE_CURRENT_SOURCE_DIR}/../mlir/include
