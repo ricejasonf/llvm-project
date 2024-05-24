@@ -1,33 +1,42 @@
 cmake_minimum_required(VERSION 3.4.3)
 
 add_llvm_library(heavy
-  ${HEAVY_LIB}/Builtins.cpp
-  ${HEAVY_LIB}/Context.cpp
-  ${HEAVY_LIB}/Dialect.cpp
-  ${HEAVY_LIB}/Heap.cpp
-  ${HEAVY_LIB}/HeavyScheme.cpp
-  ${HEAVY_LIB}/Lexer.cpp
-  ${HEAVY_LIB}/Mangle.cpp
-  ${HEAVY_LIB}/OpEval.cpp
-  ${HEAVY_LIB}/OpGen.cpp
-  ${HEAVY_LIB}/Parser.cpp
-  ${HEAVY_LIB}/Quasiquote.cpp
-  ${HEAVY_LIB}/SourceFileStorage.cpp
-  ${HEAVY_LIB}/SourceManager.cpp
-  ${HEAVY_LIB}/../../clang/lib/Basic/CharInfo.cpp)
+  Builtins.cpp
+  Context.cpp
+  Dialect.cpp
+  Heap.cpp
+  HeavyScheme.cpp
+  Lexer.cpp
+  Mangle.cpp
+  OpEval.cpp
+  OpGen.cpp
+  Parser.cpp
+  Quasiquote.cpp
+  SourceFileStorage.cpp
+  SourceManager.cpp
+  # TODO Do not use Clangs CharInfo.
+  ${CLANG_LIB_DIR}/Basic/CharInfo.cpp
+
+  LINK_COMPONENTS
+    Core
+    Support
+
+  LINK_LIBS
+    MLIRAnalysis
+    MLIRFuncDialect
+    MLIRIR
+    MLIRSideEffectInterfaces
+    MLIRTransforms
+  )
 
 add_dependencies(heavy HeavyOpsIncGen
                        MLIRFuncOpsIncGen)
 
-llvm_map_components_to_libnames(LLVM_LIBS
-  core
-  support)
-
-set(MLIR_LIBS
-  MLIRAnalysis
-  MLIRFuncDialect
-  MLIRIR
-  MLIRSideEffectInterfaces
-  MLIRTransforms)
-
-target_link_libraries(heavy PRIVATE ${LLVM_LIBS} ${MLIR_LIBS})
+#set(MLIR_LIBS
+#  MLIRAnalysis
+#  MLIRFuncDialect
+#  MLIRIR
+#  MLIRSideEffectInterfaces
+#  MLIRTransforms)
+#
+#target_link_libraries(heavy PRIVATE ${LLVM_LIBS} ${MLIR_LIBS})
