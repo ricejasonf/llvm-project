@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.4.3)
 
-add_llvm_library(heavy
+add_heavy_library(heavy
   Builtins.cpp
   Context.cpp
   Dialect.cpp
@@ -27,16 +27,8 @@ add_llvm_library(heavy
     MLIRIR
     MLIRSideEffectInterfaces
     MLIRTransforms
+
+  DEPENDS
+    HeavyOpsIncGen
+    MLIRFuncOpsIncGen
   )
-
-add_dependencies(heavy HeavyOpsIncGen
-                       MLIRFuncOpsIncGen)
-
-#set(MLIR_LIBS
-#  MLIRAnalysis
-#  MLIRFuncDialect
-#  MLIRIR
-#  MLIRSideEffectInterfaces
-#  MLIRTransforms)
-#
-#target_link_libraries(heavy PRIVATE ${LLVM_LIBS} ${MLIR_LIBS})
