@@ -277,6 +277,8 @@ void OpGen::VisitTopLevel(Value V) {
   Context.PushCont([](heavy::Context& C, ValueRefs) {
     heavy::Value V = C.getCapture(0);
     C.OpGen->Visit(V);
+    if (C.CheckError())
+      return;
     C.Cont();
   }, CaptureList{V});
   Context.Cont();
