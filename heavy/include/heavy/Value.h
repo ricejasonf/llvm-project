@@ -135,6 +135,7 @@ enum class ValueKind {
   Syntax,
   SyntaxClosure,
   Vector,
+  OpaquePtr,
 };
 
 class alignas(void*) ValueBase {
@@ -1285,6 +1286,20 @@ public:
     return totalSizeToAlloc<Value>(Length);
   }
 
+};
+
+class OpaquePtr : public ValueBase {
+public:
+  void* Ptr;
+  OpaquePtr(void* VP)
+    : ValueBase(ValueKind::OpaquePtr)
+    , Ptr(VP)
+  { }
+
+  static bool classof(Value V) {
+    return V.getKind() == ValueKind::OpaquePtr;
+  }
+  static ValueKind getKind() { return ValueKind::OpaquePtr; }
 };
 
 // EnvEntry - Used to store lookup results for

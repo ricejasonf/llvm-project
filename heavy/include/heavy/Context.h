@@ -103,7 +103,9 @@ class Context : public ContinuationStack<Context>,
   //    and swap it back upon completion (via RAII)
   Value EnvStack;
 
+public: // Provide access in lib/Mlir bindings.
   std::unique_ptr<mlir::MLIRContext> MLIRContext;
+private:
   SourceLocation Loc = {}; // last known location for errors
   Value Err = nullptr;
   Value ExceptionHandlers = heavy::Empty();
@@ -328,6 +330,9 @@ public:
   Vector*     CreateVector(ArrayRef<Value> Xs);
   Vector*     CreateVector(unsigned N);
   ByteVector* CreateByteVector(llvm::ArrayRef<Value> Xs);
+  OpaquePtr* CreateOpaquePtr(void* Ptr) {
+    return new (getAllocator()) OpaquePtr(Ptr);
+  }
   EnvFrame*   CreateEnvFrame(llvm::ArrayRef<Symbol*> Names);
 
   template <typename F>
