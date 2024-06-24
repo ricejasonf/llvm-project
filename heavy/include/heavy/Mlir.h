@@ -44,51 +44,19 @@ namespace heavy::mlir {
 //      we default to the current context that scheme is
 //      compiling under.
 
-// Create operation. Argument are lists values or attributes or result type
-//  specified by auxilary keywords: arguments, attributes, result-types.
 void create_op(Context& C, ValueRefs Args);
-
-// Get an operation region by name.
 void region(Context& C, ValueRefs Args);
-
-// Get list of blocks in a region.
 void region_blocks(Context& C, ValueRefs Args);
-
-// Get list of results of op.
 void results(Context& C, ValueRefs Args);
-
-// Get operation result by index (default = 0).
 void result(Context& C, ValueRefs Args);
-
-// Get insertion point to prepend current block.
 void block_begin(Context& C, ValueRefs Args);
-
-// Get insertion point to append current block.
 void block_end(Context& C, ValueRefs Args);
-
-// Get argument from block by index.
 void block_arg(Context& C, ValueRefs Args);
-
-// Get list of operations from current block.
 void block_ops(Context& C, ValueRefs Args);
-
-// Get insertion point to prepend.
-// Argument can be Operation, Region, or Block.
-//  Operation - inserts before operation in containing block.
-//  Region    - inserts before operation in first block.
-//  Block     - inserts before operation in block.
 void insert_before(Context& C, ValueRefs Args);
-
-// Get insertion point to append similar to insert_before.
 void insert_after(Context& C, ValueRefs Args);
-
-// Dynamic wind with an insertion point.
 void with_insertion_point(Context& C, ValueRefs Args);
-
-// Get a type by parsing a string.
 void type(Context& C, ValueRefs Args);
-
-// Get an attribute by parsing a string.
 void attr(Context& C, ValueRefs Args);
 }
 /*
