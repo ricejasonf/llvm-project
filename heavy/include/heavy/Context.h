@@ -330,10 +330,20 @@ public:
   Vector*     CreateVector(ArrayRef<Value> Xs);
   Vector*     CreateVector(unsigned N);
   ByteVector* CreateByteVector(llvm::ArrayRef<Value> Xs);
-  OpaquePtr* CreateOpaquePtr(void* Ptr) {
-    return new (getAllocator()) OpaquePtr(Ptr);
-  }
   EnvFrame*   CreateEnvFrame(llvm::ArrayRef<Symbol*> Names);
+
+  template <typename T>
+  Tagged* CreateTagged(Symbol* Sym, T Obj) {
+    static_assert(alignof(T) <= alignof(Value),
+      "object storage alignment is too large");
+    static_assert(std::is_trivially_copyable<T>::value,
+      "F must be trivially_copyable");
+    llvm::StringRef ObjData(reinterpret_cast<char const*>(&Obj), sizeof(Obj));
+    void* Mem = Tagged::allocate(getAllocator(), ObjData);
+    Tagged* New = new (Mem) Tagged(Sym, ObjData);
+
+    return New;
+  }
 
   template <typename F>
   Lambda* CreateLambda(F Fn, llvm::ArrayRef<heavy::Value> Captures) {
