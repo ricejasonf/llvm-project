@@ -8,6 +8,7 @@ add_heavy_library(heavy
   HeavyScheme.cpp
   Lexer.cpp
   Mangle.cpp
+  Mlir.cpp
   OpEval.cpp
   OpGen.cpp
   Parser.cpp
