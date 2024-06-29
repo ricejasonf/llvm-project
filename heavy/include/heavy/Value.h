@@ -135,7 +135,7 @@ enum class ValueKind {
   Syntax,
   SyntaxClosure,
   Vector,
-  OpaquePtr,
+  Tagged,
 };
 
 class alignas(void*) ValueBase {
@@ -152,7 +152,7 @@ public:
   bool isMutable() const { return IsMutable; }
   ValueKind getKind() const { return VKind; }
   SourceLocation getSourceLocation();
-  llvm::StringRef getStringView();
+  llvm::StringRef getStringRef();
   void dump();
 };
 
@@ -425,10 +425,10 @@ public:
     return SourceLocation();
   }
 
-  llvm::StringRef getStringView() const {
+  llvm::StringRef getStringRef() const {
     if (is<ValueSumType::ValueBase>()) {
       return get<ValueSumType::ValueBase>()
-        ->getStringView();
+        ->getStringRef();
     }
     return llvm::StringRef();
   }
@@ -817,6 +817,8 @@ class String final
   }
 
 public:
+  static constexpr bool IsNullTerminated = true;
+
   String(unsigned Length, char InitChar)
     : ValueBase(ValueKind::String),
       Len(Length)
@@ -1288,18 +1290,64 @@ public:
 
 };
 
-class OpaquePtr : public ValueBase {
+class Tagged final :
+        public ValueBase,
+        private llvm::TrailingObjects<Tagged, char> {
+
+  friend class llvm::TrailingObjects<Tagged, char>;
+  friend Context;
+
+  // Tag should be a pointer from a symbol which is uniqued
+  // and stored in the identifier table.
+  String* Tag;
+  size_t StorageLen = 0;
+
+  size_t numTrailingObjects(OverloadToken<char> const) const {
+    return StorageLen;
+  }
+
 public:
-  void* Ptr;
-  OpaquePtr(void* VP)
-    : ValueBase(ValueKind::OpaquePtr)
-    , Ptr(VP)
-  { }
+  // Note that for stored pointers, this will return a pointer to a pointer.
+  void* getOpaquePtr() { return getTrailingObjects<char>(); }
+
+  Tagged(Symbol* TagSymbol, llvm::StringRef ObjData)
+    : ValueBase(ValueKind::Tagged),
+      Tag(TagSymbol->getString()),
+      StorageLen(ObjData.size())
+  {
+    // Storage
+    void const* OrigStorage = ObjData.data();
+    size_t StorageLen       = ObjData.size();
+    void* StoragePtr = getOpaquePtr();
+    std::memcpy(StoragePtr, OrigStorage, StorageLen);
+  }
+
+  bool isa(Symbol* Sym) {
+    return Sym->getString() == Tag;
+  }
+
+  // Return a reference to the stored object.
+  // It is the users responsible to check the tag.
+  template <typename T>
+  T cast() {
+    return *reinterpret_cast<T*>(getOpaquePtr());
+  }
+
+  template <typename Allocator>
+  static void* allocate(Allocator& Alloc, llvm::StringRef ObjData);
+
+  static constexpr size_t sizeToAlloc(size_t StorageLen) {
+    return totalSizeToAlloc<char>(StorageLen);
+  }
+
+  size_t getObjectSize() {
+    return totalSizeToAlloc<char>(StorageLen);
+  }
 
   static bool classof(Value V) {
-    return V.getKind() == ValueKind::OpaquePtr;
+    return V.getKind() == ValueKind::Tagged;
   }
-  static ValueKind getKind() { return ValueKind::OpaquePtr; }
+  static ValueKind getKind() { return ValueKind::Tagged; }
 };
 
 // EnvEntry - Used to store lookup results for
@@ -1786,7 +1834,7 @@ inline SourceLocation ValueBase::getSourceLocation() {
 
 // Get string view for String or Symbol, or
 // get an empty string view
-inline llvm::StringRef ValueBase::getStringView() {
+inline llvm::StringRef ValueBase::getStringRef() {
   Value Self(this);
   switch (getKind()) {
   case ValueKind::String:
@@ -1914,6 +1962,12 @@ void* Lambda::allocate(Allocator& Alloc, OpaqueFn FnData,
                        llvm::ArrayRef<heavy::Value> Captures) {
   size_t size = Lambda::sizeToAlloc(FnData, Captures.size());
   return heavy::allocate(Alloc, size, alignof(Lambda));
+}
+
+template <typename Allocator>
+void* Tagged::allocate(Allocator& Alloc, llvm::StringRef ObjData) {
+  size_t size = Tagged::sizeToAlloc(ObjData.size());
+  return heavy::allocate(Alloc, size, alignof(Tagged));
 }
 
 template <typename Allocator>

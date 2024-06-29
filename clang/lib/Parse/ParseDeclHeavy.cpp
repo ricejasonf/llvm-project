@@ -149,7 +149,7 @@ bool Parser::ParseHeavyScheme() {
         C.RaiseError("expecting string or identifier", C.getCallee());
         return;
       }
-      llvm::StringRef Err = Args[0].getStringView();
+      llvm::StringRef Err = Args[0].getStringRef();
 
       P.Diag(clang::SourceLocation{}, diag::err_heavy_scheme) << Err;
       C.Cont();
@@ -169,7 +169,7 @@ bool Parser::ParseHeavyScheme() {
         C.RaiseError("expecting string or identifier", C.getCallee());
         return;
       }
-      llvm::StringRef Source = Args[0].getStringView();
+      llvm::StringRef Source = Args[0].getStringRef();
       heavy::SourceLocation Loc = Args[0].getSourceLocation();
       if (!Loc.isValid()) Loc = C.getLoc();
 
@@ -357,7 +357,7 @@ bool Parser::ParseHeavyScheme() {
     if (!Loc.isValid()) Loc = Output.getSourceLocation();
     if (!Loc.isValid()) Loc = C.getLoc();
 
-    llvm::StringRef Result = Output.getStringView();
+    llvm::StringRef Result = Output.getStringRef();
     TheLexerWriter.Tokenize(getSourceLocation(
           this->HeavyScheme->getFullSourceLocation(Loc)),
           Result.str());

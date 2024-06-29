@@ -24,7 +24,24 @@
 #define HEAVY_MLIR_INIT               HEAVY_MLIR_LIB_(_init)
 
 #define HEAVY_MLIR_VAR(NAME)          HEAVY_MLIR_VAR__##NAME
-#define HEAVY_MLIR_VAR__export        HEAVY_MLIR_LIB_(V6Sexport)
+#define HEAVY_MLIR_VAR__create_op     HEAVY_MLIR_LIB_(V6Screatemi2Sop)
+#define HEAVY_MLIR_VAR__region        HEAVY_MLIR_LIB_(V6Sregion)
+#define HEAVY_MLIR_VAR__results       HEAVY_MLIR_LIB_(V7Sresults)
+#define HEAVY_MLIR_VAR__result        HEAVY_MLIR_LIB_(V6Sresult)
+#define HEAVY_MLIR_VAR__block_begin   HEAVY_MLIR_LIB_(V5Sblockmi5Sbegin)
+#define HEAVY_MLIR_VAR__block_end     HEAVY_MLIR_LIB_(V5SSblockmi3end)
+#define HEAVY_MLIR_VAR__block_ops     HEAVY_MLIR_LIB_(V5Sblockmi3Sops)
+#define HEAVY_MLIR_VAR__insert_before HEAVY_MLIR_LIB_(V6Sinsertmi6Sbefore)
+#define HEAVY_MLIR_VAR__insert_after  HEAVY_MLIR_LIB_(V12Sinsert_after)
+#define HEAVY_MLIR_VAR__type          HEAVY_MLIR_LIB_(V4Stype)
+#define HEAVY_MLIR_VAR__attr          HEAVY_MLIR_LIB_(V4Sattr)
+
+#define HEAVY_MLIR_VAR__current_mlir_context \
+                                HEAVY_MLIR_LIB_(V7ScurrentmiV4SmlirmiV7Scontext)
+#define HEAVY_MLIR_VAR__current_mlir_builder \
+                                HEAVY_MLIR_LIB_(V7ScurrentmiV4SmlirmiV7Sbuilder)
+// TODO load_dialect
+//      get_heavy_scheme_mlir_context
 
 namespace heavy {
 
@@ -37,7 +54,7 @@ using ValueRefs = llvm::MutableArrayRef<heavy::Value>;
 
 }
 
-namespace heavy::mlir {
+namespace heavy::mlir_bind {
 // syntax (top level, continuable)
 
 // TODO Support creating custom MLIR context. Currently
@@ -61,7 +78,7 @@ void attr(Context& C, ValueRefs Args);
 }
 /*
 create_op
-region_op
+region
 results
 result
 block_begin
@@ -74,44 +91,44 @@ type
 attr
 */
 
-extern heavy::ExternSyntax<> HEAVY_BASE_VAR(create_op);
-extern heavy::ExternSyntax<> HEAVY_BASE_VAR(region);
-extern heavy::ExternSyntax<> HEAVY_BASE_VAR(region_blocks);
-extern heavy::ExternSyntax<> HEAVY_BASE_VAR(results);
-extern heavy::ExternSyntax<> HEAVY_BASE_VAR(result);
-extern heavy::ExternSyntax<> HEAVY_BASE_VAR(block_begin);
-extern heavy::ExternSyntax<> HEAVY_BASE_VAR(block_end);
-extern heavy::ExternSyntax<> HEAVY_BASE_VAR(block_arg);
-extern heavy::ExternSyntax<> HEAVY_BASE_VAR(block_ops);
-extern heavy::ExternSyntax<> HEAVY_BASE_VAR(insert_before);
-extern heavy::ExternSyntax<> HEAVY_BASE_VAR(insert_after);
-extern heavy::ExternSyntax<> HEAVY_BASE_VAR(with_insertion_point);
-extern heavy::ExternSyntax<> HEAVY_BASE_VAR(type);
-extern heavy::ExternSyntax<> HEAVY_BASE_VAR(attr);
+extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(create_op);
+extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(region);
+extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(region_blocks);
+extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(results);
+extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(result);
+extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(block_begin);
+extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(block_end);
+extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(block_arg);
+extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(block_ops);
+extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(insert_before);
+extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(insert_after);
+extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(with_insertion_point);
+extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(type);
+extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(attr);
 
 extern "C" {
 // initialize the module for run-time independent of the compiler
-inline void HEAVY_BASE_INIT(heavy::Context& Context) {
+inline void HEAVY_MLIR_INIT(heavy::Context& Context) {
   // syntax
-  HEAVY_BASE_VAR(create_op) = heavy::base::create_op;
-    HEAVY_MLIR_VAR(region_op) = heavy::mlir::region_op;
-    HEAVY_MLIR_VAR(results) = heavy::mlir::results;
-    HEAVY_MLIR_VAR(result) = heavy::mlir::result;
-    HEAVY_MLIR_VAR(block_begin) = heavy::mlir::block_begin;
-    HEAVY_MLIR_VAR(block_end) = heavy::mlir::block_end;
-    HEAVY_MLIR_VAR(block_ops) = heavy::mlir::block_ops;
-    HEAVY_MLIR_VAR(insert_before) = heavy::mlir::insert_before;
-    HEAVY_MLIR_VAR(insert_after) = heavy::mlir::insert_after;
-    HEAVY_MLIR_VAR(with_insertion_point) = heavy::mlir::with_insertion_point;
-    HEAVY_MLIR_VAR(type) = heavy::mlir::type;
-    HEAVY_MLIR_VAR(attr) = heavy::mlir::attr;
+  HEAVY_MLIR_VAR(create_op) = heavy::mlir_bind::create_op;
+  HEAVY_MLIR_VAR(region) = heavy::mlir_bind::region;
+  HEAVY_MLIR_VAR(results) = heavy::mlir_bind::results;
+  HEAVY_MLIR_VAR(result) = heavy::mlir_bind::result;
+  HEAVY_MLIR_VAR(block_begin) = heavy::mlir_bind::block_begin;
+  HEAVY_MLIR_VAR(block_end) = heavy::mlir_bind::block_end;
+  HEAVY_MLIR_VAR(block_ops) = heavy::mlir_bind::block_ops;
+  HEAVY_MLIR_VAR(insert_before) = heavy::mlir_bind::insert_before;
+  HEAVY_MLIR_VAR(insert_after) = heavy::mlir_bind::insert_after;
+  HEAVY_MLIR_VAR(with_insertion_point) = heavy::mlir_bind::with_insertion_point;
+  HEAVY_MLIR_VAR(type) = heavy::mlir_bind::type;
+  HEAVY_MLIR_VAR(attr) = heavy::mlir_bind::attr;
 }
 
-inline void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
-  HEAVY_BASE_INIT(Context);
-  heavy::initModule(Context, HEAVY_BASE_LIB_STR, {
+inline void HEAVY_MLIR_LOAD_MODULE(heavy::Context& Context) {
+  HEAVY_MLIR_INIT(Context);
+  heavy::initModule(Context, HEAVY_MLIR_LIB_STR, {
     {"create_op", HEAVY_MLIR_VAR(create_op)},
-    {"region_op", HEAVY_MLIR_VAR(region_op)},
+    {"region", HEAVY_MLIR_VAR(region)},
     {"results", HEAVY_MLIR_VAR(results)},
     {"result", HEAVY_MLIR_VAR(result)},
     {"block_begin", HEAVY_MLIR_VAR(block_begin)},
@@ -123,5 +140,7 @@ inline void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"type", HEAVY_MLIR_VAR(type)},
     {"attr", HEAVY_MLIR_VAR(attr)}
   });
+}
+}
 
 #endif  // LLVM_HEAVY_MLIR_H
