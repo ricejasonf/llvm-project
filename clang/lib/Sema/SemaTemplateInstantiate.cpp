@@ -4251,6 +4251,16 @@ Sema::InstantiateClassMembers(SourceLocation PointOfInstantiation,
       if (Field->hasInClassInitializer() && TSK == TSK_ImplicitInstantiation) {
         CXXRecordDecl *ClassPattern =
             Instantiation->getTemplateInstantiationPattern();
+
+        // I do not know why the above digs all the way down
+        // to find the oldest, uninstantiated junk with refs
+        // to old template parameters, but for this case just
+        // get the latest instantiation.
+        if (Instantiation->isLocalClass())
+          ClassPattern = Instantiation->getInstantiatedFromMemberClass();
+        // This is very provisional.
+        assert(ClassPattern && "my above fix is not good - Jason");
+
         DeclContext::lookup_result Lookup =
             ClassPattern->lookup(Field->getDeclName());
         FieldDecl *Pattern = Lookup.find_first<FieldDecl>();
