@@ -296,6 +296,8 @@ struct ValueSumType {
 
 using ValuePtrBase = typename ValueSumType::type;
 
+struct ListIterator;
+
 class Value : ValuePtrBase {
 public:
   Value() = default;
@@ -440,8 +442,12 @@ public:
   Value cadr();
   Value cddr();
 
+  inline ListIterator begin() const;
+  inline ListIterator end() const;
+
   void dump();
 };
+
 
 inline bool Undefined::classof(Value V) {
   return V.getTag() == ValueSumType::Undefined;
@@ -2076,6 +2082,55 @@ struct ContextLocal {
   void set(heavy::ContextLocalLookup& C, heavy::Value Value);
   heavy::Binding* getBinding(heavy::ContextLocalLookup const& C) const;
 };
+
+// ListIterator - Provide ForwardIterator for lists 
+//                and improper lists. Supporting improper
+//                lists implies that any value other than
+//                Empty is a list of at least one element.
+struct ListIterator {
+  // Current is a Pair, Empty, or in the case
+  // of an improper list, it is just the element.
+  heavy::Value Current = heavy::Empty();
+
+  using value_type = heavy::Value;
+
+  ListIterator() = default;
+  ListIterator(heavy::Value V)
+    : Current(V)
+  { }
+
+  heavy::Value operator*() const {
+    if (auto* P = dyn_cast<heavy::Pair>(Current))
+      return P->Car;
+    else
+      return Current;
+  }
+
+  ListIterator& operator++() {
+    if (auto* P = dyn_cast<heavy::Pair>(Current))
+      Current = P->Cdr;
+    else
+      Current = heavy::Empty(); 
+
+    return *this;
+  }
+
+  heavy::ListIterator operator++(int) {
+    ListIterator Tmp = *this;
+    ++(*this);
+    return Tmp;
+  }
+
+  bool operator==(ListIterator const& Other) const {
+    return Current == Other.Current;
+  }
+  bool operator!=(ListIterator const& Other) const {
+    return Current != Other.Current;
+  }
+};
+
+ListIterator Value::begin() const { return ListIterator(*this); }
+ListIterator Value::end() const { return ListIterator(); }
 
 } // end namespace heavy
 
