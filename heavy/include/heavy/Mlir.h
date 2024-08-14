@@ -13,9 +13,7 @@
 #ifndef LLVM_HEAVY_MLIR_H
 #define LLVM_HEAVY_MLIR_H
 
-#include "heavy/Context.h"
 #include "heavy/Value.h"
-#include "llvm/ADT/SmallVector.h"
 
 #define HEAVY_MLIR_LIB                _HEAVYL5SheavyL4Smlir
 #define HEAVY_MLIR_LIB_(NAME)         _HEAVYL5SheavyL4Smlir ## NAME
@@ -36,12 +34,16 @@
 #define HEAVY_MLIR_VAR__type          HEAVY_MLIR_LIB_(V4Stype)
 #define HEAVY_MLIR_VAR__attr          HEAVY_MLIR_LIB_(V4Sattr)
 
-#define HEAVY_MLIR_VAR__current_mlir_context \
-                                HEAVY_MLIR_LIB_(V7ScurrentmiV4SmlirmiV7Scontext)
-#define HEAVY_MLIR_VAR__current_mlir_builder \
-                                HEAVY_MLIR_LIB_(V7ScurrentmiV4SmlirmiV7Sbuilder)
-// TODO load_dialect
-//      get_heavy_scheme_mlir_context
+#define HEAVY_MLIR_VAR__current_context \
+                                HEAVY_MLIR_LIB_(V7ScurrentmiV7Scontext)
+#define HEAVY_MLIR_VAR__current_builder \
+                                HEAVY_MLIR_LIB_(V7ScurrentmiV7Sbuilder)
+#define HEAVY_MLIR_VAR__with_new_context \
+                                HEAVY_MLIR_LIB_(V4SwithmiV3Snewmiv7Scontext)
+//#define HEAVY_MLIR_VAR__with_builder \
+                                //HEAVY_MLIR_LIB_(V4Swithmiv7Sbuilder)
+#define HEAVY_MLIR_VAR__load_dialect \
+                                HEAVY_MLIR_LIB_(V4SloadmiV7Sdialect)
 
 namespace heavy {
 
@@ -76,21 +78,9 @@ void with_insertion_point(Context& C, ValueRefs Args);
 void type(Context& C, ValueRefs Args);
 void attr(Context& C, ValueRefs Args);
 }
-/*
-create_op
-region
-results
-result
-block_begin
-block_end
-block_ops
-insert_before
-insert_after
-with_insertion_point
-type
-attr
-*/
 
+extern heavy::ContextLocal   HEAVY_MLIR_VAR(current_context);
+extern heavy::ContextLocal   HEAVY_MLIR_VAR(current_builder);
 extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(create_op);
 extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(region);
 extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(region_blocks);
@@ -105,42 +95,14 @@ extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(insert_after);
 extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(with_insertion_point);
 extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(type);
 extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(attr);
+extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(with_new_context);
+//extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(with_builder)
+extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(load_dialect);
 
 extern "C" {
 // initialize the module for run-time independent of the compiler
-inline void HEAVY_MLIR_INIT(heavy::Context& Context) {
-  // syntax
-  HEAVY_MLIR_VAR(create_op) = heavy::mlir_bind::create_op;
-  HEAVY_MLIR_VAR(region) = heavy::mlir_bind::region;
-  HEAVY_MLIR_VAR(results) = heavy::mlir_bind::results;
-  HEAVY_MLIR_VAR(result) = heavy::mlir_bind::result;
-  HEAVY_MLIR_VAR(block_begin) = heavy::mlir_bind::block_begin;
-  HEAVY_MLIR_VAR(block_end) = heavy::mlir_bind::block_end;
-  HEAVY_MLIR_VAR(block_ops) = heavy::mlir_bind::block_ops;
-  HEAVY_MLIR_VAR(insert_before) = heavy::mlir_bind::insert_before;
-  HEAVY_MLIR_VAR(insert_after) = heavy::mlir_bind::insert_after;
-  HEAVY_MLIR_VAR(with_insertion_point) = heavy::mlir_bind::with_insertion_point;
-  HEAVY_MLIR_VAR(type) = heavy::mlir_bind::type;
-  HEAVY_MLIR_VAR(attr) = heavy::mlir_bind::attr;
-}
-
-inline void HEAVY_MLIR_LOAD_MODULE(heavy::Context& Context) {
-  HEAVY_MLIR_INIT(Context);
-  heavy::initModule(Context, HEAVY_MLIR_LIB_STR, {
-    {"create_op", HEAVY_MLIR_VAR(create_op)},
-    {"region", HEAVY_MLIR_VAR(region)},
-    {"results", HEAVY_MLIR_VAR(results)},
-    {"result", HEAVY_MLIR_VAR(result)},
-    {"block_begin", HEAVY_MLIR_VAR(block_begin)},
-    {"block_end", HEAVY_MLIR_VAR(block_end)},
-    {"block_ops", HEAVY_MLIR_VAR(block_ops)},
-    {"insert_before", HEAVY_MLIR_VAR(insert_before)},
-    {"insert_after", HEAVY_MLIR_VAR(insert_after)},
-    {"with_insertion_point", HEAVY_MLIR_VAR(with_insertion_point)},
-    {"type", HEAVY_MLIR_VAR(type)},
-    {"attr", HEAVY_MLIR_VAR(attr)}
-  });
-}
+void HEAVY_MLIR_INIT(heavy::Context& Context);
+void HEAVY_MLIR_LOAD_MODULE(heavy::Context& Context);
 }
 
 #endif  // LLVM_HEAVY_MLIR_H
