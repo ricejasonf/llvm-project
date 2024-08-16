@@ -1335,7 +1335,7 @@ public:
   // Return a reference to the stored object.
   // It is the users responsible to check the tag.
   template <typename T>
-  T cast() {
+  T& cast() {
     return *reinterpret_cast<T*>(getOpaquePtr());
   }
 

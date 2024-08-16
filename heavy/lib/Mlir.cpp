@@ -71,19 +71,24 @@ namespace {
   }
 
   mlir::MLIRContext* getCurrentContext(heavy::Context& C) {
-    return GetTagged<mlir::MLIRContext*>(C, kind::mlir_builder,
+    return GetTagged<mlir::MLIRContext*>(C, kind::mlir_context,
         HEAVY_MLIR_VAR(current_context).get(C));
   }
 
-  mlir::OpBuilder getCurrentBuilder(heavy::Context& C) {
-    heavy::Value V = HEAVY_MLIR_VAR(current_builder).get(C);
+  mlir::OpBuilder* getBuilder(heavy::Context& C, heavy::Value V) {
     if (auto* Tagged = heavy::dyn_cast<heavy::Tagged>(V)) {
       heavy::Symbol* KindSym = C.CreateSymbol(kind::mlir_builder);
       if (Tagged->isa(KindSym))
-        return Tagged->cast<mlir::OpBuilder>();
+        return &Tagged->cast<mlir::OpBuilder>();
     }
-    // This should never happen.
-    return mlir::OpBuilder(getCurrentContext(C));
+
+    C.RaiseError("current-builder is invalid");
+    return nullptr;
+  }
+
+  mlir::OpBuilder* getCurrentBuilder(heavy::Context& C) {
+    heavy::Value V = HEAVY_MLIR_VAR(current_builder).get(C);
+    return getBuilder(C, V);
   }
 
 }  // namespace
@@ -146,9 +151,11 @@ void create_op(Context& C, ValueRefs Args) {
     if (Keyword == "result-types")
       ResultTypes = Pair->Cdr;
   }
-  mlir::OpBuilder Builder = getCurrentBuilder(C);
+  mlir::OpBuilder* Builder = getCurrentBuilder(C);
+  if (!Builder) return;
+
   mlir::Location MLoc = mlir::OpaqueLoc::get(Loc.getOpaqueEncoding(),
-                                             Builder.getContext());
+                                             Builder->getContext());
   auto OpState = mlir::OperationState(MLoc, OpName);
 
   // attributes
@@ -171,9 +178,9 @@ void create_op(Context& C, ValueRefs Args) {
     // If the object is not a mlir::Attribute, simply make
     // the heavy::Value into one.
     if (!Attr)
-      Attr = HeavyValueAttr::get(Builder.getContext(), V);
+      Attr = HeavyValueAttr::get(Builder->getContext(), V);
 
-    mlir::NamedAttribute NamedAttr = Builder.getNamedAttr(Name, Attr);
+    mlir::NamedAttribute NamedAttr = Builder->getNamedAttr(Name, Attr);
     OpState.attributes.push_back(NamedAttr);
   }
 
@@ -221,7 +228,7 @@ void create_op(Context& C, ValueRefs Args) {
   }
 
   // Create the operation using the Builder
-  mlir::Operation* Op = Builder.create(OpState);
+  mlir::Operation* Op = Builder->create(OpState);
   C.Cont(heavy::Value(Op));
 }
 
@@ -300,39 +307,137 @@ void result(Context& C, ValueRefs Args) {
   C.Cont(CreateTagged(C, kind::mlir_value, Result));
 }
 
+static void with_builder_impl(Context& C, mlir::OpBuilder const& Builder,
+                              heavy::Value Thunk) {
+  mlir::MLIRContext* MLIRContext = getCurrentContext(C);
+  heavy::Value PrevBuilder = C.CreateBinding(heavy::Empty());
+  heavy::Value NewBuilder = CreateTagged(C, kind::mlir_builder,
+                              mlir::OpBuilder(MLIRContext));
+
+  heavy::Value Before = C.CreateLambda(
+    [](heavy::Context& C, heavy::ValueRefs Args) {
+      // Save the previous state and instate the new... state.
+      // (ie Builder)
+      auto* PrevBuilder = cast<heavy::Binding>(C.getCapture(0));
+      heavy::Value NewBuilder = C.getCapture(1);
+
+      // Set the Binding
+      PrevBuilder->setValue(HEAVY_MLIR_VAR(current_builder).get(C));
+
+      // Set the "current-builder" value
+      HEAVY_MLIR_VAR(current_builder).set(C, NewBuilder);
+      C.Cont();
+    }, CaptureList{PrevBuilder, NewBuilder});
+
+  heavy::Value After = C.CreateLambda(
+    [](heavy::Context& C, heavy::ValueRefs Args) {
+      // Restore previous state
+      auto* PrevBuilder = cast<heavy::Binding>(C.getCapture(0));
+      HEAVY_MLIR_VAR(current_builder).set(C, PrevBuilder->getValue());
+      C.Cont();
+    }, CaptureList{PrevBuilder});
+
+  C.DynamicWind(Before, Thunk, After);
+}
+
+// (with-builder _builder_ _thunk_)
 void with_builder(Context& C, ValueRefs Args) {
-  C.RaiseError("TODO not implemented");
+  if (Args.size() != 2)
+    return C.RaiseError("expecting 2 arguments");
+  mlir::OpBuilder* Builder = getBuilder(C, Args[0]);
+  if (!Builder)
+    return;
+  return with_builder_impl(C, *Builder, Args[1]);
 }
 
+static mlir::Block* get_arg_block(Context& C, ValueRefs Args) {
+  mlir::Block* Block = nullptr;
+  if (Args.size() == 1)
+    Block = GetTagged<mlir::Block*>(C, kind::mlir_block, Args[0]);
+  if (Block == nullptr)
+    C.RaiseError("expecting mlir.block");
+  return Block;
+}
+
+// Alter current-builder to insert at beginning of block.
+// (at-block-begin _block_)
 void at_block_begin(Context& C, ValueRefs Args) {
-  C.RaiseError("TODO not implemented");
+  if (mlir::Block* Block = get_arg_block(C, Args)) {
+    mlir::OpBuilder* Builder = getCurrentBuilder(C);
+    if (!Builder) return;
+    Builder->atBlockBegin(Block);
+    C.Cont();
+  }
+  // Note: error raised in get_arg_block
 }
 
+// Alter current-builder to insert at end to block
+// (at-block-end _block_)
 void at_block_end(Context& C, ValueRefs Args) {
-  C.RaiseError("TODO not implemented");
+  if (mlir::Block* Block = get_arg_block(C, Args)) {
+    mlir::OpBuilder* Builder = getCurrentBuilder(C);
+    if (!Builder) return;
+    Builder->atBlockEnd(Block);
+    C.Cont();
+  }
+  // Note: error raised in get_arg_block
 }
 
+// Alter current-builder to insert before terminator in block.
+// (at-block-terminator _block_)
 void at_block_terminator(Context& C, ValueRefs Args) {
-  C.RaiseError("TODO not implemented");
+  if (mlir::Block* Block = get_arg_block(C, Args)) {
+    mlir::OpBuilder* Builder = getCurrentBuilder(C);
+    if (!Builder) return;
+    Builder->atBlockTerminator(Block);
+    C.Cont();
+  }
+  // Note: error raised in get_arg_block
 }
 
-// Get insertion point to prepend.
-// Argument can be Operation, Region, or Block.
-//  Operation - inserts before operation in containing block.
-//  Region    - inserts before operation in first block.
-//  Block     - inserts before operation in block.
-void with_insertion_before(Context& C, ValueRefs Args) {
-  C.RaiseError("TODO not implemented");
+// Set insertion point to prepend. (alters current-builder)
+// Next argument can be Operation, Region, or Block.
+//  Operation - Insert before operation in containing block.
+//  Region    - Insert before operation in first block.
+void set_insertion_point(Context& C, ValueRefs Args) {
+  if (Args.size() != 1)
+    return C.RaiseError("invalid arity");
+
+  mlir::OpBuilder* Builder = getCurrentBuilder(C);
+  if (!Builder) return;
+
+  if (auto* Op = dyn_cast<mlir::Operation>(Args[0]))
+    Builder->setInsertionPoint(Op);
+  else if (mlir::Region* R = GetTagged<mlir::Region*>(C, kind::mlir_region,
+                                                      Args[0])) {
+    // Automatically add block if needed.
+    if (R->empty())
+      R->emplaceBlock();
+    mlir::Block* Block = &R->front();
+    Builder->setInsertionPointToStart(Block);
+  }
+  C.Cont();
 }
 
-// Get insertion point to append similar to insert_before.
-void with_insertion_after(Context& C, ValueRefs Args) {
-  C.RaiseError("TODO not implemented");
+// Set insertion point to after the operation. (alters current-builder)
+// (set-insertion-after _op_)
+void set_insertion_after(Context& C, ValueRefs Args) {
+  if (Args.size() != 1)
+    return C.RaiseError("invalid arity");
+  mlir::OpBuilder* Builder = getCurrentBuilder(C);
+  if (!Builder) return;
+
+  mlir::Operation* Op = dyn_cast<mlir::Operation>(Args[0]);
+  if (!Op)
+    return C.RaiseError("expecting mlir_operation");
+
+  Builder->setInsertionPoint(Op);
+  C.Cont();
 }
 
 // Get a type by parsing a string.
 void type(Context& C, ValueRefs Args) {
-  mlir::MLIRContext* MLIRContext = C.MLIRContext.get();
+  mlir::MLIRContext* MLIRContext = getCurrentContext(C);
   llvm::StringRef TypeStr = Args[0].getStringRef();
   if (TypeStr.empty())
     return C.RaiseError("expecting string");
@@ -350,7 +455,7 @@ void type(Context& C, ValueRefs Args) {
 //    type - a string or a mlir.type object
 //    attr_str - the string to be parsed
 void attr(Context& C, ValueRefs Args) {
-  mlir::MLIRContext* MLIRContext = C.MLIRContext.get();
+  mlir::MLIRContext* MLIRContext = getCurrentContext(C);
   if (Args.size() != 2)
     return C.RaiseError("invalid arity");
 
@@ -445,9 +550,7 @@ void load_dialect(Context& C, heavy::ValueRefs Args) {
   if (Name.empty())
     return C.RaiseError("expecting dialect name");
 
-  heavy::Value Val = HEAVY_MLIR_VAR(current_context).get(C);
-  auto* MLIRContext = GetTagged<mlir::MLIRContext*>(C, kind::mlir_context,
-                                                   Val);
+  mlir::MLIRContext* MLIRContext = getCurrentContext(C);
   mlir::Dialect* Dialect = MLIRContext->getOrLoadDialect(Name);
   if (Dialect == nullptr)
     return C.RaiseError(C.CreateString("failed to load dialect: ", Name), {});
