@@ -912,7 +912,9 @@ void Context::IncludeModuleFile(heavy::SourceLocation Loc,
                                "include-library-declarations",
                                "cond-expand"}) {
     String* Id = CreateIdTableEntry(Name);
-    Env->ImportValue(EnvBucket{Id, Base->Lookup(Id)});
+    EnvEntry Entry = Base->Lookup(Id);
+    if (Entry && Entry.MangledName != nullptr)
+      Env->ImportValue(EnvBucket{Id, Entry});
   }
 
   heavy::String* MetaModuleName = CreateString(ModuleMangledName);
