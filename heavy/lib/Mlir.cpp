@@ -15,6 +15,8 @@
 #include <heavy/OpGen.h>
 #include <heavy/Value.h>
 #include <mlir/AsmParser/AsmParser.h>
+#include <mlir/IR/Verifier.h>
+#include <mlir/Support/LogicalResult.h>
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/Support/Casting.h>
 #include <memory>
@@ -32,7 +34,11 @@ heavy::ExternSyntax<> HEAVY_MLIR_VAR(set_insertion_point);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(set_insertion_after);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(type);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(attr);
+heavy::ExternSyntax<> HEAVY_MLIR_VAR(with_new_context);
+heavy::ExternSyntax<> HEAVY_MLIR_VAR(with_builder);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(load_dialect);
+heavy::ExternSyntax<> HEAVY_MLIR_VAR(dump);
+heavy::ExternSyntax<> HEAVY_MLIR_VAR(verify);
 
 namespace {
   namespace kind {
@@ -87,6 +93,15 @@ namespace {
   mlir::OpBuilder* getCurrentBuilder(heavy::Context& C) {
     heavy::Value V = HEAVY_MLIR_VAR(current_builder).get(C);
     return getBuilder(C, V);
+  }
+
+  mlir::Operation* getSingleOpArg(heavy::Context& C, heavy::ValueRefs Args) {
+    mlir::Operation* Op = nullptr;
+    if (Args.size() == 1)
+      Op = heavy::dyn_cast<mlir::Operation>(Args[0]);
+    if (!Op)
+      C.RaiseError("expecting mlir operation");
+    return Op;
   }
 
 }  // namespace
@@ -238,7 +253,8 @@ void create_op(Context& C, ValueRefs Args) {
 }
 
 // Get an operation region by index (defaulting to 0).
-// Usage: (region op) or (region op index)
+// (region _op_)
+// (region op _index_)
 void region(Context& C, ValueRefs Args) {
   if (Args.size() != 1 && Args.size() != 2)
     return C.RaiseError("invalid arity");
@@ -418,7 +434,8 @@ void at_block_terminator(Context& C, ValueRefs Args) {
 }
 
 // Set insertion point to prepend. (alters current-builder)
-// Next argument can be Operation, Region, or Block.
+// (set-insertion-point _op_or_region_)
+// Argument can be Operation, Region, or Block.
 //  Operation - Insert before operation in containing block.
 //  Region    - Insert before operation in first block.
 void set_insertion_point(Context& C, ValueRefs Args) {
@@ -458,6 +475,7 @@ void set_insertion_after(Context& C, ValueRefs Args) {
 }
 
 // Get a type by parsing a string.
+// (type _string_)
 void type(Context& C, ValueRefs Args) {
   mlir::MLIRContext* MLIRContext = getCurrentContext(C);
   llvm::StringRef TypeStr = Args[0].getStringRef();
@@ -473,7 +491,7 @@ void type(Context& C, ValueRefs Args) {
 }
 
 // Get an attribute by parsing a string.
-//  Usage: (attr type attr_str)
+//  Usage: (attr _type_ _attr_str)
 //    type - a string or a mlir.type object
 //    attr_str - the string to be parsed
 void attr(Context& C, ValueRefs Args) {
@@ -508,6 +526,7 @@ void attr(Context& C, ValueRefs Args) {
   C.Cont(CreateTagged(C, kind::mlir_attr, Attr.getImpl()));
 }
 
+// (with-new-context _thunk_)
 void with_new_context(heavy::Context& C, heavy::ValueRefs Args) {
   // Create a new context, and call a
   // thunk with it as the current-context.
@@ -602,34 +621,42 @@ void block_op(Context& C, heavy::ValueRefs Args) {
 // or () if we find the tail of the list.
 // (op-parent _op_)
 void op_next(Context& C, heavy::ValueRefs Args) {
-  mlir::Operation* Op = nullptr;
-  if (Args.size() == 1)
-    Op = dyn_cast<mlir::Operation>(Args[0]);
-
-  if (!Op)
-    return C.RaiseError("expecting mlir operation");
-
-  Op = Op->getNextNode();
-  heavy::Value Result = Op != nullptr ? heavy::Value(Op) :
-                                        heavy::Empty();
-  C.Cont(Result);
+  if (mlir::Operation* Op = getSingleOpArg(C, Args)) {
+    Op = Op->getNextNode();
+    heavy::Value Result = Op != nullptr ? heavy::Value(Op) :
+                                          heavy::Empty();
+    C.Cont(Result);
+  }
 }
 
 // Get the parent operation of an operation.
 // or () if the operation is unlinked
 // (parent-op _op_)
 void parent_op(Context& C, heavy::ValueRefs Args) {
-  mlir::Operation* Op = nullptr;
-  if (Args.size() == 1)
-    Op = dyn_cast<mlir::Operation>(Args[0]);
+  if (mlir::Operation* Op = getSingleOpArg(C, Args)) {
+    Op = Op->getParentOp();
+    heavy::Value Result = Op != nullptr ? heavy::Value(Op) :
+                                          heavy::Empty();
+    C.Cont(Result);
+  }
+}
 
-  if (!Op)
-    return C.RaiseError("expecting mlir operation");
+// Return true if operation verify is success otherwise
+// false. Diagnostics are output to stderr by default via MLIR.
+// (verify _op_)
+void verify(Context& C, heavy::ValueRefs Args) {
+  if (mlir::Operation* Op = getSingleOpArg(C, Args)) {
+    bool Success = mlir::verify(Op).succeeded();
+    C.Cont(heavy::Bool(Success));
+  }
+}
 
-  Op = Op->getParentOp();
-  heavy::Value Result = Op != nullptr ? heavy::Value(Op) :
-                                        heavy::Empty();
-  C.Cont(Result);
+// (dump _op_)
+void dump(Context& C, heavy::ValueRefs Args) {
+  if (mlir::Operation* Op = getSingleOpArg(C, Args)) {
+    Op->dump();
+    C.Cont();
+  }
 }
 
 }  // namespace heavy::mlir_bind
@@ -675,7 +702,12 @@ void HEAVY_MLIR_LOAD_MODULE(heavy::Context& C) {
     {"set_insertion_point", HEAVY_MLIR_VAR(set_insertion_point)},
     {"set_insertion_after", HEAVY_MLIR_VAR(set_insertion_after)},
     {"type", HEAVY_MLIR_VAR(type)},
-    {"attr", HEAVY_MLIR_VAR(attr)}
+    {"attr", HEAVY_MLIR_VAR(attr)},
+    {"with_new_context", HEAVY_MLIR_VAR(with_new_context)},
+    {"with_builder", HEAVY_MLIR_VAR(with_builder)},
+    {"load_dialect", HEAVY_MLIR_VAR(load_dialect)},
+    {"verify", HEAVY_MLIR_VAR(verify)},
+    {"dump", HEAVY_MLIR_VAR(dump)}
   });
 }
 }
