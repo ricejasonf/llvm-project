@@ -28,10 +28,8 @@ heavy::ExternSyntax<> HEAVY_MLIR_VAR(result);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(at_block_begin);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(at_block_end);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(at_block_terminator);
-heavy::ExternSyntax<> HEAVY_MLIR_VAR(insert_before);
-heavy::ExternSyntax<> HEAVY_MLIR_VAR(insert_after);
-heavy::ExternSyntax<> HEAVY_MLIR_VAR(with_insertion_before);
-heavy::ExternSyntax<> HEAVY_MLIR_VAR(with_insertion_after);
+heavy::ExternSyntax<> HEAVY_MLIR_VAR(set_insertion_point);
+heavy::ExternSyntax<> HEAVY_MLIR_VAR(set_insertion_after);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(type);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(attr);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(load_dialect);
@@ -103,14 +101,21 @@ namespace heavy::mlir_bind {
 //    regions - takes a single integer for the number of regions
 //    result-types - takes list of mlir.types
 //    successors - takes a list of mlir.blocks
+//  (create-op _name_
+//    (attributes   _attrs_ ...)
+//    (operands     _values_ ...)
+//    (regions      _regions_ ...)
+//    (result-types _types_ ...)
+//    (successors   _blocks_ ...))
+//
 void create_op(Context& C, ValueRefs Args) {
   heavy::SourceLocation Loc = {};
   llvm::StringRef OpName = "";
-  heavy::Value Operands    = heavy::Empty();
   heavy::Value Attributes   = heavy::Empty();
-  heavy::Value Regions  = heavy::Empty();
+  heavy::Value Operands     = heavy::Empty();
+  heavy::Value Regions      = heavy::Empty();
   heavy::Value ResultTypes  = heavy::Empty();
-  heavy::Value Successors  = heavy::Empty();
+  heavy::Value Successors   = heavy::Empty();
 
   if (!Args.empty() && isa<SourceValue>(Args[0])) {
     Loc = Args[0].getSourceLocation();
@@ -288,11 +293,13 @@ void results(Context& C, ValueRefs Args) {
 }
 
 // Get operation result by index (default = 0).
+// (result _op_)
+// (result _op_ _index_)
 void result(Context& C, ValueRefs Args) {
   if (Args.size() != 1 && Args.size() != 2)
     return C.RaiseError("invalid arity");
 
-  mlir::Operation* Op = heavy::dyn_cast<mlir::Operation>(Args[1]);
+  mlir::Operation* Op = heavy::dyn_cast<mlir::Operation>(Args[0]);
   if (!Op)
     return C.RaiseError("expecting mlir.op");
 
@@ -305,6 +312,21 @@ void result(Context& C, ValueRefs Args) {
   if (!Result)
     return C.RaiseError("invalid mlir.op result");
   C.Cont(CreateTagged(C, kind::mlir_value, Result));
+}
+
+// Get the nth block argument from a block.
+// (block-arg _block_ _index_)
+void block_arg(Context& C, ValueRefs Args) {
+  if (Args.size() != 2)
+    return C.RaiseError("invalid arity");
+  mlir::Block* Block = GetTagged<mlir::Block*>(C, kind::mlir_block, Args[0]);
+  if (!Block || !isa<heavy::Int>(Args[1]))
+    return C.RaiseError("expecting block and index");
+  int Index = cast<heavy::Int>(Args[1]);
+  // A mlir::BlockArgument is a mlir::Value 
+  mlir::Value Val = Block->getArgument(Index);
+  heavy::Value MVal = CreateTagged(C, kind::mlir_value, Val);
+  C.Cont(MVal);
 }
 
 static void with_builder_impl(Context& C, mlir::OpBuilder const& Builder,
@@ -541,6 +563,8 @@ void with_new_context(heavy::Context& C, heavy::ValueRefs Args) {
   C.DynamicWind(std::move(NewContextPtr), Before, Thunk, After);
 }
 
+// Dynamically load a mlir dialect by its name.
+// (load-dialect _name_)
 void load_dialect(Context& C, heavy::ValueRefs Args) {
   if (Args.size() != 1)
     return C.RaiseError("expecting dialect name");
@@ -556,6 +580,56 @@ void load_dialect(Context& C, heavy::ValueRefs Args) {
     return C.RaiseError(C.CreateString("failed to load dialect: ", Name), {});
 
   C.Cont();
+}
+
+// Get parent operation of block.
+// (block-op _block_)
+void block_op(Context& C, heavy::ValueRefs Args) {
+  mlir::Block* Block = nullptr;
+  if (Args.size() == 1)
+    Block = GetTagged<mlir::Block*>(C, kind::mlir_block, Args[0]);
+
+  if (!Block)
+    return C.RaiseError("expecting block");
+
+  mlir::Operation* ParentOp = Block->getParentOp();
+  heavy::Value Result = ParentOp != nullptr ? heavy::Value(ParentOp) :
+                                              heavy::Empty();
+  C.Cont(Result);
+}
+
+// Get the next operation from an operation
+// or () if we find the tail of the list.
+// (op-parent _op_)
+void op_next(Context& C, heavy::ValueRefs Args) {
+  mlir::Operation* Op = nullptr;
+  if (Args.size() == 1)
+    Op = dyn_cast<mlir::Operation>(Args[0]);
+
+  if (!Op)
+    return C.RaiseError("expecting mlir operation");
+
+  Op = Op->getNextNode();
+  heavy::Value Result = Op != nullptr ? heavy::Value(Op) :
+                                        heavy::Empty();
+  C.Cont(Result);
+}
+
+// Get the parent operation of an operation.
+// or () if the operation is unlinked
+// (parent-op _op_)
+void parent_op(Context& C, heavy::ValueRefs Args) {
+  mlir::Operation* Op = nullptr;
+  if (Args.size() == 1)
+    Op = dyn_cast<mlir::Operation>(Args[0]);
+
+  if (!Op)
+    return C.RaiseError("expecting mlir operation");
+
+  Op = Op->getParentOp();
+  heavy::Value Result = Op != nullptr ? heavy::Value(Op) :
+                                        heavy::Empty();
+  C.Cont(Result);
 }
 
 }  // namespace heavy::mlir_bind
@@ -575,12 +649,13 @@ void HEAVY_MLIR_INIT(heavy::Context& C) {
   HEAVY_MLIR_VAR(region) = heavy::mlir_bind::region;
   HEAVY_MLIR_VAR(results) = heavy::mlir_bind::results;
   HEAVY_MLIR_VAR(result) = heavy::mlir_bind::result;
-  HEAVY_MLIR_VAR(block_begin) = heavy::mlir_bind::block_begin;
-  HEAVY_MLIR_VAR(block_end) = heavy::mlir_bind::block_end;
-  HEAVY_MLIR_VAR(block_ops) = heavy::mlir_bind::block_ops;
-  HEAVY_MLIR_VAR(insert_before) = heavy::mlir_bind::insert_before;
-  HEAVY_MLIR_VAR(insert_after) = heavy::mlir_bind::insert_after;
-  HEAVY_MLIR_VAR(with_insertion_point) = heavy::mlir_bind::with_insertion_point;
+  HEAVY_MLIR_VAR(at_block_begin) = heavy::mlir_bind::at_block_begin;
+  HEAVY_MLIR_VAR(at_block_end) = heavy::mlir_bind::at_block_end;
+  HEAVY_MLIR_VAR(block_op) = heavy::mlir_bind::block_op;
+  HEAVY_MLIR_VAR(op_next) = heavy::mlir_bind::op_next;
+  HEAVY_MLIR_VAR(parent_op) = heavy::mlir_bind::parent_op;
+  HEAVY_MLIR_VAR(set_insertion_point) = heavy::mlir_bind::set_insertion_point;
+  HEAVY_MLIR_VAR(set_insertion_after) = heavy::mlir_bind::set_insertion_after;
   HEAVY_MLIR_VAR(type) = heavy::mlir_bind::type;
   HEAVY_MLIR_VAR(attr) = heavy::mlir_bind::attr;
 }
@@ -592,12 +667,13 @@ void HEAVY_MLIR_LOAD_MODULE(heavy::Context& C) {
     {"region", HEAVY_MLIR_VAR(region)},
     {"results", HEAVY_MLIR_VAR(results)},
     {"result", HEAVY_MLIR_VAR(result)},
-    {"block_begin", HEAVY_MLIR_VAR(block_begin)},
-    {"block_end", HEAVY_MLIR_VAR(block_end)},
-    {"block_ops", HEAVY_MLIR_VAR(block_ops)},
-    {"insert_before", HEAVY_MLIR_VAR(insert_before)},
-    {"insert_after", HEAVY_MLIR_VAR(insert_after)},
-    {"with_insertion_point", HEAVY_MLIR_VAR(with_insertion_point)},
+    {"at_block_begin", HEAVY_MLIR_VAR(at_block_begin)},
+    {"at_block_end", HEAVY_MLIR_VAR(at_block_end)},
+    {"block_op", HEAVY_MLIR_VAR(block_op)},
+    {"op_next", HEAVY_MLIR_VAR(op_next)},
+    {"parent_op", HEAVY_MLIR_VAR(parent_op)},
+    {"set_insertion_point", HEAVY_MLIR_VAR(set_insertion_point)},
+    {"set_insertion_after", HEAVY_MLIR_VAR(set_insertion_after)},
     {"type", HEAVY_MLIR_VAR(type)},
     {"attr", HEAVY_MLIR_VAR(attr)}
   });
