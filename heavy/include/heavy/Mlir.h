@@ -50,6 +50,8 @@
                                 HEAVY_MLIR_LIB_(V4Swithmiv7Sbuilder)
 #define HEAVY_MLIR_VAR__load_dialect \
                                 HEAVY_MLIR_LIB_(V4SloadmiV7Sdialect)
+#define HEAVY_MLIR_VAR__verify        HEAVY_MLIR_LIB_(V6Sverify)
+#define HEAVY_MLIR_VAR__dump          HEAVY_MLIR_LIB_(V4Sdump)
 
 namespace heavy {
 
@@ -63,12 +65,6 @@ using ValueRefs = llvm::MutableArrayRef<heavy::Value>;
 }
 
 namespace heavy::mlir_bind {
-// syntax (top level, continuable)
-
-// TODO Support creating custom MLIR context. Currently
-//      we default to the current context that scheme is
-//      compiling under.
-
 void create_op(Context& C, ValueRefs Args);
 void region(Context& C, ValueRefs Args);
 void region_blocks(Context& C, ValueRefs Args);
@@ -80,10 +76,15 @@ void block_arg(Context& C, ValueRefs Args);
 void block_op(Context& C, ValueRefs Args);
 void op_next(Context& C, ValueRefs Args);
 void parent_op(Context& C, ValueRefs Args);
-void set_insertion_point(Context& C, ValueRefs Args);
-void set_insertion_after(Context& C, ValueRefs Args);
 void type(Context& C, ValueRefs Args);
 void attr(Context& C, ValueRefs Args);
+void set_insertion_point(Context& C, ValueRefs Args);
+void set_insertion_after(Context& C, ValueRefs Args);
+void with_new_context(Context& C, ValueRefs Args);
+void with_builder(Context& C, ValueRefs Args);
+void load_dialect(Context& C, ValueRefs Args);
+void verify(Context& C, ValueRefs Args);
+void dump(Context& C, ValueRefs Args);
 }
 
 extern heavy::ContextLocal   HEAVY_MLIR_VAR(current_context);
@@ -99,13 +100,15 @@ extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(block_arg);
 extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(block_op);
 extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(op_next);
 extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(parent_op);
-extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(set_insertion_point);
-extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(set_insertion_after);
 extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(type);
 extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(attr);
+extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(set_insertion_point);
+extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(set_insertion_after);
 extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(with_new_context);
 extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(with_builder);
 extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(load_dialect);
+extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(verify);
+extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(dump);
 
 extern "C" {
 // initialize the module for run-time independent of the compiler
