@@ -134,8 +134,8 @@ enum class ValueKind {
   Symbol,
   Syntax,
   SyntaxClosure,
-  Vector,
   Tagged,
+  Vector,
 };
 
 class alignas(void*) ValueBase {
@@ -1303,22 +1303,21 @@ class Tagged final :
   friend class llvm::TrailingObjects<Tagged, char>;
   friend Context;
 
-  // Tag should be a pointer from a symbol which is uniqued
-  // and stored in the identifier table.
-  String* Tag;
+  Symbol* Tag;
   size_t StorageLen = 0;
 
   size_t numTrailingObjects(OverloadToken<char> const) const {
     return StorageLen;
   }
 
-public:
-  // Note that for stored pointers, this will return a pointer to a pointer.
-  void* getOpaquePtr() { return getTrailingObjects<char>(); }
+  size_t getObjectSize() {
+    return totalSizeToAlloc<char>(StorageLen);
+  }
 
+public:
   Tagged(Symbol* TagSymbol, llvm::StringRef ObjData)
     : ValueBase(ValueKind::Tagged),
-      Tag(TagSymbol->getString()),
+      Tag(TagSymbol),
       StorageLen(ObjData.size())
   {
     // Storage
@@ -1328,8 +1327,16 @@ public:
     std::memcpy(StoragePtr, OrigStorage, StorageLen);
   }
 
+  // Note that for stored pointers, this will return a pointer to a pointer.
+  void* getOpaquePtr() { return getTrailingObjects<char>(); }
+  llvm::StringRef getObjData() {
+    return llvm::StringRef(static_cast<char*>(getOpaquePtr()), getObjectSize());
+  };
+
+  Symbol* getTag() const { return Tag; }
+
   bool isa(Symbol* Sym) {
-    return Sym->getString() == Tag;
+    return Sym->getString() == Tag->getString();
   }
 
   // Return a reference to the stored object.
@@ -1343,10 +1350,6 @@ public:
   static void* allocate(Allocator& Alloc, llvm::StringRef ObjData);
 
   static constexpr size_t sizeToAlloc(size_t StorageLen) {
-    return totalSizeToAlloc<char>(StorageLen);
-  }
-
-  size_t getObjectSize() {
     return totalSizeToAlloc<char>(StorageLen);
   }
 
@@ -1918,6 +1921,7 @@ inline llvm::StringRef getKindName(heavy::ValueKind Kind) {
   GET_KIND_NAME_CASE(Symbol)
   GET_KIND_NAME_CASE(Syntax)
   GET_KIND_NAME_CASE(SyntaxClosure)
+  GET_KIND_NAME_CASE(Tagged)
   GET_KIND_NAME_CASE(Vector)
   default:
     return llvm::StringRef("?????");

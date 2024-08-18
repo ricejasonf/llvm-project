@@ -24,12 +24,13 @@
 heavy::ContextLocal   HEAVY_MLIR_VAR(current_context);
 heavy::ContextLocal   HEAVY_MLIR_VAR(current_builder);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(create_op);
-heavy::ExternSyntax<> HEAVY_MLIR_VAR(region_op);
+heavy::ExternSyntax<> HEAVY_MLIR_VAR(region);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(results);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(result);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(at_block_begin);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(at_block_end);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(at_block_terminator);
+heavy::ExternSyntax<> HEAVY_MLIR_VAR(block_op);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(set_insertion_point);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(set_insertion_after);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(type);
@@ -37,6 +38,8 @@ heavy::ExternSyntax<> HEAVY_MLIR_VAR(attr);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(with_new_context);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(with_builder);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(load_dialect);
+heavy::ExternSyntax<> HEAVY_MLIR_VAR(parent_op);
+heavy::ExternSyntax<> HEAVY_MLIR_VAR(op_next);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(dump);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(verify);
 
@@ -68,10 +71,6 @@ namespace {
     }
 
     return T(nullptr);
-  }
-
-  mlir::Attribute getAttr(heavy::Context& C, heavy::Value V) {
-    return GetTagged<mlir::Attribute>(C, kind::mlir_attr, V);
   }
 
   mlir::MLIRContext* getCurrentContext(heavy::Context& C) {
@@ -668,8 +667,8 @@ void HEAVY_MLIR_INIT(heavy::Context& C) {
   heavy::Value MC_Val = CreateTagged(C, kind::mlir_context, MC);
   heavy::Value BuilderVal = CreateTagged(C, kind::mlir_builder,
                                          mlir::OpBuilder(MC));
-  HEAVY_MLIR_VAR(current_context).set(C, MC_Val);
-  HEAVY_MLIR_VAR(current_builder).set(C, BuilderVal);
+  HEAVY_MLIR_VAR(current_context).init(C, MC_Val);
+  HEAVY_MLIR_VAR(current_builder).init(C, BuilderVal);
 
   // syntax
   HEAVY_MLIR_VAR(create_op) = heavy::mlir_bind::create_op;
@@ -685,27 +684,32 @@ void HEAVY_MLIR_INIT(heavy::Context& C) {
   HEAVY_MLIR_VAR(set_insertion_after) = heavy::mlir_bind::set_insertion_after;
   HEAVY_MLIR_VAR(type) = heavy::mlir_bind::type;
   HEAVY_MLIR_VAR(attr) = heavy::mlir_bind::attr;
+  HEAVY_MLIR_VAR(load_dialect) = heavy::mlir_bind::load_dialect;
+  HEAVY_MLIR_VAR(with_builder) = heavy::mlir_bind::with_builder;
+  HEAVY_MLIR_VAR(with_new_context) = heavy::mlir_bind::with_new_context;
+  HEAVY_MLIR_VAR(verify) = heavy::mlir_bind::verify;
+  HEAVY_MLIR_VAR(dump) = heavy::mlir_bind::dump;
 }
 
 void HEAVY_MLIR_LOAD_MODULE(heavy::Context& C) {
   HEAVY_MLIR_INIT(C);
   heavy::initModule(C, HEAVY_MLIR_LIB_STR, {
-    {"create_op", HEAVY_MLIR_VAR(create_op)},
+    {"create-op", HEAVY_MLIR_VAR(create_op)},
     {"region", HEAVY_MLIR_VAR(region)},
     {"results", HEAVY_MLIR_VAR(results)},
     {"result", HEAVY_MLIR_VAR(result)},
-    {"at_block_begin", HEAVY_MLIR_VAR(at_block_begin)},
-    {"at_block_end", HEAVY_MLIR_VAR(at_block_end)},
-    {"block_op", HEAVY_MLIR_VAR(block_op)},
-    {"op_next", HEAVY_MLIR_VAR(op_next)},
-    {"parent_op", HEAVY_MLIR_VAR(parent_op)},
-    {"set_insertion_point", HEAVY_MLIR_VAR(set_insertion_point)},
-    {"set_insertion_after", HEAVY_MLIR_VAR(set_insertion_after)},
+    {"at-block-begin", HEAVY_MLIR_VAR(at_block_begin)},
+    {"at-block-end", HEAVY_MLIR_VAR(at_block_end)},
+    {"block-op", HEAVY_MLIR_VAR(block_op)},
+    {"op-next", HEAVY_MLIR_VAR(op_next)},
+    {"parent-op", HEAVY_MLIR_VAR(parent_op)},
+    {"set-insertion-point", HEAVY_MLIR_VAR(set_insertion_point)},
+    {"set-insertion-after", HEAVY_MLIR_VAR(set_insertion_after)},
     {"type", HEAVY_MLIR_VAR(type)},
     {"attr", HEAVY_MLIR_VAR(attr)},
-    {"with_new_context", HEAVY_MLIR_VAR(with_new_context)},
-    {"with_builder", HEAVY_MLIR_VAR(with_builder)},
-    {"load_dialect", HEAVY_MLIR_VAR(load_dialect)},
+    {"with-new-context", HEAVY_MLIR_VAR(with_new_context)},
+    {"with-builder", HEAVY_MLIR_VAR(with_builder)},
+    {"load-dialect", HEAVY_MLIR_VAR(load_dialect)},
     {"verify", HEAVY_MLIR_VAR(verify)},
     {"dump", HEAVY_MLIR_VAR(dump)}
   });

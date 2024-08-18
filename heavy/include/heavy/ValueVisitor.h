@@ -75,6 +75,7 @@ protected:
   VISIT_FN(Symbol)
   VISIT_FN(Syntax)
   VISIT_FN(SyntaxClosure)
+  VISIT_FN(Tagged)
   VISIT_FN(Vector)
 
   template <typename ...Args>
@@ -116,6 +117,7 @@ public:
     case ValueKind::Symbol:         DISPATCH(Symbol);
     case ValueKind::Syntax:         DISPATCH(Syntax);
     case ValueKind::SyntaxClosure:  DISPATCH(SyntaxClosure);
+    case ValueKind::Tagged:         DISPATCH(Tagged);
     case ValueKind::Vector:         DISPATCH(Vector);
     default:
       llvm_unreachable("Invalid Value Kind");

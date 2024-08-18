@@ -11,11 +11,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "heavy/Builtins.h"
-#include "heavy/Dialect.h"
 #include "heavy/Context.h"
+#include "heavy/Dialect.h"
 #include "heavy/Lexer.h"
-#include "heavy/OpGen.h"
 #include "heavy/Mangle.h"
+#include "heavy/Mlir.h"
+#include "heavy/OpGen.h"
 #include "heavy/Source.h"
 #include "heavy/Value.h"
 #include "heavy/ValueVisitor.h"
@@ -64,6 +65,7 @@ Context::Context()
   NameForImportVar = "_HEAVY_import";
   _HEAVY_import = heavy::base::import_;
   RegisterModule(HEAVY_BASE_LIB_STR, HEAVY_BASE_LOAD_MODULE);
+  RegisterModule(HEAVY_MLIR_LIB_STR, HEAVY_MLIR_LOAD_MODULE);
 }
 
 Context::~Context() = default;
@@ -542,6 +544,15 @@ private:
         }
         break;
     }
+  }
+
+  // FIXME Not sure if this is how we want to print these.
+  void VisitTagged(Tagged* T) {
+    OS << "\'(";
+    OS << T->getTag()->getStringRef()
+       << ' '
+       << uintptr_t(T->getOpaquePtr())
+       << ')';
   }
 };
 
@@ -1218,7 +1229,7 @@ heavy::Value ContextLocal::init(heavy::Context& C, heavy::Value Value) {
 void ContextLocal::set(heavy::ContextLocalLookup& C,
                        heavy::Value Value) {
   heavy::Value& Result = C.LookupTable[key()];
-  auto* Binding = dyn_cast<heavy::Binding>(Result);
+  auto* Binding = dyn_cast_or_null<heavy::Binding>(Result);
   assert(Binding && "context local must be initialized as binding");
   Binding->setValue(Value);
 }

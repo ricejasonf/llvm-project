@@ -26,6 +26,7 @@ add_heavy_library(heavy
     MLIRAnalysis
     MLIRFuncDialect
     MLIRIR
+    MLIRParser
     MLIRSideEffectInterfaces
     MLIRTransforms
 
