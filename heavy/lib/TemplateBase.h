@@ -52,7 +52,7 @@ protected:
   }
 
   heavy::Value setError(llvm::StringRef S, heavy::Value V) {
-    OpGen.getContext().SetError(S, V);
+    OpGen.SetError(S, V);
     return Undefined();
   }
 

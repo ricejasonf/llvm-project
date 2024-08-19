@@ -118,7 +118,6 @@ void HeavyScheme::ProcessTopLevelCommands(
   Value HandleError = Context.CreateLambda(HandleErrorFn, {});
   Value MainThunk = Context.CreateLambda([&Parser]
                           (heavy::Context& C, ValueRefs) {
-    assert(!C.CheckError() && "Error should have escaped.");
     if (Parser.isFinished()) {
       C.Cont();
       return;
@@ -132,6 +131,7 @@ void HeavyScheme::ProcessTopLevelCommands(
       Value Env = C.getCapture(0);
       Value HandleExpr = C.getCapture(1);
       Value ParseResultVal = ParseResult.get();
+      C.setLoc(ParseResultVal.getSourceLocation());
       std::array<Value, 2> EvalArgs{ParseResultVal, Env};
       C.Apply(HandleExpr, EvalArgs);
     } else if (Parser.HasError()) {
