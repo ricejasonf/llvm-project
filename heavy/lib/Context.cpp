@@ -134,7 +134,7 @@ void Context::Import(heavy::ImportSet* ImportSet) {
   Environment* Env = dyn_cast<Environment>(EnvStack);
   if (!Env) {
     // Import doesn't work in local scope.
-    SetError("unexpected import", ImportSet);
+    OpGen->SetError("unexpected import", ImportSet);
     return;
   }
 
@@ -146,7 +146,7 @@ void Context::Import(heavy::ImportSet* ImportSet) {
     if (!Env->ImportValue(ImportVal)) {
       String* ErrMsg = CreateString("imported name already exists: ",
                                     Name->getView());
-      SetError(ErrMsg, ImportSet);
+      OpGen->SetError(ErrMsg, ImportSet);
       return;
     }
   }
@@ -166,7 +166,7 @@ EnvFrame* Context::PushLambdaFormals(Value Formals,
   for (Symbol* Name : Names) {
     auto Result = NameSet.insert(Name->getVal());
     if (!Result.second) {
-      SetError("duplicate parameter name", Name);
+      OpGen->SetError("duplicate parameter name", Name);
     }
   }
 
@@ -217,7 +217,7 @@ bool Context::CheckLambdaFormals(Value Formals,
 
   Pair* P = dyn_cast<Pair>(V);
   if (!P || !isa<Symbol>(P->Car)) {
-    SetError("invalid formals syntax", V);
+    OpGen->SetError("invalid formals syntax", V);
     return true;
   }
   Names.push_back(cast<Symbol>(P->Car));
@@ -621,7 +621,7 @@ bool eqv_slow(Value V1, Value V2) {
 void Context::EmitStackSpaceError() {
   // TODO We should probably clear the stack
   //      and run this as a continuation
-  SetError("insufficient stack space");
+  RaiseError("insufficient stack space");
 }
 
 EnvEntry ImportSet::Lookup(heavy::Context& C, Symbol* S) {
@@ -713,7 +713,7 @@ void Context::CreateImportSet(Value Spec) {
   ImportSet::ImportKind Kind;
   Symbol* Keyword = dyn_cast_or_null<Symbol>(Spec.car());
   if (!Keyword) {
-    SetError("expecting import set", Spec);
+    OpGen->SetError("expecting import set", Spec);
     return;
   }
   // TODO perhaps we could intern these keywords in the IdTable
@@ -745,11 +745,11 @@ void Context::CreateImportSet(Value Spec) {
     if (Kind == ImportSet::ImportKind::Prefix) {
       Symbol* Prefix = dyn_cast_or_null<Symbol>(C.car(Spec));
       if (!Prefix) {
-        C.SetError("expected identifier for prefix", Spec);
+        C.RaiseError("expected identifier for prefix", Spec);
         return;
       }
       if (!isa_and_nonnull<Empty>(C.cdr(Spec))) {
-        C.SetError("expected end of list", Spec);
+        C.RaiseError("expected end of list", Spec);
         return;
       }
       C.Cont(new (*this) ImportSet(Kind, Parent, Prefix));
@@ -760,7 +760,7 @@ void Context::CreateImportSet(Value Spec) {
     // Check the syntax and that each provided name
     // exists in the parent import set
     if (!isa_and_nonnull<Pair>(Spec)) {
-      C.SetError("expecting list");
+      C.RaiseError("expecting list");
       return;
     }
     // Spec is now the list of ids to be used by ImportSet
@@ -776,13 +776,13 @@ void Context::CreateImportSet(Value Spec) {
       case ImportSet::ImportKind::Rename: {
         Pair* P2 = dyn_cast<Pair>(P->Car);
         if (!P2) {
-         C.SetError("expected pair", P);
+         C.RaiseError("expected pair", heavy::Value(P));
          return;
         }
         Name = dyn_cast<Symbol>(P2->Car);
         Symbol* Rename = dyn_cast_or_null<Symbol>(Value(P2).cadr());
         if (Name || Rename) {
-          C.SetError("expected pair of identifiers", P2);
+          C.RaiseError("expected pair of identifiers", heavy::Value(P2));
           return;
         }
         break;
@@ -793,7 +793,7 @@ void Context::CreateImportSet(Value Spec) {
 
       EnvEntry LookupResult = Parent->Lookup(C, Name);
       if (!LookupResult) {
-        C.SetError("name does not exist in import set");
+        C.RaiseError("name does not exist in import set");
         return;
       }
       Current = P->Cdr;
@@ -809,7 +809,7 @@ void Context::LoadModule(Value Spec, bool IsFileLoaded) {
   heavy::Mangler Mangler(*this);
   // Name - The mangled module name
   std::string Name = Mangler.mangleModule(Spec);
-  if (CheckError())
+  if (OpGen->CheckError())
     return;
 
   std::unique_ptr<Module>& M = Modules[Name];
@@ -1000,11 +1000,13 @@ bool Context::CheckNumber(Value V) {
   return true;
 }
 
+#if 0
 void Context::SetError(Value E) {
   assert(isa<Error>(E) || isa<Exception>(E));
   Err = E;
   Raise(E);
 }
+#endif
 
 void Context::SetErrorHandler(Value Handler) {
   assert((isa<Empty>(ExceptionHandlers) ||
@@ -1047,7 +1049,7 @@ void Context::Raise(Value Obj) {
       std::string Msg;
       llvm::raw_string_ostream Stream(Msg);
       write(Stream << "uncaught exception: ", Obj);
-      return SetError(Msg, Obj);
+      return RaiseError(Msg, Obj);
     }
   }
   Pair* P = cast<Pair>(ExceptionHandlers);

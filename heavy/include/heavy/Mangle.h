@@ -92,7 +92,7 @@ class Mangler {
 
   template <typename ...Args>
   std::string setError(Args... args) {
-    Context.SetError(args...);
+    Context.RaiseError(args...);
     return std::string{};
   }
 

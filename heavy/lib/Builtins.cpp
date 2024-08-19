@@ -169,7 +169,7 @@ namespace {
     } else if (isa<Empty>(Args[0])) {
       C.Cont();
     } else {
-      C.SetError("expecting proper list for import syntax", Args[0]);
+      C.OpGen->SetError("expecting proper list for import syntax", Args[0]);
     }
   }
 }
@@ -202,7 +202,7 @@ void define_library(Context& C, ValueRefs Args) {
   Pair* P = cast<Pair>(Args[0]);
   auto Loc = P->getSourceLocation();
   if (!OG.isTopLevel() || OG.isLibraryContext()) {
-    C.SetError("unexpected library definition", P);
+    C.OpGen->SetError("unexpected library definition", P);
     return;
   }
   Value NameSpec;
@@ -211,13 +211,13 @@ void define_library(Context& C, ValueRefs Args) {
     NameSpec = P2->Car;
     LibraryDecls = dyn_cast<Pair>(P2->Cdr);
     if (!LibraryDecls) {
-      C.SetError("expected library declarations", P2->Cdr);
+      C.OpGen->SetError("expected library declarations", P2->Cdr);
       return;
     }
   }
   std::string MangledName = OG.mangleModule(NameSpec);
   if (MangledName.size() == 0) {
-    C.SetError("library name is invalid");
+    C.OpGen->SetError("library name is invalid", NameSpec);
     return;
   }
   OG.VisitLibrary(Loc, std::move(MangledName), LibraryDecls);
@@ -235,7 +235,7 @@ namespace {
       OG.VisitTopLevelSequence(Sequence);
     } else {
       mlir::Value Result = OG.createSequence(Loc, Sequence);
-      if (C.CheckError()) return;
+      if (C.OpGen->CheckError()) return;
       C.Cont(OpGen::fromValue(Result));
     }
   }
@@ -550,7 +550,8 @@ void compile(Context& C, ValueRefs Args) {
     auto EnvPtr = std::make_unique<Environment>(C);
     Env = EnvPtr.get();
   } else {
-    return C.SetError("invalid environment specifier", EnvSpec);
+    C.OpGen->SetError("invalid environment specifier", EnvSpec);
+    return;
   }
 
   Value Thunk = C.CreateLambda([](heavy::Context& C, ValueRefs) {

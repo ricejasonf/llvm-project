@@ -226,16 +226,7 @@ public:
   }
   using ContinuationStack<Context>::Apply;
 
-  // Check Error
-  //  - Returns true if there is an error or exception
-  //  - Builtins will have to check this to stop evaluation
-  //    when errors occur
-  bool CheckError() {
-    return Err ? true : false;
-  }
-
-  void ClearError() { Err = nullptr; }
-
+#if 0
   // SetError - Put the context into a hard error state. The stack
   //            should be cleared, and subsequent calls to eval
   //            should be a noop unless the error is cleared
@@ -257,6 +248,7 @@ public:
   void SetError(SourceLocation Loc, StringRef S, Value V) {
     return SetError(Loc, CreateString(S), V);
   }
+#endif
 
   void setLoc(SourceLocation L) {
     if (L.isValid()) {

@@ -143,6 +143,10 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   //                  be inserted if this is set.
   Binding* LibraryEnvProc = nullptr;
 
+  // Err - The stored error to indicate that the compiler is in an error state.
+  //       (Use CheckError())
+  Value Err = nullptr;
+
   bool IsLocalDefineAllowed = false;
   std::string ModulePrefix = {};
   unsigned LambdaNameCount = 0;
@@ -172,6 +176,14 @@ public:
   explicit OpGen(heavy::Context& C, std::string ModulePrefix = {});
 
   heavy::Context& getContext() { return Context; }
+
+  // CheckError
+  //  - Returns true if there is an error or exception
+  //  - Builtins will have to check this to stop evaluation
+  //    when errors occur
+  bool CheckError() { return Err ? true : false; }
+  void ClearError() { Err = nullptr; }
+
 
   mlir::ModuleOp getModuleOp();
 
@@ -306,16 +318,24 @@ public:
   }
 
   template <typename T>
-  mlir::Value SetError(T Str, Value V) {
-    Context.SetError(Str, V);
+  mlir::Value SetError(T Str, Value V = Undefined()) {
+    Context.RaiseError(Str, V);
+    return Error();
+  }
+  template <typename T>
+  mlir::Value SetError(SourceLocation Loc, T Str, Value V = Undefined()) {
+    Context.setLoc(Loc);
+    Context.RaiseError(Str, V);
     return Error();
   }
 
+#if 0
   template <typename T>
   mlir::Value SetError(SourceLocation Loc, T Str, Value V) {
-    Context.SetError(Loc, Str, V);
+    Context.RaiseError(Loc, Str, V);
     return Error();
   }
+#endif
 
   mlir::Value Error() {
     return createUndefined();

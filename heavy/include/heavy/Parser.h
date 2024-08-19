@@ -109,8 +109,8 @@ public:
     assert(HasError() && "There must be an error to raise.");
     Token TempTok = ErrTok.getLength() > 0 ? ErrTok : Tok;
     SourceLocation Loc = TempTok.getLocation();
-    Context.SetError(Context.CreateError(Loc, ErrorMsg,
-                     Context.CreateEmpty()));
+    Context.setLoc(Loc);
+    Context.RaiseError(ErrorMsg);
   }
 
   ValueResult ParseTopLevelExpr();

@@ -59,7 +59,6 @@ public:
                                    heavy::Value Template, 
                                    mlir::Value E) {
     heavy::SourceLocation Loc = Pattern.getSourceLocation();
-    heavy::Context& C = OpGen.getContext();
     if (isa_and_nonnull<Symbol>(Pattern.car())) {
       // Ignore the initial keyword.
       // FIXME We don't actually check name, but other
@@ -72,7 +71,7 @@ public:
       Visit(Pattern, E);
     }
 
-    if (!C.CheckError()) {
+    if (!OpGen.CheckError()) {
       TemplateGen TG(OpGen, PatternVars, Ellipsis);
       TG.VisitTemplate(Template);
     }
@@ -109,10 +108,8 @@ public:
     heavy::SourceLocation Loc = P->getSourceLocation();
     auto MatchPairOp = OpGen.create<heavy::MatchPairOp>(Loc, E);
 
-    heavy::Context& C = OpGen.getContext();
-
     Visit(P->Car, MatchPairOp.getCar());
-    if (!C.CheckError()) {
+    if (!OpGen.CheckError()) {
       Visit(P->Cdr, MatchPairOp.getCdr());
     }
 
