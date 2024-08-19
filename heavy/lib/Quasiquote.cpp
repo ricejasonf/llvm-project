@@ -79,7 +79,7 @@ private:
   }
 
   heavy::Value setError(llvm::StringRef S, heavy::Value V) {
-    OpGen.getContext().SetError(S, V);
+    OpGen.SetError(S, V);
     return Undefined();
   }
 
@@ -197,8 +197,7 @@ private:
   // <list qq template D> | <unquotation>
   heavy::Value VisitPair(Pair* P, bool& Rebuilt, int Depth) {
     assert(Depth > 0 && "Depth cannot be zero here.");
-    heavy::Context& Context = OpGen.getContext();
-    if (Context.CheckError()) return Undefined{};
+    if (OpGen.CheckError()) return Undefined{};
     if (isSymbol(P->Car, "quasiquote")) {
       return HandleQuasiquote(P, Rebuilt, Depth + 1);
     } else if (isSymbol(P->Car, "unquote")) {
@@ -215,7 +214,7 @@ private:
   heavy::Value VisitVector(Vector* V, bool& Rebuilt, int Depth) {
     assert(Depth > 0 && "Depth cannot be zero here.");
     heavy::Context& Context = OpGen.getContext();
-    if (Context.CheckError()) return Undefined{};
+    if (OpGen.CheckError()) return Undefined{};
 
     llvm::ArrayRef<heavy::Value> Xs = V->getElements();
     if (Xs.empty())

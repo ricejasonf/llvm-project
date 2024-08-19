@@ -131,7 +131,7 @@ public:
       Context.Cont();
       return;
     } else {
-      SetError("op_eval expects a top level op");
+      SetError(SourceLocation(), "op_eval expects a top level op");
     }
   }
 
@@ -181,8 +181,10 @@ private:
   }
 
   template <typename ...Args>
-  BlockItrTy SetError(Args... args) {
-    Context.SetError(args...);
+  BlockItrTy SetError(SourceLocation Loc, char const* Str,
+                      heavy::Value Irr = heavy::Undefined()) {
+    Context.setLoc(Loc);
+    Context.RaiseError(Str, Irr);
 
     // TODO use DynamicWind to create/destroy ValueMapScopes
     while (!ValueMapScopes.empty()) {
@@ -597,8 +599,7 @@ private:
     mlir::Operation* NextNode = PatternOp->getNextNode();
     if (!NextNode) {
       heavy::SourceLocation Loc = Context.getLoc();
-      Context.OpGen->SetError(Loc, "no matching pattern for syntax",
-                              Undefined());
+      SetError(Loc, "no matching pattern for syntax");
       return BlockItrTy();
     }
     // Enter the next pattern
@@ -666,9 +667,8 @@ private:
     }
     mlir::Value Result = Context.OpGen->Visit(Input);
     heavy::Value Output = heavy::OpGen::fromValue(Result);
-    if (!Context.CheckError()) {
+    if (!Context.OpGen->CheckError())
       Context.Cont(Output);
-    }
     return BlockItrTy();
   }
 

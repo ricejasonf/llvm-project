@@ -126,7 +126,7 @@ mlir::Value OpGen::GetPatternVar(heavy::Symbol* S) {
 //                  for <library spec>. (ie begin, import, export)
 void OpGen::WithLibraryEnv(Value Thunk) {
   if (!LibraryEnvProc) {
-    Context.SetError("not in a library context");
+    SetError("not in a library context");
     return;
   }
   assert(!isa<Undefined>(LibraryEnvProc->getValue()) &&
@@ -219,8 +219,8 @@ void OpGen::VisitLibrary(heavy::SourceLocation Loc, std::string MangledName,
         C.OpGen->LibraryEnvProc->setValue(Empty());
         C.Cont();
       } else {
-        C.SetError("expected proper list for library declarations",
-                   LibraryDecls->getValue());
+        C.OpGen->SetError("expected proper list for library declarations",
+                          LibraryDecls->getValue());
       }
     }, CaptureList{HandleLibraryDecls, LibraryDecls});
   }, CaptureList{HandleLibraryDecls, LibraryDecls});
@@ -240,7 +240,7 @@ void OpGen::VisitLibrarySpec(Value LibSpec) {
     MaybeCallSyntax(P, DidCallSyntax);
   }
   if (!DidCallSyntax) {
-    Context.SetError("expecting library spec", LibSpec);
+    SetError("expecting library spec", LibSpec);
     return;
   }
   Context.Cont();
@@ -277,7 +277,7 @@ void OpGen::VisitTopLevel(Value V) {
   Context.PushCont([](heavy::Context& C, ValueRefs) {
     heavy::Value V = C.getCapture(0);
     C.OpGen->Visit(V);
-    if (C.CheckError())
+    if (C.OpGen->CheckError())
       return;
     C.Cont();
   }, CaptureList{V});
@@ -504,7 +504,7 @@ mlir::Value OpGen::createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall) {
     }
   }
 
-  if (Context.CheckError()) return Result;
+  if (CheckError()) return Result;
   if (!Result) {
     return SetError("expecting syntax object", SyntaxSpec);
   }
@@ -579,7 +579,7 @@ mlir::Value OpGen::createSyntaxRules(SourceLocation Loc,
   Builder.setInsertionPointToStart(&Block);
 
   // Iterate through each pattern/template pair.
-  assert(!Context.CheckError() && "should not have errors here");
+  assert(!CheckError() && "should not have errors here");
   while (Pair* I = dyn_cast<Pair>(PatternDefs)) {
     heavy::Pair* X        = dyn_cast<Pair>(I->Car);
     heavy::Value Pattern  = X->Car;
@@ -1201,7 +1201,7 @@ void OpGen::Export(Value NameList) {
     auto Result = NameSet.insert(ExportIdOp.getId());
     if (!Result.second) {
       // This is an error in the IR.
-      Context.SetError("export has duplicate name");
+      SetError("export has duplicate name");
       return;
     }
   }
@@ -1222,17 +1222,17 @@ void OpGen::Export(Value NameList) {
           Pair* P3 = cast<Pair>(P2->Cdr);
           Source = dyn_cast<Symbol>(P3->Car);
           if (!Source) {
-            Context.SetError("expecting identifier", P3);
+            SetError("expecting identifier", P3);
             return;
           }
           if (Pair* P4 = dyn_cast<Pair>(P3->Cdr)) {
             Target = dyn_cast<Symbol>(P4->Car);
             if (!Target) {
-              Context.SetError("expecting identifier", P4);
+              SetError("expecting identifier", P4);
               return;
             }
             if (!isa<Empty>(P4->Cdr)) {
-              Context.SetError("expecting proper list", P4);
+              SetError("expecting proper list", P4);
               return;
             }
           }
@@ -1240,14 +1240,14 @@ void OpGen::Export(Value NameList) {
       }
     }
     if (!Source || !Target) {
-      Context.SetError("expecting export spec", P);
+      SetError("expecting export spec", P);
       return;
     }
 
     // Check that Target is not a duplicate
     auto Result = NameSet.insert(Target->getView());
     if (!Result.second) {
-      Context.SetError("export has duplicate name", Target);
+      SetError("export has duplicate name", Target);
       return;
     }
     std::string MangledName = mangleVariable(Source);
@@ -1257,7 +1257,8 @@ void OpGen::Export(Value NameList) {
     V = P->Cdr;
   }
   if (!isa<Empty>(V)) {
-    Context.SetError("expecting proper list");
+    SetError("expecting proper list");
+    return;
   }
   return Context.Cont();
 }
