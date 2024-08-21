@@ -24,23 +24,24 @@
 heavy::ContextLocal   HEAVY_MLIR_VAR(current_context);
 heavy::ContextLocal   HEAVY_MLIR_VAR(current_builder);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(create_op);
-heavy::ExternSyntax<> HEAVY_MLIR_VAR(region);
-heavy::ExternSyntax<> HEAVY_MLIR_VAR(results);
-heavy::ExternSyntax<> HEAVY_MLIR_VAR(result);
-heavy::ExternSyntax<> HEAVY_MLIR_VAR(at_block_begin);
-heavy::ExternSyntax<> HEAVY_MLIR_VAR(at_block_end);
-heavy::ExternSyntax<> HEAVY_MLIR_VAR(at_block_terminator);
-heavy::ExternSyntax<> HEAVY_MLIR_VAR(block_op);
-heavy::ExternSyntax<> HEAVY_MLIR_VAR(set_insertion_point);
-heavy::ExternSyntax<> HEAVY_MLIR_VAR(set_insertion_after);
-heavy::ExternSyntax<> HEAVY_MLIR_VAR(type);
-heavy::ExternSyntax<> HEAVY_MLIR_VAR(attr);
-heavy::ExternSyntax<> HEAVY_MLIR_VAR(with_new_context);
-heavy::ExternSyntax<> HEAVY_MLIR_VAR(with_builder);
-heavy::ExternSyntax<> HEAVY_MLIR_VAR(load_dialect);
-heavy::ExternSyntax<> HEAVY_MLIR_VAR(parent_op);
-heavy::ExternSyntax<> HEAVY_MLIR_VAR(op_next);
-heavy::ExternSyntax<> HEAVY_MLIR_VAR(verify);
+heavy::ExternFunction HEAVY_MLIR_VAR(create_op_impl);
+heavy::ExternFunction HEAVY_MLIR_VAR(region);
+heavy::ExternFunction HEAVY_MLIR_VAR(results);
+heavy::ExternFunction HEAVY_MLIR_VAR(result);
+heavy::ExternFunction HEAVY_MLIR_VAR(at_block_begin);
+heavy::ExternFunction HEAVY_MLIR_VAR(at_block_end);
+heavy::ExternFunction HEAVY_MLIR_VAR(at_block_terminator);
+heavy::ExternFunction HEAVY_MLIR_VAR(block_op);
+heavy::ExternFunction HEAVY_MLIR_VAR(set_insertion_point);
+heavy::ExternFunction HEAVY_MLIR_VAR(set_insertion_after);
+heavy::ExternFunction HEAVY_MLIR_VAR(type);
+heavy::ExternFunction HEAVY_MLIR_VAR(attr);
+heavy::ExternFunction HEAVY_MLIR_VAR(with_new_context);
+heavy::ExternFunction HEAVY_MLIR_VAR(with_builder);
+heavy::ExternFunction HEAVY_MLIR_VAR(load_dialect);
+heavy::ExternFunction HEAVY_MLIR_VAR(parent_op);
+heavy::ExternFunction HEAVY_MLIR_VAR(op_next);
+heavy::ExternFunction HEAVY_MLIR_VAR(verify);
 
 namespace {
   namespace kind {
@@ -106,22 +107,22 @@ namespace {
 
 namespace heavy::mlir_bind {
 // Provide function to support create_op syntax.
-// (%create-op _attrs_        : vector?
+// Require type checking as a precondition.
+// (%create-op _name_
+//             _attrs_        : vector?
 //             _operands_     : vector?
 //             _regions_      : number?
 //             _result_types_ : vector?
 //             _successors_   : vector?)
 void create_op_impl(Context& C, ValueRefs Args) {
-  if (Args.size() != 5)
+  if (Args.size() != 6)
     return C.RaiseError("invalid arity");
-  heavy::Vector* Attributes   = dyn_cast<heavy::Vector>(Args[0]);
-  heavy::Vector* Operands     = dyn_cast<heavy::Vector>(Args[1]);
-  heavy::Value NumRegions     = Args[2];
-  heavy::Vector* ResultTypes  = dyn_cast<heavy::Vector>(Args[3]);
-  heavy::Vector* Successors   = dyn_cast<heavy::Vector>(Args[4]);
 
-  if (!(Attributes && Operands && ResultTypes && Successors))
-    return C.RaiseError("expecting vector");
+  heavy::Vector* Attributes   = cast<heavy::Vector>(Args[1]);
+  heavy::Vector* Operands     = cast<heavy::Vector>(Args[2]);
+  int NumRegions              = cast<heavy::Int>(Args[3]);
+  heavy::Vector* ResultTypes  = cast<heavy::Vector>(Args[4]);
+  heavy::Vector* Successors   = cast<heavy::Vector>(Args[5]);
 
   llvm::StringRef OpName = Args[0].getStringRef();
   if (OpName.empty())
@@ -172,11 +173,8 @@ void create_op_impl(Context& C, ValueRefs Args) {
   }
 
   // regions
-  if (isa<heavy::Int>(NumRegions)) {
-    int Num = cast<heavy::Int>(NumRegions);
-    for (int I = 0; I < Num; ++I)
-      OpState.regions.push_back(std::make_unique<mlir::Region>());
-  }
+  for (int I = 0; I < NumRegions; ++I)
+    OpState.regions.push_back(std::make_unique<mlir::Region>());
 
   // result-types
   for (heavy::Value V : ResultTypes->getElements()) {
@@ -731,6 +729,7 @@ void HEAVY_MLIR_INIT(heavy::Context& C) {
 
   // syntax
   HEAVY_MLIR_VAR(create_op) = heavy::mlir_bind::create_op;
+  HEAVY_MLIR_VAR(create_op_impl) = heavy::mlir_bind::create_op_impl;
   HEAVY_MLIR_VAR(region) = heavy::mlir_bind::region;
   HEAVY_MLIR_VAR(results) = heavy::mlir_bind::results;
   HEAVY_MLIR_VAR(result) = heavy::mlir_bind::result;
@@ -753,6 +752,7 @@ void HEAVY_MLIR_LOAD_MODULE(heavy::Context& C) {
   HEAVY_MLIR_INIT(C);
   heavy::initModule(C, HEAVY_MLIR_LIB_STR, {
     {"create-op", HEAVY_MLIR_VAR(create_op)},
+    {"%create-op", HEAVY_MLIR_VAR(create_op_impl)},
     {"region", HEAVY_MLIR_VAR(region)},
     {"results", HEAVY_MLIR_VAR(results)},
     {"result", HEAVY_MLIR_VAR(result)},
