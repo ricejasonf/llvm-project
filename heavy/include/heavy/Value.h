@@ -2087,14 +2087,15 @@ struct ContextLocal {
   heavy::Binding* getBinding(heavy::ContextLocalLookup const& C) const;
 };
 
-// ListIterator - Provide ForwardIterator for lists 
+// ListIterator - Provide ForwardIterator for lists
 //                and improper lists. Supporting improper
 //                lists implies that any value other than
 //                Empty is a list of at least one element.
-struct ListIterator {
+class ListIterator {
   // Current is a Pair, Empty, or in the case
   // of an improper list, it is just the element.
   heavy::Value Current = heavy::Empty();
+public:
 
   using value_type = heavy::Value;
 
@@ -2114,7 +2115,7 @@ struct ListIterator {
     if (auto* P = dyn_cast<heavy::Pair>(Current))
       Current = P->Cdr;
     else
-      Current = heavy::Empty(); 
+      Current = heavy::Empty();
 
     return *this;
   }
@@ -2135,6 +2136,68 @@ struct ListIterator {
 
 ListIterator Value::begin() const { return ListIterator(*this); }
 ListIterator Value::end() const { return ListIterator(); }
+
+class WithSourceIterator {
+  using value_type = std::pair<heavy::SourceLocation,
+                               heavy::Value>;
+
+  heavy::Value Current = heavy::Empty();
+
+public:
+  using value_type = heavy::Value;
+
+  WithSourceIterator() = default;
+  WithSourceIterator(heavy::Value V)
+    : Current(V)
+  { }
+
+  heavy::SourceLocation getSourceLocation() const {
+    return Current.getSourceLocation();
+  }
+
+  heavy::Value operator*() const {
+    heavy::SourceLocation Loc = Current.getSourceLocation
+    if (auto* P = dyn_cast<heavy::Pair>(Current))
+      return value_type(getSourceLocation(), P->Car);
+    else
+      return value_type(getSourceLocation(), Current);
+  }
+
+  ListIterator& operator++() {
+    if (auto* P = dyn_cast<heavy::Pair>(Current))
+      Current = P->Cdr;
+    else
+      Current = heavy::Empty();
+
+    return *this;
+  }
+
+  heavy::ListIterator operator++(int) {
+    ListIterator Tmp = *this;
+    ++(*this);
+    return Tmp;
+  }
+
+  bool operator==(WithSourceIterator const& Other) const {
+    return Current == Other.Current;
+  }
+  bool operator!=(WithSourceIterator const& Other) const {
+    return Current != Other.Current;
+  }
+};
+
+// Provide a range to iterate lists with source locations.
+struct WithSource {
+  heavy::Value Value;
+
+  WithSourceIterator begin() const {
+    return WithSourceIterator(Value);
+  }
+
+  WithSourceIterator end() const {
+    return WithSourceIterator();
+  }
+};
 
 } // end namespace heavy
 
