@@ -956,14 +956,13 @@ mlir::Value OpGen::VisitBinding(Binding* B) {
 
 mlir::Value OpGen::HandleCall(Pair* P) {
   heavy::SourceLocation Loc = P->getSourceLocation();
-  ApplyOp Op;
-
+  mlir::Value Fn;
+  llvm::SmallVector<mlir::Value, 16> Args;
   {
     TailPosScope TPS(*this);
     IsTailPos = false;
 
-    mlir::Value Fn = GetSingleResult(P->Car);
-    llvm::SmallVector<mlir::Value, 16> Args;
+    Fn = GetSingleResult(P->Car);
 
     Value V = P->Cdr;
     while (auto* P2 = dyn_cast<Pair>(V)) {
@@ -979,14 +978,18 @@ mlir::Value OpGen::HandleCall(Pair* P) {
     if (!isa<Empty>(V)) {
       return SetError("improper list as call expression", V);
     }
-
-    // Localize all of the operands
-    Fn = LocalizeValue(Fn);
-    for (mlir::Value& Arg : Args) {
-      Arg = LocalizeValue(Arg);
-    }
-    Op = create<ApplyOp>(Loc, Fn, Args);
   }
+  return createCall(Loc, Fn , Args);
+}
+
+mlir::Value OpGen::createCall(heavy::SourceLocation Loc, mlir::Value Fn,
+                              llvm::ArrayRef<mlir::Value> Args) {
+  // Localize all of the operands
+  Fn = LocalizeValue(Fn);
+  for (mlir::Value Arg : Args)
+    Arg = LocalizeValue(Arg);
+
+  auto Op = create<ApplyOp>(Loc, Fn, Args);
 
   if (IsTailPos) return mlir::Value();
   return createContinuation(Op.getInitCont());

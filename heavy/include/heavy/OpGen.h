@@ -288,6 +288,8 @@ public:
     llvm_unreachable("invalid mlir value kind");
   }
 
+  mlir::Value createCall(heavy::SourceLocation Loc, mlir::Value Fn,
+                         llvm::ArrayRef<mlir::Value> Args);
   mlir::Value createOpGen(SourceLocation Loc, mlir::Value Input);
   mlir::Value createBody(SourceLocation Loc, Value Body);
   mlir::Value createSequence(SourceLocation Loc, Value Body);
