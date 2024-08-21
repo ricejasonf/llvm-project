@@ -94,7 +94,7 @@ void verify(Context& C, ValueRefs Args);
 extern heavy::ContextLocal   HEAVY_MLIR_VAR(current_context);
 extern heavy::ContextLocal   HEAVY_MLIR_VAR(current_builder);
 extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(create_op);
-extern heavy::ExternFunction<> HEAVY_MLIR_VAR(create_op_impl);
+extern heavy::ExternFunction HEAVY_MLIR_VAR(create_op_impl);
 extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(region);
 extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(region_blocks);
 extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(results);

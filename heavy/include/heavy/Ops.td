@@ -504,7 +504,7 @@ def heavy_VectorOp : HeavyOp<"vector"> {
     VectorOp creates a heavy::Vector from its arguments.
   }];
 
-  let arguments = (ins Variadic<HeavyValue>:$args)
+  let arguments = (ins Variadic<HeavyValue>:$args);
   let results   = (outs HeavyValue: $result);
   let builders = [
     OpBuilder<(ins "::llvm::ArrayRef<::mlir::Value>":$args)>

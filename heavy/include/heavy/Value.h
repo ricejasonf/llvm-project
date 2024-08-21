@@ -2138,13 +2138,12 @@ ListIterator Value::begin() const { return ListIterator(*this); }
 ListIterator Value::end() const { return ListIterator(); }
 
 class WithSourceIterator {
-  using value_type = std::pair<heavy::SourceLocation,
-                               heavy::Value>;
 
   heavy::Value Current = heavy::Empty();
 
 public:
-  using value_type = heavy::Value;
+  using value_type = std::pair<heavy::SourceLocation,
+                               heavy::Value>;
 
   WithSourceIterator() = default;
   WithSourceIterator(heavy::Value V)
@@ -2155,15 +2154,14 @@ public:
     return Current.getSourceLocation();
   }
 
-  heavy::Value operator*() const {
-    heavy::SourceLocation Loc = Current.getSourceLocation
+  value_type operator*() const {
     if (auto* P = dyn_cast<heavy::Pair>(Current))
       return value_type(getSourceLocation(), P->Car);
     else
       return value_type(getSourceLocation(), Current);
   }
 
-  ListIterator& operator++() {
+  WithSourceIterator& operator++() {
     if (auto* P = dyn_cast<heavy::Pair>(Current))
       Current = P->Cdr;
     else
@@ -2172,8 +2170,8 @@ public:
     return *this;
   }
 
-  heavy::ListIterator operator++(int) {
-    ListIterator Tmp = *this;
+  WithSourceIterator operator++(int) {
+    WithSourceIterator Tmp = *this;
     ++(*this);
     return Tmp;
   }
@@ -2189,6 +2187,10 @@ public:
 // Provide a range to iterate lists with source locations.
 struct WithSource {
   heavy::Value Value;
+
+  WithSource(heavy::Value V)
+    : Value(V)
+  { }
 
   WithSourceIterator begin() const {
     return WithSourceIterator(Value);
