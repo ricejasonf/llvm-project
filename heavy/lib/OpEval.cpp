@@ -218,6 +218,7 @@ private:
     else if (isa<MatchOp>(Op))        return Visit(cast<MatchOp>(Op));
     else if (isa<RenameOp>(Op))       return Visit(cast<RenameOp>(Op));
     else if (isa<ToVectorOp>(Op))     return Visit(cast<ToVectorOp>(Op));
+    else if (isa<VectorOp>(Op))       return Visit(cast<VectorOp>(Op));
     else if (isa<SyntaxClosureOp>(Op))
       return Visit(cast<SyntaxClosureOp>(Op));
     else if (isa<SourceLocOp>(Op))    return Visit(cast<SourceLocOp>(Op));
@@ -545,6 +546,17 @@ private:
 
       Vector = Context.CreateVector(Xs);
     }
+    setValue(Op, Vector);
+    return next(Op);
+  }
+
+  BlockItrTy Visit(VectorOp Op) {
+    unsigned Size = Op.getArgs().size();
+    heavy::Vector* Vector = Context.CreateVector(Size);
+    auto Vals = Op.getArgs();
+    for (unsigned I = 0; I < Size; ++I)
+      Vector->get(I) = getValue(Vals[I]);
+
     setValue(Op, Vector);
     return next(Op);
   }

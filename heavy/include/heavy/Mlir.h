@@ -54,8 +54,9 @@
                                 HEAVY_MLIR_LIB_(V4SloadmiV7Sdialect)
 #define HEAVY_MLIR_VAR__verify        HEAVY_MLIR_LIB_(V6Sverify)
 
-#define HEAVY_MLIR_VAR_STR(X) HEAVY_MLIR_VAR_STR_STR(X)
-#define HEAVY_MLIR_VAR_STR_STR(X) #X
+#define HEAVY_MLIR_VAR_STR(X) HEAVY_MLIR_VAR_STR_STR(HEAVY_MLIR_VAR(X))
+#define HEAVY_MLIR_VAR_STR_STR(X) HEAVY_MLIR_VAR_STR_STR_STR(X)
+#define HEAVY_MLIR_VAR_STR_STR_STR(X) #X
 
 namespace heavy {
 
@@ -95,24 +96,24 @@ extern heavy::ContextLocal   HEAVY_MLIR_VAR(current_context);
 extern heavy::ContextLocal   HEAVY_MLIR_VAR(current_builder);
 extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(create_op);
 extern heavy::ExternFunction HEAVY_MLIR_VAR(create_op_impl);
-extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(region);
-extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(region_blocks);
-extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(results);
-extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(result);
-extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(at_block_begin);
-extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(at_block_end);
-extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(block_arg);
-extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(block_op);
-extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(op_next);
-extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(parent_op);
-extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(type);
-extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(attr);
-extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(set_insertion_point);
-extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(set_insertion_after);
-extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(with_new_context);
-extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(with_builder);
-extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(load_dialect);
-extern heavy::ExternSyntax<> HEAVY_MLIR_VAR(verify);
+extern heavy::ExternFunction HEAVY_MLIR_VAR(region);
+extern heavy::ExternFunction HEAVY_MLIR_VAR(region_blocks);
+extern heavy::ExternFunction HEAVY_MLIR_VAR(results);
+extern heavy::ExternFunction HEAVY_MLIR_VAR(result);
+extern heavy::ExternFunction HEAVY_MLIR_VAR(at_block_begin);
+extern heavy::ExternFunction HEAVY_MLIR_VAR(at_block_end);
+extern heavy::ExternFunction HEAVY_MLIR_VAR(block_arg);
+extern heavy::ExternFunction HEAVY_MLIR_VAR(block_op);
+extern heavy::ExternFunction HEAVY_MLIR_VAR(op_next);
+extern heavy::ExternFunction HEAVY_MLIR_VAR(parent_op);
+extern heavy::ExternFunction HEAVY_MLIR_VAR(type);
+extern heavy::ExternFunction HEAVY_MLIR_VAR(attr);
+extern heavy::ExternFunction HEAVY_MLIR_VAR(set_insertion_point);
+extern heavy::ExternFunction HEAVY_MLIR_VAR(set_insertion_after);
+extern heavy::ExternFunction HEAVY_MLIR_VAR(with_new_context);
+extern heavy::ExternFunction HEAVY_MLIR_VAR(with_builder);
+extern heavy::ExternFunction HEAVY_MLIR_VAR(load_dialect);
+extern heavy::ExternFunction HEAVY_MLIR_VAR(verify);
 
 extern "C" {
 // initialize the module for run-time independent of the compiler
