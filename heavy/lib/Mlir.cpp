@@ -40,7 +40,6 @@ heavy::ExternSyntax<> HEAVY_MLIR_VAR(with_builder);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(load_dialect);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(parent_op);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(op_next);
-heavy::ExternSyntax<> HEAVY_MLIR_VAR(dump);
 heavy::ExternSyntax<> HEAVY_MLIR_VAR(verify);
 
 namespace {
@@ -106,38 +105,23 @@ namespace {
 }  // namespace
 
 namespace heavy::mlir_bind {
-// Create operation. Argument are
-//  specified by any of the following auxilary keywords:
-//    attributes - takes list of name-value pairs
-//                 where the value is either mlir.attr or
-//                 heavy::Value is lifted to mlir.attr.
-//    operands - takes list of mlir.values
-//    regions - takes a single integer for the number of regions
-//    result-types - takes list of mlir.types
-//    successors - takes a list of mlir.blocks
-//  (create-op _name_
-//    (attributes   _attrs_ ...)
-//    (operands     _values_ ...)
-//    (regions      _regions_ ...)
-//    (result-types _types_ ...)
-//    (successors   _blocks_ ...))
-//
-void create_op(Context& C, ValueRefs Args) {
-  heavy::SourceLocation Loc = {};
-  llvm::StringRef OpName = "";
-  heavy::Value Attributes   = heavy::Empty();
-  heavy::Value Operands     = heavy::Empty();
-  heavy::Value Regions      = heavy::Empty();
-  heavy::Value ResultTypes  = heavy::Empty();
-  heavy::Value Successors   = heavy::Empty();
-
-  if (!Args.empty() && isa<SourceValue>(Args[0])) {
-    Loc = Args[0].getSourceLocation();
-    Args = Args.drop_front();
-  }
-
-  if (Args.empty())
+// Provide function to support create_op syntax.
+// (%create-op _attrs_        : vector?
+//             _operands_     : vector?
+//             _regions_      : number?
+//             _result_types_ : vector?
+//             _successors_   : vector?)
+void create_op_impl(Context& C, ValueRefs Args) {
+  if (Args.size() != 5)
     return C.RaiseError("invalid arity");
+  heavy::Vector* Attributes   = dyn_cast<heavy::Vector>(Args[0]);
+  heavy::Vector* Operands     = dyn_cast<heavy::Vector>(Args[1]);
+  heavy::Value NumRegions     = Args[2];
+  heavy::Vector* ResultTypes  = dyn_cast<heavy::Vector>(Args[3]);
+  heavy::Vector* Successors   = dyn_cast<heavy::Vector>(Args[4]);
+
+  if (!(Attributes && Operands && Regions && ResultTypes && Successors))
+    return C.RaiseError("expecting vector", Arg);
 
   if (llvm::StringRef Str = Args[0].getStringRef(); !Str.empty())
     OpName = Str;
@@ -204,51 +188,144 @@ void create_op(Context& C, ValueRefs Args) {
   }
 
   // operands
-  for (heavy::ListIterator Itr = Operands.begin();
-       Itr != Operands.end();
-       ++Itr) {
-    auto MVal = GetTagged<mlir::Value>(C, kind::mlir_value, *Itr);
+  for (heavy::Value V : Operands) {
+    auto MVal = GetTagged<mlir::Value>(C, kind::mlir_value, V);
     if (!MVal)
-      return C.RaiseError("expecting mlir.value", {Itr.Current, Operands});
+      return C.RaiseError("expecting mlir.value", V);
     OpState.operands.push_back(MVal);
   }
 
   // regions
-  {
-    int Num = -1;
-    auto* P = dyn_cast<heavy::Pair>(Regions);
-    if (P && isa<heavy::Int>(P->Car))
-      Num = cast<heavy::Int>(P->Car);
-
-    if (!P || !isa<heavy::Empty>(P->Cdr) || Num < 0)
-      return C.RaiseError("expecting positive integer");
+  if (isa<heavy::Int>(NumRegions)) {
+    int Num = cast<heavy::Int>(NumRegions);
     for (int I = 0; I < Num; ++I)
       OpState.regions.push_back(std::make_unique<mlir::Region>());
   }
 
   // result-types
-  for (heavy::ListIterator Itr = ResultTypes.begin();
-       Itr != ResultTypes.end();
-       ++Itr) {
-    auto MType = GetTagged<mlir::Type>(C, kind::mlir_type, *Itr);
+  for (heavy::Value V : ResultTypes) {
+    auto MType = GetTagged<mlir::Type>(C, kind::mlir_type, V);
     if (!MType)
-      return C.RaiseError("expecting mlir.type", {Itr.Current, ResultTypes});
+      return C.RaiseError("expecting mlir.type", V);
     OpState.types.push_back(MType);
   }
 
   // successors
-  for (heavy::ListIterator Itr = Successors.begin();
-       Itr != Successors.end();
-       ++Itr) {
-    mlir::Block* Block = GetTagged<mlir::Block*>(C, kind::mlir_block, *Itr);
+  for (heavy::Value V : Successors) {
+    mlir::Block* Block = GetTagged<mlir::Block*>(C, kind::mlir_block, V);
     if (Block == nullptr)
-      return C.RaiseError("expecting mlir.block", {Itr.Current, Successors});
+      return C.RaiseError("expecting mlir.block", V);
     OpState.successors.push_back(Block);
   }
 
   // Create the operation using the Builder
   mlir::Operation* Op = Builder->create(OpState);
   C.Cont(heavy::Value(Op));
+}
+
+// Create operation syntax. Argument are
+//  specified by any of the following auxilary keywords:
+//    attributes - takes list of name-value pairs
+//                 where the value is either mlir.attr or
+//                 heavy::Value is lifted to mlir.attr.
+//    operands - takes list of mlir.values
+//    regions - takes a single integer for the number of regions
+//    result-types - takes list of mlir.types
+//    successors - takes a list of mlir.blocks
+//  (create-op _name_
+//    (attributes   _attrs_ ...)
+//    (operands     _values_ ...)
+//    (regions      _regions_ ...)
+//    (result-types _types_ ...)
+//    (successors   _blocks_ ...))
+//
+void create_op(Context& C, ValueRefs Args) {  // Syntax
+  heavy::OpGen& OpGen = *C.OpGen;
+  heavy::Value Attributes   = heavy::Empty();
+  heavy::Value Operands     = heavy::Empty();
+  heavy::Value Regions      = heavy::Empty();
+  heavy::Value ResultTypes  = heavy::Empty();
+  heavy::Value Successors   = heavy::Empty();
+
+  heavy::Pair* Input = dyn_cast<Pair*>(cast<Pair*>(Args[0])->Cdr);
+  if (!Input)
+    return C.RaiseError("expecting arguments");
+
+  // Require the _name_ argument.
+  mlir::Value OpName = C.OpGen.Visit(Input->Car);
+
+  // Process named arguments which are optional.
+  for (auto [Loc, Arg] : WithSource(Input->Cdr)) {
+    llvm::StringRef ArgName;
+    if (heavy::Pair* P = dyn_cast<Pair*>(Arg)) {
+      ArgName = P->Car.getStringRef();
+      Arg = P->Cdr;
+    }
+
+    if (ArgName == "attributes")
+      Attributes = Arg;
+    else if (ArgName == "operands")
+      Operands = Arg;
+    else if (ArgName == "regions") {
+      if (!isa<heavy::Int>(Arg))
+        return C.RaiseError("expecting number");
+      NumRegions = cast<heavy::Int>(Arg);
+    }
+    else if (ArgName == "result-types")
+      ResultTypes = Arg;
+    else if (ArgName == "successors")
+      Successors = Arg;
+    else
+      C.RaiseError("expecting named argument");
+  }
+
+  llvm::SmallVector<mlir::Value, 5> Vals;
+  // attributes
+  for (auto [Loc, X] : WithSource(Attributes)) {
+    mlir::Value V = OpGen.Visit(X);
+    Vals.push_back(V);
+  }
+  mlir::Value AttrVals = OpGen.create<heavy::VectorOp>(Vals);
+  Vals.clear();
+
+  // operands
+  for (auto [Loc, X] : WithSource(Operands)) {
+    mlir::Value V = OpGen.Visit(X);
+    Vals.push_back(V);
+  }
+  mlir::Value OperandVals = OpGen.create<heavy::VectorOp>(Vals);
+  Vals.clear();
+
+  // result-types
+  for (auto [Loc, X] : WithSource(ResultTypes)) {
+    mlir::Value V = OpGen.Visit(X);
+    Vals.push_back(V);
+  }
+  mlir::Value ResultTypeVals = OpGen.create<heavy::VectorOp>(Vals);
+  Vals.clear();
+
+  // successors
+  for (auto [Loc, X] : WithSource(Successors)) {
+    mlir::Value V = OpGen.Visit(X);
+    Vals.push_back(V);
+  }
+  mlir::Value SuccessorVals = OpGen.create<heavy::VectorOp>(Vals);
+  Vals.clear();
+
+  // Reuse Vals as arguments to %create-op
+  Vals.push_back(OpName);
+  Vals.push_back(AttrVals);
+  Vals.push_back(OperandVals);
+  Vals.push_back(NumRegions);
+  Vals.push_back(ResultTypeVals);
+  Vals.push_back(SuccessorVals);
+
+  // Create the call to %create-op (aka create_op_impl)
+  mlir::Value Fn = OpGen.create<LoadGlobalOp(
+                        HEAVY_MLIR_VAR_STR(create_op_impl));
+  mlir::Value ApplyOp = OpGen.create<ApplyOp>(Loc, Fn, Vals);
+  mlir::Value Result = OpGen.GetSingleResult(ApplyOp);
+  C.Cont(OpGen.fromValue(Result));
 }
 
 // Get an operation region by index (defaulting to 0).
@@ -338,7 +415,7 @@ void block_arg(Context& C, ValueRefs Args) {
   if (!Block || !isa<heavy::Int>(Args[1]))
     return C.RaiseError("expecting block and index");
   int Index = cast<heavy::Int>(Args[1]);
-  // A mlir::BlockArgument is a mlir::Value 
+  // A mlir::BlockArgument is a mlir::Value
   mlir::Value Val = Block->getArgument(Index);
   heavy::Value MVal = CreateTagged(C, kind::mlir_value, Val);
   C.Cont(MVal);
@@ -650,14 +727,6 @@ void verify(Context& C, heavy::ValueRefs Args) {
   }
 }
 
-// (dump _op_)
-void dump(Context& C, heavy::ValueRefs Args) {
-  if (mlir::Operation* Op = getSingleOpArg(C, Args)) {
-    Op->dump();
-    C.Cont();
-  }
-}
-
 }  // namespace heavy::mlir_bind
 
 extern "C" {
@@ -688,7 +757,6 @@ void HEAVY_MLIR_INIT(heavy::Context& C) {
   HEAVY_MLIR_VAR(with_builder) = heavy::mlir_bind::with_builder;
   HEAVY_MLIR_VAR(with_new_context) = heavy::mlir_bind::with_new_context;
   HEAVY_MLIR_VAR(verify) = heavy::mlir_bind::verify;
-  HEAVY_MLIR_VAR(dump) = heavy::mlir_bind::dump;
 }
 
 void HEAVY_MLIR_LOAD_MODULE(heavy::Context& C) {
@@ -711,7 +779,6 @@ void HEAVY_MLIR_LOAD_MODULE(heavy::Context& C) {
     {"with-builder", HEAVY_MLIR_VAR(with_builder)},
     {"load-dialect", HEAVY_MLIR_VAR(load_dialect)},
     {"verify", HEAVY_MLIR_VAR(verify)},
-    {"dump", HEAVY_MLIR_VAR(dump)}
   });
 }
 }

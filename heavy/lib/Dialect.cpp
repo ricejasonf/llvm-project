@@ -187,6 +187,12 @@ void ToVectorOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
   ToVectorOp::build(B, OpState, HeavyValueT, input);
 }
 
+void VectorOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                            llvm::ArrayRef<mlir::Value> args) {
+  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
+  VectorOp::build(B, OpState, HeavyValueT, args);
+}
+
 void UndefinedOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState) {
   UndefinedOp::build(B, OpState, B.getType<HeavyValueTy>());
 }
