@@ -498,6 +498,19 @@ def heavy_ToVectorOp : HeavyOp<"to_vector"> {
   ];
 }
 
+def heavy_VectorOp : HeavyOp<"vector"> {
+  let summary = "vector";
+  let description = [{
+    VectorOp creates a heavy::Vector from its arguments.
+  }];
+
+  let arguments = (ins Variadic<HeavyValue>:$args)
+  let results   = (outs HeavyValue: $result);
+  let builders = [
+    OpBuilder<(ins "::llvm::ArrayRef<::mlir::Value>":$args)>
+  ];
+}
+
 def heavy_UndefinedOp : HeavyOp<"undefined", [Pure]> {
   let summary = "undefined";
   let description = [{
