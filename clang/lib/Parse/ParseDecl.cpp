@@ -7275,7 +7275,7 @@ void Parser::ParseDecompositionDeclarator(Declarator &D) {
 
     if (Tok.is(tok::ellipsis)) {
       if (!getLangOpts().CPlusPlus26)
-        Diag(Tok, getLangOpts().CPlusPlus26, diag::warn_cxx2c_binding_pack);
+        Diag(Tok, diag::warn_cxx2c_binding_pack);
       if (HasEllipsis) {
         Diag(Tok, diag::err_binding_multiple_ellipses);
         break;

@@ -3444,18 +3444,6 @@ void DecompositionDecl::printName(llvm::raw_ostream &OS,
   OS << ']';
 }
 
-ImplicitTemplateDecl *ImplicitTemplateDecl::Create(
-    ASTContext &C, DeclContext *DC, SourceLocation StartLoc) {
-  assert(!DC->isDependentContext() &&
-    "implicit template should be created in a non-dependent context");
-  return new (C, DC) ImplicitTemplateDecl(C, DC, StartLoc);
-}
-
-ImplicitTemplateDecl *
-ImplicitTemplateDecl::CreateDeserialized(ASTContext &C, GlobalDeclID ID) {
-  return new (C, ID) ImplicitTemplateDecl(C, nullptr, SourceLocation());
-}
-
 void MSPropertyDecl::anchor() {}
 
 MSPropertyDecl *MSPropertyDecl::Create(ASTContext &C, DeclContext *DC,

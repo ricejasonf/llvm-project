@@ -456,8 +456,6 @@ private:
       return "BuildingDeductionGuides";
     case CodeSynthesisContext::TypeAliasTemplateInstantiation:
       return "TypeAliasTemplateInstantiation";
-    case CodeSynthesisContext::ImplicitTemplateInstantiation:
-      return "ImplicitTemplateInstantiation";
     }
     return "";
   }

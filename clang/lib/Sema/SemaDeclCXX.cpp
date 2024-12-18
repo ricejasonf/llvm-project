@@ -726,15 +726,6 @@ Sema::ActOnDecompositionDeclarator(Scope *S, Declarator &D,
   assert(D.isDecompositionDeclarator());
   const DecompositionDeclarator &Decomp = D.getDecompositionDeclarator();
 
-  if (!CurContext->isDependentContext() &&
-      llvm::any_of(Decomp.bindings(),
-        [](auto& Binding) { return Binding.EllipsisLoc.isValid(); })) {
-    // Make the current DeclContext an ImplicitTemplate if not already a template.
-    auto* IT = ImplicitTemplateDecl::Create(Context, CurContext,
-                                            Decomp.getLSquareLoc());
-    PushDeclContext(S, IT);
-  }
-
   // The syntax only allows a decomposition declarator as a simple-declaration,
   // a for-range-declaration, or a condition in Clang, but we parse it in more
   // cases than that.

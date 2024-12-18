@@ -110,4 +110,3 @@ def Empty : DeclNode<Decl>;
 def RequiresExprBody : DeclNode<Decl>, DeclContext;
 def LifetimeExtendedTemporary : DeclNode<Decl>;
 def HLSLBuffer : DeclNode<Named, "HLSLBuffer">, DeclContext;
-def ImplicitTemplate : DeclNode<Decl>, DeclContext;

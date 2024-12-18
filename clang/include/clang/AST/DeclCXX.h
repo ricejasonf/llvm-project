@@ -4213,36 +4213,6 @@ public:
   static bool classofKind(Kind K) { return K == Decomposition; }
 };
 
-// ImplicitTemplateDecl is just a placeholder to create an implicit template
-// within an non-dependent context. We still have to be able to serialize it
-// and junk (I think).
-class ImplicitTemplateDecl : public Decl, public DeclContext {
-  ImplicitTemplateDecl(ASTContext &C, DeclContext *DC, SourceLocation StartLoc)
-      : Decl(ImplicitTemplate, DC, StartLoc), DeclContext(ImplicitTemplate) {}
-
-public:
-  friend class ASTDeclReader;
-  friend class ASTDeclWriter;
-
-  static ImplicitTemplateDecl *Create(ASTContext &C, DeclContext *DC,
-                                      SourceLocation StartLoc);
-
-  static ImplicitTemplateDecl *CreateDeserialized(ASTContext &C,
-                                                  GlobalDeclID ID);
-
-  // Implement isa/cast/dyncast/etc.
-  static bool classof(const Decl *D) { return classofKind(D->getKind()); }
-  static bool classofKind(Kind K) { return K == ImplicitTemplate; }
-
-  static DeclContext *castToDeclContext(const ImplicitTemplateDecl *D) {
-    return static_cast<DeclContext *>(const_cast<ImplicitTemplateDecl *>(D));
-  }
-
-  static ImplicitTemplateDecl *castFromDeclContext(const DeclContext *DC) {
-    return static_cast<ImplicitTemplateDecl *>(const_cast<DeclContext *>(DC));
-  }
-};
-
 /// An instance of this class represents the declaration of a property
 /// member.  This is a Microsoft extension to C++, first introduced in
 /// Visual Studio .NET 2003 as a parallel to similar features in C#

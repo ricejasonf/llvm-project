@@ -570,7 +570,6 @@ bool Sema::CodeSynthesisContext::isInstantiationRecord() const {
   case LambdaExpressionSubstitution:
   case BuildingDeductionGuides:
   case TypeAliasTemplateInstantiation:
-  case ImplicitTemplateInstantiation:
     return false;
 
   // This function should never be called when Kind's value is Memoization.
@@ -802,14 +801,6 @@ Sema::InstantiatingTemplate::InstantiatingTemplate(
     : InstantiatingTemplate(
           SemaRef, CodeSynthesisContext::BuildingDeductionGuides,
           PointOfInstantiation, InstantiationRange, Entity) {}
-
-Sema::InstantiatingTemplate::InstantiatingTemplate(
-    Sema &SemaRef, SourceLocation PointOfInstantiation,
-    ImplicitTemplateDecl* Entity, SourceRange InstantiationRange)
-    : InstantiatingTemplate(
-          SemaRef, CodeSynthesisContext::ImplicitTemplateInstantiation,
-          PointOfInstantiation, InstantiationRange, Entity) {}
-
 
 void Sema::pushCodeSynthesisContext(CodeSynthesisContext Ctx) {
   Ctx.SavedInNonInstantiationSFINAEContext = InNonInstantiationSFINAEContext;
@@ -1250,8 +1241,6 @@ void Sema::PrintInstantiationStack() {
           << cast<TypeAliasTemplateDecl>(Active->Entity)
           << Active->InstantiationRange;
       break;
-    case CodeSynthesisContext::ImplicitTemplateInstantiation:
-      break;
     }
   }
 }
@@ -1280,7 +1269,6 @@ std::optional<TemplateDeductionInfo *> Sema::isSFINAEContext() const {
     case CodeSynthesisContext::ParameterMappingSubstitution:
     case CodeSynthesisContext::ConstraintNormalization:
     case CodeSynthesisContext::NestedRequirementConstraintsCheck:
-    case CodeSynthesisContext::ImplicitTemplateInstantiation:
       // This is a template instantiation, so there is no SFINAE.
       return std::nullopt;
     case CodeSynthesisContext::LambdaExpressionSubstitution:
@@ -1859,9 +1847,6 @@ Decl *TemplateInstantiator::TransformDefinition(SourceLocation Loc, Decl *D) {
   // If we are in an implicit template instantiation and the Decl has
   // the parent non-dependent context, then we can avoid instantiating it.
   Sema::CodeSynthesisContext& CSC = getSema().CodeSynthesisContexts.back();
-  if (CSC.Kind == Sema::CodeSynthesisContext::ImplicitTemplateInstantiation &&
-      !D->getDeclContext()->isDependentContext())
-    return D;
 
   Decl *Inst = getSema().SubstDecl(D, getSema().CurContext, TemplateArgs);
   if (!Inst)
@@ -4464,9 +4449,6 @@ LocalInstantiationScope::findInstantiationOf(const Decl *D) {
   // instantiation.
   if (isa<TypedefNameDecl>(D) &&
       isa<CXXDeductionGuideDecl>(D->getDeclContext()))
-    return nullptr;
-
-  if (isa<ImplicitTemplateDecl>(D->getDeclContext()))
     return nullptr;
 
   // If we didn't find the decl, then we either have a sema bug, or we have a

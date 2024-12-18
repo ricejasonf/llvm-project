@@ -975,11 +975,6 @@ Decl *TemplateDeclInstantiator::VisitTemplateParamObjectDecl(
   llvm_unreachable("template parameter objects cannot be instantiated");
 }
 
-Decl *TemplateDeclInstantiator::VisitImplicitTemplateDecl(
-    ImplicitTemplateDecl *D) {
-  llvm_unreachable("implicit templates themselves cannot be instantiated");
-}
-
 Decl *
 TemplateDeclInstantiator::VisitLabelDecl(LabelDecl *D) {
   LabelDecl *Inst = LabelDecl::Create(SemaRef.Context, Owner, D->getLocation(),
@@ -1226,10 +1221,6 @@ Decl *TemplateDeclInstantiator::VisitDecompositionDecl(DecompositionDecl *D) {
         //        We need to weigh the cost of expanding the ->bindings()
         //        versus just visiting them when needed and allowing the
         //        ResolvedUnexpandedPackExpr to continue living in the binding.
-        //        Alternatively, we could do the ImplicitTemplate thing inside
-        //        templates and reinstantiate the whole block-scope after it
-        //        completes the instantiation into a non-dependent context.
-
       NewBindings.push_back(cast<BindingDecl>(VisitBindingDecl(OldBD)));
     }
   }
@@ -6125,8 +6116,6 @@ DeclContext *Sema::FindInstantiatedContext(SourceLocation Loc, DeclContext* DC,
   if (NamedDecl *D = dyn_cast<NamedDecl>(DC)) {
     Decl* ID = FindInstantiatedDecl(Loc, D, TemplateArgs, true);
     return cast_or_null<DeclContext>(ID);
-  } else if (isa<ImplicitTemplateDecl>(DC)) {
-    return DC->getParent();
   } else return DC;
 }
 
@@ -6174,7 +6163,6 @@ NamedDecl *Sema::FindInstantiatedDecl(SourceLocation Loc, NamedDecl *D,
   if (isa<ParmVarDecl>(D) || isa<NonTypeTemplateParmDecl>(D) ||
       isa<TemplateTypeParmDecl>(D) || isa<TemplateTemplateParmDecl>(D) ||
       (ParentDependsOnArgs && (ParentDC->isFunctionOrMethod() ||
-                               isa<ImplicitTemplateDecl>(ParentDC) ||
                                isa<OMPDeclareReductionDecl>(ParentDC) ||
                                isa<OMPDeclareMapperDecl>(ParentDC))) ||
       (isa<CXXRecordDecl>(D) && cast<CXXRecordDecl>(D)->isLambda() &&

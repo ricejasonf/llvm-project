@@ -540,7 +540,9 @@ ExprResult Parser::ParseBraceInitializer() {
     SubElt = Actions.CorrectDelayedTyposInExpr(SubElt.get());
 
     // If we couldn't parse the subelement, bail out.
-    if (!SubElt.isUsable()) {
+    if (SubElt.isUsable()) {
+      InitExprs.push_back(SubElt.get());
+    } else {
       InitExprsOk = false;
 
       // We have two ways to try to recover from this error: if the code looks
@@ -555,8 +557,6 @@ ExprResult Parser::ParseBraceInitializer() {
         SkipUntil(tok::r_brace, StopBeforeMatch);
         break;
       }
-    } else {
-      InitExprs.push_back(SubElt.get());
     }
 
     // If we don't have a comma continued list, we're done.

@@ -12209,23 +12209,3 @@ SourceLocation Sema::getTopMostPointOfInstantiation(const NamedDecl *N) const {
   }
   return N->getLocation();
 }
-
-StmtResult Sema::ActOnImplicitTemplateEnd(Scope* ParentScope, Stmt* S) {
-  auto* IT = cast<ImplicitTemplateDecl>(CurContext);
-
-  // Instantiate if IT is not in any of the scopes.
-  if (getScopeForDeclContext(ParentScope, IT) != nullptr)
-    return S;
-
-  PopDeclContext();
-
-  // Fake the template instantiation funk.
-  LocalInstantiationScope Scope(*this, /*CombineWithOuterScope=*/true);
-  Sema::InstantiatingTemplate Inst(*this, IT->getBeginLoc(), IT);
-  assert(CodeSynthesisContexts.back().Kind ==
-    CodeSynthesisContext::ImplicitTemplateInstantiation
-    && "expecting implicit template instantiation kind");
-  StmtResult Result = SubstStmt(S, /*TemplateArgs=*/{});
-
-  return Result;
-}

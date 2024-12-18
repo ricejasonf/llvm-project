@@ -2202,10 +2202,6 @@ void CXXNameMangler::manglePrefix(const DeclContext *DC, bool NoFunction) {
   if (NoFunction && isLocalContainerContext(DC))
     return;
 
-  // Look through an implicit template region.
-  if (isa<ImplicitTemplateDecl>(DC))
-    DC = DC->getParent();
-
   const NamedDecl *ND = cast<NamedDecl>(DC);
   if (mangleSubstitution(ND))
     return;
