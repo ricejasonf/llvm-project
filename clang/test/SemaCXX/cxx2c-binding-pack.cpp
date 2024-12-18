@@ -1,5 +1,5 @@
-#define assert(...) ((__VA_ARGS__) ? ((void)0) : throw 42)
-//#include <cassert>
+// RUN: %clang_cc1 -fsyntax-only -std=c++2b %s -verify
+// expected-no-diagnostics
 
 template <typename T>
 struct type_ { };

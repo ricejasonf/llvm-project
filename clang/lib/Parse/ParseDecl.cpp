@@ -7272,10 +7272,12 @@ void Parser::ParseDecompositionDeclarator(Declarator &D) {
       DiagnoseAndSkipCXX11Attributes();
 
     SourceLocation EllipsisLoc = {};
+
     if (Tok.is(tok::ellipsis)) {
+      if (!getLangOpts().CPlusPlus26)
+        Diag(Tok, getLangOpts().CPlusPlus26, diag::warn_cxx2c_binding_pack);
       if (HasEllipsis) {
-        // FIXME use better error message
-        Diag(Tok, diag::err_lambda_capture_multiple_ellipses);
+        Diag(Tok, diag::err_binding_multiple_ellipses);
         break;
       }
       HasEllipsis = true;
