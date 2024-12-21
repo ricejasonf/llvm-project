@@ -198,7 +198,7 @@ private:
          if (isa<BindingOp>(Op))      return Visit(cast<BindingOp>(Op));
     else if (isa<LiteralOp>(Op))      return Visit(cast<LiteralOp>(Op));
     else if (isa<ApplyOp>(Op))        return Visit(cast<ApplyOp>(Op));
-    else if (isa<BuiltinOp>(Op))      return Visit(cast<BuiltinOp>(Op));
+    //else if (isa<BuiltinOp>(Op))      return Visit(cast<BuiltinOp>(Op));
     else if (isa<ContOp>(Op))         return Visit(cast<ContOp>(Op));
     else if (isa<GlobalOp>(Op))       return Visit(cast<GlobalOp>(Op));
     else if (isa<LoadClosureOp>(Op))  return Visit(cast<LoadClosureOp>(Op));
@@ -351,11 +351,13 @@ private:
     return next(Op);
   }
 
+#if 0
   BlockItrTy Visit(BuiltinOp Op) {
     heavy::Value V = Op.getBuiltinFn();
     setValue(Op.getResult(), V);
     return next(Op);
   }
+#endif
 
   BlockItrTy Visit(ConsOp Op) {
     // TODO Use PairWithSource to retain source location information.
@@ -460,7 +462,7 @@ private:
 
   BlockItrTy Visit(LiteralOp Op) {
     // Map the IR value node to the run-time value
-    heavy::Value V = Op.getInput();
+    heavy::Value V = Op.getInput().getValue(Context);
     setValue(Op.getResult(), V);
     return next(Op);
   }
@@ -620,7 +622,7 @@ private:
   }
 
   BlockItrTy Visit(MatchOp Op) {
-    heavy::Value P = Op.getVal();
+    heavy::Value P = Op.getVal().getValue(Context);
     heavy::Value E = getValue(Op.getInput());
     if (equal(P, E)) {
       return next(Op);
