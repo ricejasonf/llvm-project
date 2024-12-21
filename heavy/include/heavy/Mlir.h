@@ -43,9 +43,9 @@
 #define HEAVY_MLIR_VAR__attr          HEAVY_MLIR_LIB_(V4Sattr)
 
 #define HEAVY_MLIR_VAR__current_context \
-                                HEAVY_MLIR_LIB_(V7ScurrentmiV7Scontext)
+                                HEAVY_MLIR_LIB_(V7Scurrentmi7Scontext)
 #define HEAVY_MLIR_VAR__current_builder \
-                                HEAVY_MLIR_LIB_(V7ScurrentmiV7Sbuilder)
+                                HEAVY_MLIR_LIB_(V7Scurrentmi7Sbuilder)
 #define HEAVY_MLIR_VAR__with_new_context \
                                 HEAVY_MLIR_LIB_(V4SwithmiV3Snewmiv7Scontext)
 #define HEAVY_MLIR_VAR__with_builder \

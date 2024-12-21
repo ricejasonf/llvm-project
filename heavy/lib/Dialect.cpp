@@ -10,12 +10,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "heavy/Dialect.h"
 #include "heavy/Context.h"
+#include "heavy/Dialect.h"
+#include "heavy/Lexer.h"
+#include "heavy/Parser.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/TypeUtilities.h"
+#include <string>
 
 using namespace heavy;
 
@@ -37,13 +40,42 @@ Dialect::Dialect(mlir::MLIRContext* Ctx)
     >();
 }
 
+#if 0
+mlir::Attribute Dialect::parseAttribute(mlir::DialectAsmParser& P,
+                                        mlir::Type type) const {
+  // Parse HeavyValueAttr.
+  char const* CurPtr = P.getCurrentLocation().getPointer();
+  heavy::Value Val = Parser::ParseExternalBuffer(HeavyContext, CurPtr,
+      heavy::tok::r_brace);
+  return HeavyValueAttr::get(P.getContext(), heavy::Undefined());
+}
+#endif
+
+mlir::Type Dialect::parseType(mlir::DialectAsmParser& P) const {
+  llvm::StringRef Name;
+  if (mlir::failed(P.parseKeyword(&Name)))
+    return nullptr;
+  mlir::Builder B = P.getBuilder();
+  if (Name == HeavyValueTy::getMnemonic())
+    return B.getType<HeavyValueTy>();
+  if (Name == HeavySyntaxTy::getMnemonic())
+    return B.getType<HeavySyntaxTy>();
+  if (Name == HeavyPairTy::getMnemonic())
+    return B.getType<HeavyPairTy>();
+  if (Name == HeavyOpGenTy::getMnemonic())
+    return B.getType<HeavyOpGenTy>();
+  if (Name == HeavyMlirValueTy::getMnemonic())
+    return B.getType<HeavyMlirValueTy>();
+  llvm_unreachable("unhandled type");
+}
+
 void Dialect::printAttribute(
                         mlir::Attribute Attr,
                         mlir::DialectAsmPrinter& P) const {
   // All attributes are HeavyValueAttr
-  heavy::Value V = mlir::cast<HeavyValueAttr>(Attr).getValue();
-  heavy::write(P.getStream(), V);
+  P.printAttribute(mlir::cast<HeavyValueAttr>(Attr).getExpr());
 }
+
 void Dialect::printType(mlir::Type Type,
                         mlir::DialectAsmPrinter& P) const {
   char const* Name;
@@ -66,15 +98,12 @@ void Dialect::printType(mlir::Type Type,
   P.getStream() << Name;
 }
 
-heavy::Value& HeavyValueAttr::getValue() const {
-  return getImpl()->Val;
-}
-
 void BindingOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                       mlir::Value Input) {
   BindingOp::build(B, OpState, B.getType<HeavyValueTy>(), Input);
 }
 
+#if 0
 void BuiltinOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                       heavy::Builtin* Builtin) {
   // TODO eventually we need to have a "symbol" to the externally
@@ -82,6 +111,7 @@ void BuiltinOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
   BuiltinOp::build(B, OpState, B.getType<HeavyValueTy>(),
       HeavyValueAttr::get(B.getContext(), Builtin));
 }
+#endif
 
 void ConsOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                    mlir::Value X, mlir::Value Y) {
@@ -205,3 +235,60 @@ void SourceLocOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState) {
 using namespace mlir;
 #define GET_OP_CLASSES
 #include "heavy/Ops.cpp.inc"
+
+#define GET_ATTRDEF_CLASSES
+#include "heavy/Attrs.cpp.inc"
+
+namespace heavy {
+// Manually define HeavyValueAttrStorage to cache the parsed
+// scheme expression.
+struct HeavyValueAttrStorage : public detail::HeavyValueAttrStorage {
+  // Cache the result of parsing the expr.
+  // This requires visitation by the garbage collector.
+  heavy::Value Val = nullptr;
+
+  HeavyValueAttrStorage(StringAttr expr)
+    : detail::HeavyValueAttrStorage(std::move(expr))
+  { }
+
+  static HeavyValueAttrStorage *construct(mlir::AttributeStorageAllocator &allocator,
+                                          KeyTy &&tblgenKey) {
+    auto expr = std::move(std::get<0>(tblgenKey));
+    return new (allocator.allocate<HeavyValueAttrStorage>()) HeavyValueAttrStorage(std::move(expr));
+  }
+};
+}  // namespace heavy
+
+heavy::StringAttr HeavyValueAttr::getExpr() const {
+  return getImpl()->expr;
+}
+
+heavy::Value& HeavyValueAttr::getCachedValue() {
+  return getImpl()->Val;
+}
+
+heavy::Value HeavyValueAttr::getValue(heavy::Context& C) const {
+  heavy::Value& Val = getImpl()->Val;
+  if (!Val) {
+    llvm::StringRef Expr = getImpl()->expr;
+    heavy::Lexer Lexer(Expr);
+    heavy::Parser Parser(Lexer, C);
+    heavy::ValueResult ValueResult = Parser.Parse();
+    Val = ValueResult.isUsable() ? ValueResult.get() :
+                                   heavy::Undefined();
+  }
+  return Val;
+}
+
+HeavyValueAttr HeavyValueAttr::get(mlir::MLIRContext* Ctx,
+                                   heavy::Value V) {
+  // Write the value to a string.
+  std::string string;
+  llvm::raw_string_ostream stream(string);
+  heavy::write(stream, V);
+  mlir::StringAttr StringAttr = mlir::StringAttr::get(Ctx, string);
+  HeavyValueAttr Attr = get(Ctx, StringAttr);
+  Attr.getCachedValue() = V;
+  return Attr;
+}
+

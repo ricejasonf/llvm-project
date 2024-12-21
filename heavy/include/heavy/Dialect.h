@@ -32,10 +32,17 @@ static_assert(llvm::PointerLikeTypeTraits<heavy::Operation*>::NumLowBitsAvailabl
 
 namespace heavy {
 using mlir::func::FuncOp;
+using StringAttr = mlir::StringAttr;
 
 struct Dialect : public mlir::Dialect {
   explicit Dialect(mlir::MLIRContext* Ctx);
   static llvm::StringRef getDialectNamespace() { return "heavy"; }
+
+#if 0
+  mlir::Attribute parseAttribute(mlir::DialectAsmParser& P,
+                                 mlir::Type type) const override;
+#endif
+  mlir::Type parseType(mlir::DialectAsmParser& P) const override;
 
   void printAttribute(mlir::Attribute Attr,
                       mlir::DialectAsmPrinter& P) const override;
@@ -47,6 +54,7 @@ struct HeavyValueTy : public mlir::Type::TypeBase<
                             mlir::Type,
                             mlir::TypeStorage> {
   static constexpr llvm::StringLiteral name = "heavy.value";
+  static constexpr llvm::StringRef getMnemonic() { return "value"; }
   using Base::Base;
 };
 
@@ -55,28 +63,13 @@ struct HeavyRestTy : public mlir::Type::TypeBase<
                             mlir::Type,
                             mlir::TypeStorage> {
   static constexpr llvm::StringLiteral name = "heavy.rest";
+  static constexpr llvm::StringRef getMnemonic() { return "rest"; }
   using Base::Base;
 };
 
-struct HeavyValueAttrStorage : public mlir::AttributeStorage {
-  heavy::Value Val;
+class HeavyValueAttrStorage;
 
-  HeavyValueAttrStorage(heavy::Value V)
-    : Val(V)
-  { }
-
-  using KeyTy = heavy::Value;
-  bool operator==(KeyTy const& Key) const {
-    return Key == Val;
-  }
-
-  static HeavyValueAttrStorage* construct(
-      mlir::AttributeStorageAllocator& Allocator, heavy::Value V) {
-    return new (Allocator.allocate<HeavyValueAttrStorage>())
-      HeavyValueAttrStorage(V);
-  }
-};
-
+// Declare HeavyValueAttr manually.
 class HeavyValueAttr : public mlir::Attribute::AttrBase<
                             HeavyValueAttr,
                             mlir::Attribute,
@@ -85,22 +78,33 @@ class HeavyValueAttr : public mlir::Attribute::AttrBase<
 
 public:
   static constexpr llvm::StringLiteral name = "heavy.value_attr";
-  heavy::Value& getValue() const;
-};
 
+  static HeavyValueAttr get(mlir::MLIRContext*, StringAttr expr);
+  static HeavyValueAttr get(mlir::MLIRContext*, heavy::Value Val);
+
+  // getCachedValue - For garbage collector access.
+  heavy::Value& getCachedValue();
+  heavy::Value getValue(heavy::Context& C) const;
+  heavy::StringAttr getExpr() const;
+};
+} //  namespace heavy
+MLIR_DECLARE_EXPLICIT_TYPE_ID(heavy::HeavyValueAttr)
+
+namespace heavy {
 // Additional Types
-#define HEAVY_TYPE(NAME, PRINT_NAME) \
+#define HEAVY_TYPE(NAME, PRINT_NAME, MNEMONIC) \
 struct Heavy##NAME##Ty : public mlir::Type::TypeBase< \
 Heavy##NAME##Ty, mlir::Type, mlir::TypeStorage> { \
   static constexpr llvm::StringLiteral name = PRINT_NAME; \
+  static constexpr llvm::StringRef getMnemonic() { return MNEMONIC; } \
   using Base::Base; \
 } \
 
-HEAVY_TYPE(Pair, "heavy.pair");
+HEAVY_TYPE(Pair, "heavy.pair", "pair");
 
-HEAVY_TYPE(Syntax, "heavy.syntax");
-HEAVY_TYPE(OpGen, "heavy.opgen");
-HEAVY_TYPE(MlirValue, "heavy.mlir_value");
+HEAVY_TYPE(Syntax, "heavy.syntax", "syntax");
+HEAVY_TYPE(OpGen, "heavy.opgen", "opgen");
+HEAVY_TYPE(MlirValue, "heavy.mlir_value", "mlir_value");
 
 
 #undef HEAVY_TYPE

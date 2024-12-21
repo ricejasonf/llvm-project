@@ -32,10 +32,11 @@ class HeavyValueBase<string name> : Type<
 def HeavyValue : Type<CPred<"mlir::isa<::heavy::HeavyValueTy>($_self)">,
                   "value", "::heavy::HeavyValueTy">;
 
-def HeavyValueAttr : Attr<CPred<"true">,
-                          "Any Attribute convertible to heavy::Value"> {
+def HeavyValueAttr : AttrDef<HeavyDialect, "HeavyValue"> {
+  let attrName = "heavy.value_attr";
   let storageType = "::heavy::HeavyValueAttr";
-  let returnType = "::heavy::Value";
+  let parameters = (ins "StringAttr":$expr);
+  let genAccessors = 0;
 }
 
 // Additional Types
@@ -85,6 +86,7 @@ def heavy_BindingOp : HeavyOp<"binding"> {
   let builders  = [OpBuilder<(ins "::mlir::Value":$input)>];
 }
 
+/*
 def heavy_BuiltinOp : HeavyOp<"builtin"> {
   let summary = "builtin";
   let description = [{
@@ -103,6 +105,7 @@ def heavy_BuiltinOp : HeavyOp<"builtin"> {
     OpBuilder<(ins "::heavy::Builtin*":$builtinFn)>
   ];
 }
+*/
 
 def heavy_CommandOp : HeavyOp<"command", [IsolatedFromAbove]> {
   let summary = "command";
@@ -321,8 +324,7 @@ def heavy_MatchOp : HeavyOp<"match", [HasParent<"PatternOp">]> {
   let description = [{
     As a component of pattern matching, this checks if a value
     is equal (in terms of `equal?`) to the input attribute.
-    For scheme 'symbols', MatchOp will check for equivalent bindings.
-    This attribute should be a leaf constant value.
+    The attribute should be a leaf constant value.
   }];
 
   let arguments = (ins HeavyValueAttr:$val, HeavyValue:$input);

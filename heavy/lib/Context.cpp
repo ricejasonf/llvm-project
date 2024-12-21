@@ -546,13 +546,18 @@ private:
     }
   }
 
-  // FIXME Not sure if this is how we want to print these.
   void VisitTagged(Tagged* T) {
-    OS << "\'(";
+    OS << "#tag{";
     OS << T->getTag()->getStringRef()
        << ' '
        << uintptr_t(T->getOpaquePtr())
-       << ')';
+       << '}';
+  }
+
+  void VisitOperation(Operation* Op) {
+    OS << "#op{";
+    Op->print(OS);
+    OS << "}";
   }
 };
 
