@@ -265,6 +265,7 @@ public:
   { }
 
   void VisitRootNode(heavy::Value& Val) {
+    if (!Val) return;
     Val = Visit(Val);
   }
 
@@ -349,7 +350,7 @@ void Context::CollectGarbage() {
         ValAttr = LiteralOp.getInputAttr();
       else if (auto MatchOp = dyn_cast<heavy::MatchOp>(Op))
         ValAttr = MatchOp.getValAttr();
-      GC.VisitRootNode(ValAttr.getValue());
+      GC.VisitRootNode(ValAttr.getCachedValue());
     };
     ModuleOp->walk(WalkerFn);
   }

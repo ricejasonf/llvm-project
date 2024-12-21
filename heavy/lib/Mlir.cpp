@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include <heavy/Context.h>
+#include <heavy/Dialect.h>
 #include <heavy/Mlir.h>
 #include <heavy/OpGen.h>
 #include <heavy/Value.h>
@@ -150,8 +151,7 @@ void create_op_impl(Context& C, ValueRefs Args) {
       }
     }
     if (Name.empty())
-      return C.RaiseError("expecting name-value pair for attribute",
-                          V);
+      return C.RaiseError("expecting name-value pair for attribute", V);
 
     auto Attr = GetTagged<mlir::Attribute>(C, kind::mlir_attr, V);
 
@@ -558,34 +558,46 @@ void type(Context& C, ValueRefs Args) {
 //  Usage: (attr _type_ _attr_str)
 //    type - a string or a mlir.type object
 //    attr_str - the string to be parsed
+//  Usage: (attr _val_)
+//    val - The scheme value to convert to !heavy.value
 void attr(Context& C, ValueRefs Args) {
   mlir::MLIRContext* MLIRContext = getCurrentContext(C);
-  if (Args.size() != 2)
+  mlir::Attribute Attr;
+
+  if (Args.size() == 2) {
+    heavy::Value TypeArg = Args[0];
+    heavy::Value AttrStrArg = Args[1];
+    llvm::StringRef TypeStr = TypeArg.getStringRef();
+    mlir::Type Type;
+    if (!TypeStr.empty()) {
+      Type = mlir::parseType(TypeStr, MLIRContext, nullptr,
+                             heavy::String::IsNullTerminated);
+      if (!Type)
+        return C.RaiseError("mlir type parse failed");
+    }
+    else {
+      Type = GetTagged<mlir::Type>(C, kind::mlir_type, TypeArg);
+      if (!Type)
+        return C.RaiseError("invalid mlir type");
+    }
+
+    llvm::StringRef AttrStr = AttrStrArg.getStringRef();
+    if (AttrStr.empty())
+      return C.RaiseError("expecting string");
+
+    Attr = mlir::parseAttribute(AttrStr, MLIRContext,
+                                Type, nullptr,
+                                heavy::String::IsNullTerminated);
+    if (!Attr)
+      return C.RaiseError("mlir attribute parse failed");
+  } else if (Args.size() == 1) {
+    Attr = HeavyValueAttr::get(MLIRContext, Args[0]);
+    //Type = HeavyValueTy::get(MLIRContext);
+  }
+  else
     return C.RaiseError("invalid arity");
 
-  mlir::Type Type;
-  llvm::StringRef TypeStr = Args[1].getStringRef();
-  if (!TypeStr.empty()) {
-    Type = mlir::parseType(TypeStr, MLIRContext, nullptr,
-                           heavy::String::IsNullTerminated);
-    if (!Type)
-      return C.RaiseError("mlir type parse failed");
-  }
-  else {
-    Type = GetTagged<mlir::Type>(C, kind::mlir_type, Args[1]);
-    if (!Type)
-      return C.RaiseError("invalid mlir type");
-  }
-
-  llvm::StringRef AttrStr = Args[1].getStringRef();
-  if (AttrStr.empty())
-    return C.RaiseError("expecting string");
-
-  mlir::Attribute Attr = mlir::parseAttribute(AttrStr, MLIRContext,
-                                              Type, nullptr,
-                                              heavy::String::IsNullTerminated);
-  if (!Attr)
-    return C.RaiseError("mlir attribute parse failed");
+  Attr.dump();
 
   C.Cont(CreateTagged(C, kind::mlir_attr, Attr.getImpl()));
 }
