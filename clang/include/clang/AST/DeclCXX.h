@@ -4165,21 +4165,19 @@ public:
 class DecompositionDecl final
     : public VarDecl,
       private llvm::TrailingObjects<DecompositionDecl, BindingDecl *> {
-  /// The number of BindingDecl*s following this object.
+  /// Store bindings in a separate allocation since we create the
+  /// VarDecl before we instantiate the init expression.
+  BindingDecl **Bindings;
   unsigned NumBindings;
 
   DecompositionDecl(ASTContext &C, DeclContext *DC, SourceLocation StartLoc,
                     SourceLocation LSquareLoc, QualType T,
-                    TypeSourceInfo *TInfo, StorageClass SC,
-                    ArrayRef<BindingDecl *> Bindings)
+                    TypeSourceInfo *TInfo, StorageClass SC)
       : VarDecl(Decomposition, C, DC, StartLoc, LSquareLoc, nullptr, T, TInfo,
                 SC),
-        NumBindings(Bindings.size()) {
-    std::uninitialized_copy(Bindings.begin(), Bindings.end(),
-                            getTrailingObjects<BindingDecl *>());
-    for (auto *B : Bindings)
-      B->setDecomposedDecl(this);
-  }
+        Bindings(nullptr),
+        NumBindings(0)
+  { }
 
   void anchor() override;
 
@@ -4191,13 +4189,15 @@ public:
                                    SourceLocation StartLoc,
                                    SourceLocation LSquareLoc,
                                    QualType T, TypeSourceInfo *TInfo,
-                                   StorageClass S,
-                                   ArrayRef<BindingDecl *> Bindings);
+                                   StorageClass S);
   static DecompositionDecl *CreateDeserialized(ASTContext &C, GlobalDeclID ID,
                                                unsigned NumBindings);
 
+  void setBindings(const ASTContext &C, ArrayRef<BindingDecl*> BD);
+
   ArrayRef<BindingDecl *> bindings() const {
-    return llvm::ArrayRef(getTrailingObjects<BindingDecl *>(), NumBindings);
+    assert(*Bindings != nullptr && "expecting initialized bindings");
+    return ArrayRef(*Bindings, NumBindings);
   }
 
   void printName(raw_ostream &OS, const PrintingPolicy &Policy) const override;

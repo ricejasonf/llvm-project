@@ -978,7 +978,7 @@ bool CheckBindingsCount(Sema &S,
   if (!HasPack) {
     IsValid = Bindings.size() == MemberCount;
   } else {
-    // there may not be more members than non-pack bindings
+    // There may not be more members than non-pack bindings.
     IsValid = MemberCount >= Bindings.size() - 1;
   }
 
@@ -990,7 +990,7 @@ bool CheckBindingsCount(Sema &S,
         /*TemplateDepth*/ 0, /*AutoParameterPosition*/ 0,
         /*Identifier*/ nullptr, false, /*IsParameterPack*/ true);
 
-    // create the pack expr and assign it to the binding
+    // Create the pack expr and assign it to the binding.
     unsigned PackSize = MemberCount - Bindings.size() + 1;
     QualType PackType = S.Context.getPackExpansionType(
         QualType(DummyTemplateParam->getTypeForDecl(), 0), PackSize);

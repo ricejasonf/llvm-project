@@ -1158,14 +1158,17 @@ Decl *TemplateDeclInstantiator::VisitBindingDecl(BindingDecl *D) {
 }
 
 Decl *TemplateDeclInstantiator::VisitDecompositionDecl(DecompositionDecl *D) {
-  // Transform the bindings first.
-  // The transformed DD will have all of the concrete BindingDecls.
+  auto *NewDD = cast_or_null<DecompositionDecl>(
+      VisitVarDecl(D, /*InstantiatingVarTemplate=*/false));
+
+  // Transform the bindings.
   SmallVector<BindingDecl*, 16> NewBindings;
   ResolvedUnexpandedPackExpr *NewResolvedPack = nullptr;
   BindingDecl *NewBindingPack = nullptr;
   for (auto *OldBD : D->bindings()) {
-    //Expr *BindingExpr = OldBD->getBinding();
+    // TODO Rebuild the existing ResolvedUnexpandedPackExpr.
     if (OldBD->isParameterPack() && OldBD->getBinding()) {
+      // Rebuild the ResolvedUnexpandedPackExpr.
       auto *RP = cast<ResolvedUnexpandedPackExpr>(OldBD->getBinding());
       Expr** OldExprs = RP->getExprs();
       for (unsigned I = 0; I < RP->getNumExprs(); I++) {
@@ -1178,16 +1181,10 @@ Decl *TemplateDeclInstantiator::VisitDecompositionDecl(DecompositionDecl *D) {
       ExprResult NewRP = SemaRef.SubstExpr(OldBD->getBinding(), TemplateArgs);
       // The type is a superficial pack type.
       NewBindingPack->setBinding(OldBD->getType(), NewRP.get());
-    } else if (OldBD->isParameterPack() && D->getInit()) {
-      // The old DD init was dependent so we need to ascertain how
-      // many element there are so we can have concrete bindings.
-      // FIXME This is a lot of extra, redundant work here, but we need
-      //       this information before allocating the DecompositionDecl.
-      //       Consolidate with stuff in SemaDeclCXX.
-      //Sema::ContextRAII SwitchContext(SemaRef, D->getDeclContext());
-      ExprResult Init = SemaRef.SubstInitializer(D->getInit(), TemplateArgs,
-                                      D->getInitStyle() == VarDecl::CallInit);
-      QualType DecompType = Init.get()->getType();
+    } else if (OldBD->isParameterPack() && NewDD->getInit()) {
+      // Build the newly ResolvedUnexpandedPackExpr.
+      QualType DecompType = NewDD->getInit().get()->getType();
+      // FIXME Maybe there is a way to not need to find the PackSize.
       unsigned MemberCount = SemaRef.GetDecompositionElementCount(DecompType);
       unsigned PackSize = MemberCount - D->bindings().size() + 1;
       NewBindingPack = cast<BindingDecl>(VisitBindingDecl(OldBD));
@@ -1215,19 +1212,12 @@ Decl *TemplateDeclInstantiator::VisitDecompositionDecl(DecompositionDecl *D) {
                                               VK_LValue, OldBD->getLocation());
       }
     } else {
-      //if (OldBD->isParameterPack() && !D->getInit())
-        // FIXME: This happens with range based for loops (ie pack with no init)
-        //        because the initializer is added much later.
-        //        We need to weigh the cost of expanding the ->bindings()
-        //        versus just visiting them when needed and allowing the
-        //        ResolvedUnexpandedPackExpr to continue living in the binding.
       NewBindings.push_back(cast<BindingDecl>(VisitBindingDecl(OldBD)));
     }
   }
-  ArrayRef<BindingDecl*> NewBindingArray = NewBindings;
 
-  auto *NewDD = cast_or_null<DecompositionDecl>(
-      VisitVarDecl(D, /*InstantiatingVarTemplate=*/false, &NewBindingArray));
+  //ArrayRef<BindingDecl*> NewBindingArray = NewBindings;
+  NewDD->setBindings(NewBindings);
 
   if (!NewDD || NewDD->isInvalidDecl())
     for (auto *NewBD : NewBindings)
@@ -1236,6 +1226,8 @@ Decl *TemplateDeclInstantiator::VisitDecompositionDecl(DecompositionDecl *D) {
   if (NewBindingPack)
     NewBindingPack->setDecomposedDecl(NewDD);
 
+
+#if 0
   if (NewResolvedPack) {
     for (Expr*& NestedExpr : llvm::MutableArrayRef<Expr*>(
                                              NewResolvedPack->getExprs(),
@@ -1249,6 +1241,7 @@ Decl *TemplateDeclInstantiator::VisitDecompositionDecl(DecompositionDecl *D) {
       SemaRef.CurrentInstantiationScope->InstantiatedLocal(B, B);
     }
   }
+#endif
 
   return NewDD;
 }
@@ -1258,9 +1251,7 @@ Decl *TemplateDeclInstantiator::VisitVarDecl(VarDecl *D) {
 }
 
 Decl *TemplateDeclInstantiator::VisitVarDecl(VarDecl *D,
-                                             bool InstantiatingVarTemplate,
-                                             ArrayRef<BindingDecl*> *Bindings) {
-
+                                             bool InstantiatingVarTemplate) {
   // Do substitution on the type of the declaration
   TypeSourceInfo *DI = SemaRef.SubstType(
       D->getTypeSourceInfo(), TemplateArgs, D->getTypeSpecStartLoc(),
@@ -1280,10 +1271,10 @@ Decl *TemplateDeclInstantiator::VisitVarDecl(VarDecl *D,
 
   // Build the instantiated declaration.
   VarDecl *Var;
-  if (Bindings)
+  if (isa<DecompositionDecl>(D))
     Var = DecompositionDecl::Create(SemaRef.Context, DC, D->getInnerLocStart(),
                                     D->getLocation(), DI->getType(), DI,
-                                    D->getStorageClass(), *Bindings);
+                                    D->getStorageClass());
   else
     Var = VarDecl::Create(SemaRef.Context, DC, D->getInnerLocStart(),
                           D->getLocation(), D->getIdentifier(), DI->getType(),

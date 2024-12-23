@@ -3405,30 +3405,48 @@ DecompositionDecl::VisitBindings(
 
 void DecompositionDecl::anchor() {}
 
+void DecompositionDecl::setBindings(const ASTContext &C,
+                                    unsigned Num) {
+  NumBindings = Num;
+  Bindings = new (C) BindingDecl*[BD.size()];
+  for (BindingDecl* BD : Bindings) {
+    BD = nullptr;
+  }
+  for (unsigned i = 0; i != BD.size(); i++) {
+    Bindings[i] = BD[i];
+    Bindings[i]->setDecomposedDecl(this);
+  }
+}
+void DecompositionDecl::setBindings(const ASTContext &C,
+                                    ArrayRef<BindingDecl *> BD) {
+  NumBindings = BD.size();
+  Bindings = new (C) BindingDecl*[BD.size()];
+  for (unsigned i = 0; i != BD.size(); i++) {
+    Bindings[i] = BD[i];
+    Bindings[i]->setDecomposedDecl(this);
+  }
+}
+
 DecompositionDecl *DecompositionDecl::Create(ASTContext &C, DeclContext *DC,
                                              SourceLocation StartLoc,
                                              SourceLocation LSquareLoc,
                                              QualType T, TypeSourceInfo *TInfo,
-                                             StorageClass SC,
-                                             ArrayRef<BindingDecl *> Bindings) {
-  size_t Extra = additionalSizeToAlloc<BindingDecl *>(Bindings.size());
-  return new (C, DC, Extra)
-      DecompositionDecl(C, DC, StartLoc, LSquareLoc, T, TInfo, SC, Bindings);
+                                             StorageClass SC) {
+  return new (C, DC)
+      DecompositionDecl(C, DC, StartLoc, LSquareLoc, T, TInfo, SC);
 }
 
 DecompositionDecl *DecompositionDecl::CreateDeserialized(ASTContext &C,
                                                          GlobalDeclID ID,
                                                          unsigned NumBindings) {
-  size_t Extra = additionalSizeToAlloc<BindingDecl *>(NumBindings);
-  auto *Result = new (C, ID, Extra)
+  auto *Result = new (C, ID)
       DecompositionDecl(C, nullptr, SourceLocation(), SourceLocation(),
-                        QualType(), nullptr, StorageClass(), std::nullopt);
+                        QualType(), nullptr, StorageClass());
   // Set up and clean out the bindings array.
   Result->NumBindings = NumBindings;
-  auto *Trail = Result->getTrailingObjects<BindingDecl *>();
-  for (unsigned I = 0; I != NumBindings; ++I)
-    new (Trail + I) BindingDecl*(nullptr);
-  return Result;
+  Result->Bindings = new (C) BindingDecl*[NumBindings];
+  for (BindingDecl* BD : Result->Bindings)
+    BD = nullptr;
 }
 
 void DecompositionDecl::printName(llvm::raw_ostream &OS,
