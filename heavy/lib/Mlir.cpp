@@ -592,12 +592,9 @@ void attr(Context& C, ValueRefs Args) {
       return C.RaiseError("mlir attribute parse failed");
   } else if (Args.size() == 1) {
     Attr = HeavyValueAttr::get(MLIRContext, Args[0]);
-    //Type = HeavyValueTy::get(MLIRContext);
   }
   else
     return C.RaiseError("invalid arity");
-
-  Attr.dump();
 
   C.Cont(CreateTagged(C, kind::mlir_attr, Attr.getImpl()));
 }

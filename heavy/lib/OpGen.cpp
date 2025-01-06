@@ -383,6 +383,8 @@ mlir::Value OpGen::createLambda(Value Formals, Value Body,
                                 SourceLocation Loc,
                                 llvm::StringRef Name) {
   std::string MangledName = mangleFunctionName(Name);
+  if (MangledName.empty())
+    return Error();
 
   bool HasRestParam = false;
   heavy::EnvFrame* EnvFrame = Context.PushLambdaFormals(Formals,
@@ -466,6 +468,8 @@ mlir::Value OpGen::createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall) {
     TopLevelEnv = cast<Environment>(Context.EnvStack);
     // Create the syntax as a global.
     std::string MangledName = mangleVariable(Keyword);
+    if (MangledName.empty())
+      return Error();
     SourceLocation DefineLoc = OrigCall.getSourceLocation();
     // FIXME This code is very similar to stuff in createTopLevelDefine
     auto GlobalOp = createTopLevel<heavy::GlobalOp>(DefineLoc, MangledName);
@@ -746,6 +750,8 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
 
   heavy::Mangler Mangler(Context);
   std::string MangledName = Mangler.mangleVariable(getModulePrefix(), S);
+  if (MangledName.empty())
+    return Error();
   auto GlobalOp = dyn_cast_or_null<heavy::GlobalOp>(
       LookupSymbol(MangledName));
   if (GlobalOp) {
@@ -931,6 +937,8 @@ mlir::Value OpGen::VisitSymbol(Symbol* S) {
     // Default to the name of a global
     heavy::Mangler Mangler(Context);
     std::string MangledName = Mangler.mangleVariable(getModulePrefix(), S);
+    if (MangledName.empty())
+      return Error();
     return createGlobal(Loc, MangledName);
   }
   return VisitEnvEntry(Loc, Entry);
@@ -1011,6 +1019,8 @@ mlir::Value OpGen::createContinuation(mlir::Region& initCont) {
   mlir::FunctionType FT = createFunctionType(/*Arity=*/1,
                                              /*HasRestParam=*/false);
   std::string MangledName = mangleFunctionName(llvm::StringRef());
+  if (MangledName.empty())
+    return Error();
 
   Builder.createBlock(&initCont);
 
@@ -1254,6 +1264,8 @@ void OpGen::Export(Value NameList) {
       return;
     }
     std::string MangledName = mangleVariable(Source);
+    if (MangledName.empty())
+      return;
     createHelper<ExportIdOp>(ExportBuilder, Target->getSourceLocation(),
                              MangledName, Target->getView());
     // Next
