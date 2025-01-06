@@ -34,6 +34,7 @@
 #include "llvm/Support/Unicode.h"
 #include <algorithm>
 #include <cstring>
+#include <string>
 
 using namespace heavy;
 
@@ -814,7 +815,7 @@ void Context::LoadModule(Value Spec, bool IsFileLoaded) {
   heavy::Mangler Mangler(*this);
   // Name - The mangled module name
   std::string Name = Mangler.mangleModule(Spec);
-  if (OpGen->CheckError())
+  if (Name.empty())
     return;
 
   std::unique_ptr<Module>& M = Modules[Name];
@@ -853,8 +854,12 @@ void Context::LoadModule(Value Spec, bool IsFileLoaded) {
     Current = P->Cdr;
     while ((P = dyn_cast<heavy::Pair>(Current))) {
       FilenameBuffer += '/';
-      auto* Symbol = dyn_cast<heavy::Symbol>(P->Car);
-      FilenameBuffer += Symbol->getView();
+      if (auto* Symbol = dyn_cast<heavy::Symbol>(P->Car))
+        FilenameBuffer += Symbol->getView();
+      else if (isa<Int>(P->Car))
+        FilenameBuffer += std::to_string(cast<Int>(P->Car));
+      else
+        return RaiseError("expecting valid library name part");
       Current = P->Cdr;
     }
     FilenameBuffer += ".sld";
@@ -969,6 +974,8 @@ void heavy::initModule(heavy::Context& C, llvm::StringRef ModuleMangledName,
     Value Val = X.second;
     llvm::StringRef Id = X.first;
     std::string MangledName = Mangler.mangleVariable(ModuleMangledName, Id);
+    if (MangledName.empty())
+      return;
     registerModuleVar(C, M, MangledName, Id, Val);
     // Track valid values by their mangled names
     if (Val) {

@@ -88,12 +88,17 @@ std::string Mangler::mangleSpecialName(Twine ModulePrefix,
 std::string Mangler::mangleName(Continuation Cont, Twine Prefix,
                                 Value Name) {
   llvm::StringRef Str = llvm::StringRef();
+  std::string TempString;
   if (Symbol* S = dyn_cast<Symbol>(Name)) {
     Str = S->getVal();
   } else if (String* S = dyn_cast<String>(Name)) {
     Str = S->getView();
+  } else if (isa<Int>(Name) && cast<Int>(Name) >= 0) {
+    int32_t I = cast<Int>(Name);
+    TempString = std::to_string(I);
+    Str = llvm::StringRef(TempString);
   } else {
-    return setError("expected identifier for name", Name);
+    return setError("expected identifier or unsigned integer for name", Name);
   }
   return mangleName(Cont, Prefix, Str);
 }
