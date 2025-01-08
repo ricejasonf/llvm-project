@@ -13,6 +13,7 @@ include "mlir/IR/OpBase.td"
 
 def Nbdl_Dialect : Dialect {
   let name = "nbdl_gen";
+  let useDefaultTypePrinterParser = 1;
 }
 
 // We keep cpp_typename around for when
