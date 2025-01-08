@@ -31,7 +31,6 @@ HeavyScheme::HeavyScheme(std::unique_ptr<heavy::Context> C)
     SourceFileStoragePtr(nullptr, [](SourceFileStorage*) { })
 {
   ContextPtr->setEnvironment(EnvPtr.get());
-  HEAVY_BASE_INIT(*ContextPtr);
 }
 
 HeavyScheme::HeavyScheme()
