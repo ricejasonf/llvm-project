@@ -24,10 +24,10 @@
 
 #include "nbdl_gen/NbdlDialect.h.inc"
 
-#define GET_ATTRDEF_CLASSES
-#include "nbdl_gen/NbdlAttrs.h.inc"
-
 #define GET_TYPEDEF_CLASSES
+#include "nbdl_gen/NbdlTypes.h.inc"
+
+#define GET_ATTRDEF_CLASSES
 #include "nbdl_gen/NbdlAttrs.h.inc"
 
 #define GET_OP_CLASSES
