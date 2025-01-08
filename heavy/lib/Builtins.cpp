@@ -62,6 +62,7 @@ heavy::ExternFunction HEAVY_BASE_VAR(dynamic_wind);
 heavy::ExternFunction HEAVY_BASE_VAR(eval);
 heavy::ExternFunction HEAVY_BASE_VAR(op_eval);
 heavy::ExternFunction HEAVY_BASE_VAR(compile);
+heavy::ContextLocal   HEAVY_BASE_VAR(module_path);
 
 namespace heavy { namespace base {
 

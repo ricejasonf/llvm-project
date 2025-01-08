@@ -2084,7 +2084,6 @@ struct ContextLocal {
   uintptr_t key() const { return reinterpret_cast<uintptr_t>(this); }
   heavy::Value get(heavy::ContextLocalLookup const& C) const;
   void set(heavy::ContextLocalLookup& C, heavy::Value Value);
-  heavy::Binding* getBinding(heavy::ContextLocalLookup const& C) const;
 };
 
 // ListIterator - Provide ForwardIterator for lists
