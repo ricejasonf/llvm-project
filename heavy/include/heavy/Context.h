@@ -189,6 +189,8 @@ public:
   void PushModuleCleanup(llvm::StringRef MangledName, Value Fn);
   void IncludeModuleFile(heavy::SourceLocation Loc, heavy::String* Filename,
                          std::string ModuleMangledName);
+  bool TryLoadPrebuiltModule(heavy::SourceLocation Loc,
+                             llvm::StringRef ModuleMangledName);
 
 
   Context();

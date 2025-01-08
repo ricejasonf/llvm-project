@@ -22,6 +22,7 @@
 #include "heavy/ValueVisitor.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Verifier.h" // TODO move to OpGen
+#include "mlir/Bytecode/BytecodeReader.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/SmallVector.h"
@@ -30,8 +31,10 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/ErrorOr.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Unicode.h"
+#include "llvm/Support/raw_ostream.h"
 #include <algorithm>
 #include <cstring>
 #include <string>
@@ -879,6 +882,10 @@ void Context::LoadModule(Value Spec, bool IsFileLoaded) {
       // Require the module this time.
       C.LoadModule(Spec, /*IsFileLoaded=*/true);
     }, CaptureList{Spec});
+
+  if (TryLoadPrebuiltModule(Loc, Name))
+    return;
+
   IncludeModuleFile(Loc, Filename, std::move(Name));
 }
 
@@ -950,6 +957,33 @@ void Context::IncludeModuleFile(heavy::SourceLocation Loc,
     C.Cont();
   }, CaptureList{MetaModuleName});
   WithEnv(std::move(Env), Thunk);
+}
+
+bool Context::TryLoadPrebuiltModule(heavy::SourceLocation Loc,
+                                    llvm::StringRef ModuleMangledName) {
+  // TODO Specify ModulePath dynamically.
+  llvm::StringRef ModulePath_ = "heavy_modules/";
+  std::unique_ptr<llvm::MemoryBuffer> FileBuffer = nullptr;
+  for (llvm::StringRef ModulePath : llvm::ArrayRef(ModulePath_)) {
+    // TODO Iterate module paths.
+    llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> File =
+      llvm::MemoryBuffer::getFile(llvm::Twine(ModulePath) +
+                                  llvm::Twine(ModuleMangledName, ".sld.bc"));
+    if (File) {
+      FileBuffer = std::move(File.get());
+      break;
+    }
+  }
+  if (FileBuffer) {
+    // Load the byte code into the top level ModuleOp.
+    mlir::ModuleOp TopOp = cast<mlir::ModuleOp>(this->ModuleOp);
+    mlir::MLIRContext* MCtx = TopOp->getContext();
+    if (mlir::succeeded(mlir::readBytecodeFile(*FileBuffer, TopOp.getBody(),
+                                               mlir::ParserConfig(MCtx)))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void Context::AddKnownAddress(llvm::StringRef MangledName, heavy::Value Value) {

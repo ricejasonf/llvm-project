@@ -10,11 +10,23 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <nbdl_gen/Dialect.h>
+#include <mlir/IR/DialectImplementation.h>
+#include <mlir/IR/OpImplementation.h>
+#include <llvm/ADT/TypeSwitch.h>
+
 // Include generated source files.
 
 #include "nbdl_gen/NbdlDialect.cpp.inc"
 
-void nbdl_gen::Dialect::initialize() {
+#define GET_TYPEDEF_CLASSES
+#include "nbdl_gen/NbdlTypes.cpp.inc"
+#define GET_ATTRDEF_CLASSES
+#include "nbdl_gen/NbdlAttrs.cpp.inc"
+#define GET_OP_CLASSES
+#include "nbdl_gen/NbdlOps.cpp.inc"
+
+void nbdl_gen::NbdlDialect::initialize() {
   addTypes<
 #define GET_TYPEDEF_LIST
 #include "nbdl_gen/NbdlTypes.cpp.inc"
