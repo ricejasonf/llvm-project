@@ -45,6 +45,7 @@
 #define HEAVY_BASE_VAR__parse_source_file \
                                       HEAVY_BASE_LIB_(V5Sparsemi6Ssourcemi4Sfile)
 #define HEAVY_BASE_VAR__dynamic_wind  HEAVY_BASE_LIB_(V7Sdynamicmi4Swind)
+#define HEAVY_BASE_VAR__module_path   HEAVY_BASE_LIB_(V6Smodulemi4Spath)
 
 namespace mlir {
 
@@ -157,9 +158,11 @@ extern heavy::ExternFunction HEAVY_BASE_VAR(raise);
 extern heavy::ExternFunction HEAVY_BASE_VAR(error);
 extern heavy::ExternFunction HEAVY_BASE_VAR(dynamic_wind);
 
+// TODO Put this stuff in a "eval" submodule or something.
 extern heavy::ExternFunction HEAVY_BASE_VAR(eval);
 extern heavy::ExternFunction HEAVY_BASE_VAR(op_eval);
 extern heavy::ExternFunction HEAVY_BASE_VAR(compile);
+extern heavy::ContextLocal   HEAVY_BASE_VAR(module_path);
 
 extern "C" {
 // initialize the module for run-time independent of the compiler
@@ -209,12 +212,13 @@ inline void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(eval)    = heavy::base::eval;
   HEAVY_BASE_VAR(op_eval) = heavy::base::op_eval;
   HEAVY_BASE_VAR(compile) = heavy::base::compile;
+  HEAVY_BASE_VAR(module_path).init(Context, heavy::Undefined());
 }
 
 // initializes the module and loads lookup information
 // for the compiler
 inline void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
-  HEAVY_BASE_INIT(Context);
+  // Note: We call HEAVY_BASE_INIT in the constructor of Context.
   heavy::initModule(Context, HEAVY_BASE_LIB_STR, {
     // syntax
     {"define",        HEAVY_BASE_VAR(define)},
@@ -261,6 +265,7 @@ inline void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"eval",    HEAVY_BASE_VAR(eval)},
     {"op-eval", HEAVY_BASE_VAR(op_eval)},
     {"compile", HEAVY_BASE_VAR(compile)},
+    {"module-path", HEAVY_BASE_VAR(module_path).get(Context)},
   });
 }
 
@@ -293,6 +298,11 @@ void InitParseSourceFile(heavy::Context& C, ParseSourceFileFn Fn) {
     Fn(C, Loc, Filename);
   };
   HEAVY_BASE_VAR(parse_source_file).set(C, C.CreateLambda(ParseFn));
+}
+
+inline
+void SetModulePath(heavy::Context& C, llvm::StringRef ModulePath) {
+  HEAVY_BASE_VAR(module_path).set(C, C.CreateString(ModulePath));
 }
 }
 
