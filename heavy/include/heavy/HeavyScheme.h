@@ -82,6 +82,7 @@ class HeavyScheme {
                                char const* BufferEnd,
                                char const* BufferPos);
   void InitSourceFileStorage();
+  void SetModulePath(llvm::StringRef ModulePath);
 
   // LoadEmbeddedEnv
   //              - Associates an opaque pointer with a scheme environment

@@ -146,6 +146,7 @@ public:
   mlir::Operation* getModuleOp();
   void dumpModuleOp();
   void verifyModule();
+  bool OutputModule(llvm::StringRef MangledName, llvm::StringRef ModulePath);
   void PushTopLevel(Value);
 
   // Return true on invalid kind

@@ -212,7 +212,7 @@ inline void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(eval)    = heavy::base::eval;
   HEAVY_BASE_VAR(op_eval) = heavy::base::op_eval;
   HEAVY_BASE_VAR(compile) = heavy::base::compile;
-  HEAVY_BASE_VAR(module_path).init(Context, heavy::Undefined());
+  HEAVY_BASE_VAR(module_path).init(Context);
 }
 
 // initializes the module and loads lookup information
@@ -300,10 +300,6 @@ void InitParseSourceFile(heavy::Context& C, ParseSourceFileFn Fn) {
   HEAVY_BASE_VAR(parse_source_file).set(C, C.CreateLambda(ParseFn));
 }
 
-inline
-void SetModulePath(heavy::Context& C, llvm::StringRef ModulePath) {
-  HEAVY_BASE_VAR(module_path).set(C, C.CreateString(ModulePath));
-}
 }
 
 namespace heavy::detail {
