@@ -182,4 +182,9 @@ heavy::Value HeavyScheme::ParseSourceFile(heavy::Lexer Lexer) {
   return Result.get();
 }
 
+void HeavyScheme::SetModulePath(llvm::StringRef ModulePath) {
+  heavy::Context& C = getContext();
+  HEAVY_BASE_VAR(module_path).set(C, C.CreateString(ModulePath));
+}
+
 }

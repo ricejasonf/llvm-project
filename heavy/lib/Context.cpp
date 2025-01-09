@@ -20,19 +20,22 @@
 #include "heavy/Source.h"
 #include "heavy/Value.h"
 #include "heavy/ValueVisitor.h"
+#include "mlir/Bytecode/BytecodeReader.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Verifier.h" // TODO move to OpGen
-#include "mlir/Bytecode/BytecodeReader.h"
+#include "mlir/Support/FileUtilities.h" // openOutputFile
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
-#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorOr.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/Unicode.h"
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
@@ -1406,4 +1409,25 @@ EnvFrame* Context::CreateEnvFrame(llvm::ArrayRef<Symbol*> Names) {
     Bindings[i] = CreateBinding(Names[i], CreateUndefined());
   }
   return E;
+}
+
+bool Context::OutputModule(llvm::StringRef MangledName,
+                           llvm::StringRef ModulePath) {
+  mlir::ModuleOp TopOp = cast<mlir::ModuleOp>(ModuleOp);
+  if (mlir::Operation* Op = TopOp.lookupSymbol(MangledName)) {
+    std::string ErrorMessage;
+    std::string FullPath = (llvm::Twine(ModulePath) +
+                            llvm::Twine(MangledName, ".sld.bc")).str();
+    std::unique_ptr<llvm::ToolOutputFile> OutputFile = 
+      mlir::openOutputFile(FullPath, &ErrorMessage);
+    if (!OutputFile) {
+      llvm::errs() << ErrorMessage << "\n";
+      return false;
+    }
+    if (mlir::succeeded(mlir::writeBytecodeToFile(Op, OutputFile->os()))) {
+      OutputFile->keep();
+      return true;
+    }
+  }
+  return false;
 }

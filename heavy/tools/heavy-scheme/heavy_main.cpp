@@ -24,6 +24,7 @@
 namespace cl = llvm::cl;
 
 enum class ExecutionMode {
+  none,
   repl,
   read,
   mlir,
@@ -44,8 +45,17 @@ static cl::opt<ExecutionMode> InputMode(
                         "just read and print"},
     cl::OptionEnumValue{"mlir",
                         (int)ExecutionMode::mlir,
-                        "output mlir code"}),
-  cl::init(ExecutionMode::repl));
+                        "verify and output mlir code to stderr"}),
+  cl::init(ExecutionMode::none));
+
+static cl::opt<std::string> InputModulePath(
+  "module-path", cl::desc("Specify the path used for prebuilt modules."),
+  cl::init(""));
+
+static cl::opt<std::string> InputExportModule(
+  "export-module", cl::desc("Specify a library by its mangled name to export"
+                            " as bytecode to the module path."),
+  cl::init(""));
 
 void ProcessTopLevelExpr(heavy::Context& Context, heavy::ValueRefs Values) {
   assert(Values.size() == 2 && "expecting 2 arguments");
@@ -63,7 +73,7 @@ void ProcessTopLevelExpr(heavy::Context& Context, heavy::ValueRefs Values) {
     Context.Cont();
     return;
   default:
-    llvm_unreachable("Invalid execution mode for loop");
+    heavy::eval(Context, Val, Env);
   }
 }
 
@@ -77,6 +87,8 @@ int main(int argc, char const** argv) {
   heavy::HeavyScheme HeavyScheme;
   HeavyScheme.InitSourceFileStorage();
   cl::ParseCommandLineOptions(argc, argv);
+  if (!InputModulePath.empty())
+    HeavyScheme.SetModulePath(InputModulePath);
   // Create error handler.
   bool HasErrors = false;
   auto OnError = [&HasErrors](llvm::StringRef Err,
@@ -104,6 +116,14 @@ int main(int argc, char const** argv) {
                                       ProcessTopLevelExpr,
                                       OnError);
 
+  if (!InputExportModule.empty()) {
+    // If module-path is unspecified we output to the current directory.
+    std::string ModulePath = InputModulePath.getValue();
+    std::string ModuleName = InputExportModule.getValue();
+    if (!HeavyScheme.getContext().OutputModule(ModuleName, ModulePath)) {
+      llvm::errs() << "error: module output failed " << ModuleName << "\n\n";
+    }
+  }
   if (InputMode.getValue() == ExecutionMode::mlir) {
     HeavyScheme.getContext().verifyModule();
     HeavyScheme.getContext().dumpModuleOp();
