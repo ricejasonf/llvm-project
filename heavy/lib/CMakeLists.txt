@@ -25,10 +25,13 @@ add_heavy_library(heavy
 
   LINK_LIBS
     MLIRAnalysis
+    MLIRBytecodeReader
+    MLIRBytecodeWriter
     MLIRFuncDialect
     MLIRIR
     MLIRParser
     MLIRSideEffectInterfaces
+    MLIRSupport
     MLIRTransforms
 
   DEPENDS
