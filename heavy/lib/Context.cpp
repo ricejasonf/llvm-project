@@ -888,7 +888,7 @@ void Context::LoadModule(Value Spec, bool IsFileLoaded) {
     }, CaptureList{Spec});
 
   if (TryLoadPrebuiltModule(Loc, Name))
-    return;
+    return Cont();
 
   IncludeModuleFile(Loc, Filename, std::move(Name));
 }
@@ -972,7 +972,7 @@ bool Context::TryLoadPrebuiltModule(heavy::SourceLocation Loc,
 
   std::unique_ptr<llvm::MemoryBuffer> FileBuffer = nullptr;
   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> File =
-    llvm::MemoryBuffer::getFile(llvm::Twine(ModulePath) +
+    llvm::MemoryBuffer::getFile(llvm::Twine(ModulePath, "/") +
                                 llvm::Twine(ModuleMangledName, ".sld.bc"));
   if (!File)
     return false;
@@ -1416,7 +1416,7 @@ bool Context::OutputModule(llvm::StringRef MangledName,
   mlir::ModuleOp TopOp = cast<mlir::ModuleOp>(ModuleOp);
   if (mlir::Operation* Op = TopOp.lookupSymbol(MangledName)) {
     std::string ErrorMessage;
-    std::string FullPath = (llvm::Twine(ModulePath) +
+    std::string FullPath = (llvm::Twine(ModulePath, "/") +
                             llvm::Twine(MangledName, ".sld.bc")).str();
     std::unique_ptr<llvm::ToolOutputFile> OutputFile = 
       mlir::openOutputFile(FullPath, &ErrorMessage);

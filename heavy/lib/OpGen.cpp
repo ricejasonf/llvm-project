@@ -237,12 +237,16 @@ void OpGen::VisitLibrarySpec(Value LibSpec) {
   heavy::Context& Context = this->Context;
   bool DidCallSyntax = false;
   if (Pair* P = dyn_cast<Pair>(LibSpec)) {
-    MaybeCallSyntax(P, DidCallSyntax);
+    if (MaybeCallSyntax(P, DidCallSyntax) == Error()) {
+      if (Context.OpGen && Context.OpGen->CheckError())
+        return;
+    }
   }
   if (!DidCallSyntax) {
     SetError("expecting library spec", LibSpec);
     return;
   }
+
   Context.Cont();
 }
 
@@ -277,7 +281,8 @@ void OpGen::VisitTopLevel(Value V) {
   Context.PushCont([](heavy::Context& C, ValueRefs) {
     heavy::Value V = C.getCapture(0);
     C.OpGen->Visit(V);
-    if (C.OpGen->CheckError())
+    // OpGen gets destroyed when the environment is destroyed.
+    if (C.OpGen && C.OpGen->CheckError())
       return;
     C.Cont();
   }, CaptureList{V});
