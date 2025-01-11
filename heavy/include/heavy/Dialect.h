@@ -44,6 +44,8 @@ struct Dialect : public mlir::Dialect {
 #endif
   mlir::Type parseType(mlir::DialectAsmParser& P) const override;
 
+  mlir::Attribute parseAttribute(mlir::DialectAsmParser& P,
+                                 mlir::Type Type) const override;
   void printAttribute(mlir::Attribute Attr,
                       mlir::DialectAsmPrinter& P) const override;
   void printType(mlir::Type, mlir::DialectAsmPrinter&) const override;
