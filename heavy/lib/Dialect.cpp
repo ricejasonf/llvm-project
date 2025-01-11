@@ -40,16 +40,16 @@ Dialect::Dialect(mlir::MLIRContext* Ctx)
     >();
 }
 
-#if 0
 mlir::Attribute Dialect::parseAttribute(mlir::DialectAsmParser& P,
                                         mlir::Type type) const {
   // Parse HeavyValueAttr.
-  char const* CurPtr = P.getCurrentLocation().getPointer();
-  heavy::Value Val = Parser::ParseExternalBuffer(HeavyContext, CurPtr,
-      heavy::tok::r_brace);
-  return HeavyValueAttr::get(P.getContext(), heavy::Undefined());
+  std::string string;
+  if (P.parseString(&string))
+    return {};
+  mlir::MLIRContext* MlirCtx = P.getContext();
+  auto StringAttr = mlir::StringAttr::get(MlirCtx, string);
+  return HeavyValueAttr::get(MlirCtx, StringAttr);
 }
-#endif
 
 mlir::Type Dialect::parseType(mlir::DialectAsmParser& P) const {
   llvm::StringRef Name;
