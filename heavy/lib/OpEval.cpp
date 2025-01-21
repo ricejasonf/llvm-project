@@ -12,6 +12,7 @@
 
 #include "heavy/Builtins.h"
 #include "heavy/Context.h"
+#include "heavy/Mangle.h"
 #include "heavy/OpGen.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/ScopedHashTable.h"
@@ -180,8 +181,8 @@ private:
     return BlockItrTy();
   }
 
-  template <typename ...Args>
-  BlockItrTy SetError(SourceLocation Loc, char const* Str,
+  template <typename StringTy>
+  BlockItrTy SetError(SourceLocation Loc, StringTy Str,
                       heavy::Value Irr = heavy::Undefined()) {
     Context.setLoc(Loc);
     Context.RaiseError(Str, Irr);
@@ -329,15 +330,6 @@ private:
     Value Callee = ArgResults[0];
     ValueRefs Args = ValueRefs(ArgResults).drop_front();
 
-    if (!Op.isTailPos()) {
-      // evaluate the initCont region which pushes
-      // a continuation
-      BlockItrTy Itr = Op.getInitCont().front().begin();
-      while (Itr != BlockItrTy()) {
-        Itr = Visit(&*Itr);
-      }
-    }
-
     Context.Apply(Callee, Args);
     return BlockItrTy();
   }
@@ -410,42 +402,51 @@ private:
 
   BlockItrTy Visit(IfContOp Op) {
     Value Input = getValue(Op.getInput());
-
-    if (!Op.isTailPos()) {
-      // evaluate the initCont region which pushes
-      // a continuation
-      BlockItrTy Itr = Op.getInitCont().front().begin();
-      while (Itr != BlockItrTy()) {
-        Itr = Visit(&*Itr);
-      }
-    }
-
     push_scope();
     return Input.isTrue() ? Op.getThenRegion().front().begin() :
                             Op.getElseRegion().front().begin();
   }
 
-  auto createClosure(mlir::Operation* Op, mlir::ValueRange CaptureVals,
+  heavy::FuncOp lookupFunction(llvm::StringRef MangledName) {
+    // Look up the function in the module where it is defined.
+    // This walks the IR linearly.
+    // Look only at modules within the Context ModuleOp.
+    // (The IR refers to an extern global definition of the variable.
+    //  ie not the function itself.)
+    auto TopModuleOp = cast<mlir::ModuleOp>(Context.ModuleOp);
+    llvm::StringRef ModuleName = Mangler::parseModulePrefix(MangledName);
+    auto M = dyn_cast_or_null<mlir::ModuleOp>(
+        TopModuleOp.lookupSymbol(ModuleName));
+    auto F = dyn_cast_or_null<heavy::FuncOp>(M.lookupSymbol(MangledName));
+    if (!F) {
+      String* ErrMsg = Context.CreateString(
+          "undefined reference to function ", MangledName);
+      SetError(heavy::SourceLocation(), ErrMsg, Undefined());
+      return {};
+    }
+    return F;
+  }
+
+  auto createClosure(mlir::Operation* Op,
+                     heavy::FuncOp FuncOp,
+                     mlir::ValueRange CaptureVals,
                      llvm::SmallVectorImpl<heavy::Value>& Captures) {
     for (mlir::Value Val : CaptureVals) {
       Captures.push_back(getBindingOrValue(Val));
     }
 
-    // We could use the symbol to lookup the function
-    // but here we just assume the FuncOp precedes the
-    // LambdaOp/PushContOp since they are always
-    // generated that way in OpGen.
-    FuncOp F = cast<FuncOp>(Op->getPrevNode());
-    return [this, F](heavy::Context& C, ValueRefs Args) {
+    return [this, FuncOp](heavy::Context& C, ValueRefs Args) {
       // FIXME EvalOp instance can be destroyed before this.
-      this->CallFuncOp(F, Args);
+      this->CallFuncOp(FuncOp, Args);
       return heavy::Undefined();
     };
   }
 
   BlockItrTy Visit(LambdaOp Op) {
     llvm::SmallVector<heavy::Value, 8> Captures;
-    auto CallFn = createClosure(Op, Op.getCaptures(), Captures);
+    heavy::FuncOp F = lookupFunction(Op.getName());
+    if (!F) return {};
+    auto CallFn = createClosure(Op, F, Op.getCaptures(), Captures);
     Lambda* L = Context.CreateLambda(CallFn, Captures);
 
     setValue(Op.getResult(), L);
@@ -454,10 +455,12 @@ private:
 
   BlockItrTy Visit(PushContOp Op) {
     llvm::SmallVector<heavy::Value, 8> Captures;
-    auto CallFn = createClosure(Op, Op.getCaptures(), Captures);
+    heavy::FuncOp F = lookupFunction(Op.getName());
+    if (!F) return {};
+    auto CallFn = createClosure(Op, F, Op.getCaptures(), Captures);
     Context.PushCont(CallFn, Captures);
 
-    return BlockItrTy();
+    return next(Op);
   }
 
   BlockItrTy Visit(LiteralOp Op) {
@@ -671,14 +674,6 @@ private:
 
   BlockItrTy Visit(OpGenOp Op) {
     heavy::Value Input = getValue(Op.getInput());
-    if (!Op.isTailPos()) {
-      // evaluate the initCont region which pushes
-      // a continuation
-      BlockItrTy Itr = Op.getInitCont().front().begin();
-      while (Itr != BlockItrTy()) {
-        Itr = Visit(&*Itr);
-      }
-    }
     mlir::Value Result = Context.OpGen->Visit(Input);
     heavy::Value Output = heavy::OpGen::fromValue(Result);
     if (!Context.OpGen->CheckError())

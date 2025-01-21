@@ -45,13 +45,16 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   using BindingScope = typename BindingScopeTable::ScopeTy;
 
   struct LambdaScopeNode {
-    mlir::Operation* Op;
+    mlir::Operation* Op; // The function of the continuation.
+    mlir::Operation* CallOp = nullptr;  // The call to insert PushCont before.
     llvm::SmallVector<mlir::Value, 8> Captures;
     BindingScope BindingScope_;
 
     LambdaScopeNode(mlir::Operation* Op,
-          BindingScopeTable& Table)
+                    mlir::Operation* CallOp,
+                    BindingScopeTable& Table)
       : Op(Op),
+        CallOp(CallOp),
         Captures(),
         BindingScope_(Table)
     { }
@@ -71,7 +74,8 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
 
     LambdaScope(OpGen& O, mlir::Operation* Op)
       : O(O),
-        Node((O.LambdaScopes.emplace_back(Op, O.BindingTable),
+        Node((O.LambdaScopes.emplace_back(Op, /*CallOp*/nullptr,
+                                          O.BindingTable),
               O.LambdaScopes.back()))
     { }
 
@@ -91,10 +95,11 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
     }
   };
 
-  // continuation scopes get popped by their containing
-  // lambda
-  void PushContinuationScope(mlir::Operation* Op) {
-    LambdaScopes.emplace_back(Op, BindingTable);
+  // Continuation scopes get popped by their containing
+  // lambda. The PushContOp is inserted right before the
+  // specified CallOp.
+  void PushContinuationScope(mlir::Operation* Op, mlir::Operation* CallOp) {
+    LambdaScopes.emplace_back(Op, CallOp, BindingTable);
   }
 
   // pop the scope and build the PushContOp with its captures
@@ -103,7 +108,7 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   void setTopLevelOp(mlir::Operation* Op) {
     assert(LambdaScopes.size() == 1 &&
         "TopLevelOp should be at module scope with a LambdaScope");
-    LambdaScopes.emplace_back(Op, BindingTable);
+    LambdaScopes.emplace_back(Op, nullptr, BindingTable);
     TopLevelOp = Op;
   }
 
@@ -289,7 +294,7 @@ public:
   }
 
   mlir::Value createCall(heavy::SourceLocation Loc, mlir::Value Fn,
-                         llvm::ArrayRef<mlir::Value> Args);
+                         llvm::MutableArrayRef<mlir::Value> Args);
   mlir::Value createOpGen(SourceLocation Loc, mlir::Value Input);
   mlir::Value createBody(SourceLocation Loc, Value Body);
   mlir::Value createSequence(SourceLocation Loc, Value Body);
@@ -299,10 +304,13 @@ public:
                                 Value SyntaxDef);
   mlir::Value createIf(SourceLocation Loc, Value Cond, Value Then,
                             Value Else);
-  mlir::Value createContinuation(mlir::Region& initCont);
+  mlir::Value createContinuation(mlir::Operation* CallOp);
 
   mlir::FunctionType createFunctionType(unsigned Arity,
                                         bool HasRestParam);
+  heavy::FuncOp createFunction(SourceLocation Loc,
+                               llvm::StringRef MangledName,
+                               mlir::FunctionType FT);
   mlir::Value createLambda(Value Formals, Value Body,
                                SourceLocation Loc,
                                llvm::StringRef Name = {});

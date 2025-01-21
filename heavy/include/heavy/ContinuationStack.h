@@ -310,7 +310,8 @@ public:
       }
 
       // This means a C++ function was not written correctly.
-      assert((DidCallContinuation || getDerived().OpGen->CheckError()) &&
+      assert((DidCallContinuation ||
+             (getDerived().OpGen && getDerived().OpGen->CheckError())) &&
           "function failed to call continuation");
     }
     DidCallContinuation = false;
