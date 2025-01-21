@@ -56,19 +56,11 @@ def heavy_ApplyOp : HeavyOp<"apply", [ReturnLike, Terminator]> {
   let summary = "apply";
   let description = [{
     ApplyOp represents a function call whose results are passed to
-    a continuation. The initCont region should create a
-    closure object to be used as the continuation, or the region
-    should be empty in the case of non-tail calls.
+    a continuation.
   }];
-  let regions   = (region AnyRegion:$initCont);
+
   let arguments = (ins HeavyValue:$fn, Variadic<HeavyValue>:$args);
   let results   = (outs);
-
-  let extraClassDeclaration = [{
-    bool isTailPos() {
-      return getInitCont().empty();
-    }
-  }];
 }
 
 def heavy_BindingOp : HeavyOp<"binding"> {
@@ -163,14 +155,8 @@ def heavy_OpGenOp : HeavyOp<"opgen", [Terminator]> {
     This operation is used for syntax code generation.
   }];
 
-  let regions   = (region AnyRegion:$initCont);
   let arguments = (ins HeavyValue:$input);
   let results   = (outs);
-  let extraClassDeclaration = [{
-    bool isTailPos() {
-      return getInitCont().empty();
-    }
-  }];
 }
 
 def heavy_GlobalOp : HeavyOp<"global", [Symbol, IsolatedFromAbove]> {
@@ -202,14 +188,14 @@ def heavy_IfOp : HeavyOp<"if", []> {
   let summary = "if";
   let description = [{
     IfOp handles branching to one of two regions based on an
-    input result. Neither regions may contain an ApplyOp.
+    input result.
   }];
-
-  let arguments = (ins HeavyValue:$input);
-  let results   = (outs HeavyValue:$result);
 
   let regions   = (region SizedRegion<1>:$thenRegion,
                           SizedRegion<1>:$elseRegion);
+  let arguments = (ins HeavyValue:$input);
+  let results   = (outs HeavyValue:$result);
+
   let builders  = [OpBuilder<(ins "::mlir::Value":$input)>];
 }
 
@@ -218,22 +204,14 @@ def heavy_IfContOp : HeavyOp<"if_cont", [ReturnLike, Terminator]> {
   let description = [{
     IfContOp represents branching where one or more of the branches
     contain an ApplyOp so a continuation must be provided.
-    The initCont region behaves the same as ApplyOp and should be
-    empty if the operation is in tail position.
   }];
 
   let regions   = (region SizedRegion<1>:$thenRegion,
-                          SizedRegion<1>:$elseRegion,
-                          AnyRegion:$initCont);
+                          SizedRegion<1>:$elseRegion);
   let arguments = (ins HeavyValue:$input);
   let results   = (outs);
-
-  let extraClassDeclaration = [{
-    bool isTailPos() {
-      return getInitCont().empty();
-    }
-  }];
 }
+
 
 def heavy_LambdaOp : HeavyOp<"lambda"> {
   let summary = "lambda";
@@ -379,12 +357,12 @@ def heavy_PatternOp : HeavyOp<"pattern", [HasParent<"SyntaxOp">]> {
   let regions   = (region SizedRegion<1>:$region);
 }
 
-def heavy_PushContOp : HeavyOp<"push_cont", [ReturnLike, Terminator]> {
+def heavy_PushContOp : HeavyOp<"push_cont", []> {
   let summary = "push_cont";
   let description = [{
     Creates a closure for a continuation object to be
-    pushed to the continuation stack. This should only be
-    used to terminate an operation's initCont region.
+    pushed to the continuation stack. This will typically
+    precede an ApplyOp or other "non-tail" operation.
   }];
 
   let arguments = (ins StrAttr:$name,

@@ -57,7 +57,7 @@ OpGen::OpGen(heavy::Context& C, std::string ModulePrefix)
 
   ModuleBuilder.setInsertionPointToStart(
       cast<mlir::ModuleOp>(ModuleOp).getBody());
-  LambdaScopes.emplace_back(ModuleOp, BindingTable);
+  LambdaScopes.emplace_back(ModuleOp, /*CallOp=*/nullptr, BindingTable);
 }
 
 std::string OpGen::mangleModule(heavy::Value NameSpec) {
@@ -384,6 +384,13 @@ mlir::FunctionType OpGen::createFunctionType(unsigned Arity,
   return Builder.getFunctionType(Types, ValueT);
 }
 
+heavy::FuncOp OpGen::createFunction(SourceLocation Loc,
+                                    llvm::StringRef MangledName,
+                                    mlir::FunctionType FT) {
+  // Insert the FuncOp such that it precedes the current top level op.
+  return createHelper<heavy::FuncOp>(ModuleBuilder, Loc, MangledName, FT);
+}
+
 mlir::Value OpGen::createLambda(Value Formals, Value Body,
                                 SourceLocation Loc,
                                 llvm::StringRef Name) {
@@ -398,7 +405,7 @@ mlir::Value OpGen::createLambda(Value Formals, Value Body,
   unsigned Arity = EnvFrame->getBindings().size();
   mlir::FunctionType FT = createFunctionType(Arity, HasRestParam);
 
-  auto F = create<heavy::FuncOp>(Loc, MangledName, FT);
+  auto F = createFunction(Loc, MangledName, FT);
   LambdaScope LS(*this, F);
 
   // Insert into the function body
@@ -438,10 +445,11 @@ void OpGen::PopContinuationScope() {
   LambdaScopeNode& LS = LambdaScopes.back();
   mlir::Location Loc = LS.Op->getLoc();
   assert(isa<FuncOp>(LS.Op) && "expecting a function scope");
-  Builder.setInsertionPointAfter(LS.Op);
   llvm::StringRef MangledName = LS.Op->getAttrOfType<mlir::StringAttr>(
                                   mlir::SymbolTable::getSymbolAttrName())
                                   .getValue();
+  assert(LS.CallOp != nullptr && "a PushContOp should precede a call");
+  Builder.setInsertionPoint(LS.CallOp);
   Builder.create<PushContOp>(Loc, MangledName, LS.Captures);
   LambdaScopes.pop_back();
 }
@@ -776,10 +784,6 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
 
     Binding* B = Context.CreateBinding(S, DefineArgs);
     // Insert into the module level scope
-#if 0 // FIXME Should there be module level bindings?
-    BindingTable.insertIntoScope(&LambdaScopes[0].BindingScope_, B,
-                                 GlobalOp);
-#endif
     Env->Insert(B, Context.CreateIdTableEntry(MangledName));
     if (mlir::Value Init = VisitDefineArgs(DefineArgs)) {
       create<ContOp>(DefineLoc, Init);
@@ -808,7 +812,7 @@ mlir::Value OpGen::createIf(SourceLocation Loc, Value Cond, Value Then,
   {
     // Treat then/else regions as tail position since if there is
     // any ApplyOp contained therein the whole operation becomes
-    // an IfContOp which is a terminator with its own initCont region.
+    // an IfContOp which is a terminator with its own PushContOp.
     TailPosScope TPS(*this);
     IsTailPos = true;
 
@@ -849,7 +853,7 @@ mlir::Value OpGen::createIf(SourceLocation Loc, Value Cond, Value Then,
   IfContOp.getElseRegion().push_back(ElseBlock);
 
   if (TailPos) return mlir::Value();
-  return createContinuation(IfContOp.getInitCont());
+  return createContinuation(IfContOp);
 }
 
 // LHS can be a symbol or a binding
@@ -996,16 +1000,16 @@ mlir::Value OpGen::HandleCall(Pair* P) {
 }
 
 mlir::Value OpGen::createCall(heavy::SourceLocation Loc, mlir::Value Fn,
-                              llvm::ArrayRef<mlir::Value> Args) {
+                              llvm::MutableArrayRef<mlir::Value> Args) {
   // Localize all of the operands
   Fn = LocalizeValue(Fn);
-  for (mlir::Value Arg : Args)
+  for (mlir::Value& Arg : Args)
     Arg = LocalizeValue(Arg);
 
   auto Op = create<ApplyOp>(Loc, Fn, Args);
 
   if (IsTailPos) return mlir::Value();
-  return createContinuation(Op.getInitCont());
+  return createContinuation(Op);
 }
 
 mlir::Value OpGen::createOpGen(SourceLocation Loc, mlir::Value Input) {
@@ -1014,8 +1018,9 @@ mlir::Value OpGen::createOpGen(SourceLocation Loc, mlir::Value Input) {
   return mlir::Value();
 }
 
-mlir::Value OpGen::createContinuation(mlir::Region& initCont) {
-  //
+// The CallOp is the terminator op that the PushContOp should precede
+// in the block.
+mlir::Value OpGen::createContinuation(mlir::Operation* CallOp) {
   // TODO The current context should be able to tell us the arity
   //      of the continuation defaulting to 1 (plus the closure arg)
   //
@@ -1027,13 +1032,11 @@ mlir::Value OpGen::createContinuation(mlir::Region& initCont) {
   if (MangledName.empty())
     return Error();
 
-  Builder.createBlock(&initCont);
-
-  // create the continuation's function
+  // Create the continuation's function
   // subsequent operations will be nested within
-  // relying on previous insertion guards to pull us out
-  auto F = create<heavy::FuncOp>(heavy::SourceLocation(), MangledName, FT);
-  PushContinuationScope(F);
+  // relying on previous insertion guards to pull us out.
+  auto F = createFunction(heavy::SourceLocation(), MangledName, FT);
+  PushContinuationScope(F, CallOp);
   mlir::Block* FuncEntry = F.addEntryBlock();
   Builder.setInsertionPointToStart(FuncEntry);
   // Results drops the Closure arg at the front
