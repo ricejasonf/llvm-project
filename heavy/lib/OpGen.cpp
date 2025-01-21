@@ -404,12 +404,12 @@ mlir::Value OpGen::createLambda(Value Formals, Value Body,
   if (!EnvFrame) return Error();
   unsigned Arity = EnvFrame->getBindings().size();
   mlir::FunctionType FT = createFunctionType(Arity, HasRestParam);
-
   auto F = createFunction(Loc, MangledName, FT);
-  LambdaScope LS(*this, F);
+  llvm::SmallVector<mlir::Value, 8> Captures;
 
   // Insert into the function body
   {
+    LambdaScope LS(*this, F);
     mlir::OpBuilder::InsertionGuard IG(Builder);
     mlir::Block& Block = *F.addEntryBlock();
     Builder.setInsertionPointToStart(&Block);
@@ -435,9 +435,10 @@ mlir::Value OpGen::createLambda(Value Formals, Value Body,
     }
 
     Context.PopEnvFrame();
+    Captures = std::move(LS.Node.Captures);
   }
 
-  return create<LambdaOp>(Loc, MangledName, LS.Node.Captures);
+  return create<LambdaOp>(Loc, MangledName, Captures);
 }
 
 void OpGen::PopContinuationScope() {
