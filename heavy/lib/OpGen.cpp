@@ -78,6 +78,12 @@ std::string OpGen::mangleVariable(heavy::Value Name) {
   return Mangler.mangleVariable(getModulePrefix(), Name);
 }
 
+// Mangle the variable name of a syntax object.
+std::string OpGen::mangleSyntax(heavy::Value Name) {
+  heavy::Mangler Mangler(Context);
+  return Mangler.mangleAnonymousId(getModulePrefix(), LambdaNameCount++);
+}
+
 mlir::ModuleOp OpGen::getModuleOp() {
   return cast<mlir::ModuleOp>(ModuleOp);
 }
@@ -478,10 +484,11 @@ mlir::Value OpGen::createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall) {
   Symbol* Keyword = dyn_cast<Symbol>(SyntaxSpec->Car);
   if (!Keyword) return SetError("expecting syntax spec keyword", SyntaxSpec);
 
+  std::string MangledName;
   if (isTopLevel()) {
     TopLevelEnv = cast<Environment>(Context.EnvStack);
     // Create the syntax as a global.
-    std::string MangledName = mangleVariable(Keyword);
+    MangledName = mangleSyntax(Keyword);
     if (MangledName.empty())
       return Error();
     SourceLocation DefineLoc = OrigCall.getSourceLocation();
@@ -536,7 +543,9 @@ mlir::Value OpGen::createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall) {
       SyntaxOp.getOperation());
 
   if (TopLevelEnv) {
-    TopLevelEnv->SetSyntax(Keyword, Syntax);
+    assert(!MangledName.empty() && "global syntax must have mangled name");
+    TopLevelEnv->SetSyntax(Keyword, Syntax,
+        Context.CreateIdTableEntry(MangledName));
     // Insert a ContOp for the global that was created.
     Builder.create<ContOp>(Result.getLoc(), Result);
     Builder.restoreInsertionPoint(PrevIp);
