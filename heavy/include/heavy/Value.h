@@ -1743,8 +1743,12 @@ public:
   }
 
   // SetSyntax - Extend the syntactic environment.
-  void SetSyntax(Symbol* Name, Syntax* S) {
-    EnvMap[Name->getString()] = EnvEntry{Value(S)};
+  void SetSyntax(Symbol* Name, Syntax* S, String* MangledName) {
+    auto& Entry = EnvMap[Name->getString()];
+    assert(Entry.MangledName != MangledName &&
+        "global syntax must have unique mangling");
+    Entry.Value = S;
+    Entry.MangledName = MangledName;
   }
 
   static bool classof(Value V) {

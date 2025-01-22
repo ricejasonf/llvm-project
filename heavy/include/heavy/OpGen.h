@@ -236,6 +236,7 @@ public:
   std::string mangleModule(heavy::Value Name);
   std::string mangleFunctionName(llvm::StringRef Name);
   std::string mangleVariable(heavy::Value Name);
+  std::string mangleSyntax(heavy::Value Name);
 
   // createHelper - Facilitate creating an operation with proper source
   //                location information.
