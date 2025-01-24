@@ -296,7 +296,7 @@ struct ValueSumType {
 
 using ValuePtrBase = typename ValueSumType::type;
 
-struct ListIterator;
+class ListIterator;
 
 class Value : ValuePtrBase {
 public:
@@ -741,7 +741,7 @@ public:
 // BigInt currently assumes 64 bits
 class BigInt : public Number {
   friend class Number;
-  friend class NumberOp;
+  friend struct NumberOp;
   friend class CopyCollector;
   llvm::APInt Val;
 
@@ -760,7 +760,7 @@ public:
 };
 
 class Float : public ValueBase {
-  friend class NumberOp;
+  friend struct NumberOp;
   llvm::APFloat Val;
 
 public:
@@ -795,7 +795,7 @@ inline ValueKind Number::CommonKind(Value X, Value Y) {
 inline bool Number::isExactZero(Value V) {
   if (!Number::isExact(V)) return false;
   if (BigInt* I = dyn_cast<BigInt>(V)) {
-    I->Val == 0;
+    return I->Val == 0;
   }
   return cast<Int>(V) == 0;
 }

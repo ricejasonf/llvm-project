@@ -37,14 +37,13 @@ struct SourceLocationEncoding;
 
 class SourceLocation {
   friend class SourceManager;
-  friend class SourceFile;
+  friend struct SourceFile;
   unsigned Loc = 0;
 
   SourceLocation(unsigned Loc) : Loc(Loc) { }
 
 public:
   SourceLocation() = default;
-  SourceLocation(SourceLocation const&) = default;
 
   SourceLocation(SourceLocationEncoding* E)
     : Loc(reinterpret_cast<uintptr_t>(E))

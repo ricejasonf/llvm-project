@@ -453,7 +453,7 @@ bool Parser::ParseLiteralImpl() {
           break;
         case 'x': {
           TokenSpan = TokenSpan.drop_front();
-          unsigned SemiColonPos = TokenSpan.find(';');
+          size_t SemiColonPos = TokenSpan.find(';');
           if (SemiColonPos == llvm::StringRef::npos) {
             SetError(Tok, "char hex scalar value missing terminating semicolon");
             return true;

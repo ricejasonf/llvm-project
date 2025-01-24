@@ -119,8 +119,6 @@ public:
     case ValueKind::SyntaxClosure:  DISPATCH(SyntaxClosure);
     case ValueKind::Tagged:         DISPATCH(Tagged);
     case ValueKind::Vector:         DISPATCH(Vector);
-    default:
-      llvm_unreachable("Invalid Value Kind");
     }
   }
 

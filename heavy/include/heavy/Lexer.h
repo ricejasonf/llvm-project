@@ -58,7 +58,7 @@ using tok = TokenKind;
 struct Token {
   SourceLocation Loc;
   TokenKind Kind;
-  llvm::StringRef LiteralData;
+  llvm::StringRef LiteralData = {};
 
   SourceLocation getLocation() const { return Loc; }
   TokenKind getKind() const { return Kind; }

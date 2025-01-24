@@ -69,7 +69,7 @@ struct HeavyRestTy : public mlir::Type::TypeBase<
   using Base::Base;
 };
 
-class HeavyValueAttrStorage;
+struct HeavyValueAttrStorage;
 
 // Declare HeavyValueAttr manually.
 class HeavyValueAttr : public mlir::Attribute::AttrBase<

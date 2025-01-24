@@ -65,8 +65,9 @@ class LexerWriter {
 
   void realloc(unsigned NewCapacity) {
     std::unique_ptr<Token[]> NewTokenBuffer(new Token[NewCapacity]());
-    std::copy(&TokenBuffer[0], &TokenBuffer[Size],
-              NewTokenBuffer.get());
+    if (Capacity != 0)
+      std::copy(&TokenBuffer[0], &TokenBuffer[Size],
+                NewTokenBuffer.get());
     TokenBuffer = std::move(NewTokenBuffer);
     Capacity = NewCapacity;
   }
@@ -135,11 +136,6 @@ bool Parser::ParseHeavyScheme() {
     // Load the static builtin module.
     Parser& P = *this;
     heavy::HeavyScheme& HS = *HeavyScheme;
-    // FIXME We are capturing Parser and storing it in globals.
-    //       This is a problem if we have multiple CompilerInvocations.
-    //       There must be a way to store "globals" with Context if
-    //       they have state.
-    //       (This is a problem for static modules in general.)
     auto diag_error = [&](heavy::Context& C, heavy::ValueRefs Args) {
       if (Args.size() != 1) {
         C.RaiseError("invalid arity to function", C.getCallee());
