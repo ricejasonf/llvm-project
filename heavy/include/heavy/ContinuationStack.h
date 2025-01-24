@@ -202,7 +202,7 @@ private:
       C.Cont(Args);
     }, CaptureList{Sentinel});
 
-    Value SafeBefore = C.CreateLambda([Ptr](Derived& C, ValueRefs) {
+    Value SafeBefore = C.CreateLambda([](Derived& C, ValueRefs) {
       Vector* Sentinel = cast<Vector>(C.getCapture(0));
       Value Before = C.getCapture(1);
       // Check that the object is still alive.

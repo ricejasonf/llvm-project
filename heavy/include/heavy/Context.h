@@ -60,7 +60,7 @@ void invokeSyntaxOp(heavy::Context& C, mlir::Operation* Op,
                     heavy::Value Value);
 
 class ContextLocalLookup {
-  friend class ContextLocal;
+  friend struct ContextLocal;
   llvm::DenseMap<uintptr_t, Value> LookupTable;
 };
 

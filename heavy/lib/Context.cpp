@@ -881,7 +881,7 @@ void Context::LoadModule(Value Spec, bool IsFileLoaded) {
   }
 
   PushCont(
-    [Loc](heavy::Context& C, heavy::ValueRefs Args) {
+    [](heavy::Context& C, heavy::ValueRefs Args) {
       Value Spec = C.getCapture(0);
       // Require the module this time.
       C.LoadModule(Spec, /*IsFileLoaded=*/true);
@@ -1168,12 +1168,12 @@ public:
     }, CaptureList{Value((Ptr->Env))});
 
     // Since we don't own PrevEnv do not capture it in scheme land.
-    Value After = Context.CreateLambda([PrevOpGen, PrevEnv, OpGen, Env](heavy::Context& C,
-                                                            ValueRefs) {
-      C.setEnvironment(PrevEnv);
-      C.OpGen = PrevOpGen;
-      C.Cont();
-    }, {});
+    Value After = Context.CreateLambda(
+      [PrevOpGen, PrevEnv](heavy::Context& C, ValueRefs) {
+        C.setEnvironment(PrevEnv);
+        C.OpGen = PrevOpGen;
+        C.Cont();
+      }, {});
 
     Context.DynamicWind(std::move(Ptr), Before, Thunk, After);
   }
