@@ -21,6 +21,7 @@
 #include "heavy/Value.h"
 #include "heavy/ValueVisitor.h"
 #include "mlir/Bytecode/BytecodeReader.h"
+#include "mlir/Bytecode/BytecodeWriter.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Verifier.h" // TODO move to OpGen
 #include "mlir/Support/FileUtilities.h" // openOutputFile

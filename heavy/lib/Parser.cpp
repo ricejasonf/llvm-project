@@ -334,15 +334,15 @@ ValueResult Parser::ParseCharConstant() {
   uint32_t C = 0;
 
   if (TokData.size() == 1) C = TokData.front();
-  else if (TokData.equals("alarm")) C = '\a';
-  else if (TokData.equals("backspace")) C = '\b';
-  else if (TokData.equals("delete")) C = '\x7F';
-  else if (TokData.equals("escape")) C = '\x1B';
-  else if (TokData.equals("newline")) C = '\n';
-  else if (TokData.equals("null")) C = '\0';
-  else if (TokData.equals("return")) C = '\r';
-  else if (TokData.equals("space")) C = ' ';
-  else if (TokData.equals("tab")) C = '\t';
+  else if (TokData == llvm::StringRef("alarm")) C = '\a';
+  else if (TokData == llvm::StringRef("backspace")) C = '\b';
+  else if (TokData == llvm::StringRef("delete")) C = '\x7F';
+  else if (TokData == llvm::StringRef("escape")) C = '\x1B';
+  else if (TokData == llvm::StringRef("newline")) C = '\n';
+  else if (TokData == llvm::StringRef("null")) C = '\0';
+  else if (TokData == llvm::StringRef("return")) C = '\r';
+  else if (TokData == llvm::StringRef("space")) C = ' ';
+  else if (TokData == llvm::StringRef("tab")) C = '\t';
   else if (TokData.size() > 0 && TokData.front() == 'x') {
     // Handle hex code or bust.
     auto [HexValue, IsError] = detail::from_hex(TokData.drop_front());
@@ -402,13 +402,13 @@ ValueResult Parser::ParseNumber() {
       // Check for infnan or something more complex.
       llvm::StringRef FullTok = OrigTok.getLiteralData();
       using APFloat = llvm::APFloat;
-      if (FullTok.equals("+inf.0"))
+      if (FullTok == llvm::StringRef("+inf.0"))
         FloatVal = APFloat::getInf(APFloat::IEEEdouble(), /*Neg=*/false);
-      else if (FullTok.equals("-inf.0"))
+      else if (FullTok == llvm::StringRef("-inf.0"))
         FloatVal = APFloat::getInf(APFloat::IEEEdouble(), /*Neg=*/true);
-      else if (FullTok.equals("+nan.0"))
+      else if (FullTok == llvm::StringRef("+nan.0"))
         FloatVal = APFloat::getNaN(APFloat::IEEEdouble(), /*Neg=*/false);
-      else if (FullTok.equals("-nan.0"))
+      else if (FullTok == llvm::StringRef("-nan.0"))
         FloatVal = APFloat::getNaN(APFloat::IEEEdouble(), /*Neg=*/true);
       else
         return SetError(OrigTok, "invalid numerical syntax");

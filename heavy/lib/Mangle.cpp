@@ -168,7 +168,7 @@ bool Mangler::isExternalVariable(llvm::StringRef ModulePrefix,
   if (!VarName.starts_with(ModulePrefix))
     return false;
   llvm::StringRef Result = parseModulePrefix(VarName);
-  return !Result.equals(ModulePrefix);
+  return Result == ModulePrefix;
 }
 
 // parseModulePrefix - Parse the module prefix of a valid symbol name.

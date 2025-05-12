@@ -120,6 +120,7 @@ public:
     case ValueKind::Tagged:         DISPATCH(Tagged);
     case ValueKind::Vector:         DISPATCH(Vector);
     }
+    llvm_unreachable("unhandled case");
   }
 
 #undef DISPATCH
