@@ -58,14 +58,13 @@ void LoadParentEnv(heavy::HeavyScheme& HS, void* Handle) {
 // ownership via the EnterTokenStream overload.
 class LexerWriter {
   clang::Parser& Parser;
-  heavy::HeavyScheme& HeavyScheme;
   std::unique_ptr<Token[]> TokenBuffer;
   unsigned Capacity = 0;
   unsigned Size = 0;
 
   void realloc(unsigned NewCapacity) {
     std::unique_ptr<Token[]> NewTokenBuffer(new Token[NewCapacity]());
-    if (Capacity != 0)
+    if (Capacity > 0)
       std::copy(&TokenBuffer[0], &TokenBuffer[Size],
                 NewTokenBuffer.get());
     TokenBuffer = std::move(NewTokenBuffer);
@@ -85,9 +84,8 @@ class LexerWriter {
   }
 
 public:
-  LexerWriter(clang::Parser& P, heavy::HeavyScheme& HS)
+  LexerWriter(clang::Parser& P)
     : Parser(P),
-      HeavyScheme(HS),
       TokenBuffer(nullptr)
   { }
 
@@ -173,7 +171,7 @@ bool Parser::ParseHeavyScheme() {
       TentativeParsingAction ParseReverter(P);
 
       // Lex and expand.
-      LexerWriter TheLexerWriter(P, HS);
+      LexerWriter TheLexerWriter(P);
       TheLexerWriter.Tokenize(getSourceLocation(HS.getFullSourceLocation(Loc)),
                               Source.str());
       TheLexerWriter.FlushTokens();
@@ -238,7 +236,6 @@ bool Parser::ParseHeavyScheme() {
         case APValue::Union:
         case APValue::MemberPointer:
         case APValue::AddrLabelDiff:
-        default:
           // Do nothing.
         break;
       }
@@ -326,7 +323,7 @@ bool Parser::ParseHeavyScheme() {
 
   // Prepare to revert Parser.
 
-  LexerWriter TheLexerWriter(*this, *HeavyScheme);
+  LexerWriter TheLexerWriter(*this);
   heavy::Context& Context = HeavyScheme->getContext();
   HEAVY_CLANG_VAR(write_lexer).set(Context, 
       Context.CreateLambda([&](heavy::Context& C,
