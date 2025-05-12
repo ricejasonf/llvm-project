@@ -874,7 +874,7 @@ public:
   }
 
   bool equals(String* S) const {
-    return getView().equals(S->getView());
+    return getView() == S->getView();
   }
 
   static bool classof(Value V) {
