@@ -165,8 +165,8 @@ public:
   { }
 
   // Str - The user must ensure the lifetime of the String
+  //       for lifetime of Lexer
   //     - The string must have an initialized zero byte at the end.
-  //     - Use heavy::String for this.
   Lexer(llvm::StringRef Str)
     : EmbeddedLexer(heavy::SourceLocation(), Str, Str.begin())
   { }

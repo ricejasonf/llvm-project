@@ -1693,7 +1693,7 @@ private:
 public:
   // Implemented in Context.cpp
   Environment(Environment* Parent);
-  Environment(heavy::Context& C, std::string ModulePrefix = {});
+  Environment(heavy::Context& C, heavy::Symbol* ModulePrefix = {});
   ~Environment();
 
   heavy::OpGen* GetOpGen() {

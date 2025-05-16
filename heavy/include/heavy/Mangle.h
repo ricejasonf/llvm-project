@@ -15,6 +15,7 @@
 
 #include "heavy/Context.h"
 #include "heavy/Value.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
 #include <string>
@@ -114,7 +115,10 @@ public:
   static bool isExternalVariable(llvm::StringRef ModulePrefix,
                                  llvm::StringRef VarName);
   static llvm::StringRef parseModulePrefix(llvm::StringRef Name);
-  static llvm::StringRef consumeNameSegment(llvm::StringRef& Buf);
+  static bool parseNameSegment(llvm::StringRef& Input,
+                               llvm::SmallVectorImpl<char>& Output);
+  static bool parseLibraryName(llvm::StringRef& Input,
+                               llvm::SmallVectorImpl<char>& Output);
 
   std::string mangleModule(Value Spec);
   std::string mangleVariable(Twine ModulePrefix, Value Name);

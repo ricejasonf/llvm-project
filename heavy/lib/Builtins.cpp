@@ -216,12 +216,13 @@ void define_library(Context& C, ValueRefs Args) {
       return;
     }
   }
-  std::string MangledName = OG.mangleModule(NameSpec);
-  if (MangledName.size() == 0) {
+  std::string MangledNameStr = OG.mangleModule(NameSpec);
+  if (MangledNameStr.size() == 0) {
     C.OpGen->SetError("library name is invalid", NameSpec);
     return;
   }
-  OG.VisitLibrary(Loc, std::move(MangledName), LibraryDecls);
+  Symbol* MangledName = C.CreateSymbol(MangledNameStr);
+  OG.VisitLibrary(Loc, MangledName, LibraryDecls);
 }
 
 mlir::Value cond_expand(OpGen& OG, Pair* P) {

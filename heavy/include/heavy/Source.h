@@ -54,6 +54,7 @@ public:
   //                    for the containing buffer which is null
   //                    terminated.
   SourceLocation getLocWithOffset(unsigned Offset) const {
+    assert(isValid() && "invalid source location");
     return SourceLocation(Loc + Offset);
   }
 

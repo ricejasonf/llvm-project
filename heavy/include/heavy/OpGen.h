@@ -153,7 +153,7 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   Value Err = nullptr;
 
   bool IsLocalDefineAllowed = false;
-  std::string ModulePrefix = {};
+  heavy::Symbol* ModulePrefix = nullptr;
   unsigned LambdaNameCount = 0;
   bool IsTailPos = true;
 
@@ -178,7 +178,7 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   bool FinishLocalDefines();
 
 public:
-  explicit OpGen(heavy::Context& C, std::string ModulePrefix = {});
+  explicit OpGen(heavy::Context& C, heavy::Symbol* ModulePrefix = nullptr);
 
   heavy::Context& getContext() { return Context; }
 
@@ -200,18 +200,15 @@ public:
   // GetPatternVar - Get a SyntacticClosureOp by its name.
   mlir::Value GetPatternVar(heavy::Symbol* S);
 
-  void setModulePrefix(std::string Prefix) {
-    ModulePrefix = std::move(Prefix);
-  }
   llvm::StringRef getModulePrefix() {
-    if (ModulePrefix.empty()) {
+    if (!ModulePrefix || ModulePrefix->getStringRef().empty()) {
       return heavy::Mangler::getManglePrefix();
     }
-    return ModulePrefix;
+    return ModulePrefix->getStringRef();
   }
 
   void Export(Value NameList);
-  void VisitLibrary(heavy::SourceLocation Loc, std::string MangledName,
+  void VisitLibrary(heavy::SourceLocation Loc, heavy::Symbol* MangledName,
                     heavy::Value LibraryDecls);
   void VisitTopLevel(Value V);
   void FinishTopLevelOp();

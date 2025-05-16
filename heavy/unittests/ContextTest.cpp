@@ -29,6 +29,21 @@ struct LifetimeTracker {
   }
 };
 
+TEST(ContextTest, ParseLiteral) {
+  auto Context = heavy::Context();
+  auto parse = [&](std::string Input) {
+    heavy::Value Spec = Context.ParseLiteral(Input);
+    std::string Str;
+    llvm::raw_string_ostream Stream(Str);
+    heavy::write(Stream, Spec);
+    return Str;
+  };
+
+  EXPECT_EQ(parse("(heavy base)"), "(heavy base)");
+  EXPECT_EQ(parse("'foo"), "(quote foo)");
+  EXPECT_EQ(parse("\"foo\""), "\"foo\"");
+}
+
 TEST(ContextTest, DynamicWindNormalExit) {
   auto Context = heavy::Context();
   bool IsAlive = false;

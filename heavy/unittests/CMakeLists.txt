@@ -5,7 +5,8 @@ endfunction()
 
 add_heavy_unittest(HeavyValueTest
                    ValueTest.cpp
-                   ContextTest.cpp)
+                   ContextTest.cpp
+                   MangleTest.cpp)
 
 target_link_libraries(
   HeavyValueTest

@@ -390,6 +390,8 @@ bool Lexer::TryProcessComment(const char *&CurPtr) {
 SourceLocation Lexer::getSourceLocation(const char *Loc) const {
   assert(Loc >= BufferStart && Loc <= BufferEnd &&
          "Location out of range for this buffer!");
+  if (!FileLoc.isValid())
+    return FileLoc;
 
   // In the normal case, we're just lexing from a simple file buffer, return
   // the file id from FileLoc with the offset specified.

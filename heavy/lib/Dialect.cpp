@@ -269,14 +269,8 @@ heavy::Value& HeavyValueAttr::getCachedValue() {
 
 heavy::Value HeavyValueAttr::getValue(heavy::Context& C) const {
   heavy::Value& Val = getImpl()->Val;
-  if (!Val) {
-    llvm::StringRef Expr = getImpl()->expr;
-    heavy::Lexer Lexer(Expr);
-    heavy::Parser Parser(Lexer, C);
-    heavy::ValueResult ValueResult = Parser.Parse();
-    Val = ValueResult.isUsable() ? ValueResult.get() :
-                                   heavy::Undefined();
-  }
+  if (!Val)
+    Val = C.ParseLiteral(getImpl()->expr);
   return Val;
 }
 

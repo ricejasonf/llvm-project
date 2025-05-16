@@ -115,6 +115,9 @@ public:
   heavy::OpGen* OpGen = nullptr;
   heavy::OpEvalImpl* OpEval = nullptr;
 
+  // Work around DidCallContinuation being set with compiler errors.
+  bool CheckError();
+
   // SetErrorHandler - Set the bottom most exception handler to handle
   //                   hard errors including uncaught exceptions.
   void SetErrorHandler(Value Handler);
@@ -185,11 +188,11 @@ public:
   //                     if the import operation fails.
   std::unique_ptr<Environment> CreateEnvironment(heavy::ImportSet* ImportSet);
 
-  // LoadModule - Idempotently load a library
-  void LoadModule(Value Spec, bool IsFileLoaded = false);
+  // LoadModule - Idempotently load a library by its mangled name.
+  void LoadModule(heavy::Symbol* MangledName, bool IsFileLoaded = false);
   void PushModuleCleanup(llvm::StringRef MangledName, Value Fn);
   void IncludeModuleFile(heavy::SourceLocation Loc, heavy::String* Filename,
-                         std::string ModuleMangledName);
+                         heavy::Symbol* ModuleMangledName);
   bool TryLoadPrebuiltModule(heavy::SourceLocation Loc,
                              llvm::StringRef ModuleMangledName);
 
@@ -418,6 +421,8 @@ public:
     String* Str = CreateIdTableEntry(S);
     return new (*this) Symbol(Str, Loc);
   }
+
+  Value ParseLiteral(llvm::StringRef Expr);
 
   // These accessors help track the location
   // so it is convenient to overwrite a variable
