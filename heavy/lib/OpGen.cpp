@@ -30,12 +30,12 @@
 
 using namespace heavy;
 
-OpGen::OpGen(heavy::Context& C, std::string ModulePrefix)
+OpGen::OpGen(heavy::Context& C, heavy::Symbol* ModulePrefix)
   : Context(C),
     ModuleBuilder(C.MLIRContext.get()),
     Builder(C.MLIRContext.get()),
     BindingTable(),
-    ModulePrefix(std::move(ModulePrefix))
+    ModulePrefix(ModulePrefix)
 {
   mlir::Location Loc = Builder.getUnknownLoc();
   mlir::OpBuilder ImportsBuilder(C.MLIRContext.get());
@@ -140,7 +140,8 @@ void OpGen::WithLibraryEnv(Value Thunk) {
   Context.Apply(LibraryEnvProc->getValue(), Thunk);
 }
 
-void OpGen::VisitLibrary(heavy::SourceLocation Loc, std::string MangledName,
+void OpGen::VisitLibrary(heavy::SourceLocation Loc,
+                         heavy::Symbol* MangledName,
                          Value LibraryDecls) {
   assert(isTopLevel() && "library should be top level");
   // EnvPtr - A raw pointer that is captured to be owned by
@@ -1209,7 +1210,8 @@ mlir::Operation* OpGen::LookupSymbol(llvm::StringRef MangledName) {
 
 void OpGen::Export(Value NameList) {
   heavy::Mangler Mangler(Context);
-  std::string FuncName = Mangler.mangleSpecialName(ModulePrefix, "load_module");
+  assert(!getModulePrefix().empty() && "exporting module should have a name");
+  std::string FuncName = Mangler.mangleSpecialName(getModulePrefix(), "load_module");
   heavy::ExportOp F = dyn_cast_or_null<heavy::ExportOp>(
       getModuleOp().lookupSymbol(FuncName));
   mlir::Block* Block;

@@ -13,6 +13,7 @@
 
 #include "heavy/Value.h"
 #include "heavy/Mangle.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -121,14 +122,14 @@ std::string Mangler::mangleNameSegment(Continuation Cont, Twine Prefix,
   size_t NameSegmentSize = NameSegment.size(); // must be on stack
   Twine NameSegmentPrefix = Twine(NameSegmentSize) + Twine('S');
   Twine FullPrefix = Prefix + NameSegmentPrefix;
-  return mangleNameSegment(Cont, 
+  return mangleNameSegment(Cont,
                            FullPrefix + NameSegment,
                            Str.drop_front(NameSegment.size()));
 }
 
 std::string Mangler::mangleSpecialChar(Continuation Cont, Twine Prefix,
                                        llvm::StringRef Str) {
-  if (Str.empty()) return Cont(Prefix); 
+  if (Str.empty()) return Cont(Prefix);
   llvm::StringRef Result;
   switch(Str.front()) {
   case '!': Result = "nt"; break;
@@ -156,6 +157,36 @@ std::string Mangler::mangleSpecialChar(Continuation Cont, Twine Prefix,
   return mangleNameSegment(Cont, Prefix + Result, Str.drop_front(1));
 }
 
+char parseSpecialChar(llvm::StringRef Buf) {
+  if (Buf.size() < 2)
+    return 0;
+
+  // It would be cool to generate switch using code from
+  //  Buf[0] * 256 + Buf[1];
+
+  Buf = Buf.take_front(2);
+  if (Buf == llvm::StringRef("nt")) return '!';
+  if (Buf == llvm::StringRef("dl")) return '$';
+  if (Buf == llvm::StringRef("rm")) return '%';
+  if (Buf == llvm::StringRef("ad")) return '&';
+  if (Buf == llvm::StringRef("ml")) return '*';
+  if (Buf == llvm::StringRef("pl")) return '+';
+  if (Buf == llvm::StringRef("mi")) return '-';
+  if (Buf == llvm::StringRef("dt")) return '.';
+  if (Buf == llvm::StringRef("dv")) return '/';
+  if (Buf == llvm::StringRef("cl")) return ':';
+  if (Buf == llvm::StringRef("lt")) return '<';
+  if (Buf == llvm::StringRef("eq")) return '=';
+  if (Buf == llvm::StringRef("gt")) return '>';
+  if (Buf == llvm::StringRef("qu")) return '?';
+  if (Buf == llvm::StringRef("at")) return '@';
+  if (Buf == llvm::StringRef("eo")) return '^';
+  if (Buf == llvm::StringRef("co")) return '~';
+
+  // User should parse CharHexCode.
+  return 0;
+}
+
 std::string Mangler::mangleCharHexCode(Continuation Cont, Twine Prefix,
                                        llvm::StringRef Str) {
   llvm_unreachable("TODO mangle special characters");
@@ -171,6 +202,34 @@ bool Mangler::isExternalVariable(llvm::StringRef ModulePrefix,
   return Result == ModulePrefix;
 }
 
+namespace {
+bool consumeNameSegment(llvm::StringRef& Buf) {
+  if (Buf.size() < 2) return false;
+  if (Buf[0] == '0') {
+    // TODO handle <hex-char-encoding>
+    return false;
+  } else if (Buf[0] >= 'a' && Buf[0] <= 'z') {
+    // <special-char-code>
+    Buf = Buf.drop_front(2);
+  } else if (Buf[0] >= '1' && Buf[0] <= '9') {
+    // <length encoding> S <id-segment>
+    size_t Length = 0;
+    while (Buf.size() > 0 && llvm::isDigit(Buf[0])) {
+      unsigned Digit = llvm::hexDigitValue(Buf[0]);
+      Length = Length * 10 + Digit;
+      Buf = Buf.drop_front(1);
+    }
+    // Expect S.
+    if (Buf[0] != 'S')
+      return false;
+    Buf = Buf.drop_front(1); // Consume 'S'.
+    Buf = Buf.drop_front(Length);
+  }
+  return true;
+}
+}
+
+
 // parseModulePrefix - Parse the module prefix of a valid symbol name.
 //                     The prefix for an invalid name should be safe,
 //                     but is undefined and may trigger assertions.
@@ -185,14 +244,9 @@ llvm::StringRef Mangler::parseModulePrefix(llvm::StringRef Name) {
         // Library name
         Ending = Ending.drop_front(1);
         continue;
-      case '1': case '2': case '3': case '4': case '5':
-      case '6': case '7': case '8': case '9':
-        consumeNameSegment(Ending);
-        continue;
-      // TODO Handle CharHexCode
       default:
-        // SpecialChar code is always two characters.
-        Ending = Ending.drop_front(2);
+        if (!consumeNameSegment(Ending))
+          return {};  // Something was invalid.
         continue;
     }
     break;
@@ -200,26 +254,46 @@ llvm::StringRef Mangler::parseModulePrefix(llvm::StringRef Name) {
   return Name.drop_back(Ending.size());
 }
 
-// consumeNameSegment - Consume a valid name segment from Buf and
-//                      return the parsed name.
-//                      Invalid formats should be safe, but have a 
-//                      result that is undefined and may trigger
-//                      assertions.
-llvm::StringRef Mangler::consumeNameSegment(llvm::StringRef& Buf) {
-  assert(Buf[0] >= '1' && Buf[0] <= '9' &&
-      "name segment should begin with length");
-  llvm::StringRef Result = "";
-  size_t Length = 0;
-  while (Buf.size() > 0 && llvm::isDigit(Buf[0])) {
-    unsigned Digit = llvm::hexDigitValue(Buf[0]);
-    Length = Length * 10 + Digit;
-    Buf = Buf.drop_front(1);
+bool Mangler::parseNameSegment(llvm::StringRef& Input,
+                               llvm::SmallVectorImpl<char>& Output) {
+  if (Input.size() < 2) return false;
+  if (Input[0] == '0') {
+    llvm_unreachable("TODO handle hex-char-encoding");
+  } else if (Input[0] >= 'a' && Input[0] <= 'z') {
+    // <special-char>
+    Output.push_back(parseSpecialChar(Input));
+    Input = Input.drop_front(2);
+  } else if (Input[0] >= '1' && Input[0] <= '9') {
+    // <length encoding> S <id-segment>
+    size_t Length = 0;
+    while (Input.size() > 0 && llvm::isDigit(Input[0])) {
+      unsigned Digit = llvm::hexDigitValue(Input[0]);
+      Length = Length * 10 + Digit;
+      Input = Input.drop_front(1);
+    }
+    // Expect S.
+    if (Input[0] != 'S')
+      return {};
+    Input = Input.drop_front(1); // Consume 'S'.
+    llvm::StringRef ToOutput = Input.take_front(Length);
+    Output.append(ToOutput.begin(), ToOutput.end());
+    Input = Input.drop_front(Length);
   }
-  assert(Buf[0] == 'S' && "invalid name segment");
-  Buf = Buf.drop_front(1); // Consume 'S'.
-  Result = Buf.take_front(Length);
-  Buf = Buf.drop_front(Length);
-  return Result;
+
+  return true;
+}
+
+bool Mangler::parseLibraryName(llvm::StringRef& Input, 
+                               llvm::SmallVectorImpl<char>& Output) {
+  if (Input.empty() || Input[0] != 'L')
+    return false;
+
+  // Drop the L
+  Input = Input.drop_front(1);
+  while (!Input.empty() && Input[0] != 'L')
+    if (!parseNameSegment(Input, Output))
+      return false;
+  return true;
 }
 
 }

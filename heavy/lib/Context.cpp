@@ -17,6 +17,7 @@
 #include "heavy/Mangle.h"
 #include "heavy/Mlir.h"
 #include "heavy/OpGen.h"
+#include "heavy/Parser.h"
 #include "heavy/Source.h"
 #include "heavy/Value.h"
 #include "heavy/ValueVisitor.h"
@@ -30,6 +31,7 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/Twine.h"
@@ -79,15 +81,19 @@ Context::Context()
 
 Context::~Context() = default;
 
+bool Context::CheckError() {
+  return OpGen && OpGen->CheckError();
+}
+
 Environment::Environment(Environment* Parent)
   : ValueBase(ValueKind::Environment),
     OpGen(nullptr),
     Parent(Parent),
     EnvMap(0)
 { }
-Environment::Environment(Context& C, std::string ModulePrefix)
+Environment::Environment(Context& C, heavy::Symbol* ModulePrefix)
   : ValueBase(ValueKind::Environment),
-    OpGen(std::make_unique<heavy::OpGen>(C, std::move(ModulePrefix))),
+    OpGen(std::make_unique<heavy::OpGen>(C, ModulePrefix)),
     Parent(nullptr),
     EnvMap(0)
 { }
@@ -745,7 +751,12 @@ void Context::CreateImportSet(Value Spec) {
       Module* M = cast<heavy::Module>(Args[0]);
       C.Cont(new (*this) ImportSet(M));
     });
-    LoadModule(Spec);
+    heavy::Mangler Mangler(*this);
+    std::string ModuleNameStr = Mangler.mangleModule(Spec);
+    if (ModuleNameStr.empty())
+      return;
+    Symbol* ModuleName = CreateSymbol(ModuleNameStr, Spec.getSourceLocation());
+    LoadModule(ModuleName);
     return;
   }
 
@@ -817,15 +828,24 @@ void Context::CreateImportSet(Value Spec) {
   CreateImportSet(ParentSpec);
 }
 
-void Context::LoadModule(Value Spec, bool IsFileLoaded) {
-  heavy::SourceLocation Loc = Spec.getSourceLocation();
-  setLoc(Loc);
-  heavy::Mangler Mangler(*this);
-  // Name - The mangled module name
-  std::string Name = Mangler.mangleModule(Spec);
-  if (Name.empty())
-    return;
+namespace {
+bool checkPortableFilename(llvm::StringRef Filename) {
+  for (char c : Filename) {
+    if ((c < 'a' || c > 'z') &&
+        (c < '0' && c > '9') &&
+        (c != '.') &&
+        (c != '_') &&
+        (c != '-'))
+      return false;
+  }
+  return true;
+}
+}
 
+void Context::LoadModule(Symbol* MangledName, bool IsFileLoaded) {
+  heavy::SourceLocation Loc = MangledName->getSourceLocation();
+  llvm::StringRef Name = MangledName->getStringRef();
+  setLoc(Loc);
   std::unique_ptr<Module>& M = Modules[Name];
   if (M) {
     // Idempotently register the names of the globals.
@@ -850,25 +870,21 @@ void Context::LoadModule(Value Spec, bool IsFileLoaded) {
   }
 
   // Load the module from an sld file.
-  // Spec is validated by the above call to mangleModule.
-  // Expect valid data, but use dyn_cast just in case.
   heavy::String* Filename = nullptr;
   {
+    llvm::StringRef Input = MangledName->getStringRef();
     llvm::SmallString<128> FilenameBuffer;
-    heavy::Value Current = Spec;
-    auto* P = dyn_cast<heavy::Pair>(Current);
-    auto* Symbol = dyn_cast<heavy::Symbol>(P->Car);
-    FilenameBuffer += Symbol->getView();
-    Current = P->Cdr;
-    while ((P = dyn_cast<heavy::Pair>(Current))) {
+    while (!Input.empty()) {
+      unsigned PrevLen = FilenameBuffer.size();
+      if (!Mangler::parseLibraryName(Input, FilenameBuffer))
+        return RaiseError("invalid module mangling");
+      // Check characters
+      auto LibraryNamePart
+        = llvm::StringRef(FilenameBuffer).drop_front(PrevLen);
+      // Check for weird stuff.
+      if (!checkPortableFilename(LibraryNamePart))
+        return RaiseError("nonportable filename characters for module path");
       FilenameBuffer += '/';
-      if (auto* Symbol = dyn_cast<heavy::Symbol>(P->Car))
-        FilenameBuffer += Symbol->getView();
-      else if (isa<Int>(P->Car))
-        FilenameBuffer += std::to_string(cast<Int>(P->Car));
-      else
-        return RaiseError("expecting valid library name part");
-      Current = P->Cdr;
     }
     FilenameBuffer += ".sld";
     Filename = CreateString(FilenameBuffer);
@@ -883,15 +899,15 @@ void Context::LoadModule(Value Spec, bool IsFileLoaded) {
 
   PushCont(
     [](heavy::Context& C, heavy::ValueRefs Args) {
-      Value Spec = C.getCapture(0);
+      Value MangledName = C.getCapture(0);
       // Require the module this time.
-      C.LoadModule(Spec, /*IsFileLoaded=*/true);
-    }, CaptureList{Spec});
+      C.LoadModule(cast<Symbol>(MangledName), /*IsFileLoaded=*/true);
+    }, CaptureList{Value(MangledName)});
 
   if (TryLoadPrebuiltModule(Loc, Name))
     return Cont();
 
-  IncludeModuleFile(Loc, Filename, std::move(Name));
+  IncludeModuleFile(Loc, Filename, MangledName);
 }
 
 // Allow the user to add cleanup routines to unload a module/library.
@@ -916,7 +932,7 @@ void Context::PushModuleCleanup(llvm::StringRef MangledName, Value Fn) {
 //                     declarations already defined.
 void Context::IncludeModuleFile(heavy::SourceLocation Loc,
                                 heavy::String* Filename,
-                                std::string ModuleMangledName) {
+                                heavy::Symbol* ModuleMangledName) {
   heavy::Value Thunk = CreateLambda(
     [Loc](heavy::Context& C, heavy::ValueRefs Args) {
       C.PushCont(
@@ -935,7 +951,9 @@ void Context::IncludeModuleFile(heavy::SourceLocation Loc,
   heavy::Module* Base = Modules[HEAVY_BASE_LIB_STR].get();
   // The ModuleMangledName becomes the name of the module that
   // is generated from the top level of the file.
-  ModuleMangledName += "__module_file";
+  Symbol* MetaModuleName = CreateSymbol(
+      ModuleMangledName->getStringRef().str() + "__module_file",
+      ModuleMangledName->getSourceLocation());
   auto Env = std::make_unique<heavy::Environment>(*this, ModuleMangledName);
   for (llvm::StringRef Name : {"define-library",
                                "export",
@@ -950,7 +968,6 @@ void Context::IncludeModuleFile(heavy::SourceLocation Loc,
       Env->ImportValue(EnvBucket{Id, Entry});
   }
 
-  heavy::String* MetaModuleName = CreateString(ModuleMangledName);
   PushCont([](heavy::Context& C, ValueRefs) {
     // Delete the meta module file module.
     heavy::String* ModuleName = cast<heavy::String>(C.getCapture(0));
@@ -1087,6 +1104,7 @@ void Context::WithExceptionHandler(Value Handler, Value Thunk) {
 }
 
 void Context::Raise(Value Obj) {
+  ClearContinuation();
   if (isa<Empty>(ExceptionHandlers)) {
     ClearStack();
     return Cont();
@@ -1419,7 +1437,7 @@ bool Context::OutputModule(llvm::StringRef MangledName,
     std::string ErrorMessage;
     std::string FullPath = (llvm::Twine(ModulePath, "/") +
                             llvm::Twine(MangledName, ".sld.bc")).str();
-    std::unique_ptr<llvm::ToolOutputFile> OutputFile = 
+    std::unique_ptr<llvm::ToolOutputFile> OutputFile =
       mlir::openOutputFile(FullPath, &ErrorMessage);
     if (!OutputFile) {
       llvm::errs() << ErrorMessage << "\n";
@@ -1431,4 +1449,13 @@ bool Context::OutputModule(llvm::StringRef MangledName,
     }
   }
   return false;
+}
+
+heavy::Value Context::ParseLiteral(llvm::StringRef Expr) {
+  heavy::Lexer Lexer(Expr);
+  heavy::Parser Parser(Lexer, *this);
+  Parser.PrimeToken();
+  heavy::ValueResult ValueResult = Parser.ParseTopLevelExpr();
+  return ValueResult.isUsable() ? ValueResult.get() :
+                                  heavy::Undefined();
 }

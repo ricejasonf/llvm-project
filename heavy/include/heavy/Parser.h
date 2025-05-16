@@ -121,7 +121,7 @@ public:
   // matching opening brace is expected as
   // the first token and is consumed.
   // Returns false on failure. (sorry)
-  bool PrimeToken(heavy::TokenKind Term) {
+  bool PrimeToken(heavy::TokenKind Term = tok::eof) {
     Lexer.Lex(Tok);
 
     Terminator = Term;
