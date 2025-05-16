@@ -35,55 +35,66 @@ TEST(MangleTest, mangleLibraryName) {
 TEST(MangleTest, parseLibraryName) {
   auto Context = heavy::Context();
   auto Mangler = heavy::Mangler(Context);
+
+  std::string MangledNameStr;
   auto mangle = [&](llvm::StringRef Name) {
     heavy::Value Spec = Context.ParseLiteral(Name);
-    return Mangler.mangleModule(Spec);
+    MangledNameStr = Mangler.mangleModule(Spec);
+    auto MangledName = llvm::StringRef(MangledNameStr);
+    // Strip the _HEAVY prefix.
+    MangledName.consume_front(Mangler.getManglePrefix());
+    return MangledName;
   };
   llvm::SmallString<32> Output;
-  std::string MangledNameStr;
   llvm::StringRef MangledName;
 
-  MangledNameStr = mangle("(heavy base)");
-  MangledName = llvm::StringRef(MangledNameStr);
+  MangledName = mangle("(heavy base)");
   EXPECT_TRUE(Mangler.parseLibraryName(MangledName, Output));
   EXPECT_EQ(std::string(Output), "heavy");
+  Output.clear();
   EXPECT_TRUE(Mangler.parseLibraryName(MangledName, Output));
   EXPECT_EQ(std::string(Output), "base");
+  Output.clear();
 
-  MangledNameStr = mangle("(heavy clang)");
-  MangledName = llvm::StringRef(MangledNameStr);
+  MangledName = mangle("(heavy clang)");
   EXPECT_TRUE(Mangler.parseLibraryName(MangledName, Output));
   EXPECT_EQ(std::string(Output), "heavy");
+  Output.clear();
   EXPECT_TRUE(Mangler.parseLibraryName(MangledName, Output));
   EXPECT_EQ(std::string(Output), "clang");
+  Output.clear();
 
-  MangledNameStr = mangle("(heavy foo-bar)");
-  MangledName = llvm::StringRef(MangledNameStr);
+  MangledName = mangle("(heavy foo-bar)");
   EXPECT_TRUE(Mangler.parseLibraryName(MangledName, Output));
   EXPECT_EQ(std::string(Output), "heavy");
+  Output.clear();
   EXPECT_TRUE(Mangler.parseLibraryName(MangledName, Output));
-  EXPECT_EQ(std::string(Output), "clang");
+  EXPECT_EQ(std::string(Output), "foo-bar");
+  Output.clear();
 
-  MangledNameStr = mangle("(heavy foo.bar 42)");
-  MangledName = llvm::StringRef(MangledNameStr);
+  MangledName = mangle("(heavy foo.bar 42)");
   EXPECT_TRUE(Mangler.parseLibraryName(MangledName, Output));
   EXPECT_EQ(std::string(Output), "heavy");
+  Output.clear();
   EXPECT_TRUE(Mangler.parseLibraryName(MangledName, Output));
   EXPECT_EQ(std::string(Output), "foo.bar");
+  Output.clear();
   EXPECT_TRUE(Mangler.parseLibraryName(MangledName, Output));
   EXPECT_EQ(std::string(Output), "42");
+  Output.clear();
 
-  MangledNameStr = mangle("(foo_bar3)");
-  MangledName = llvm::StringRef(MangledNameStr);
+  MangledName = mangle("(foo_bar3)");
   EXPECT_TRUE(Mangler.parseLibraryName(MangledName, Output));
   EXPECT_EQ(std::string(Output), "foo_bar3");
+  Output.clear();
 
-  MangledNameStr = mangle("(rmrf *)");
-  MangledName = llvm::StringRef(MangledNameStr);
+  MangledName = mangle("(rmrf *)");
   EXPECT_TRUE(Mangler.parseLibraryName(MangledName, Output));
   EXPECT_EQ(std::string(Output), "rmrf");
-  EXPECT_FALSE(Mangler.parseLibraryName(MangledName, Output));
+  Output.clear();
+  EXPECT_TRUE(Mangler.parseLibraryName(MangledName, Output));
   EXPECT_EQ(std::string(Output), "*");
+  Output.clear();
 }
 
 }
