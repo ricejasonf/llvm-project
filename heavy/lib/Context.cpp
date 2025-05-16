@@ -873,6 +873,7 @@ void Context::LoadModule(Symbol* MangledName, bool IsFileLoaded) {
   heavy::String* Filename = nullptr;
   {
     llvm::StringRef Input = MangledName->getStringRef();
+    Input.consume_front(Mangler::getManglePrefix());
     llvm::SmallString<128> FilenameBuffer;
     while (!Input.empty()) {
       unsigned PrevLen = FilenameBuffer.size();
