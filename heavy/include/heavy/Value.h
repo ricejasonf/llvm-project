@@ -1435,11 +1435,12 @@ public:
 // ModuleLoadNamesFn - customization point for dynamically initializing a
 //                  module and loading its lookup table for the compiler
 using ModuleLoadNamesFn = void(heavy::Context&);
-// initModule - Creates a compile-time name/value lookup for importing modules
-//              This should be called by the module's import function.
+// initModuleNames - Creates a compile-time name/value lookup for importing modules
+//                   This should be called by the module's import function.
+//                   (for precompiled modules)
 using ModuleInitListPairTy = std::pair<llvm::StringRef, heavy::Value>;
 using ModuleInitListTy     = std::initializer_list<ModuleInitListPairTy>;
-void initModule(heavy::Context&, llvm::StringRef MangledName,
+void initModuleNames(heavy::Context&, llvm::StringRef MangledName,
                 ModuleInitListTy InitList);
 void registerModuleVar(heavy::Context& C,
                        heavy::Module* M,
@@ -1472,6 +1473,7 @@ public:
   heavy::Context& getContext() { return Context; }
 
   // LoadNames - Idempotently loads names into module
+  //             (for external, precompiled modules)
   void LoadNames() {
     if (!LoadNamesFn) return;
     LoadNamesFn(Context);

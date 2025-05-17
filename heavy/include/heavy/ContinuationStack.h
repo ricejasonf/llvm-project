@@ -133,6 +133,8 @@ private:
         "continuation should be specified only once");
     assert(Callee && "Callee must not be null");
     DidCallContinuation = true; // debug mode only
+    if (isa<Undefined>(Callee))
+      return getDerived().RaiseError("callee is undefined");
     if (Args.data() != ApplyArgs.data()) {
       ApplyArgs.resize(Args.size() + 1);
       std::copy(Args.begin(), Args.end(), ApplyArgs.begin() + 1);

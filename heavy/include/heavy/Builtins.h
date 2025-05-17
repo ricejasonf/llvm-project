@@ -23,6 +23,9 @@
 #define HEAVY_BASE_LOAD_MODULE        HEAVY_BASE_LIB_(_load_module)
 #define HEAVY_BASE_INIT               HEAVY_BASE_LIB_(_init)
 
+#define HEAVY_IMPORT_VAR              "_HEAVY_import"
+#define HEAVY_LOAD_MODULE_VAR         "_HEAVY_load_module"
+
 #define HEAVY_BASE_VAR(NAME)          HEAVY_BASE_VAR__##NAME
 #define HEAVY_BASE_VAR__export        HEAVY_BASE_LIB_(V6Sexport)
 #define HEAVY_BASE_VAR__add           HEAVY_BASE_LIB_(Vpl)
@@ -109,6 +112,7 @@ void with_exception_handler(Context& C, ValueRefs Args);
 void raise(Context& C, ValueRefs Args);
 void error(Context& C, ValueRefs Args);
 void dynamic_wind(Context& C, ValueRefs Args);
+void load_module(Context& C, ValueRefs Args);
 
 // TODO These should go in (heavy eval)
 void eval(Context& C, ValueRefs Args);
@@ -219,7 +223,7 @@ inline void HEAVY_BASE_INIT(heavy::Context& Context) {
 // for the compiler
 inline void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
   // Note: We call HEAVY_BASE_INIT in the constructor of Context.
-  heavy::initModule(Context, HEAVY_BASE_LIB_STR, {
+  heavy::initModuleNames(Context, HEAVY_BASE_LIB_STR, {
     // syntax
     {"define",        HEAVY_BASE_VAR(define)},
     {"define-syntax", HEAVY_BASE_VAR(define_syntax)},

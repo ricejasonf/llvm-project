@@ -74,8 +74,8 @@ class Context : public ContinuationStack<Context>,
   friend class HeavyScheme;
   friend class Heap<Context>;
   friend void* allocate(Context& C, size_t Size, size_t Alignment);
-  friend void initModule(heavy::Context&, llvm::StringRef MangledName,
-                         ModuleInitListTy InitList);
+  friend void initModuleNames(heavy::Context&, llvm::StringRef MangledName,
+                              ModuleInitListTy InitList);
   friend void registerModuleVar(heavy::Context& C,
                                 heavy::Module* M,
                                 llvm::StringRef VarSymbol,
@@ -190,6 +190,7 @@ public:
 
   // LoadModule - Idempotently load a library by its mangled name.
   void LoadModule(heavy::Symbol* MangledName, bool IsFileLoaded = false);
+  void LoadExports(heavy::Module* M, mlir::Operation* ModuleOp);
   void PushModuleCleanup(llvm::StringRef MangledName, Value Fn);
   void IncludeModuleFile(heavy::SourceLocation Loc, heavy::String* Filename,
                          heavy::Symbol* ModuleMangledName);

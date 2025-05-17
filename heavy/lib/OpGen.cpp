@@ -88,6 +88,16 @@ mlir::ModuleOp OpGen::getModuleOp() {
   return cast<mlir::ModuleOp>(ModuleOp);
 }
 
+void OpGen::createLoadModule(heavy::SourceLocation Loc,
+                             heavy::Symbol* MangledName) {
+  mlir::Value Fn = createGlobal(Loc, HEAVY_LOAD_MODULE_VAR);
+  mlir::Value LiteralOp = createLiteral(MangledName);
+  mlir::Value Args[] = {LiteralOp};
+  createCall(Loc, Fn, Args);
+  // We only want this evaluated when loading stand-alone bytecode files.
+  FinishTopLevelOp();
+}
+
 mlir::Value OpGen::GetSingleResult(heavy::Value V) {
   TailPosScope TPS(*this);
   IsTailPos = false;

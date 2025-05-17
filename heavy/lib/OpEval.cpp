@@ -104,33 +104,22 @@ public:
       }
       // "Calling the continuation" is handled during visitation.
     } else if (auto ModuleOp = dyn_cast<mlir::ModuleOp>(Op)) {
-
-      // FIXME ExportOp should not even be handled here as it is
-      //       purely a compile-time operation.
-      // Find the ExportOp and push it first so it always runs last.
       auto& Ops = ModuleOp.getBody()->getOperations();
-      for (auto i = Ops.rbegin(); i != Ops.rend(); ++i) {
-        mlir::Operation* TL = &*i;
-        if (auto E = dyn_cast<ExportOp>(TL)) {
-          Context.PushCont([this, E](heavy::Context& C, ValueRefs) mutable {
-            this->VisitExportOp(E);
-          }, CaptureList{});
-          break;
-        }
-      }
+      // op_eval each top level operation.
+      // Push the top level ops in reverse order
       for (auto i = Ops.rbegin(); i != Ops.rend(); ++i) {
         mlir::Operation* TL = &*i;
         auto G = dyn_cast<GlobalOp>(TL);
-        // External GlobalOps are skipped so we need to skip them
-        // here as well.
+        // External GlobalOps are skipped.
         if ((G && !G.isExternal()) || isa<CommandOp>(TL)) {
-          Context.PushCont([this, TL](heavy::Context& C, ValueRefs) mutable {
-            this->Eval(TL);
-          }, CaptureList{});
+          Context.PushCont([](heavy::Context& C, ValueRefs) mutable {
+            heavy::Value Op = C.getCapture(0);
+            Value Args[] = {Op};
+            C.Apply(HEAVY_BASE_VAR(op_eval), Args);
+          }, CaptureList{TL});
         }
       }
-      Context.Cont();
-      return;
+      return Context.Cont();
     } else {
       SetError(SourceLocation(), "op_eval expects a top level op");
     }
@@ -686,37 +675,6 @@ private:
     heavy::Value V = Context.CreateSourceValue(Loc);
     setValue(Op.getResult(), V);
     return next(Op);
-  }
-
-  // VisitExportOp - Register export vars with Context. Always run this
-  //                 after the module init function. (ie Evaluating the ModuleOp)
-  void VisitExportOp(ExportOp Op) {
-    // Walk all of the ExportIdOps registering
-    // the exported names with Context.
-    llvm::StringRef ModuleName =
-      cast<mlir::ModuleOp>(Op.getOperation()->getParentOp())
-        .getName()
-        .value_or("");
-    if (ModuleName.empty()) {
-      SourceLocation Loc = getSourceLocation(Op.getLoc());
-      SetError(Loc, "module must have symbol", Undefined());
-      return;
-    }
-    Module* M = Context.Modules[ModuleName].get();
-    assert(M && "module should be registered");
-    mlir::Block& Body = Op.getBody().back();
-    for (mlir::Operation& X : Body.getOperations()) {
-      if (auto IdOp = dyn_cast<ExportIdOp>(X)) {
-        Value Val = Context.GetKnownValue(IdOp.getSymbolName());
-        if (!Val) {
-          SourceLocation Loc = getSourceLocation(IdOp.getLoc());
-          SetError(Loc, "export of undefined value", Undefined());
-          return;
-        }
-        registerModuleVar(Context, M, IdOp.getSymbolName(), IdOp.getId(), Val);
-      }
-    }
-    Context.Cont();
   }
 };
 
