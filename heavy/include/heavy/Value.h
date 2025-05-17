@@ -2066,9 +2066,10 @@ struct ExternSyntax : ExternValue<sizeof(Syntax) + FnStorageLen> {
 template <size_t Len>
 struct ExternString : public ExternValue<String::sizeToAlloc(Len)> {
   void operator=(llvm::StringRef Str) {
-    void* Mem = heavy::allocate(*this, String::sizeToAlloc(Len),
+    assert(Str.size() <= Len);
+    void* Mem = heavy::allocate(*this, String::sizeToAlloc(Str.size()),
                                 alignof(String));
-    String* New = new (Mem) String(Len, Str);
+    String* New = new (Mem) String(Str.size(), Str);
     this->Value = New;
   }
 
