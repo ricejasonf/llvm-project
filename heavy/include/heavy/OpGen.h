@@ -325,6 +325,8 @@ public:
     return create<LiteralOp>(V.getSourceLocation(), V);
   }
 
+  void createLoadModule(SourceLocation Loc, Symbol* MangledName);
+
   template <typename T>
   mlir::Value SetError(T Str, Value V = Undefined()) {
     Context.RaiseError(Str, V);

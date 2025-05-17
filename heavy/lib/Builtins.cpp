@@ -58,6 +58,7 @@ heavy::ExternFunction HEAVY_BASE_VAR(with_exception_handler);
 heavy::ExternFunction HEAVY_BASE_VAR(raise);
 heavy::ExternFunction HEAVY_BASE_VAR(error);
 heavy::ExternFunction HEAVY_BASE_VAR(dynamic_wind);
+heavy::ExternFunction HEAVY_BASE_VAR(load_module);
 
 heavy::ExternFunction HEAVY_BASE_VAR(eval);
 heavy::ExternFunction HEAVY_BASE_VAR(op_eval);
@@ -502,6 +503,15 @@ void error(Context& C, ValueRefs Args) {
 void dynamic_wind(Context& C, ValueRefs Args) {
   if (Args.size() != 3) return C.RaiseError("invalid arity");
   C.DynamicWind(Args[0], Args[1], Args[2]);
+}
+
+// Dynamically and idempotently initialize a module by its mangled name.
+void load_module(Context& C, ValueRefs Args) {
+  if (Args.size() != 1) return C.RaiseError("invalid arity");
+  heavy::Symbol* MangledName = dyn_cast<heavy::Symbol>(Args[0]);
+  if (!MangledName)
+    return C.RaiseError("module name should be a symbol");
+  C.LoadModule(MangledName);
 }
 
 void eval(Context& C, ValueRefs Args) {

@@ -759,7 +759,7 @@ void HEAVY_MLIR_INIT(heavy::Context& C) {
 
 void HEAVY_MLIR_LOAD_MODULE(heavy::Context& C) {
   HEAVY_MLIR_INIT(C);
-  heavy::initModule(C, HEAVY_MLIR_LIB_STR, {
+  heavy::initModuleNames(C, HEAVY_MLIR_LIB_STR, {
     {"create-op", HEAVY_MLIR_VAR(create_op)},
     {"%create-op", HEAVY_MLIR_VAR(create_op_impl)},
     {"region", HEAVY_MLIR_VAR(region)},

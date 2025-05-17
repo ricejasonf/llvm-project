@@ -63,6 +63,8 @@ void Value::dump() {
 //                    simple, readable symbol name.
 heavy::ExternString<20> NameForImportVar;
 heavy::ExternSyntax<> _HEAVY_import;
+heavy::ExternString<20> NameForLoadModuleVar;
+heavy::ExternFunction _HEAVY_load_module;
 
 Context::Context()
   : ContinuationStack<Context>(),
@@ -72,8 +74,12 @@ Context::Context()
     MLIRContext(std::make_unique<mlir::MLIRContext>()),
     OpGen(nullptr)
 {
-  NameForImportVar = "_HEAVY_import";
+  NameForImportVar = HEAVY_IMPORT_VAR;
   _HEAVY_import = heavy::base::import_;
+  NameForLoadModuleVar = HEAVY_LOAD_MODULE_VAR;
+  _HEAVY_load_module = heavy::base::load_module;
+  AddKnownAddress(NameForLoadModuleVar.Value.getStringRef(),
+                  _HEAVY_load_module);
   RegisterModule(HEAVY_BASE_LIB_STR, HEAVY_BASE_LOAD_MODULE);
   RegisterModule(HEAVY_MLIR_LIB_STR, HEAVY_MLIR_LOAD_MODULE);
   HEAVY_BASE_INIT(*this);
@@ -245,6 +251,9 @@ EnvEntry Context::Lookup(Symbol* Name, Value Stack) {
     EnvEntry Result = E->Lookup(Name);
     if (!Result && Name->equals("import")) {
       return EnvEntry{_HEAVY_import, NameForImportVar};
+    }
+    else if (!Result && Name->equals("load_module")) {
+      return EnvEntry{_HEAVY_load_module, NameForLoadModuleVar};
     }
     return Result;
   }
@@ -756,6 +765,11 @@ void Context::CreateImportSet(Value Spec) {
     if (ModuleNameStr.empty())
       return;
     Symbol* ModuleName = CreateSymbol(ModuleNameStr, Spec.getSourceLocation());
+
+    // Insert a call to load_module for stand-alone
+    // execution of byte code.
+    OpGen->createLoadModule(Spec.getSourceLocation(), ModuleName);
+
     LoadModule(ModuleName);
     return;
   }
@@ -842,6 +856,9 @@ bool checkPortableFilename(llvm::StringRef Filename) {
 }
 }
 
+// - Load a module by its mangled name which may involve
+//   loading from a file.
+// - Load the module exports for dynamic name lookup.
 void Context::LoadModule(Symbol* MangledName, bool IsFileLoaded) {
   heavy::SourceLocation Loc = MangledName->getSourceLocation();
   llvm::StringRef Name = MangledName->getStringRef();
@@ -861,10 +878,13 @@ void Context::LoadModule(Symbol* MangledName, bool IsFileLoaded) {
     auto M = std::make_unique<Module>(*this);
     Module* MPtr = M.get();
     Modules[Name] = std::move(M);
-    Value Args[] = {Op.getOperation()};
-    PushCont([](Context& C, ValueRefs) {
-      C.Cont(C.getCapture(0));
-    }, CaptureList{MPtr});
+    PushCont([](Context& C, ValueRefs Args) {
+      Module* MPtr = cast<Module>(C.getCapture(0));
+      auto Op = cast<mlir::Operation>(C.getCapture(1));
+      C.LoadExports(MPtr, Op);
+    }, CaptureList{MPtr, Op.getOperation()});
+    // Init the module by calling op_eval on it.
+    Value Args = {Op.getOperation()};
     Apply(HEAVY_BASE_VAR(op_eval), Args);
     return;
   }
@@ -909,6 +929,30 @@ void Context::LoadModule(Symbol* MangledName, bool IsFileLoaded) {
     return Cont();
 
   IncludeModuleFile(Loc, Filename, MangledName);
+}
+
+void Context::LoadExports(heavy::Module* M, mlir::Operation* ModuleOp) {
+  auto& Ops = cast<mlir::ModuleOp>(ModuleOp).getBody()->getOperations();
+  for (mlir::Operation& TL : Ops) {
+    if (auto E = dyn_cast<ExportOp>(TL)) {
+      // Walk all of the ExportIdOps registering
+      // the exported names with Context.
+      mlir::Block& Body = E.getBody().back();
+      for (mlir::Operation& X : Body.getOperations()) {
+        if (auto IdOp = dyn_cast<ExportIdOp>(X)) {
+          Value Val = GetKnownValue(IdOp.getSymbolName());
+          if (!Val) {
+            RaiseError("export of undefined value");
+            return;
+          }
+          heavy::registerModuleVar(*this, M, IdOp.getSymbolName(),
+                                   IdOp.getId(), Val);
+        }
+      }
+    }
+  }
+  // Pass the Module along to the import stuff that called this.
+  Cont(M);
 }
 
 // Allow the user to add cleanup routines to unload a module/library.
@@ -1021,8 +1065,8 @@ Value Context::GetKnownValue(llvm::StringRef MangledName) {
   return Result;
 }
 
-void heavy::initModule(heavy::Context& C, llvm::StringRef ModuleMangledName,
-                  ModuleInitListTy InitList) {
+void heavy::initModuleNames(heavy::Context& C, llvm::StringRef ModuleMangledName,
+                            ModuleInitListTy InitList) {
   Module* M = C.Modules[ModuleMangledName].get();
   assert(M && "module must be registered");
   heavy::Mangler Mangler(C);
