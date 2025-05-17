@@ -38,6 +38,7 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorOr.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/Unicode.h"
 #include "llvm/Support/raw_ostream.h"
@@ -1480,8 +1481,12 @@ bool Context::OutputModule(llvm::StringRef MangledName,
   mlir::ModuleOp TopOp = cast<mlir::ModuleOp>(ModuleOp);
   if (mlir::Operation* Op = TopOp.lookupSymbol(MangledName)) {
     std::string ErrorMessage;
-    std::string FullPath = (llvm::Twine(ModulePath, "/") +
-                            llvm::Twine(MangledName, ".sld.bc")).str();
+    llvm::SmallString<64> FullPath;
+    (llvm::Twine(ModulePath, "/") +
+     llvm::Twine(MangledName, ".sld.bc")).toVector(FullPath);
+
+    // Disallow relative path weirdness after the module path.
+    llvm::sys::path::remove_dots(FullPath, /*remove_dot_dot*/true);
     std::unique_ptr<llvm::ToolOutputFile> OutputFile =
       mlir::openOutputFile(FullPath, &ErrorMessage);
     if (!OutputFile) {
