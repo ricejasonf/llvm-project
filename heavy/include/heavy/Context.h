@@ -195,7 +195,7 @@ public:
   void IncludeModuleFile(heavy::SourceLocation Loc, heavy::String* Filename,
                          heavy::Symbol* ModuleMangledName);
   bool TryLoadPrebuiltModule(heavy::SourceLocation Loc,
-                             llvm::StringRef ModuleMangledName);
+                             heavy::String* Filename);
 
 
   Context();

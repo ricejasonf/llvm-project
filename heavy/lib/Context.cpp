@@ -767,8 +767,7 @@ void Context::CreateImportSet(Value Spec) {
       return;
     Symbol* ModuleName = CreateSymbol(ModuleNameStr, Spec.getSourceLocation());
 
-    // Insert a call to load_module for stand-alone
-    // execution of byte code.
+    // Insert a call to load_module for transitive imports.
     OpGen->createLoadModule(Spec.getSourceLocation(), ModuleName);
 
     LoadModule(ModuleName);
@@ -844,18 +843,45 @@ void Context::CreateImportSet(Value Spec) {
 }
 
 namespace {
-bool checkPortableFilename(llvm::StringRef Filename) {
-  for (char c : Filename) {
-    if ((c < 'a' || c > 'z') &&
-        (c < '0' && c > '9') &&
-        (c != '.') &&
-        (c != '_') &&
-        (c != '-'))
-      return false;
+  bool checkPortableFilename(llvm::StringRef Filename) {
+    for (char c : Filename) {
+      if ((c < 'a' || c > 'z') &&
+          (c < '0' && c > '9') &&
+          (c != '.') &&
+          (c != '_') &&
+          (c != '-'))
+        return false;
+    }
+    return true;
   }
-  return true;
+
+  // Append to Output the path to a module sans any file extension.
+  void getModulePath(heavy::Context& C, llvm::StringRef MangledName,
+                     llvm::SmallVectorImpl<char>& Output) { 
+    llvm::StringRef ModulePath =
+        HEAVY_BASE_VAR(module_path).get(C).getStringRef();
+    llvm::Twine(ModulePath, "/").toVector(Output);
+
+    llvm::StringRef Input = MangledName;
+    Input.consume_front(Mangler::getManglePrefix());
+    while (!Input.empty()) {
+      unsigned PrevLen = Output.size();
+      if (!Mangler::parseLibraryName(Input, Output))
+        return C.RaiseError("invalid module mangling");
+      // Check characters
+      auto LibraryNamePart
+        = llvm::StringRef(Output.begin(), Output.size()).drop_front(PrevLen);
+      // Check for weird stuff.
+      if (!checkPortableFilename(LibraryNamePart))
+        return C.RaiseError("nonportable filename characters for module path");
+      Output.push_back('/');
+    }
+
+    // Disallow relative path weirdness after the module root path.
+    llvm::sys::path::remove_dots(Output, /*remove_dot_dot*/true);
+  }
 }
-}
+
 
 // - Load a module by its mangled name which may involve
 //   loading from a file.
@@ -893,21 +919,8 @@ void Context::LoadModule(Symbol* MangledName, bool IsFileLoaded) {
   // Load the module from an sld file.
   heavy::String* Filename = nullptr;
   {
-    llvm::StringRef Input = MangledName->getStringRef();
-    Input.consume_front(Mangler::getManglePrefix());
     llvm::SmallString<128> FilenameBuffer;
-    while (!Input.empty()) {
-      unsigned PrevLen = FilenameBuffer.size();
-      if (!Mangler::parseLibraryName(Input, FilenameBuffer))
-        return RaiseError("invalid module mangling");
-      // Check characters
-      auto LibraryNamePart
-        = llvm::StringRef(FilenameBuffer).drop_front(PrevLen);
-      // Check for weird stuff.
-      if (!checkPortableFilename(LibraryNamePart))
-        return RaiseError("nonportable filename characters for module path");
-      FilenameBuffer += '/';
-    }
+    getModulePath(*this, MangledName->getStringRef(), FilenameBuffer);
     FilenameBuffer += ".sld";
     Filename = CreateString(FilenameBuffer);
   }
@@ -926,7 +939,7 @@ void Context::LoadModule(Symbol* MangledName, bool IsFileLoaded) {
       C.LoadModule(cast<Symbol>(MangledName), /*IsFileLoaded=*/true);
     }, CaptureList{Value(MangledName)});
 
-  if (TryLoadPrebuiltModule(Loc, Name))
+  if (TryLoadPrebuiltModule(Loc, Filename))
     return Cont();
 
   IncludeModuleFile(Loc, Filename, MangledName);
@@ -981,10 +994,11 @@ void Context::IncludeModuleFile(heavy::SourceLocation Loc,
                                 heavy::Symbol* ModuleMangledName) {
   heavy::Value Thunk = CreateLambda(
     [Loc](heavy::Context& C, heavy::ValueRefs Args) {
-      C.PushCont(
-        [](heavy::Context& C, heavy::ValueRefs Args) {
-          C.OpGen->VisitTopLevelSequence(Args[0]);
-        });
+      C.PushCont([](heavy::Context& C, heavy::ValueRefs Args) {
+        // Compile and evaluate each command in the file.
+        C.OpGen->SetTopLevelHandler(HEAVY_BASE_VAR(op_eval));
+        C.OpGen->VisitTopLevelSequence(Args[0]);
+      });
       heavy::Value Parse = HEAVY_BASE_VAR(parse_source_file).get(C);
       heavy::Value SourceVal = C.CreateSourceValue(Loc);
       heavy::Value Filename = C.getCapture(0);
@@ -1000,7 +1014,7 @@ void Context::IncludeModuleFile(heavy::SourceLocation Loc,
   Symbol* MetaModuleName = CreateSymbol(
       ModuleMangledName->getStringRef().str() + "__module_file",
       ModuleMangledName->getSourceLocation());
-  auto Env = std::make_unique<heavy::Environment>(*this, ModuleMangledName);
+  auto Env = std::make_unique<heavy::Environment>(*this, MetaModuleName);
   for (llvm::StringRef Name : {"define-library",
                                "export",
                                "begin",
@@ -1016,11 +1030,11 @@ void Context::IncludeModuleFile(heavy::SourceLocation Loc,
 
   PushCont([](heavy::Context& C, ValueRefs) {
     // Delete the meta module file module.
-    heavy::String* ModuleName = cast<heavy::String>(C.getCapture(0));
+    heavy::Symbol* MetaModuleName = cast<heavy::Symbol>(C.getCapture(0));
     mlir::ModuleOp TopOp = cast<mlir::ModuleOp>(C.ModuleOp);
-    if (mlir::Operation* Op = TopOp.lookupSymbol(ModuleName->getView())) {
+    mlir::Operation* Op = TopOp.lookupSymbol(MetaModuleName->getStringRef());
+    if (Op)
       Op->erase();
-    }
 
     C.Cont();
   }, CaptureList{MetaModuleName});
@@ -1028,16 +1042,12 @@ void Context::IncludeModuleFile(heavy::SourceLocation Loc,
 }
 
 bool Context::TryLoadPrebuiltModule(heavy::SourceLocation Loc,
-                                    llvm::StringRef ModuleMangledName) {
-  llvm::StringRef ModulePath = HEAVY_BASE_VAR(module_path)
-    .get(*this).getStringRef();
-  if (ModulePath.empty())
-    return false;
-
+                                    heavy::String* Filename) {
   std::unique_ptr<llvm::MemoryBuffer> FileBuffer = nullptr;
   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> File =
-    llvm::MemoryBuffer::getFile(llvm::Twine(ModulePath, "/") +
-                                llvm::Twine(ModuleMangledName, ".sld.bc"));
+    llvm::MemoryBuffer::getFile(
+        llvm::Twine(Filename->getStringRef(), ".bc"));
+
   if (!File)
     return false;
 
@@ -1478,17 +1488,12 @@ EnvFrame* Context::CreateEnvFrame(llvm::ArrayRef<Symbol*> Names) {
 
 bool Context::OutputModule(llvm::StringRef MangledName,
                            llvm::StringRef ModulePath) {
+#if 0
   mlir::ModuleOp TopOp = cast<mlir::ModuleOp>(ModuleOp);
   if (mlir::Operation* Op = TopOp.lookupSymbol(MangledName)) {
     std::string ErrorMessage;
-    llvm::SmallString<64> FullPath;
-    (llvm::Twine(ModulePath, "/") +
-     llvm::Twine(MangledName, ".sld.bc")).toVector(FullPath);
-
-    // Disallow relative path weirdness after the module path.
-    llvm::sys::path::remove_dots(FullPath, /*remove_dot_dot*/true);
     std::unique_ptr<llvm::ToolOutputFile> OutputFile =
-      mlir::openOutputFile(FullPath, &ErrorMessage);
+      mlir::openOutputFile(llvm::Twine(InputFilePath, ".bc"), &ErrorMessage);
     if (!OutputFile) {
       llvm::errs() << ErrorMessage << "\n";
       return false;
@@ -1498,6 +1503,7 @@ bool Context::OutputModule(llvm::StringRef MangledName,
       return true;
     }
   }
+#endif
   return false;
 }
 
