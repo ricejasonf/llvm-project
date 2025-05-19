@@ -16,6 +16,7 @@
 #include <heavy/HeavyScheme.h>
 #include <heavy/SourceManager.h>
 #include <llvm/Support/CommandLine.h>
+#include <llvm/Support/FileSystem.h>
 #include <llvm/Support/InitLLVM.h>
 #include <llvm/Support/Process.h>
 #include <string>
@@ -87,8 +88,13 @@ int main(int argc, char const** argv) {
   heavy::HeavyScheme HeavyScheme;
   HeavyScheme.InitSourceFileStorage();
   cl::ParseCommandLineOptions(argc, argv);
-  if (!InputModulePath.empty())
+  if (InputModulePath.empty()) {
+    llvm::SmallString<128> Path{"./.heavy_modules"};
+    llvm::sys::fs::make_absolute(Path);
+    HeavyScheme.SetModulePath(llvm::StringRef(Path));
+  } else
     HeavyScheme.SetModulePath(InputModulePath);
+
   // Create error handler.
   bool HasErrors = false;
   auto OnError = [&HasErrors](llvm::StringRef Err,
