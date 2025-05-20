@@ -1366,7 +1366,8 @@ struct EnvEntry {
 
   operator bool() const { return bool(Value); }
 };
-using EnvBucket = std::pair<String*, EnvEntry>;
+// Map Identifier to MangledName.
+using EnvBucket = std::pair<String*, String*>;
 
 class Binding : public ValueBase {
   friend class Context;
@@ -1451,15 +1452,17 @@ void registerModuleVar(heavy::Context& C,
 class Module : public ValueBase {
   friend class Context;
   friend class CopyCollector;
-  using MapTy = llvm::DenseMap<String*, EnvEntry>;
+  // Map Identifier to Mangled name.
+  using MapTy = llvm::DenseMap<String*, String*>;
   using MapIteratorTy  = typename MapTy::iterator;
   heavy::Context& Context; // for String lookup
   heavy::ModuleLoadNamesFn* LoadNamesFn; // for lazy importing
   // Store global cleanups. Requires garbage collection.
   heavy::Lambda* Cleanup = nullptr;
   MapTy Map;
-
 public:
+  bool IsInitialized = false;
+
   Module(heavy::Context& C, heavy::ModuleLoadNamesFn* LoadNamesFn = nullptr)
     : ValueBase(ValueKind::Module),
       Context(C),
@@ -1471,7 +1474,6 @@ public:
   void PushCleanup(heavy::Lambda* CleanupFn);
 
   heavy::Context& getContext() { return Context; }
-
   // LoadNames - Idempotently loads names into module
   //             (for external, precompiled modules)
   void LoadNames() {
@@ -1480,56 +1482,19 @@ public:
     LoadNamesFn = nullptr;
   }
 
-  Binding* Insert(Binding* B) {
-    Map.insert(EnvBucket(B->getName()->getString(), EnvEntry{B}));
-    return B;
+  void Insert(String* Id, String* MangledName) {
+    Map[Id] = MangledName;
   }
 
-  void Insert(EnvBucket Bucket) {
-    Map.insert(Bucket);
-  }
-
-  // Returns EnvEntry() if not found
-  EnvEntry Lookup(String* Str) {
-    return Map.lookup(Str);
-  }
-
-  // Returns EnvEntry() if not found
-  EnvEntry Lookup(Symbol* Name) {
-    return Map.lookup(Name->getString());
+  EnvEntry Lookup(heavy::Context& C, String* IdName);
+  EnvEntry Lookup(heavy::Context& C, Symbol* IdName) {
+    return Lookup(C, IdName->getString());
   }
 
   static bool classof(Value V) {
     return V.getKind() == ValueKind::Module;
   }
   static ValueKind getKind() { return ValueKind::Module; }
-
-  class ValueIterator : public llvm::iterator_facade_base<
-                                              ValueIterator,
-                                              std::forward_iterator_tag,
-                                              Value>
-  {
-    friend class Module;
-    using ItrTy = typename MapTy::iterator;
-    ItrTy Itr;
-    ValueIterator(ItrTy I) : Itr(I) { }
-
-  public:
-    ValueIterator& operator=(ValueIterator const& R)
-    { Itr = R.Itr; return *this; }
-    bool operator==(ValueIterator const& R) const { return Itr == R.Itr; }
-    Value const& operator*() const { return (*Itr).second.Value; }
-    Value& operator*() { return (*Itr).second.Value; }
-    ValueIterator& operator++() { ++Itr; return *this; }
-  };
-
-  ValueIterator values_begin() {
-    return ValueIterator(Map.begin());
-  }
-
-  ValueIterator values_end() {
-    return ValueIterator(Map.end());
-  }
 
   using iterator = typename MapTy::iterator;
   // Used by ImportSet::Iterator
@@ -1686,7 +1651,8 @@ class Environment : public ValueBase {
   friend class CopyCollector;
 
 private:
-  using MapTy = llvm::DenseMap<String*, EnvEntry>;
+  // Map Id to MangledName.
+  using MapTy = llvm::DenseMap<String*, String*>;
 
   std::unique_ptr<heavy::OpGen> OpGen;
   Environment* Parent = nullptr;
@@ -1704,17 +1670,7 @@ public:
   }
 
   // Returns nullptr if not found
-  EnvEntry Lookup(String* Str) {
-    EnvEntry Result = EnvMap.lookup(Str);
-    if (Result) return Result;
-    if (Parent) return Parent->Lookup(Str);
-    return {};
-  }
-
-  // Returns EnvEntry() if not found
-  EnvEntry Lookup(Symbol* Name) {
-    return Lookup(Name->getString());
-  }
+  EnvEntry Lookup(Context& C, Symbol* Str);
 
   static BuiltinSyntax* getImportSyntax();
 
@@ -1722,35 +1678,34 @@ public:
   // and points to a different location.
   bool ImportValue(EnvBucket X) {
     assert(X.first && "name should point to a string in identifier table");
-    assert(X.second.MangledName && "import requires external name");
-    EnvEntry& Entry = EnvMap[X.first];
-    if (Entry.MangledName == nullptr) {
+    assert(X.second && "import requires external name");
+    String*& MangledName = EnvMap[X.first];
+    if (MangledName == nullptr) {
       // Result of `insert` is pair<iterator, bool>
-      Entry = X.second;
+      MangledName = X.second;
       return true;
     }
     // Do nothing if the value is the same "location".
-    return X.second.MangledName == Entry.MangledName;
+    return X.second == MangledName;
   }
 
   // Insert - Add a named mutable location. Overwriting
   //          with a new object is okay here if it is mutable
-  void Insert(Binding* B, String* MangledName) {
-    String* Name = B->getName()->getString();
-    auto& Entry = EnvMap[Name];
-    assert(!Entry.MangledName &&
-        "insert may not modify immutable locations");
-    Entry.Value = B;
-    Entry.MangledName = MangledName;
+  void Insert(Symbol* S, String* MangledName) {
+    String* Name = S->getString();
+    String*& MangleNameEntry = EnvMap[Name];
+    // FIXME This should not be an assert.
+    assert(!MangleNameEntry && "insert may not modify immutable locations");
+    MangleNameEntry = MangledName;
   }
 
   // SetSyntax - Extend the syntactic environment.
   void SetSyntax(Symbol* Name, Syntax* S, String* MangledName) {
-    auto& Entry = EnvMap[Name->getString()];
-    assert(Entry.MangledName != MangledName &&
+    String*& MangledNameEntry = EnvMap[Name->getString()];
+    assert(MangledNameEntry != MangledName &&
         "global syntax must have unique mangling");
-    Entry.Value = S;
-    Entry.MangledName = MangledName;
+    // We need to associate the syntax name at compile time.
+    MangledNameEntry = MangledName;
   }
 
   static bool classof(Value V) {

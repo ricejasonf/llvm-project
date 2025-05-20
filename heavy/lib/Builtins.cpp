@@ -511,6 +511,10 @@ void load_module(Context& C, ValueRefs Args) {
   heavy::Symbol* MangledName = dyn_cast<heavy::Symbol>(Args[0]);
   if (!MangledName)
     return C.RaiseError("module name should be a symbol");
+  C.PushCont([](Context& C, ValueRefs) {
+      heavy::Symbol* MangledName = cast<Symbol>(C.getCapture(0));
+      C.InitModule(MangledName);
+  }, CaptureList{MangledName});
   C.LoadModule(MangledName);
 }
 
