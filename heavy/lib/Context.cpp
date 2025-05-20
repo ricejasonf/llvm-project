@@ -141,17 +141,6 @@ Module* Context::RegisterModule(llvm::StringRef MangledName,
   return Itr->second.get();
 }
 
-#if 0 // TODO Make this create a module storing a function
-              to initialize it from a ModuleOp
-Module* Context::RegisterModule(mlir::Operation* ModuleOp) {
-  // TODO Get the "load_module" FuncOp
-  mlir::ModuleOp Op = cast<mlir::ModuleOp>(ModuleOp);
-  llvm::StringRef MangledName = Op.getName().getValueOr("");
-  return RegisterModule(MangledName,
-      std::make_unique<Module>(*this, ModuleOp));
-}
-#endif
-
 void Context::Import(heavy::ImportSet* ImportSet) {
   Environment* Env = dyn_cast<Environment>(EnvStack);
   if (!Env) {
@@ -249,7 +238,7 @@ bool Context::CheckLambdaFormals(Value Formals,
 // The Stack is an improper list ending with an Environment
 EnvEntry Context::Lookup(Symbol* Name, Value Stack) {
   if (auto* E = dyn_cast<Environment>(Stack)) {
-    EnvEntry Result = E->Lookup(Name);
+    EnvEntry Result = E->Lookup(*this, Name);
     if (!Result && Name->equals("import")) {
       return EnvEntry{_HEAVY_import, NameForImportVar};
     }
@@ -269,13 +258,15 @@ EnvEntry Context::Lookup(Symbol* Name, Value Stack) {
       Result = cast<EnvFrame>(V)->Lookup(Name);
       break;
     case ValueKind::Module:
-      Result = cast<Module>(V)->Lookup(Name);
+      // FIXME Pretty sure we dont have these for lookup.
+      llvm_unreachable("Invalid Lookup Type");
+      //Result = cast<Module>(V)->Lookup(*this, Name);
       break;
     case ValueKind::ImportSet:
       Result = cast<ImportSet>(V)->Lookup(*this, Name);
       break;
     case ValueKind::Environment: {
-      Result = cast<Environment>(V)->Lookup(Name);
+      Result = cast<Environment>(V)->Lookup(*this, Name);
       break;
     }
     default:
@@ -654,10 +645,30 @@ void Context::EmitStackSpaceError() {
   RaiseError("insufficient stack space");
 }
 
+EnvEntry Environment::Lookup(heavy::Context& C, Symbol* S) {
+  String* MangledName = EnvMap.lookup(S->getString());
+  if (!MangledName)
+    return EnvEntry();
+  Value Val = C.GetKnownValue(MangledName->getStringRef());
+  if (!Val)
+    Val = Undefined();
+  return EnvEntry{Val, MangledName};
+}
+
+EnvEntry Module::Lookup(heavy::Context& C, String* S) {
+  String* MangledName = Map.lookup(S);
+  if (!MangledName)
+    return EnvEntry();
+  Value Val = C.GetKnownValue(MangledName->getStringRef());
+  if (!Val)
+    Val = Undefined();
+  return EnvEntry{Val, MangledName};
+}
+
 EnvEntry ImportSet::Lookup(heavy::Context& C, Symbol* S) {
   switch(Kind) {
   case ImportKind::Library:
-    return cast<Module>(Specifier)->Lookup(S);
+    return cast<Module>(Specifier)->Lookup(C, S);
   case ImportKind::Only:
     // Specifier is a list of Symbols
     return isInIdentiferList(S) ? Parent->Lookup(C, S) : EnvEntry{};
@@ -698,7 +709,7 @@ String* ImportSet::FilterName(heavy::Context& C, String* S) {
   // traverse back down removing or replacing the String
   if (Kind == ImportKind::Library) {
     Module* M = cast<Module>(Specifier);
-    assert(M->Lookup(S) && "filtered name not in library");
+    assert(M->Lookup(C, S) && "filtered name not in library");
     return S;
   }
   S = Parent->FilterName(C, S);
@@ -882,6 +893,25 @@ namespace {
   }
 }
 
+void Context::InitModule(Symbol* MangledName) {
+  llvm::StringRef Name = MangledName->getStringRef();
+  std::unique_ptr<Module>& M = Modules[Name];
+  if (!M)
+    return RaiseError("module is not loaded (init_module)");
+  if (M->IsInitialized)
+    return Cont();
+
+  mlir::ModuleOp TopOp = cast<mlir::ModuleOp>(ModuleOp);
+  auto Op = dyn_cast_or_null<mlir::ModuleOp>(TopOp.lookupSymbol(Name));
+  if (!Op)
+    return Cont();
+
+  M->IsInitialized = true;
+  // Init the module by calling op_eval on it.
+  Value Args = {Op.getOperation()};
+  Apply(HEAVY_BASE_VAR(op_eval), Args);
+}
+
 
 // - Load a module by its mangled name which may involve
 //   loading from a file.
@@ -910,10 +940,7 @@ void Context::LoadModule(Symbol* MangledName, bool IsFileLoaded) {
       auto Op = cast<mlir::Operation>(C.getCapture(1));
       C.LoadExports(MPtr, Op);
     }, CaptureList{MPtr, Op.getOperation()});
-    // Init the module by calling op_eval on it.
-    Value Args = {Op.getOperation()};
-    Apply(HEAVY_BASE_VAR(op_eval), Args);
-    return;
+    return Cont();
   }
 
   // Load the module from an sld file.
@@ -946,6 +973,7 @@ void Context::LoadModule(Symbol* MangledName, bool IsFileLoaded) {
 }
 
 void Context::LoadExports(heavy::Module* M, mlir::Operation* ModuleOp) {
+  // FIXME We need to init compile time stuff like syntax.
   auto& Ops = cast<mlir::ModuleOp>(ModuleOp).getBody()->getOperations();
   for (mlir::Operation& TL : Ops) {
     if (auto E = dyn_cast<ExportOp>(TL)) {
@@ -953,15 +981,8 @@ void Context::LoadExports(heavy::Module* M, mlir::Operation* ModuleOp) {
       // the exported names with Context.
       mlir::Block& Body = E.getBody().back();
       for (mlir::Operation& X : Body.getOperations()) {
-        if (auto IdOp = dyn_cast<ExportIdOp>(X)) {
-          Value Val = GetKnownValue(IdOp.getSymbolName());
-          if (!Val) {
-            RaiseError("export of undefined value");
-            return;
-          }
-          heavy::registerModuleVar(*this, M, IdOp.getSymbolName(),
-                                   IdOp.getId(), Val);
-        }
+        if (auto IdOp = dyn_cast<ExportIdOp>(X))
+          registerModuleVar(*this, M, IdOp.getSymbolName(), IdOp.getId());
       }
     }
   }
@@ -1023,9 +1044,9 @@ void Context::IncludeModuleFile(heavy::SourceLocation Loc,
                                "include-library-declarations",
                                "cond-expand"}) {
     String* Id = CreateIdTableEntry(Name);
-    EnvEntry Entry = Base->Lookup(Id);
-    if (Entry && Entry.MangledName != nullptr)
-      Env->ImportValue(EnvBucket{Id, Entry});
+    EnvEntry Entry = Base->Lookup(*this, Id);
+    if (Entry.MangledName != nullptr)
+      Env->ImportValue(EnvBucket{Id, Entry.MangledName});
   }
 
   PushCont([](heavy::Context& C, ValueRefs) {
@@ -1076,6 +1097,15 @@ Value Context::GetKnownValue(llvm::StringRef MangledName) {
   return Result;
 }
 
+void heavy::registerModuleVar(heavy::Context& C,
+                              heavy::Module* M,
+                              llvm::StringRef VarSymbol,
+                              llvm::StringRef VarId) {
+  String* Id = C.CreateIdTableEntry(VarId);
+  String* MangledName = C.CreateIdTableEntry(VarSymbol);
+  M->Insert(Id, MangledName);
+}
+
 void heavy::initModuleNames(heavy::Context& C, llvm::StringRef ModuleMangledName,
                             ModuleInitListTy InitList) {
   Module* M = C.Modules[ModuleMangledName].get();
@@ -1087,22 +1117,11 @@ void heavy::initModuleNames(heavy::Context& C, llvm::StringRef ModuleMangledName
     std::string MangledName = Mangler.mangleVariable(ModuleMangledName, Id);
     if (MangledName.empty())
       return;
-    registerModuleVar(C, M, MangledName, Id, Val);
+    registerModuleVar(C, M, MangledName, Id);
     // Track valid values by their mangled names
-    if (Val) {
+    if (Val)
       C.AddKnownAddress(MangledName, Val);
-    }
   }
-}
-
-void heavy::registerModuleVar(heavy::Context& C,
-                              heavy::Module* M,
-                              llvm::StringRef VarSymbol,
-                              llvm::StringRef VarId,
-                              Value Val) {
-  String* Id = C.CreateIdTableEntry(VarId);
-  String* MangledName = C.CreateIdTableEntry(VarSymbol);
-  M->Insert(EnvBucket{Id, EnvEntry{Val, MangledName}});
 }
 
 bool Context::CheckKind(ValueKind VK, Value V) {

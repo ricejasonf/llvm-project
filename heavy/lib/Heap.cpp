@@ -279,7 +279,7 @@ public:
     Module->Cleanup = cast_or_null<Lambda>(Visit(Module->Cleanup));
     for (auto& DensePair : Module->Map) {
       DensePair.getFirst() = VisitString(DensePair.getFirst());
-      DensePair.getSecond() = VisitEnvEntry(DensePair.getSecond());
+      DensePair.getSecond() = VisitString(DensePair.getSecond());
     }
     return Module;
   }
@@ -303,7 +303,7 @@ public:
 
     for (auto& DensePair : Env->EnvMap) {
       DensePair.getFirst() = VisitString(DensePair.getFirst());
-      DensePair.getSecond() = VisitEnvEntry(DensePair.getSecond());
+      DensePair.getSecond() = VisitString(DensePair.getSecond());
     }
 
     VisitedSpecials.push_back(Env);

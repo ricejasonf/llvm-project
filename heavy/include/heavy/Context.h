@@ -64,6 +64,11 @@ class ContextLocalLookup {
   llvm::DenseMap<uintptr_t, Value> LookupTable;
 };
 
+void registerModuleVar(heavy::Context& C,
+                       heavy::Module* M,
+                       llvm::StringRef VarSymbol,
+                       llvm::StringRef VarId);
+
 class Context : public ContinuationStack<Context>,
                 public ContextLocalLookup,
                 public IdTable,
@@ -79,8 +84,7 @@ class Context : public ContinuationStack<Context>,
   friend void registerModuleVar(heavy::Context& C,
                                 heavy::Module* M,
                                 llvm::StringRef VarSymbol,
-                                llvm::StringRef VarId,
-                                Value Val);
+                                llvm::StringRef VarId);
 
   static constexpr size_t MiB = 1024 * 1024;
 
@@ -146,6 +150,7 @@ public:
   //           finish execution such as clean up.
   Value RunSync(Value Callee, Value Arg);
 
+  void InitModule(Symbol* MangledName);
   mlir::Operation* getModuleOp();
   void dumpModuleOp();
   void verifyModule();

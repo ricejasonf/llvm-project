@@ -557,6 +557,8 @@ mlir::Value OpGen::createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall) {
     assert(!MangledName.empty() && "global syntax must have mangled name");
     TopLevelEnv->SetSyntax(Keyword, Syntax,
         Context.CreateIdTableEntry(MangledName));
+    // Syntax should be available at compile-time.
+    Context.AddKnownAddress(MangledName, Syntax);
     // Insert a ContOp for the global that was created.
     Builder.create<ContOp>(Result.getLoc(), Result);
     Builder.restoreInsertionPoint(PrevIp);
@@ -760,7 +762,7 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
   }
 #endif
 
-  EnvEntry Entry = Env->Lookup(S);
+  EnvEntry Entry = Env->Lookup(Context, S);
   if (Entry.Value && Entry.MangledName) {
     if (Mangler::isExternalVariable(getModulePrefix(),
                                     Entry.MangledName->getView()))
@@ -803,9 +805,8 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
     mlir::OpBuilder::InsertionGuard IG(Builder);
     Builder.setInsertionPointToStart(&Block);
 
-    Binding* B = Context.CreateBinding(S, DefineArgs);
     // Insert into the module level scope
-    Env->Insert(B, Context.CreateIdTableEntry(MangledName));
+    Env->Insert(S, Context.CreateIdTableEntry(MangledName));
     if (mlir::Value Init = VisitDefineArgs(DefineArgs)) {
       create<ContOp>(DefineLoc, Init);
     }
