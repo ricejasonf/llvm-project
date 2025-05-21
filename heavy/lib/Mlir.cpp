@@ -254,7 +254,8 @@ void create_op(Context& C, ValueRefs Args) {  // Syntax
     else if (ArgName == "successors")
       Successors = Arg;
     else
-      C.RaiseError("expecting named argument");
+      return C.RaiseError("expecting named argument "
+          "[attributes, operands, regions, result-types, successors]");
   }
 
   llvm::SmallVector<mlir::Value, 5> Vals;
@@ -380,14 +381,19 @@ void result(Context& C, ValueRefs Args) {
     return C.RaiseError("invalid arity");
 
   mlir::Operation* Op = heavy::dyn_cast<mlir::Operation>(Args[0]);
+  Value IndexArg = Args.size() > 1 ? Args[1] : Value(Int{0});
+
   if (!Op)
     return C.RaiseError("expecting mlir.op");
 
-  if (Args.size() > 1 && !heavy::isa<heavy::Int>(Args[1]))
+  if (!heavy::isa<heavy::Int>(IndexArg))
     return C.RaiseError("expecting index");
 
-  int32_t Index = heavy::isa<heavy::Int>(Args[1]) ?
-                    int32_t{heavy::cast<heavy::Int>(Args[1])} : 0;
+  uint32_t Index = static_cast<uint32_t>(heavy::cast<heavy::Int>(IndexArg));
+
+  if (Index >= Op->getNumResults())
+    return C.RaiseError("result index is out of range");
+
   mlir::Value Result = Op->getResult(Index);
   if (!Result)
     return C.RaiseError("invalid mlir.op result");
