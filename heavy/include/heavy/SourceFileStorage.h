@@ -53,7 +53,8 @@ class SourceFileStorage {
   SourceFileStorage() = default;
   llvm::ErrorOr<SourceFile> Open(heavy::SourceManager& SM,
                                  heavy::SourceLocation Loc,
-                                 llvm::StringRef Filename);
+                                 llvm::StringRef Filename,
+                                 std::string& ErrorMessage);
 };
 
 }
