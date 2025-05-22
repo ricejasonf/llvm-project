@@ -17,6 +17,7 @@
 #include <heavy/SourceManager.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/FileSystem.h>
+#include <llvm/Support/Path.h>
 #include <llvm/Support/InitLLVM.h>
 #include <llvm/Support/Process.h>
 #include <string>
@@ -78,6 +79,21 @@ void ProcessTopLevelExpr(heavy::Context& Context, heavy::ValueRefs Values) {
   }
 }
 
+void SetModulePath(heavy::HeavyScheme& HeavyScheme) {
+  llvm::SmallString<64> CurrentDir;
+
+  if (InputFilename.getValue() == "-")
+    llvm::sys::fs::current_path(CurrentDir);
+  else {
+    CurrentDir = InputFilename.getValue();
+    llvm::sys::path::remove_filename(CurrentDir);
+  }
+
+  llvm::SmallString<64> Path = llvm::StringRef(InputModulePath.getValue());
+  llvm::sys::fs::make_absolute(CurrentDir, Path);
+  HeavyScheme.SetModulePath(llvm::StringRef(Path));
+}
+
 int main(int argc, char const** argv) {
 #if 0
   // TODO Provide interactive looping which requires support
@@ -88,12 +104,8 @@ int main(int argc, char const** argv) {
   heavy::HeavyScheme HeavyScheme;
   HeavyScheme.InitSourceFileStorage();
   cl::ParseCommandLineOptions(argc, argv);
-  if (InputModulePath.empty()) {
-    llvm::SmallString<128> Path{"./.heavy_modules"};
-    llvm::sys::fs::make_absolute(Path);
-    HeavyScheme.SetModulePath(llvm::StringRef(Path));
-  } else
-    HeavyScheme.SetModulePath(InputModulePath);
+
+  SetModulePath(HeavyScheme);
 
   // Create error handler.
   bool HasErrors = false;
@@ -123,6 +135,8 @@ int main(int argc, char const** argv) {
                                       OnError);
 
   if (!InputExportModule.empty()) {
+    llvm::errs() << "error: TODO Export a bytecode "
+                    "file of modules when specified.";
     // If module-path is unspecified we output to the current directory.
     std::string ModulePath = InputModulePath.getValue();
     std::string ModuleName = InputExportModule.getValue();
@@ -130,6 +144,7 @@ int main(int argc, char const** argv) {
       llvm::errs() << "error: module output failed " << ModuleName << "\n\n";
     }
   }
+
   if (InputMode.getValue() == ExecutionMode::mlir) {
     HeavyScheme.getContext().verifyModule();
     HeavyScheme.getContext().dumpModuleOp();

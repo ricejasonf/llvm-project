@@ -48,13 +48,12 @@ void HeavyScheme::ProcessTopLevelCommands(llvm::StringRef Filename,
                  SM.getFullSourceLocation({}));
     return;
   }
+  std::string ErrorMessage;
   llvm::ErrorOr<heavy::SourceFile>
     FileResult = SourceFileStoragePtr->Open(SM, heavy::SourceLocation(),
-                                            Filename);
-  if (std::error_code ec = FileResult.getError()) {
-    ErrorHandler((llvm::Twine("opening ", Filename) + 
-                             llvm::Twine(": ", ec.message())).str(),
-                 SM.getFullSourceLocation({}));
+                                            Filename, ErrorMessage);
+  if (!FileResult) {
+    ErrorHandler(ErrorMessage, SM.getFullSourceLocation({}));
     return;
   }
   heavy::Lexer Lexer(FileResult.get());
@@ -68,13 +67,14 @@ heavy::Value HeavyScheme::ParseSourceFile(heavy::SourceLocation Loc,
                                           llvm::StringRef Filename) {
   assert(SourceFileStoragePtr &&
       "source file storage not initialized");
+  std::string ErrorMessage;
   llvm::ErrorOr<heavy::SourceFile>
-    FileResult = SourceFileStoragePtr->Open(getSourceManager(), Loc, Filename);
-  if (std::error_code ec = FileResult.getError()) {
+    FileResult = SourceFileStoragePtr->Open(getSourceManager(), Loc,
+                                            Filename, ErrorMessage);
+  if (!FileResult) {
     heavy::Context& C = getContext();
-    C.RaiseError((llvm::Twine("\"", Filename) + 
-                  llvm::Twine("\": ", ec.message())).str());
-    return Undefined{};
+    C.RaiseError(ErrorMessage);
+    return Undefined();
   }
   heavy::Lexer Lexer(FileResult.get());
   return ParseSourceFile(Lexer);
@@ -83,17 +83,22 @@ heavy::Value HeavyScheme::ParseSourceFile(heavy::SourceLocation Loc,
 llvm::ErrorOr<heavy::SourceFile>
 SourceFileStorage::Open(heavy::SourceManager& SM,
                         heavy::SourceLocation IncludeLoc,
-                        llvm::StringRef Filename) {
-  // Include Loc may be invalid.
-  heavy::SourceFile IncludeSF = SM.getFile(IncludeLoc);
+                        llvm::StringRef Filename,
+                        std::string& ErrorMessage) {
   llvm::SmallString<128> FilePath;
-  if (IncludeSF.isValid() && IncludeSF.Name != "-") {
-    // Get the file path.
-    FilePath = IncludeSF.Name;
-    llvm::sys::path::remove_filename(FilePath);
+  // Module files already have an absolute path.
+  if (!Filename.ends_with(".sld")) {
+    // Include Loc may be invalid.
+    heavy::SourceFile IncludeSF = SM.getFile(IncludeLoc);
+    if (IncludeSF.isValid() && IncludeSF.Name != "-") {
+      // Get the file path.
+      FilePath = IncludeSF.Name;
+      llvm::sys::path::remove_filename(FilePath);
+    }
   }
 
   FilePath += Filename;
+
   // Check LookupCache
   heavy::SourceLocation CachedLoc = LookupCache.lookup(FilePath); 
   if (CachedLoc.isValid()) {
@@ -104,8 +109,11 @@ SourceFileStorage::Open(heavy::SourceManager& SM,
 
   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> File =
     llvm::MemoryBuffer::getFileOrSTDIN(FilePath);
-  if (!File)
+  if (std::error_code ec = File.getError()) {
+    ErrorMessage = (llvm::Twine("opening ", FilePath) + 
+                             llvm::Twine(": ", ec.message())).str();
     return File.getError();
+  }
 
   // Ensure the name is stable in memory.
   NodeTy& Node = Storage.emplace_back(std::move(*File));

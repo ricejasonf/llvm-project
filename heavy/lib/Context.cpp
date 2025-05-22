@@ -946,7 +946,7 @@ void Context::LoadModule(Symbol* MangledName, bool IsFileLoaded) {
   // Load the module from an sld file.
   heavy::String* Filename = nullptr;
   {
-    llvm::SmallString<128> FilenameBuffer;
+    llvm::SmallString<64> FilenameBuffer;
     getModulePath(*this, MangledName->getStringRef(), FilenameBuffer);
     FilenameBuffer += ".sld";
     Filename = CreateString(FilenameBuffer);
