@@ -82,12 +82,7 @@ void ProcessTopLevelExpr(heavy::Context& Context, heavy::ValueRefs Values) {
 void SetModulePath(heavy::HeavyScheme& HeavyScheme) {
   llvm::SmallString<64> CurrentDir;
 
-  if (InputFilename.getValue() == "-")
-    llvm::sys::fs::current_path(CurrentDir);
-  else {
-    CurrentDir = InputFilename.getValue();
-    llvm::sys::path::remove_filename(CurrentDir);
-  }
+  llvm::sys::fs::current_path(CurrentDir);
 
   llvm::SmallString<64> Path = llvm::StringRef(InputModulePath.getValue());
   llvm::sys::fs::make_absolute(CurrentDir, Path);

@@ -9,7 +9,7 @@
     (define-syntax hello-module-syntax
       (syntax-rules ()
         ((hello-module-syntax x)
-         ((write "syntax:")
+         ((write "syntax: ")
           (hello-module x)))))
     (write "end of init")
     (newline))
