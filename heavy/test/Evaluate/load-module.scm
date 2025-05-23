@@ -1,4 +1,5 @@
 ; RUN: heavy-scheme --module-path=./Inputs %s | FileCheck %s
+; RUN: heavy-scheme --module-path=../Evaluate/Inputs %s | FileCheck %s
 
 ; CHECK: "end of module"
 ; CHECK-NEXT: "end of init"
