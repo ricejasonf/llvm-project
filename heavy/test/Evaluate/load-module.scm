@@ -8,3 +8,7 @@
 ; CHECK: "hello module!"
 ; CHECK-NEXT: 5
 (hello-module 5)
+
+; SCHECK: "syntax: hello module!"
+; SCHECK-NEXT: woof
+;(hello-module-syntax 'woof)
