@@ -6,9 +6,15 @@
       (write "hello module!")
       (newline)
       (write x))
+    (define-syntax hello-module-syntax
+      (syntax-rules ()
+        ((hello-module-syntax x)
+         ((write "syntax:")
+          (hello-module x)))))
     (write "end of init")
     (newline))
-  (export hello-module)
+  (export hello-module
+          hello-module-syntax)
 )
 (write "end of module")
 (newline)

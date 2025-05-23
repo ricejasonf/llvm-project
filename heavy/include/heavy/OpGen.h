@@ -186,7 +186,10 @@ public:
   //  - Returns true if there is an error or exception
   //  - Builtins will have to check this to stop evaluation
   //    when errors occur
-  bool CheckError() { return Err ? true : false; }
+  bool CheckError() const {
+    return Err ? true : false;
+  }
+
   void ClearError() { Err = nullptr; }
 
 
@@ -328,24 +331,18 @@ public:
   void createLoadModule(SourceLocation Loc, Symbol* MangledName);
 
   template <typename T>
-  mlir::Value SetError(T Str, Value V = Undefined()) {
-    Context.RaiseError(Str, V);
-    return Error();
-  }
-  template <typename T>
   mlir::Value SetError(SourceLocation Loc, T Str, Value V = Undefined()) {
+    Err = Context.CreateError(Loc, Str, Context.CreatePair(V));
     Context.setLoc(Loc);
-    Context.RaiseError(Str, V);
+    Context.Raise(Err);
     return Error();
   }
 
-#if 0
   template <typename T>
-  mlir::Value SetError(SourceLocation Loc, T Str, Value V) {
-    Context.RaiseError(Loc, Str, V);
-    return Error();
+  mlir::Value SetError(T Str, Value V = Undefined()) {
+    return SetError(V.getSourceLocation(), Str, V);
   }
-#endif
+
 
   mlir::Value Error() {
     return createUndefined();
@@ -398,6 +395,7 @@ public:
   mlir::Operation* LookupSymbol(llvm::StringRef MangledName);
 private:
   mlir::Value MaybeCallSyntax(Pair* P, bool& DidCallSyntax);
+  mlir::Value MaybeCallSyntax(Value Operator, Pair* P, bool& DidCallSyntax);
   mlir::Value HandleCall(Pair* P);
 };
 

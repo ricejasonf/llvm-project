@@ -249,21 +249,21 @@ void OpGen::VisitLibrary(heavy::SourceLocation Loc,
 
 void OpGen::VisitLibrarySpec(Value LibSpec) {
   // Store the Context reference as a stack variable
-  // because this can get deleted inside Context::Run
+  // because *this can get deleted inside Context::Run
   // (inside MaybeCallSyntax)
+  // FIXME This works, but there should be a better way.
+  //       (Like using PushCont?)
   heavy::Context& Context = this->Context;
   bool DidCallSyntax = false;
-  if (Pair* P = dyn_cast<Pair>(LibSpec)) {
-    if (MaybeCallSyntax(P, DidCallSyntax) == Error()) {
-      if (Context.OpGen && Context.OpGen->CheckError())
-        return;
-    }
-  }
+  if (Pair* P = dyn_cast<Pair>(LibSpec))
+    MaybeCallSyntax(P, DidCallSyntax);
+
   if (!DidCallSyntax) {
     SetError("expecting library spec", LibSpec);
     return;
   }
 
+  // Continue will also handle errors.
   Context.Cont();
 }
 
@@ -512,43 +512,21 @@ mlir::Value OpGen::createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall) {
   }
 
   Pair* TransformerSpec = dyn_cast<Pair>(SyntaxSpec->Cdr.car());
-  if (!TransformerSpec || !isa<Empty>(SyntaxSpec->Cdr.cdr())) {
+  Value SyntaxOperator;
+  if (Symbol* TS = dyn_cast_or_null<Symbol>(TransformerSpec->Car))
+    SyntaxOperator = Context.Lookup(TS).Value;
+
+  if (!SyntaxOperator)
     return SetError("invalid syntax spec", SyntaxSpec);
-  }
-  // TODO Use MaybeCallSyntax
-  if (Symbol* TS = dyn_cast_or_null<Symbol>(TransformerSpec->Car)) {
-    // Operator is typically syntax-rules here.
-    if (Value Operator = Context.Lookup(TS).Value) {
-      // Invoke the syntax with the entire SyntaxSpec
-      // so syntax-rules et al. can know the Keyword.
-      switch (Operator.getKind()) {
-      case ValueKind::BuiltinSyntax: {
-        BuiltinSyntax* BS = cast<BuiltinSyntax>(Operator);
-        Result = BS->Fn(*this, SyntaxSpec);
-        break;
-      }
-      case ValueKind::Syntax: {
-        Value Input = SyntaxSpec;
-        Context.RunSync(Operator, Input);
-        Result = toValue(Context.getCurrentResult());
-        break;
-      }
-      default: {
-        Result = mlir::Value();
-        break;
-      }}
-    }
-  }
 
-  if (CheckError()) return Result;
-  if (!Result) {
-    return SetError("expecting syntax object", SyntaxSpec);
-  }
-
-  auto SyntaxOp = Result.getDefiningOp<heavy::SyntaxOp>();
-  if (!SyntaxOp) {
-    return SetError("expecting syntax object", SyntaxSpec);
-  }
+  bool DidCallSyntax = false;
+  Result = MaybeCallSyntax(SyntaxOperator, SyntaxSpec, DidCallSyntax);
+  auto SyntaxOp = Result ? Result.getDefiningOp<heavy::SyntaxOp>()
+                         : heavy::SyntaxOp();
+  if (CheckError())
+    return Result;
+  if (!DidCallSyntax || !SyntaxOp)
+    return SetError("expecting syntax transformer", SyntaxSpec);
 
   heavy::Syntax* Syntax = Context.CreateSyntaxWithOp(
       SyntaxOp.getOperation());
@@ -1091,6 +1069,11 @@ mlir::Value OpGen::MaybeCallSyntax(Pair* P, bool& DidCallSyntax) {
     // Unwrap the ExternName to see if it is a syntax.
     Operator = Context.GetKnownValue(ExternName->getView());
   }
+  return MaybeCallSyntax(Operator, P, DidCallSyntax);
+}
+
+mlir::Value OpGen::MaybeCallSyntax(Value Operator, Pair* P,
+                                   bool& DidCallSyntax) {
   switch (Operator.getKind()) {
     case ValueKind::BuiltinSyntax: {
       Context.setLoc(P->getSourceLocation());
@@ -1100,13 +1083,16 @@ mlir::Value OpGen::MaybeCallSyntax(Pair* P, bool& DidCallSyntax) {
     }
     case ValueKind::Syntax: {
       // Store the Context reference as a stack variable
-      // because this can get deleted inside Run.
+      // because *this can get deleted inside Run.
       heavy::Context& Context = this->Context;
       Context.setLoc(P->getSourceLocation());
       DidCallSyntax = true;
       Value Input = P;
       Context.RunSync(Operator, Input);
-      return toValue(Context.getCurrentResult());
+      Value Result = Context.getCurrentResult();
+      if (isa_and_nonnull<heavy::Error>(Result))
+        Context.OpGen->Err = Result;
+      return toValue(Result);
     }
     default: {
       DidCallSyntax = false;
@@ -1118,9 +1104,8 @@ mlir::Value OpGen::MaybeCallSyntax(Pair* P, bool& DidCallSyntax) {
 mlir::Value OpGen::VisitPair(Pair* P) {
   bool DidCallSyntax;
   mlir::Value Result = MaybeCallSyntax(P, DidCallSyntax);
-  if (DidCallSyntax) {
+  if (DidCallSyntax)
     return Result;
-  }
   return HandleCall(P);
 }
 

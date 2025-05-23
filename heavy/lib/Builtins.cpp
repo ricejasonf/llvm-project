@@ -93,7 +93,7 @@ mlir::Value syntax_rules(OpGen& OG, Pair* P) {
   // The input is the <Syntax Spec> (Keyword (syntax-rules ...))
   // <Syntax Spec> has its own checks in createSyntaxSpec
   Symbol* Keyword = dyn_cast<Symbol>(P->Car);
-  Pair* SpecInput = dyn_cast<Pair>(P->Cdr.car().cdr());
+  Pair* SpecInput = dyn_cast_or_null<Pair>(P->Cdr.car().cdr());
   if (!SpecInput) return OG.SetError("invalid syntax-rules syntax", P);
   // Check for optional ellipsis identifier.
   Symbol* Ellipsis = dyn_cast<Symbol>(SpecInput->Car);
