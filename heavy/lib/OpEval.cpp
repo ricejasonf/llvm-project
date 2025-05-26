@@ -97,6 +97,10 @@ public:
   void Eval(mlir::Operation* Op) {
     if (isa<GlobalOp, CommandOp>(Op)) {
       BlockItrTy Itr = Visit(Op);
+
+      if (Itr == BlockItrTy())
+        return Context.Cont();
+
       // When a call to Visit returns a null we defer
       // execution to the continuation stack.
       while (Itr != BlockItrTy()) {
@@ -491,8 +495,15 @@ private:
   }
 
   BlockItrTy Visit(GlobalOp Op) {
-    // skip external global ops
-    if (Op.isExternal()) return next(Op);
+    // Note we return BlockItrTy() because ModuleOp has not terminator.
+    // Skip external global ops.
+    if (Op.isExternal()) return BlockItrTy();
+
+    // The global may already be initialized in the case
+    // of syntax objects.
+    if (Value Val = Context.GetKnownValue(Op.getSymName()))
+      if (!isa<heavy::Undefined>(Val))
+        return BlockItrTy();
 
     push_scope();
     Context.PushCont([Op](heavy::Context& C, ValueRefs Args) mutable {
