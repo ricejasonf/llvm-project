@@ -973,21 +973,40 @@ void Context::LoadModule(Symbol* MangledName, bool IsFileLoaded) {
 }
 
 void Context::LoadExports(heavy::Module* M, mlir::Operation* ModuleOp) {
-  // FIXME We need to init compile time stuff like syntax.
+  auto getGlobalSyntax = [ModuleOp](llvm::StringRef MangledName)
+      -> heavy::GlobalOp {
+    // TODO Using a type system would be ideal.
+    auto M = cast<mlir::ModuleOp>(ModuleOp);
+    auto GlobalOp = dyn_cast_or_null<heavy::GlobalOp>(
+                        M.lookupSymbol(MangledName));
+    if (!GlobalOp || GlobalOp.isExternal() ||
+        GlobalOp.getInitializer().empty())
+      return heavy::GlobalOp();
+    mlir::Block& InitBlock = GlobalOp.getInitializer().front();
+    if (InitBlock.empty() || !isa<heavy::SyntaxOp>(InitBlock.front()))
+      return heavy::GlobalOp();
+    return GlobalOp;
+  };
+
+  PushCont([](Context& C, ValueRefs) {
+    // Pass the Module along to the import stuff that called this.
+    heavy::Module* M = cast<heavy::Module>(C.getCapture(0));
+    C.Cont(M);
+  }, CaptureList{M});
+
   auto& Ops = cast<mlir::ModuleOp>(ModuleOp).getBody()->getOperations();
   for (mlir::Operation& TL : Ops) {
-    if (auto E = dyn_cast<ExportOp>(TL)) {
-      // Walk all of the ExportIdOps registering
-      // the exported names with Context.
-      mlir::Block& Body = E.getBody().back();
-      for (mlir::Operation& X : Body.getOperations()) {
-        if (auto IdOp = dyn_cast<ExportIdOp>(X))
-          registerModuleVar(*this, M, IdOp.getSymbolName(), IdOp.getId());
-      }
+    if (auto IdOp = dyn_cast<ExportIdOp>(TL)) {
+      registerModuleVar(*this, M, IdOp.getSymbolName(), IdOp.getId());
+      // Load syntax objects.
+      if (heavy::GlobalOp GlobalOp = getGlobalSyntax(IdOp.getSymbolName()))
+        PushCont([GlobalOp](Context& C, ValueRefs) {
+          Value Args[] = {Value(&(*GlobalOp))};
+          C.Apply(HEAVY_BASE_VAR(op_eval), Args);
+        });
     }
   }
-  // Pass the Module along to the import stuff that called this.
-  Cont(M);
+  Cont();
 }
 
 // Allow the user to add cleanup routines to unload a module/library.

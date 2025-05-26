@@ -33,15 +33,6 @@ protected:
     : OpGen(O)
   { }
 
-  bool isRebuilt(heavy::Value V) {
-    return (V.is<ValueSumType::Operation>() ||
-            V.is<ValueSumType::ContArg>());
-  }
-
-  bool isRebuilt(heavy::Value V1, heavy::Value V2) {
-    return isRebuilt(V1) || isRebuilt(V2);
-  }
-
   // createValue - Create a mlir::Value from its stored
   //               representation in heavy::Value or wrap
   //               it in a LiteralOp.

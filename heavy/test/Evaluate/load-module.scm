@@ -1,5 +1,5 @@
-; RUN: heavy-scheme --module-path=./Inputs %s | FileCheck %s
-; RUN: heavy-scheme --module-path=../Evaluate/Inputs %s | FileCheck %s
+; RUN: heavy-scheme --module-path=%S/Inputs %s | FileCheck %s
+; RUN: heavy-scheme --module-path=%S/../Evaluate/Inputs %s | FileCheck %s
 
 ; CHECK: "end of module"
 ; CHECK-NEXT: "end of init"
@@ -9,6 +9,6 @@
 ; CHECK-NEXT: 5
 (hello-module 5)
 
-; SCHECK: "syntax: hello module!"
-; SCHECK-NEXT: woof
-;(hello-module-syntax 'woof)
+; CHECK: "hello module!"
+; CHECK-NEXT: woof
+(hello-module-syntax "woof!")

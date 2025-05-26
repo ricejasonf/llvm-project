@@ -45,9 +45,12 @@ public:
   void VisitTemplate(heavy::Value Template) {
     heavy::SourceLocation Loc = Template.getSourceLocation();
     heavy::Value V = Visit(Template);
-    mlir::Value TransformedSyntax = isRebuilt(V) ? OpGen::toValue(V) :
-                                                   createLiteral(V)
-                                                    .getResult();
+    mlir::Value TransformedSyntax;
+    if (V.is<ValueSumType::Operation>() || V.is<ValueSumType::ContArg>())
+      TransformedSyntax = OpGen::toValue(V);
+    else
+      TransformedSyntax = createLiteral(V).getResult();
+
     OpGen.createOpGen(Loc, TransformedSyntax);
   }
 
@@ -61,7 +64,9 @@ private:
     heavy::Value Car = Visit(P->Car);
     heavy::Value Cdr = Visit(P->Cdr);
 
-    if (!isRebuilt(Car, Cdr)) return P;
+    // If nothing changed.
+    if (Car == P->Car && Cdr == P->Cdr)
+      return P;
 
     return createCons(Loc, Car, Cdr).getOperation();
   }

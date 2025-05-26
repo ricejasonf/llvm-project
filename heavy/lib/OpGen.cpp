@@ -298,6 +298,10 @@ void OpGen::VisitTopLevel(Value V) {
   Context.PushCont([](heavy::Context& C, ValueRefs) {
     heavy::Value V = C.getCapture(0);
     C.OpGen->Visit(V);
+    // C.OpGen might be destroyed if the "stack" unwinded.
+    // If an error was raised then a continuation was already called.
+    if (C.OpGen && C.OpGen->CheckError())
+      return;
     C.Cont();
   }, CaptureList{V});
   Context.Cont();
@@ -1066,6 +1070,9 @@ mlir::Value OpGen::MaybeCallSyntax(Pair* P, bool& DidCallSyntax) {
     // Unwrap the ExternName to see if it is a syntax.
     Operator = Context.GetKnownValue(ExternName->getView());
   }
+
+  if (!Operator)
+    return mlir::Value();
   return MaybeCallSyntax(Operator, P, DidCallSyntax);
 }
 
@@ -1099,7 +1106,7 @@ mlir::Value OpGen::MaybeCallSyntax(Value Operator, Pair* P,
 }
 
 mlir::Value OpGen::VisitPair(Pair* P) {
-  bool DidCallSyntax;
+  bool DidCallSyntax = false;
   mlir::Value Result = MaybeCallSyntax(P, DidCallSyntax);
   if (DidCallSyntax)
     return Result;
@@ -1202,25 +1209,9 @@ mlir::Operation* OpGen::LookupSymbol(llvm::StringRef MangledName) {
 }
 
 void OpGen::Export(Value NameList) {
-  heavy::Mangler Mangler(Context);
-  assert(!getModulePrefix().empty() && "exporting module should have a name");
-  std::string FuncName = Mangler.mangleSpecialName(getModulePrefix(), "load_module");
-  heavy::ExportOp F = dyn_cast_or_null<heavy::ExportOp>(
-      getModuleOp().lookupSymbol(FuncName));
-  mlir::Block* Block;
-
-  if (!F) {
-    F = createHelper<heavy::ExportOp>(ModuleBuilder,
-                                      NameList.getSourceLocation(),
-                                      FuncName);
-    Block = &F.getBody().emplaceBlock();
-  } else {
-    Block = &(F.getBody().back());
-  }
-
   // Iterate existing ExportIdOp nodes and load them into NameSet
   llvm::SmallSet<llvm::StringRef, 8> NameSet;
-  auto& Ops = Block->getOperations();
+  auto& Ops = getModuleOp().getBody()->getOperations();
   for (auto& Op : Ops) {
     auto ExportIdOp = dyn_cast<heavy::ExportIdOp>(Op);
     if (!ExportIdOp) continue;
@@ -1231,10 +1222,6 @@ void OpGen::Export(Value NameList) {
       return;
     }
   }
-
-  // Setup the builder and ensure a terminator exists
-  mlir::OpBuilder ExportBuilder(Context.MLIRContext.get());
-  ExportBuilder.setInsertionPointToEnd(Block);
 
   // Now iterate the names and add ExportIdOps.
 
@@ -1270,17 +1257,32 @@ void OpGen::Export(Value NameList) {
       return;
     }
 
+    // TODO Perform Context.Lookup and get the MangledName.
+    //      Do nothing if it is the same as an existing export.
+    //      Error out if the MangledName would change.
+    //      If its blank, leave the symbolName blank.
+    //      (Check for these ExportIdOps in global definition
+    //       when in library context.)
+    //      (Maybe instead of NameSet use "NameMap".)
+
     // Check that Target is not a duplicate
     auto Result = NameSet.insert(Target->getView());
     if (!Result.second) {
       SetError("export has duplicate name", Target);
       return;
     }
-    std::string MangledName = mangleVariable(Source);
-    if (MangledName.empty())
-      return;
-    createHelper<ExportIdOp>(ExportBuilder, Target->getSourceLocation(),
+
+    // If the variable or syntax does not exist yet
+    // leave out the symbolName to allow binding later.
+    // (via createGlobal)
+    EnvEntry Entry = Context.Lookup(Source);
+    llvm::StringRef MangledName = Entry.MangledName
+                                ? Entry.MangledName->getStringRef()
+                                : llvm::StringRef();
+
+    createHelper<ExportIdOp>(ModuleBuilder, Target->getSourceLocation(),
                              MangledName, Target->getView());
+
     // Next
     V = P->Cdr;
   }
