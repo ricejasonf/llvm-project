@@ -1255,8 +1255,7 @@ void Context::ManagedObjectWind(void* Ptr, DestructorTy Destructor,
   // This is checked everytime we enter the dynamic extent.
   Value Sentinel = CreateVector(std::initializer_list<Value>{Bool{true}});
 
-  Value Destroy = CreateLambda([Ptr, Destructor](Context& C,
-                                                   ValueRefs Args) {
+  Value Destroy = CreateLambda([Ptr, Destructor](Context& C, ValueRefs Args) {
     Vector* Sentinel = dyn_cast<Vector>(C.getCapture(0));
     if (!Sentinel || !Sentinel->get(0)) {
       // We could only get here if the user saved an escape proc
@@ -1289,10 +1288,10 @@ void Context::ManagedObjectWind(void* Ptr, DestructorTy Destructor,
     C.DynamicWind(SafeBefore, Thunk, After);
   }, CaptureList{SafeBefore, Thunk, After});
 
-  Value ErrorHandler = CreateLambda([](Context& C, ValueRefs) {
+  Value ErrorHandler = CreateLambda([](Context& C, ValueRefs Args) {
     // Destroy the managed object on error.
     Value Destroy = C.getCapture(0);
-    C.ApplyThunk(Destroy);
+    C.Apply(Destroy, Args);
   }, CaptureList{Destroy});
 
   // Destroy the object upon continuing.
