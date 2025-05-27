@@ -1246,6 +1246,60 @@ void Context::RaiseError(String* Msg, llvm::ArrayRef<Value> IrrArgs) {
   Raise(Error);
 }
 
+// ManagedObjectWind - Manage the lifetime of a C++ object within a dynamic
+// extent via a provided type-erased desctructor. 
+void Context::ManagedObjectWind(void* Ptr, DestructorTy Destructor,
+                       Value Before, Value Thunk, Value After) {
+  // Sentinel is referenced by each lambda
+  // to share the state of the object's lifetime.
+  // This is checked everytime we enter the dynamic extent.
+  Value Sentinel = CreateVector(std::initializer_list<Value>{Bool{true}});
+
+  Value Destroy = CreateLambda([Ptr, Destructor](Context& C,
+                                                   ValueRefs Args) {
+    Vector* Sentinel = dyn_cast<Vector>(C.getCapture(0));
+    if (!Sentinel || !Sentinel->get(0)) {
+      // We could only get here if the user saved an escape proc
+      // in the After thunk.
+      C.RaiseError("managed object is already destroyed");
+    }
+
+    // Clear the sentinel value and delete the managed object.
+    Sentinel->get(0) = Value();
+    Destructor(Ptr);
+    // Forward the return args from Thunk.
+    C.Cont(Args);
+  }, CaptureList{Sentinel});
+
+  Value SafeBefore = CreateLambda([](Context& C, ValueRefs) {
+    Vector* Sentinel = cast<Vector>(C.getCapture(0));
+    Value Before = C.getCapture(1);
+    // Check that the object is still alive.
+    if (!Sentinel->get(0)) {
+      C.RaiseError("unable to enter extent when managed object is destroyed");
+      return;
+    }
+    C.Apply(Before, {});
+  }, CaptureList{Sentinel, Before});
+
+  Value ErrorThunk = CreateLambda([](Context& C, ValueRefs) {
+    Value SafeBefore = C.getCapture(0);
+    Value Thunk = C.getCapture(1);
+    Value After = C.getCapture(2);
+    C.DynamicWind(SafeBefore, Thunk, After);
+  }, CaptureList{SafeBefore, Thunk, After});
+
+  Value ErrorHandler = CreateLambda([](Context& C, ValueRefs) {
+    // Destroy the managed object on error.
+    Value Destroy = C.getCapture(0);
+    C.ApplyThunk(Destroy);
+  }, CaptureList{Destroy});
+
+  // Destroy the object upon continuing.
+  PushCont(Destroy);
+  WithExceptionHandler(ErrorHandler, ErrorThunk);
+}
+
 namespace {
 class LibraryEnv {
   // EnvPtr is meant to just keep the

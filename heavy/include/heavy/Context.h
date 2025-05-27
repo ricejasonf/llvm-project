@@ -238,29 +238,31 @@ public:
   }
   using ContinuationStack<Context>::Apply;
 
-#if 0
-  // SetError - Put the context into a hard error state. The stack
-  //            should be cleared, and subsequent calls to eval
-  //            should be a noop unless the error is cleared
-  //            by the user.
-  void SetError(Value E);
-  void SetError(SourceLocation Loc, String* S, Value V) {
-    return SetError(CreateError(Loc, S, CreatePair(V)));
+protected:
+  void ManagedObjectWind(void* Ptr, DestructorTy Destructor,
+                         Value Before, Value Thunk, Value After);
+
+public:
+  using ContinuationStack::DynamicWind;
+
+  template <typename T>
+  void DynamicWind(std::unique_ptr<T> ManagedPtr, Value Before,
+                            Value Thunk, Value After) {
+    T* Ptr = ManagedPtr.release();
+    DestructorTy Destructor = [](void* Ptr) {
+      delete static_cast<T*>(Ptr);
+    };
+    ManagedObjectWind(Ptr, Destructor, Before, Thunk, After);
   }
-  void SetError(String* S, Value V) {
-    SourceLocation Loc = V.getSourceLocation();
-    return SetError(CreateError(Loc, S, CreatePair(V)));
+
+  template <typename T>
+  void DynamicWind(std::unique_ptr<T> ManagedPtr, Value Thunk) {
+    auto Noop = CreateLambda([](Context& C, ValueRefs) {
+      C.Cont();
+    });
+    DynamicWind(std::move(ManagedPtr), Noop, Thunk, Noop);
   }
-  void SetError(StringRef S, Value V) {
-    return SetError(CreateString(S), V);
-  }
-  void SetError(StringRef S) {
-    return SetError(S, CreateUndefined());
-  }
-  void SetError(SourceLocation Loc, StringRef S, Value V) {
-    return SetError(Loc, CreateString(S), V);
-  }
-#endif
+
 
   void setLoc(SourceLocation L) {
     if (L.isValid()) {
