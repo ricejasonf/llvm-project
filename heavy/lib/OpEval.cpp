@@ -676,7 +676,7 @@ private:
     heavy::Value Input = getValue(Op.getInput());
     mlir::Value Result = Context.OpGen->Visit(Input);
     heavy::Value Output = heavy::OpGen::fromValue(Result);
-    if (!Context.OpGen->CheckError())
+    if (!Context.OpGen || !Context.OpGen->CheckError())
       Context.Cont(Output);
     return BlockItrTy();
   }
@@ -711,6 +711,7 @@ void op_eval(Context& C, ValueRefs Args) {
     C.OpEval = new OpEvalImpl(C);
     C.PushModuleCleanup(HEAVY_BASE_LIB_STR,
       C.CreateLambda([](Context& C, ValueRefs) {
+        llvm_unreachable("FIXME find out why we do not get here");
         assert(C.OpEval && "OpEval should be set.");
         // Cleanup the OpEval object.
         delete C.OpEval;

@@ -248,22 +248,19 @@ void OpGen::VisitLibrary(heavy::SourceLocation Loc,
 }
 
 void OpGen::VisitLibrarySpec(Value LibSpec) {
-  // Store the Context reference as a stack variable
-  // because *this can get deleted inside Context::Run
-  // (inside MaybeCallSyntax)
-  // FIXME This works, but there should be a better way.
-  //       (Like using PushCont?)
-  heavy::Context& Context = this->Context;
-  bool DidCallSyntax = false;
-  if (Pair* P = dyn_cast<Pair>(LibSpec))
-    MaybeCallSyntax(P, DidCallSyntax);
+  // Use PushCont to avoid destruction of this.
+  Context.PushCont([](heavy::Context& C, ValueRefs) {
+    Value LibSpec = C.getCapture(0);
+    bool DidCallSyntax = false;
+    if (Pair* P = dyn_cast<Pair>(LibSpec))
+      C.OpGen->MaybeCallSyntax(P, DidCallSyntax);
 
-  if (!DidCallSyntax) {
-    SetError("expecting library spec", LibSpec);
-    return;
-  }
-
-  // Continue will also handle errors.
+    if (!DidCallSyntax) {
+      C.OpGen->SetError("expecting library spec", LibSpec);
+      return;
+    }
+    C.Cont();
+  }, CaptureList{LibSpec});
   Context.Cont();
 }
 
@@ -281,16 +278,16 @@ void OpGen::VisitTopLevel(Value V) {
   mlir::OpBuilder::InsertPoint PrevIp = Builder.saveInsertionPoint();
   Builder.clearInsertionPoint();
 
-  Context.PushCont([this, PrevIp](heavy::Context& Ctx, ValueRefs) {
+  Context.PushCont([this, PrevIp](heavy::Context& C, ValueRefs) {
     // Instead of the continuation argument we use TopLevelOp
     FinishTopLevelOp();
     if (TopLevelOp && TopLevelHandler) {
       // Call the TopLevelHandler
       Value Result = TopLevelOp;
       TopLevelOp = nullptr;
-      Ctx.Apply(TopLevelHandler, Result);
+      C.Apply(TopLevelHandler, Result);
     } else {
-      Ctx.Cont();
+      C.Cont();
     }
 
     Builder.restoreInsertionPoint(PrevIp);
