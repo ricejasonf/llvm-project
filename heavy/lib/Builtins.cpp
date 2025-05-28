@@ -519,41 +519,24 @@ void load_module(Context& C, ValueRefs Args) {
 }
 
 void eval(Context& C, ValueRefs Args) {
-  if (Args.size() != 2) {
+  if (Args.size() < 1)
     return C.RaiseError("invalid arity");
-  }
+
   Value ExprOrDef       = Args[0];
-  Value EnvSpec         = Args[1];
+  Value EnvSpec         = Args.size() > 1 ? Args[1] : Undefined();
   Value EvalRaw = Args.size() == 3 ? Args[2] : HEAVY_BASE_VAR(op_eval);
-  // Wrap Eval as escape procedure to prevent the
-  // user from capturing the environment with compiler objects
-  // that will be deleted.
-  Value Eval = C.CreateBinding(Undefined());
 
-  // Push the compile step.
-  C.PushCont([](heavy::Context& C, heavy::ValueRefs) {
-    heavy::ValueRefs NewArgs = C.getCaptures();
-    // Unwrap the escape proc.
-    NewArgs[2] = cast<heavy::Binding>(NewArgs[2])->getValue();
-    C.Apply(HEAVY_BASE_VAR(compile), NewArgs);
-  }, CaptureList{ExprOrDef, EnvSpec, Eval});
-
-  // Save the 
-  C.SaveEscapeProc(Eval, [](heavy::Context& C, ValueRefs Args) {
-    Value EvalRaw = C.getCapture(0);
-    // Skip the compile step that we just pushed above.
-    C.PopCont();
-    C.Apply(EvalRaw, Args);
-  }, CaptureList{EvalRaw});
+  Value NewArgs[] = {ExprOrDef, EnvSpec, EvalRaw};
+  C.Apply(HEAVY_BASE_VAR(compile), NewArgs);
 }
 
 void compile(Context& C, ValueRefs Args) {
-  if (Args.size() != 3) {
+  if (Args.size() < 1) {
     return C.RaiseError("invalid arity");
   }
   Value ExprOrDef       = Args[0];
-  Value EnvSpec         = Args[1];
-  Value TopLevelHandler = Args[2];
+  Value EnvSpec         = Args.size() > 1 ? Args[1] : Undefined();
+  Value TopLevelHandler = Args.size() > 2 ? Args[2] : Undefined();
 
   // EnvPtr - Manage ownership of the Environment
   //          if we have to create it on the fly.
@@ -570,12 +553,47 @@ void compile(Context& C, ValueRefs Args) {
     return;
   }
 
+  // If there is a provided handler then we save the results in an
+  // improper, reversed ordered list (stack) to pass to the handler.
+  Value ResultHandler = Undefined();
+  if (!isa<Undefined>(TopLevelHandler)) {
+    Value Results = C.CreateBinding(Empty());
+    ResultHandler = C.CreateLambda([](heavy::Context& C, ValueRefs Args) {
+      // Push each result to a reverse ordered list (stack).
+      assert(!Args.empty() && "compile should call handler with result");
+      Value NewResult = Args[0];
+      Binding* Results = cast<Binding>(C.getCapture(0));
+      // Usually there is only a single result.
+      if (isa<Empty>(Results->getValue()))
+        Results->setValue(NewResult);
+      else
+        Results->setValue(C.CreatePair(NewResult, Results->getValue()));
+      C.Cont();
+    }, CaptureList{Results});
+    C.PushCont([](Context& C, ValueRefs) {
+      // The compiler should already be cleaned up at this point.
+      Value TopLevelHandler = C.getCapture(0);
+      Value Results = cast<Binding>(C.getCapture(1))->getValue();
+      for (Value Result : Results) {
+        if (isa<Empty>(Results))
+          break;
+        C.PushCont([](Context& C, ValueRefs) {
+          Value TopLevelHandler = C.getCapture(0);
+          Value Result = C.getCapture(1);
+          C.Apply(TopLevelHandler, Result);
+        }, CaptureList{TopLevelHandler, Result});
+      }
+      C.Cont();
+    }, CaptureList{TopLevelHandler, Results});
+  }
+
   Value Thunk = C.CreateLambda([](heavy::Context& C, ValueRefs) {
     Value EnvSpec = C.getCapture(0);
     C.PushCont([](heavy::Context& C, ValueRefs) {
       Value ExprOrDef = C.getCapture(0);
-      Value TopLevelHandler = C.getCapture(1);
-      C.OpGen->SetTopLevelHandler(TopLevelHandler);
+      Value ResultHandler = C.getCapture(1);
+      if (!isa<Undefined>(ResultHandler))
+        C.OpGen->SetTopLevelHandler(ResultHandler);
       C.OpGen->VisitTopLevel(ExprOrDef); // calls Cont()
     }, C.getCaptures().drop_front());
     if (auto* ImpSet = dyn_cast<ImportSet>(EnvSpec)) {
@@ -583,7 +601,7 @@ void compile(Context& C, ValueRefs Args) {
     } else {
       C.Cont();
     }
-  }, CaptureList{EnvSpec, ExprOrDef, TopLevelHandler});
+  }, CaptureList{EnvSpec, ExprOrDef, ResultHandler});
 
   C.WithEnv(std::move(EnvPtr), Env, Thunk);
 }
