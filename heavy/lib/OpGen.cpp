@@ -409,6 +409,10 @@ heavy::FuncOp OpGen::createFunction(SourceLocation Loc,
 mlir::Value OpGen::createLambda(Value Formals, Value Body,
                                 SourceLocation Loc,
                                 llvm::StringRef Name) {
+  // Ensure we are no longer top level.
+  if (!TopLevelOp)
+    InsertTopLevelCommandOp(Loc);
+
   std::string MangledName = mangleFunctionName(Name);
   if (MangledName.empty())
     return Error();
