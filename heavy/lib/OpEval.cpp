@@ -673,9 +673,11 @@ private:
   }
 
   BlockItrTy Visit(OpGenOp Op) {
+    heavy::OpGen* OpGen = Context.OpGen;  // For debug only.
     heavy::Value Input = getValue(Op.getInput());
     mlir::Value Result = Context.OpGen->Visit(Input);
     heavy::Value Output = heavy::OpGen::fromValue(Result);
+    assert(OpGen == Context.OpGen && "OpGen visit should not unwind itself");
     if (!Context.OpGen || !Context.OpGen->CheckError())
       Context.Cont(Output);
     return BlockItrTy();

@@ -147,17 +147,26 @@ void OpGen::WithLibraryEnv(Value Thunk) {
   }
   assert(!isa<Undefined>(LibraryEnvProc->getValue()) &&
       "LibraryEnvProc must be initialized");
-  Context.Apply(LibraryEnvProc->getValue(), Thunk);
+  Context.CallCC(Context.CreateLambda([](heavy::Context& C, ValueRefs Args) {
+    Value CC = Args[0];
+    Value Thunk = C.getCapture(0);
+    Binding* LibraryEnvProc = cast<Binding>(C.getCapture(1));
+
+    Value NewThunk = C.CreateLambda([](heavy::Context& C, ValueRefs) {
+      Value Thunk = C.getCapture(0);
+      Value CC = C.getCapture(1);
+      C.PushCont(CC);  // Resume the current continuation.
+      C.ApplyThunk(Thunk);
+    }, CaptureList{Thunk, CC});
+
+    C.Apply(LibraryEnvProc->getValue(), NewThunk);
+  }, CaptureList{Thunk, LibraryEnvProc}));
 }
 
 void OpGen::VisitLibrary(heavy::SourceLocation Loc,
                          heavy::Symbol* MangledName,
                          Value LibraryDecls) {
   assert(isTopLevel() && "library should be top level");
-  // EnvPtr - A raw pointer that is captured to be owned by
-  //          the input unique_ptr that is required to WithLibraryEnv.
-  heavy::Environment* EnvPtr =
-    new heavy::Environment(Context, std::move(MangledName));
   // LibraryEnvProc - Capture and later set to the escape procedure
   //                  that is used to process top level exprs for the
   //                  library which must be with a (begin ...) syntax.
@@ -167,9 +176,10 @@ void OpGen::VisitLibrary(heavy::SourceLocation Loc,
   LibraryDecls = Context.CreateBinding(LibraryDecls);
 
   // PushCont the creation of LibraryEnvProc
-  Context.PushCont([EnvPtr](heavy::Context& C, ValueRefs) {
+  Context.PushCont([](heavy::Context& C, ValueRefs) {
     Binding* HandleLibraryDecls = cast<Binding>(C.getCapture(0));
     Value LibraryEnvProc = C.getCapture(1);
+    Symbol* MangledName = cast<Symbol>(C.getCapture(2));
 
     if (isa<Empty>(HandleLibraryDecls->getValue())) {
       C.Cont();
@@ -201,8 +211,9 @@ void OpGen::VisitLibrary(heavy::SourceLocation Loc,
       }, CaptureList{HandleLibraryDecls});
     }, CaptureList{HandleLibraryDecls, LibraryEnvProc});
     // Taking ownership of EnvPtr
-    C.WithEnv(std::unique_ptr<heavy::Environment>(EnvPtr), EnvPtr, Thunk);
-  }, CaptureList{HandleLibraryDecls, LibraryEnvProc});
+    auto EnvPtr = std::make_unique<heavy::Environment>(C, MangledName);
+    C.WithEnv(std::move(EnvPtr), Thunk);
+  }, CaptureList{HandleLibraryDecls, LibraryEnvProc, MangledName});
 
 
   // The library environment isn't used until we are in a sequence (begin).
@@ -294,10 +305,10 @@ void OpGen::VisitTopLevel(Value V) {
   });
   Context.PushCont([](heavy::Context& C, ValueRefs) {
     heavy::Value V = C.getCapture(0);
+    heavy::OpGen* OpGen = C.OpGen;  // For debug only.
     C.OpGen->Visit(V);
-    // C.OpGen might be destroyed if the "stack" unwinded.
-    // If an error was raised then a continuation was already called.
-    if (C.OpGen && C.OpGen->CheckError())
+    assert(OpGen == C.OpGen && "OpGen should not unwind itself.");
+    if (C.OpGen->CheckError())
       return;
     C.Cont();
   }, CaptureList{V});
@@ -1093,10 +1104,12 @@ mlir::Value OpGen::MaybeCallSyntax(Value Operator, Pair* P,
       Context.setLoc(P->getSourceLocation());
       DidCallSyntax = true;
       Value Input = P;
-      Context.RunSync(Operator, Input);
-      Value Result = Context.getCurrentResult();
-      if (isa_and_nonnull<heavy::Error>(Result))
-        Context.OpGen->Err = Result;
+      heavy::OpGen* OpGen = Context.OpGen;
+      assert(OpGen == this && "sanity check");
+      Value Result = Context.RunSync(Operator, Input);
+      assert(OpGen == Context.OpGen && "OpGen should not unwind itself");
+      if (auto ResultErr = dyn_cast_or_null<heavy::Error>(Result))
+        SetError(ResultErr);
       return toValue(Result);
     }
     default: {

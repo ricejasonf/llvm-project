@@ -1326,7 +1326,7 @@ public:
     // Capture Env via scheme lambda so its references are checked
     // during garbage collection.
     Value Before = Context.CreateLambda([OpGen](heavy::Context& C,
-                                                 ValueRefs) {
+                                                ValueRefs) {
       Value Env = C.getCapture(0);
       C.setEnvironment(Env);
       C.OpGen = OpGen;
@@ -1358,22 +1358,19 @@ void Context::WithEnv(std::unique_ptr<heavy::Environment> EnvPtr,
 //           the operation on the current C++ call stack is needed.
 Value Context::RunSync(Value Callee, Value SingleArg) {
   PushBreak();
-  heavy::Value Thunk = CreateLambda([](heavy::Context& C,
-                                       heavy::ValueRefs) {
+  CallCC(CreateLambda([](Context& C, ValueRefs Args) {
     heavy::Value Callee = C.getCapture(0);
     heavy::Value SingleArg = C.getCapture(1);
-    C.Apply(Callee, ValueRefs{SingleArg});
-  }, CaptureList{Callee, SingleArg});
-  heavy::Value HandleError = CreateLambda([](heavy::Context& C,
-                                            heavy::ValueRefs Args) {
-    // Defer error propagation to the parent loop.
-    C.PushCont([](heavy::Context& C, ValueRefs) {
-      heavy::ValueRefs ErrorArgs = C.getCaptures();
-      C.Cont(ErrorArgs);
-    }, Args);
-    C.Yield(Args);
-  });
-  WithExceptionHandler(HandleError, Thunk);
+    Value CC = Args[0];
+    heavy::Value Thunk = C.CreateLambda([](heavy::Context& C,
+                                         heavy::ValueRefs) {
+      heavy::Value Callee = C.getCapture(0);
+      heavy::Value SingleArg = C.getCapture(1);
+      C.Apply(Callee, ValueRefs{SingleArg});
+    }, CaptureList{Callee, SingleArg});
+    heavy::Value HandleError = CC;
+    C.WithExceptionHandler(HandleError, Thunk);
+  }, CaptureList{Callee, SingleArg}));
   Resume();
   return getCurrentResult();
 }

@@ -52,7 +52,7 @@ static cl::opt<ExecutionMode> InputMode(
 
 static cl::opt<std::string> InputModulePath(
   "module-path", cl::desc("Specify the path used for prebuilt modules."),
-  cl::init(""));
+  cl::init(".heavy_modules"));
 
 static cl::opt<std::string> InputExportModule(
   "export-module", cl::desc("Specify a library by its mangled name to export"
