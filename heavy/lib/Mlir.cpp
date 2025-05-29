@@ -22,27 +22,39 @@
 #include <llvm/Support/Casting.h>
 #include <memory>
 
-heavy::ContextLocal   HEAVY_MLIR_VAR(current_context);
-heavy::ContextLocal   HEAVY_MLIR_VAR(current_builder);
-heavy::ExternSyntax<> HEAVY_MLIR_VAR(create_op);
-heavy::ExternFunction HEAVY_MLIR_VAR(create_op_impl);
-heavy::ExternFunction HEAVY_MLIR_VAR(region);
-heavy::ExternFunction HEAVY_MLIR_VAR(results);
-heavy::ExternFunction HEAVY_MLIR_VAR(result);
-heavy::ExternFunction HEAVY_MLIR_VAR(at_block_begin);
-heavy::ExternFunction HEAVY_MLIR_VAR(at_block_end);
-heavy::ExternFunction HEAVY_MLIR_VAR(at_block_terminator);
-heavy::ExternFunction HEAVY_MLIR_VAR(block_op);
-heavy::ExternFunction HEAVY_MLIR_VAR(set_insertion_point);
-heavy::ExternFunction HEAVY_MLIR_VAR(set_insertion_after);
-heavy::ExternFunction HEAVY_MLIR_VAR(type);
-heavy::ExternFunction HEAVY_MLIR_VAR(attr);
-heavy::ExternFunction HEAVY_MLIR_VAR(with_new_context);
-heavy::ExternFunction HEAVY_MLIR_VAR(with_builder);
-heavy::ExternFunction HEAVY_MLIR_VAR(load_dialect);
-heavy::ExternFunction HEAVY_MLIR_VAR(parent_op);
-heavy::ExternFunction HEAVY_MLIR_VAR(op_next);
-heavy::ExternFunction HEAVY_MLIR_VAR(verify);
+#define HEAVY_MLIR_VAR(NAME) ::heavy::mlir_bind_var::NAME
+
+// Manually provide mangled names as needed.
+#define HEAVY_MLIR_VAR_STR__create_op_impl \
+                        HEAVY_MLIR_LIB_(Vrm6Screatemi2Sop)
+#define HEAVY_MLIR_VAR_STR_(NAME) HEAVY_MLIR_VAR_STR__##NAME
+#define HEAVY_MLIR_VAR_STR(X) HEAVY_MLIR_VAR_STR_STR(HEAVY_MLIR_VAR_STR_(X))
+#define HEAVY_MLIR_VAR_STR_STR(X) HEAVY_MLIR_VAR_STR_STR_STR(X)
+#define HEAVY_MLIR_VAR_STR_STR_STR(X) #X
+
+namespace heavy::mlir_bind_var {
+heavy::ContextLocal   current_context;
+heavy::ContextLocal   current_builder;
+heavy::ExternSyntax<> create_op;
+heavy::ExternFunction create_op_impl;
+heavy::ExternFunction region;
+heavy::ExternFunction results;
+heavy::ExternFunction result;
+heavy::ExternFunction at_block_begin;
+heavy::ExternFunction at_block_end;
+heavy::ExternFunction at_block_terminator;
+heavy::ExternFunction block_op;
+heavy::ExternFunction set_insertion_point;
+heavy::ExternFunction set_insertion_after;
+heavy::ExternFunction type;
+heavy::ExternFunction attr;
+heavy::ExternFunction with_new_context;
+heavy::ExternFunction with_builder;
+heavy::ExternFunction load_dialect;
+heavy::ExternFunction parent_op;
+heavy::ExternFunction op_next;
+heavy::ExternFunction verify;
+}
 
 namespace {
   namespace kind {
@@ -259,49 +271,30 @@ void create_op(Context& C, ValueRefs Args) {  // Syntax
   }
 
   llvm::SmallVector<mlir::Value, 5> Vals;
-  // attributes
-  for (auto [Loc, X] : WithSource(Attributes)) {
-    C.setLoc(Loc);
-    mlir::Value V = OpGen.GetSingleResult(X);
-    Vals.push_back(V);
-  }
-  mlir::Value AttrVals = OpGen.create<heavy::VectorOp>(
-                            Attributes.getSourceLocation(), Vals);
-  Vals.clear();
+  auto createInputVector = [&](heavy::Value Inputs) -> mlir::Value {
+    for (auto [Loc, X] : WithSource(Inputs)) {
+      C.setLoc(Loc);
+      mlir::Value V = OpGen.GetSingleResult(X);
+      Vals.push_back(V);
+    }
 
-  // operands
-  for (auto [Loc, X] : WithSource(Operands)) {
-    C.setLoc(Loc);
-    mlir::Value V = OpGen.GetSingleResult(X);
-    Vals.push_back(V);
-  }
-  mlir::Value OperandVals = OpGen.create<heavy::VectorOp>(
-                              Operands.getSourceLocation(), Vals);
-  Vals.clear();
+    // Localize the values because we are doing this manually.
+    for (auto& V : Vals)
+      V = OpGen.LocalizeValue(V);
 
-  // regions
+    mlir::Value InputVals = OpGen.create<heavy::VectorOp>(
+                              Attributes.getSourceLocation(), Vals);
+    Vals.clear();
+    return InputVals;
+  };
+
+  mlir::Value AttrVals = createInputVector(Attributes);
+  mlir::Value OperandVals = createInputVector(Operands);
   mlir::Value NumRegionsVal = OpGen.GetSingleResult(NumRegions);
+  mlir::Value ResultTypeVals = createInputVector(ResultTypes);
+  mlir::Value SuccessorVals = createInputVector(Successors);
 
-  // result-types
-  for (auto [Loc, X] : WithSource(ResultTypes)) {
-    C.setLoc(Loc);
-    mlir::Value V = OpGen.GetSingleResult(X);
-    Vals.push_back(V);
-  }
-  mlir::Value ResultTypeVals = OpGen.create<heavy::VectorOp>(
-                                ResultTypes.getSourceLocation(), Vals);
-  Vals.clear();
-
-  // successors
-  for (auto [Loc, X] : WithSource(Successors)) {
-    C.setLoc(Loc);
-    mlir::Value V = OpGen.GetSingleResult(X);
-    Vals.push_back(V);
-  }
-  mlir::Value SuccessorVals = OpGen.create<heavy::VectorOp>(
-                                Successors.getSourceLocation(), Vals);
-  Vals.clear();
-
+  assert(Vals.empty());
   // Reuse Vals as arguments to %create-op
   Vals.push_back(OpName);
   Vals.push_back(AttrVals);
@@ -742,7 +735,6 @@ void HEAVY_MLIR_INIT(heavy::Context& C) {
   HEAVY_MLIR_VAR(current_context).init(C, MC_Val);
   HEAVY_MLIR_VAR(current_builder).init(C, BuilderVal);
 
-  // syntax
   HEAVY_MLIR_VAR(create_op) = heavy::mlir_bind::create_op;
   HEAVY_MLIR_VAR(create_op_impl) = heavy::mlir_bind::create_op_impl;
   HEAVY_MLIR_VAR(region) = heavy::mlir_bind::region;
