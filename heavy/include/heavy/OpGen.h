@@ -343,6 +343,12 @@ public:
     return SetError(V.getSourceLocation(), Str, V);
   }
 
+  mlir::Value SetError(heavy::Error* NewErr) {
+    Err = NewErr;
+    Context.Raise(Err);
+    return Error();
+  }
+
 
   mlir::Value Error() {
     return createUndefined();
