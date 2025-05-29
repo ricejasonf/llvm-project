@@ -13,59 +13,72 @@
 #include "heavy/Builtins.h"
 #include "heavy/Context.h"
 #include "heavy/OpGen.h"
+#include "heavy/Value.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
 #include "memory"
 
+namespace mlir {
+class Value;
+}
+
+namespace heavy::base_var {
+heavy::ExternSyntax<>      define_library;
+heavy::ExternSyntax<>      begin;
+heavy::ExternSyntax<>      export_;
+heavy::ExternSyntax<>      include;
+heavy::ExternSyntax<>      include_ci;
+heavy::ExternSyntax<>      include_library_declarations;
+heavy::ContextLocal        parse_source_file;
+
+heavy::ExternBuiltinSyntax cond_expand;
+heavy::ExternBuiltinSyntax define;
+heavy::ExternBuiltinSyntax define_syntax;
+heavy::ExternBuiltinSyntax syntax_rules;
+heavy::ExternBuiltinSyntax if_;
+heavy::ExternBuiltinSyntax lambda;
+heavy::ExternBuiltinSyntax quasiquote;
+heavy::ExternBuiltinSyntax quote;
+heavy::ExternBuiltinSyntax set;
+heavy::ExternBuiltinSyntax source_loc;
+
+
+heavy::ExternFunction add;
+heavy::ExternFunction sub;
+heavy::ExternFunction div;
+heavy::ExternFunction mul;
+heavy::ExternFunction gt;
+heavy::ExternFunction lt;
+heavy::ExternFunction list;
+heavy::ExternFunction append;
+heavy::ExternFunction dump;
+heavy::ExternFunction write;
+heavy::ExternFunction newline;
+heavy::ExternFunction eq;
+heavy::ExternFunction equal;
+heavy::ExternFunction eqv;
+heavy::ExternFunction call_cc;
+heavy::ExternFunction with_exception_handler;
+heavy::ExternFunction raise;
+heavy::ExternFunction error;
+heavy::ExternFunction dynamic_wind;
+heavy::ExternFunction load_module;
+
+heavy::ExternFunction eval;
+heavy::ExternFunction op_eval;
+heavy::ExternFunction compile;
+heavy::ContextLocal   module_path;
+}
+
 bool HEAVY_BASE_IS_LOADED = false;
 
-heavy::ExternSyntax<>      HEAVY_BASE_VAR(define_library);
-heavy::ExternSyntax<>      HEAVY_BASE_VAR(begin);
-heavy::ExternSyntax<>      HEAVY_BASE_VAR(export);
-heavy::ExternSyntax<>      HEAVY_BASE_VAR(include);
-heavy::ExternSyntax<>      HEAVY_BASE_VAR(include_ci);
-heavy::ExternSyntax<>      HEAVY_BASE_VAR(include_library_declarations);
-heavy::ContextLocal        HEAVY_BASE_VAR(parse_source_file);
+namespace heavy::base {
+// See Quasiquote.cpp
+mlir::Value quote(OpGen& OG, Pair* P);
+mlir::Value quasiquote(OpGen& OG, Pair* P);
 
-heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(cond_expand);
-heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(define);
-heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(define_syntax);
-heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(syntax_rules);
-heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(if);
-heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(lambda);
-heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(quasiquote);
-heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(quote);
-heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(set);
-heavy::ExternBuiltinSyntax HEAVY_BASE_VAR(source_loc);
-
-
-heavy::ExternFunction HEAVY_BASE_VAR(add);
-heavy::ExternFunction HEAVY_BASE_VAR(sub);
-heavy::ExternFunction HEAVY_BASE_VAR(div);
-heavy::ExternFunction HEAVY_BASE_VAR(mul);
-heavy::ExternFunction HEAVY_BASE_VAR(gt);
-heavy::ExternFunction HEAVY_BASE_VAR(lt);
-heavy::ExternFunction HEAVY_BASE_VAR(list);
-heavy::ExternFunction HEAVY_BASE_VAR(append);
-heavy::ExternFunction HEAVY_BASE_VAR(dump);
-heavy::ExternFunction HEAVY_BASE_VAR(write);
-heavy::ExternFunction HEAVY_BASE_VAR(newline);
-heavy::ExternFunction HEAVY_BASE_VAR(eq);
-heavy::ExternFunction HEAVY_BASE_VAR(equal);
-heavy::ExternFunction HEAVY_BASE_VAR(eqv);
-heavy::ExternFunction HEAVY_BASE_VAR(call_cc);
-heavy::ExternFunction HEAVY_BASE_VAR(with_exception_handler);
-heavy::ExternFunction HEAVY_BASE_VAR(raise);
-heavy::ExternFunction HEAVY_BASE_VAR(error);
-heavy::ExternFunction HEAVY_BASE_VAR(dynamic_wind);
-heavy::ExternFunction HEAVY_BASE_VAR(load_module);
-
-heavy::ExternFunction HEAVY_BASE_VAR(eval);
-heavy::ExternFunction HEAVY_BASE_VAR(op_eval);
-heavy::ExternFunction HEAVY_BASE_VAR(compile);
-heavy::ContextLocal   HEAVY_BASE_VAR(module_path);
-
-namespace heavy { namespace base {
+// See OpEval.cpp
+void op_eval(Context& C, ValueRefs Args);
 
 mlir::Value define(OpGen& OG, Pair* P) {
   Pair*   P2    = dyn_cast<Pair>(P->Cdr);
@@ -295,10 +308,9 @@ mlir::Value source_loc(OpGen& OG, Pair* P) {
   return SourceLocOp.getResult();
 }
 
-}} // end of namespace heavy::base
+} // end of namespace heavy::base
 
 namespace heavy {
-// TODO Replace NumberOp here with corresponding arithmetic ops in OpGen and OpEval
 struct NumberOp {
   // These operations always mutate the first operand
   struct Add {
@@ -341,7 +353,7 @@ struct NumberOp {
 
 } // end namespace heavy
 
-namespace heavy { namespace base {
+namespace heavy::base {
 void call_cc(Context& C, ValueRefs Args) {
   if (Args.size() != 1) return C.RaiseError("invalid arity");
   C.CallCC(Args[0]);
@@ -606,7 +618,111 @@ void compile(Context& C, ValueRefs Args) {
   C.WithEnv(std::move(EnvPtr), Env, Thunk);
 }
 
-}} // end of namespace heavy::base
+} // end of namespace heavy::base
+
+// initialize the module for run-time independent of the compiler
+void HEAVY_BASE_INIT(heavy::Context& Context) {
+  // syntax
+  HEAVY_BASE_VAR(define)          = heavy::base::define;
+  HEAVY_BASE_VAR(define_syntax)   = heavy::base::define_syntax;
+  HEAVY_BASE_VAR(syntax_rules)    = heavy::base::syntax_rules;
+  HEAVY_BASE_VAR(if_)             = heavy::base::if_;
+  HEAVY_BASE_VAR(lambda)          = heavy::base::lambda;
+  HEAVY_BASE_VAR(quasiquote)      = heavy::base::quasiquote;
+  HEAVY_BASE_VAR(quote)           = heavy::base::quote;
+  HEAVY_BASE_VAR(set)             = heavy::base::set;
+  HEAVY_BASE_VAR(begin)           = heavy::base::begin;
+  HEAVY_BASE_VAR(cond_expand)     = heavy::base::cond_expand;
+  HEAVY_BASE_VAR(define_library)  = heavy::base::define_library;
+  HEAVY_BASE_VAR(export_)         = heavy::base::export_;
+  HEAVY_BASE_VAR(include)         = heavy::base::include_;
+  HEAVY_BASE_VAR(include_ci)      = heavy::base::include_ci;
+  HEAVY_BASE_VAR(include_library_declarations)
+    = heavy::base::include_library_declarations;
+  HEAVY_BASE_VAR(source_loc)      = heavy::base::source_loc;
+  HEAVY_BASE_VAR(parse_source_file).init(Context);
+
+  // functions
+  HEAVY_BASE_VAR(add)     = heavy::base::add;
+  HEAVY_BASE_VAR(sub)     = heavy::base::sub;
+  HEAVY_BASE_VAR(div)     = heavy::base::div;
+  HEAVY_BASE_VAR(mul)     = heavy::base::mul;
+  HEAVY_BASE_VAR(gt)      = heavy::base::gt;
+  HEAVY_BASE_VAR(lt)      = heavy::base::lt;
+  HEAVY_BASE_VAR(list)    = heavy::base::list;
+  HEAVY_BASE_VAR(append)  = heavy::base::append;
+  HEAVY_BASE_VAR(dump)    = heavy::base::dump;
+  HEAVY_BASE_VAR(write)   = heavy::base::write;
+  HEAVY_BASE_VAR(newline) = heavy::base::newline;
+  HEAVY_BASE_VAR(eq)      = heavy::base::eqv;
+  HEAVY_BASE_VAR(equal)   = heavy::base::equal;
+  HEAVY_BASE_VAR(eqv)     = heavy::base::eqv;
+  HEAVY_BASE_VAR(call_cc) = heavy::base::call_cc;
+  HEAVY_BASE_VAR(with_exception_handler)
+    = heavy::base::with_exception_handler;
+  HEAVY_BASE_VAR(raise)   = heavy::base::raise;
+  HEAVY_BASE_VAR(error)   = heavy::base::error;
+  HEAVY_BASE_VAR(dynamic_wind) = heavy::base::dynamic_wind;
+
+  HEAVY_BASE_VAR(eval)    = heavy::base::eval;
+  HEAVY_BASE_VAR(op_eval) = heavy::base::op_eval;
+  HEAVY_BASE_VAR(compile) = heavy::base::compile;
+  HEAVY_BASE_VAR(module_path).init(Context);
+}
+
+// initializes the module and loads lookup information
+// for the compiler
+void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
+  // Note: We call HEAVY_BASE_INIT in the constructor of Context.
+  heavy::initModuleNames(Context, HEAVY_BASE_LIB_STR, {
+    // syntax
+    {"define",        HEAVY_BASE_VAR(define)},
+    {"define-syntax", HEAVY_BASE_VAR(define_syntax)},
+    {"if",            HEAVY_BASE_VAR(if_)},
+    {"lambda",        HEAVY_BASE_VAR(lambda)},
+    {"quasiquote",    HEAVY_BASE_VAR(quasiquote)},
+    {"quote",         HEAVY_BASE_VAR(quote)},
+    {"set!",          HEAVY_BASE_VAR(set)},
+    {"syntax-rules",  HEAVY_BASE_VAR(syntax_rules)},
+    {"begin",         HEAVY_BASE_VAR(begin)},
+    {"cond-expand",   HEAVY_BASE_VAR(cond_expand)},
+    {"define-library",HEAVY_BASE_VAR(define_library)},
+    {"export",        HEAVY_BASE_VAR(export_)},
+    {"include",       HEAVY_BASE_VAR(include)},
+    {"include-ci",    HEAVY_BASE_VAR(include_ci)},
+    {"include-library-declarations",
+      HEAVY_BASE_VAR(include_library_declarations)},
+    {"source-loc",    HEAVY_BASE_VAR(source_loc)},
+    {"parse-source-file",
+                      HEAVY_BASE_VAR(parse_source_file).get(Context)},
+
+    // functions
+    {"+",       HEAVY_BASE_VAR(add)},
+    {"-",       HEAVY_BASE_VAR(sub)},
+    {"/",       HEAVY_BASE_VAR(div)},
+    {"*",       HEAVY_BASE_VAR(mul)},
+    {">",       HEAVY_BASE_VAR(gt)},
+    {"<",       HEAVY_BASE_VAR(lt)},
+    {"list",    HEAVY_BASE_VAR(list)},
+    {"append",  HEAVY_BASE_VAR(append)},
+    {"dump",    HEAVY_BASE_VAR(dump)},
+    {"write",   HEAVY_BASE_VAR(write)},
+    {"newline", HEAVY_BASE_VAR(newline)},
+    {"eq?",     HEAVY_BASE_VAR(eq)},
+    {"equal?",  HEAVY_BASE_VAR(equal)},
+    {"eqv?",    HEAVY_BASE_VAR(eqv)},
+    {"call/cc", HEAVY_BASE_VAR(call_cc)},
+    {"with-exception-handler", HEAVY_BASE_VAR(with_exception_handler)},
+    {"raise", HEAVY_BASE_VAR(raise)},
+    {"error", HEAVY_BASE_VAR(error)},
+    {"dynamic-wind", HEAVY_BASE_VAR(dynamic_wind)},
+
+    {"eval",    HEAVY_BASE_VAR(eval)},
+    {"op-eval", HEAVY_BASE_VAR(op_eval)},
+    {"compile", HEAVY_BASE_VAR(compile)},
+    {"module-path", HEAVY_BASE_VAR(module_path).get(Context)},
+  });
+}
 
 namespace heavy::detail {
 // Borrowed from YAMLParser.
