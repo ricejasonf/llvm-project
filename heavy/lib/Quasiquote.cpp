@@ -224,8 +224,7 @@ private:
 
 }
 
-namespace heavy { namespace base {
-
+namespace heavy::base {
 mlir::Value quasiquote(OpGen& OG, Pair* P) {
   Value Input = GetSingleSyntaxArg(P);
   if (!Input) OG.SetError("invalid quasiquote syntax", P);
@@ -241,5 +240,4 @@ mlir::Value quote(OpGen& OG, Pair* P) {
   Value Literal = OG.getContext().RebuildLiteral(Arg);
   return OG.create<LiteralOp>(P->getSourceLocation(), Literal);
 }
-
-}}
+}
