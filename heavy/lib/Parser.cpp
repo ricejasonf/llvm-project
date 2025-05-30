@@ -192,6 +192,8 @@ ValueResult Parser::ParseExpr() {
     // #; token is discarded (commented)
     ConsumeToken();
     ParseExpr();
+    if (Tok.getKind() == tok::eof)
+      return ValueEmpty();
     return ParseExpr();
   }
   case tok::eof: {
