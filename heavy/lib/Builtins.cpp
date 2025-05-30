@@ -50,6 +50,9 @@ heavy::ExternFunction mul;
 heavy::ExternFunction gt;
 heavy::ExternFunction lt;
 heavy::ExternFunction list;
+heavy::ExternFunction cons;
+heavy::ExternFunction car;
+heavy::ExternFunction cdr;
 heavy::ExternFunction append;
 heavy::ExternFunction dump;
 heavy::ExternFunction write;
@@ -68,6 +71,24 @@ heavy::ExternFunction eval;
 heavy::ExternFunction op_eval;
 heavy::ExternFunction compile;
 heavy::ContextLocal   module_path;
+
+
+// Type predicates
+heavy::ExternFunction is_boolean;
+heavy::ExternFunction is_bytevector;
+heavy::ExternFunction is_char;
+heavy::ExternFunction is_eof_object;
+heavy::ExternFunction is_null;
+heavy::ExternFunction is_number;
+heavy::ExternFunction is_pair;
+heavy::ExternFunction is_port;
+heavy::ExternFunction is_procedure;
+heavy::ExternFunction is_string;
+heavy::ExternFunction is_symbol;
+heavy::ExternFunction is_vector;
+// Extended types.
+heavy::ExternFunction is_mlir_operation;
+
 }
 
 bool HEAVY_BASE_IS_LOADED = false;
@@ -492,8 +513,44 @@ void list(Context& C, ValueRefs Args) {
   C.Cont(C.CreateList(Args));
 }
 
+void cons(Context& C, ValueRefs Args) {
+  if (Args.size() != 2)
+    return C.RaiseError("invalid arity");
+  C.Cont(C.CreatePair(Args[0], Args[1]));
+}
+
+void car(Context& C, ValueRefs Args) {
+  if (Args.size() != 1 || !isa<heavy::Pair>(Args[0]))
+    return C.RaiseError("expecting pair");
+  C.Cont(cast<heavy::Pair>(Args[0])->Car);
+}
+
+void cdr(Context& C, ValueRefs Args) {
+  if (Args.size() != 1 || !isa<heavy::Pair>(Args[0]))
+    return C.RaiseError("expecting pair");
+  C.Cont(cast<heavy::Pair>(Args[0])->Cdr);
+}
+
+namespace {
+Value append_rec(Context& C, Value List, Value Cdr) {
+  C.setLoc(List);
+  if (isa<Empty>(List))
+    return Cdr;
+  else if (Pair* P = dyn_cast<Pair>(List))
+    return C.CreatePair(P->Car, append_rec(C, P->Cdr, Cdr));
+  else
+    return Value();
+};
+}
 void append(Context& C, ValueRefs Args) {
-  C.RaiseError("TODO append");
+  Value NewList = Args.empty() ? Empty() : Args.back();
+  Args = Args.drop_back(1);
+  for (auto Itr = Args.rbegin(); Itr != Args.rend(); ++Itr) {
+    NewList = append_rec(C, *Itr, NewList);
+    if (NewList == Value())
+      return C.RaiseError("expecting proper list");
+  }
+  C.Cont(NewList);
 }
 
 void with_exception_handler(Context& C, ValueRefs Args) {
@@ -618,6 +675,66 @@ void compile(Context& C, ValueRefs Args) {
   C.WithEnv(std::move(EnvPtr), Env, Thunk);
 }
 
+void is_boolean(Context& C, ValueRefs Args) {
+  if (Args.size() != 1)
+    return C.RaiseError("invalid arity");
+  C.Cont(Bool(isa<heavy::Bool>(Args[0])));
+}
+void is_bytevector(Context& C, ValueRefs Args) {
+  return C.RaiseError("bytevector not supported");
+}
+void is_char(Context& C, ValueRefs Args) {
+  if (Args.size() != 1)
+    return C.RaiseError("invalid arity");
+  C.Cont(Bool(isa<heavy::Char>(Args[0])));
+}
+void is_eof_object(Context& C, ValueRefs Args) {
+  return C.RaiseError("eof-object not supported");
+}
+void is_null(Context& C, ValueRefs Args) {
+  if (Args.size() != 1)
+    return C.RaiseError("invalid arity");
+  C.Cont(Bool(isa<heavy::Empty>(Args[0])));
+}
+void is_number(Context& C, ValueRefs Args) {
+  if (Args.size() != 1)
+    return C.RaiseError("invalid arity");
+  C.Cont(Bool(isa<heavy::Int, heavy::Float>(Args[0])));
+}
+void is_pair(Context& C, ValueRefs Args) {
+  if (Args.size() != 1)
+    return C.RaiseError("invalid arity");
+  C.Cont(Bool(isa<heavy::Pair, heavy::PairWithSource>(Args[0])));
+}
+void is_port(Context& C, ValueRefs Args) {
+  return C.RaiseError("port not supported");
+}
+void is_procedure(Context& C, ValueRefs Args) {
+  if (Args.size() != 1)
+    return C.RaiseError("invalid arity");
+  C.Cont(Bool(isa<heavy::Lambda, heavy::Builtin>(Args[0])));
+}
+void is_string(Context& C, ValueRefs Args) {
+  if (Args.size() != 1)
+    return C.RaiseError("invalid arity");
+  C.Cont(Bool(isa<heavy::String>(Args[0])));
+}
+void is_symbol(Context& C, ValueRefs Args) {
+  if (Args.size() != 1)
+    return C.RaiseError("invalid arity");
+  C.Cont(Bool(isa<heavy::Symbol>(Args[0])));
+}
+void is_vector(Context& C, ValueRefs Args) {
+  if (Args.size() != 1)
+    return C.RaiseError("invalid arity");
+  C.Cont(Bool(isa<heavy::Vector>(Args[0])));
+}
+// Extended types.
+void is_mlir_operation(Context& C, ValueRefs Args) {
+  if (Args.size() != 1)
+    return C.RaiseError("invalid arity");
+  C.Cont(Bool(isa<mlir::Operation>(Args[0])));
+}
 } // end of namespace heavy::base
 
 // initialize the module for run-time independent of the compiler
@@ -650,6 +767,9 @@ void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(gt)      = heavy::base::gt;
   HEAVY_BASE_VAR(lt)      = heavy::base::lt;
   HEAVY_BASE_VAR(list)    = heavy::base::list;
+  HEAVY_BASE_VAR(cons)    = heavy::base::cons;
+  HEAVY_BASE_VAR(car)     = heavy::base::car;
+  HEAVY_BASE_VAR(cdr)     = heavy::base::cdr;
   HEAVY_BASE_VAR(append)  = heavy::base::append;
   HEAVY_BASE_VAR(dump)    = heavy::base::dump;
   HEAVY_BASE_VAR(write)   = heavy::base::write;
@@ -668,6 +788,20 @@ void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(op_eval) = heavy::base::op_eval;
   HEAVY_BASE_VAR(compile) = heavy::base::compile;
   HEAVY_BASE_VAR(module_path).init(Context);
+
+  HEAVY_BASE_VAR(is_boolean) = heavy::base::is_boolean;
+  HEAVY_BASE_VAR(is_bytevector) = heavy::base::is_bytevector;
+  HEAVY_BASE_VAR(is_char) = heavy::base::is_char;
+  HEAVY_BASE_VAR(is_eof_object) = heavy::base::is_eof_object;
+  HEAVY_BASE_VAR(is_null) = heavy::base::is_null;
+  HEAVY_BASE_VAR(is_number) = heavy::base::is_number;
+  HEAVY_BASE_VAR(is_pair) = heavy::base::is_pair;
+  HEAVY_BASE_VAR(is_port) = heavy::base::is_port;
+  HEAVY_BASE_VAR(is_procedure) = heavy::base::is_procedure;
+  HEAVY_BASE_VAR(is_string) = heavy::base::is_string;
+  HEAVY_BASE_VAR(is_symbol) = heavy::base::is_symbol;
+  HEAVY_BASE_VAR(is_vector) = heavy::base::is_vector;
+  HEAVY_BASE_VAR(is_mlir_operation) = heavy::base::is_mlir_operation;
 }
 
 // initializes the module and loads lookup information
@@ -704,6 +838,9 @@ void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {">",       HEAVY_BASE_VAR(gt)},
     {"<",       HEAVY_BASE_VAR(lt)},
     {"list",    HEAVY_BASE_VAR(list)},
+    {"cons",    HEAVY_BASE_VAR(cons)},
+    {"car",     HEAVY_BASE_VAR(car)},
+    {"cdr",     HEAVY_BASE_VAR(cdr)},
     {"append",  HEAVY_BASE_VAR(append)},
     {"dump",    HEAVY_BASE_VAR(dump)},
     {"write",   HEAVY_BASE_VAR(write)},
@@ -721,6 +858,22 @@ void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"op-eval", HEAVY_BASE_VAR(op_eval)},
     {"compile", HEAVY_BASE_VAR(compile)},
     {"module-path", HEAVY_BASE_VAR(module_path).get(Context)},
+
+    // Type predicates
+    {"boolean?", HEAVY_BASE_VAR(is_boolean)},
+    {"bytevector?", HEAVY_BASE_VAR(is_bytevector)},
+    {"char?", HEAVY_BASE_VAR(is_char)},
+    {"eof-object?", HEAVY_BASE_VAR(is_eof_object)},
+    {"null?", HEAVY_BASE_VAR(is_null)},
+    {"number?", HEAVY_BASE_VAR(is_number)},
+    {"pair?", HEAVY_BASE_VAR(is_pair)},
+    {"port?", HEAVY_BASE_VAR(is_port)},
+    {"procedure?", HEAVY_BASE_VAR(is_procedure)},
+    {"string?", HEAVY_BASE_VAR(is_string)},
+    {"symbol?", HEAVY_BASE_VAR(is_symbol)},
+    {"vector?", HEAVY_BASE_VAR(is_vector)},
+    // Extended types.
+    {"mlir-operation?", HEAVY_BASE_VAR(is_mlir_operation)},
   });
 }
 
