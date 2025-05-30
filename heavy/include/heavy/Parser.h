@@ -20,8 +20,6 @@
 
 namespace heavy {
 
-// TODO Rename to ParseResult
-// TODO Determine if we need this since we have RaiseError.
 class ValueResult {
   Value V = nullptr;
 
@@ -53,13 +51,15 @@ class Parser {
   std::string LiteralResult = {};
   std::string ErrorMsg = {};
   Token ErrTok = {};
+  Token CurStartTok = {};
 
   auto ValueEmpty() { return ValueResult(); }
   auto ValueError() { return ValueResult(Context.CreateUndefined()); }
   bool ParseLiteralImpl();
 
-  ValueResult ParseExpr();
-  ValueResult ParseExprAbbrev(char const* Name);
+  ValueResult ParseExpr(Token const& StartTok);
+  ValueResult ParseExprAbbrev(Token const& StartTok,
+                              char const* Name);
 
   ValueResult ParseCharConstant();
   ValueResult ParseExternName();
@@ -70,7 +70,8 @@ class Parser {
   ValueResult ParseSymbol();
   ValueResult ParseEscapedSymbol();
   ValueResult ParseVectorStart(bool IsByteVector = false);
-  ValueResult ParseVector(llvm::SmallVectorImpl<Value>& Xs,
+  ValueResult ParseVector(Token const& StartTok,
+                          llvm::SmallVectorImpl<Value>& Xs,
                           bool IsByteVector);
 
   ValueResult ParseDottedCdr(Token const& StartTok);
