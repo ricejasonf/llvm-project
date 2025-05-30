@@ -121,7 +121,7 @@ ValueResult Parser::ParseTopLevelExpr() {
   if (CheckTerminator()) {
     return ValueEmpty();
   }
-  return ParseExpr();
+  return ParseExpr(Token());
 }
 
 ValueResult Parser::Parse(heavy::TokenKind Term) {
@@ -137,13 +137,14 @@ ValueResult Parser::Parse(heavy::TokenKind Term) {
   return Result;
 }
 
-ValueResult Parser::ParseExpr() {
+ValueResult Parser::ParseExpr(heavy::Token const& StartTok) {
   switch (Tok.getKind()) {
   case tok::l_paren:
     return ParseListStart();
   case tok::vector_lparen:
     return ParseVectorStart();
   case tok::bytevector_lparen:
+    CurStartTok = Tok;
     return ParseVectorStart(/*IsByteVector=*/true);
   case tok::numeric_constant:
     return ParseNumber();
@@ -167,13 +168,13 @@ ValueResult Parser::ParseExpr() {
   case tok::symbol_literal:
     return ParseEscapedSymbol();
   case tok::quote:
-    return ParseExprAbbrev("quote");
+    return ParseExprAbbrev(StartTok, "quote");
   case tok::quasiquote:
-    return ParseExprAbbrev("quasiquote");
+    return ParseExprAbbrev(StartTok, "quasiquote");
   case tok::unquote:
-    return ParseExprAbbrev("unquote");
+    return ParseExprAbbrev(StartTok, "unquote");
   case tok::unquote_splicing:
-    return ParseExprAbbrev("unquote-splicing");
+    return ParseExprAbbrev(StartTok, "unquote-splicing");
   case tok::r_paren: {
     CheckTerminator();
     return SetError(Tok, "extraneous closing paren (')')");
@@ -191,17 +192,17 @@ ValueResult Parser::ParseExpr() {
     // the expr that immediately follows the
     // #; token is discarded (commented)
     ConsumeToken();
-    ParseExpr();
+    ParseExpr(StartTok);
     if (Tok.getKind() == tok::eof)
       return ValueEmpty();
-    return ParseExpr();
+    return ParseExpr(StartTok);
   }
   case tok::eof: {
     // TODO Track the start token of the current
     //      list being parsed if any and note it
     //      in the diagnostic output
     IsFinished = true;
-    return SetError(Tok, "unexpected end of file");
+    return SetError(StartTok, "unexpected end of file (missing closing parentheses)");
   }
   case tok::string_literal_eof: {
     IsFinished = true;
@@ -219,10 +220,10 @@ ValueResult Parser::ParseExpr() {
 
 // ParseExprAbbrev - Normalizes abbreviated prefix notation to
 //                   their equivalent syntax e.g. (quote expr)
-ValueResult Parser::ParseExprAbbrev(char const* Name) {
+ValueResult Parser::ParseExprAbbrev(Token const& StartTok, char const* Name) {
   Token Abbrev = Tok;
   ConsumeToken();
-  ValueResult Result = ParseExpr();
+  ValueResult Result = ParseExpr(StartTok);
   if (!Result.isUsable()) return Result;
 
   Value S = Context.CreateSymbol(Name, Abbrev.getLocation());
@@ -246,7 +247,7 @@ ValueResult Parser::ParseList(Token const& StartTok) {
   // discard commented exprs
   while (Tok.is(tok::comment_datum)) {
     ConsumeToken();
-    ParseExpr();
+    ParseExpr(StartTok);
   }
 
   if ((StartTok.is(tok::l_paren) && Tok.is(tok::r_paren)) ||
@@ -255,7 +256,7 @@ ValueResult Parser::ParseList(Token const& StartTok) {
     return Value(Empty{});
   }
 
-  ValueResult Car = ParseExpr();
+  ValueResult Car = ParseExpr(StartTok);
   if (!Car.isUsable()) return Car;
 
   ValueResult Cdr;
@@ -280,7 +281,7 @@ ValueResult Parser::ParseDottedCdr(Token const& StartTok) {
   assert(Tok.is(tok::period));
   ConsumeToken();
   Token DotTok = Tok;
-  ValueResult Cdr = ParseExpr();
+  ValueResult Cdr = ParseExpr(StartTok);
   if (Tok.isNot(tok::r_paren)) {
     return SetError(DotTok, "invalid dot notation");
   }
@@ -291,17 +292,19 @@ ValueResult Parser::ParseDottedCdr(Token const& StartTok) {
 
 ValueResult Parser::ParseVectorStart(bool IsByteVector) {
   // Consume the vector_lparen or bytevector_lparen.
+  Token StartTok = Tok;
   ConsumeToken();
   llvm::SmallVector<Value, 16> Xs;
-  return ParseVector(Xs, IsByteVector);
+  return ParseVector(StartTok, Xs, IsByteVector);
 }
 
-ValueResult Parser::ParseVector(llvm::SmallVectorImpl<Value>& Xs,
+ValueResult Parser::ParseVector(Token const& StartTok,
+                                llvm::SmallVectorImpl<Value>& Xs,
                                 bool IsByteVector) {
   // Discard commented exprs
   while (Tok.is(tok::comment_datum)) {
     ConsumeToken();
-    ParseExpr();
+    ParseExpr(StartTok);
   }
   if (Tok.is(tok::r_paren)) {
     ConsumeToken();
@@ -309,7 +312,7 @@ ValueResult Parser::ParseVector(llvm::SmallVectorImpl<Value>& Xs,
                           Value(Context.CreateVector(Xs));
   }
   Token ExprTok = Tok;
-  ValueResult Result = ParseExpr();
+  ValueResult Result = ParseExpr(StartTok);
   if (!Result.isUsable()) return Result;
 
   if (IsByteVector) {
@@ -324,9 +327,9 @@ ValueResult Parser::ParseVector(llvm::SmallVectorImpl<Value>& Xs,
     if (!Valid)
       return SetError(ExprTok, "invalid bytevector byte literal");
   }
-  
+
   Xs.push_back(Result.get());
-  return ParseVector(Xs, IsByteVector);
+  return ParseVector(StartTok, Xs, IsByteVector);
 }
 
 ValueResult Parser::ParseCharConstant() {
