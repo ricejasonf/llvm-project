@@ -32,3 +32,37 @@
 (write (append '(0) nums '(4 5 6) nums))(newline)
 ; CHECK-NEXT: (1 2 3)
 (write nums)(newline)
+
+;; List Formals
+; CHECK-NEXT #t
+(write
+  ((lambda args
+     (null? args))))
+(newline)
+
+; CHECK-NEXT (1 2 4 5 6)
+(write
+  ((lambda args
+     args)
+   1 2 4 5 6))
+(newline)
+
+; CHECK-NEXT (foo bar 4 5 6)
+(write
+  ((lambda (foo . bar)
+     (append foo bar))
+   '(foo bar) 4 5 6))
+(newline)
+; CHECK-NEXT (foo bar 4 5 6)
+(write
+  ((lambda (foo . bar)
+     (append foo bar))
+   '(foo bar) 4 5 6))
+(newline)
+
+; CHECK-NEXT (foo bar 4 5 6)
+(write
+  ((lambda (foo bar . baz)
+     (append foo (list bar) baz))
+   '(foo bar) 4 5 6))
+(newline)
