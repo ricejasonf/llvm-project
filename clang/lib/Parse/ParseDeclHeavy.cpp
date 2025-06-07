@@ -22,7 +22,6 @@
 #include "clang/AST/PrettyDeclStackTrace.h"
 #include "clang/Basic/CharInfo.h"
 #include "clang/Basic/TargetInfo.h"
-#include "clang/Parse/ParseDiagnostic.h"
 #include "clang/Parse/RAIIObjectsForParser.h"
 #include "clang/Sema/Scope.h"
 #include "clang/Sema/SemaDiagnostic.h"
