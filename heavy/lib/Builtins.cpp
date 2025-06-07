@@ -16,6 +16,7 @@
 #include "heavy/Value.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
+#include "cassert"
 #include "memory"
 
 namespace mlir {
@@ -57,6 +58,10 @@ heavy::ExternFunction append;
 heavy::ExternFunction dump;
 heavy::ExternFunction write;
 heavy::ExternFunction newline;
+heavy::ExternFunction string_append;
+heavy::ExternFunction string_copy;
+heavy::ExternFunction string_length;
+heavy::ExternFunction number_to_string;
 heavy::ExternFunction eq;
 heavy::ExternFunction equal;
 heavy::ExternFunction eqv;
@@ -88,6 +93,7 @@ heavy::ExternFunction is_symbol;
 heavy::ExternFunction is_vector;
 // Extended types.
 heavy::ExternFunction is_mlir_operation;
+heavy::ExternFunction is_source_value;
 
 }
 
@@ -407,6 +413,70 @@ void newline(Context& C, ValueRefs Args) {
   // If output port wraps an llvm::ostream then this would be fine.
   llvm::outs() << '\n';
   C.Cont(heavy::Undefined());
+}
+
+void string_append(Context& C, ValueRefs Args) {
+  size_t TotalLength = 0;
+  for (Value Arg : Args) {
+    if (!isa<String, Symbol>(Arg))
+      return C.RaiseError("expecting string-like object");
+    TotalLength += Arg.getStringRef().size();
+  }
+  String* TargetStr = C.CreateString(TotalLength, '\0');
+  llvm::MutableArrayRef<char> TargetRef = TargetStr->getMutableView();
+  auto TargetItr = TargetRef.begin();
+  auto TargetEndItr = TargetRef.end();
+  for (Value Arg : Args) {
+    llvm::StringRef CurRef = Arg.getStringRef();
+    size_t Dist = std::distance(CurRef.begin(), CurRef.end());
+    assert((TargetItr + Dist <= TargetEndItr) && "out of bounds copy");
+    std::copy(CurRef.begin(), CurRef.end(), TargetItr);
+    TargetItr += Dist;
+  }
+  C.Cont(TargetStr);
+}
+
+void string_length(Context& C, ValueRefs Args) {
+  if (Args.size() != 1 || !isa<String, Symbol>(Args[0]))
+    return C.RaiseError("expecting string-like object");
+  int Size = static_cast<int>(Args[0].getStringRef().size());
+  return C.Cont(Int(Size));
+}
+
+void string_copy(Context& C, ValueRefs Args) {
+  if (Args.size() > 3)
+    return C.RaiseError("invalid arity");
+  if (Args.size() < 1 || !isa<String, Symbol>(Args[0]))
+    return C.RaiseError("expecting string-like object");
+
+  size_t StartPos = 0;
+  size_t EndPos = ~size_t(0);  // npos
+
+  if (Args.size() >= 2) {
+    if (isa<Int>(Args[1]))
+      StartPos = static_cast<size_t>(cast<Int>(Args[1]));
+    else
+      return C.RaiseError("expecting integer");
+  }
+  if (Args.size() == 3) {
+    if (isa<Int>(Args[2]))
+      EndPos = static_cast<size_t>(cast<Int>(Args[2]));
+    else
+      return C.RaiseError("expecting integer");
+  }
+
+  llvm::StringRef Substr = Args[0].getStringRef().slice(StartPos, EndPos);
+  return C.Cont(C.CreateString(Substr));
+}
+
+void number_to_string(Context& C, ValueRefs Args) {
+  if (Args.size() != 1 ||
+      !isa<heavy::Int, heavy::Float>(Args[0]))
+    return C.RaiseError("expecting number");
+  std::string Str;
+  llvm::raw_string_ostream Stream(Str);
+  write(Stream, Args[0]);
+  C.Cont(C.CreateString(llvm::StringRef(Str)));
 }
 
 template <typename Op>
@@ -735,6 +805,12 @@ void is_mlir_operation(Context& C, ValueRefs Args) {
     return C.RaiseError("invalid arity");
   C.Cont(Bool(isa<mlir::Operation>(Args[0])));
 }
+
+void is_source_value(Context& C, ValueRefs Args) {
+  if (Args.size() != 1)
+    return C.RaiseError("invalid arity");
+  C.Cont(Bool(isa<heavy::SourceValue>(Args[0])));
+}
 } // end of namespace heavy::base
 
 // initialize the module for run-time independent of the compiler
@@ -774,6 +850,10 @@ void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(dump)    = heavy::base::dump;
   HEAVY_BASE_VAR(write)   = heavy::base::write;
   HEAVY_BASE_VAR(newline) = heavy::base::newline;
+  HEAVY_BASE_VAR(string_append) = heavy::base::string_append;
+  HEAVY_BASE_VAR(string_copy) = heavy::base::string_copy;
+  HEAVY_BASE_VAR(string_length) = heavy::base::string_length;
+  HEAVY_BASE_VAR(number_to_string) = heavy::base::number_to_string;
   HEAVY_BASE_VAR(eq)      = heavy::base::eqv;
   HEAVY_BASE_VAR(equal)   = heavy::base::equal;
   HEAVY_BASE_VAR(eqv)     = heavy::base::eqv;
@@ -802,6 +882,7 @@ void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(is_symbol) = heavy::base::is_symbol;
   HEAVY_BASE_VAR(is_vector) = heavy::base::is_vector;
   HEAVY_BASE_VAR(is_mlir_operation) = heavy::base::is_mlir_operation;
+  HEAVY_BASE_VAR(is_source_value) = heavy::base::is_source_value;
 }
 
 // initializes the module and loads lookup information
@@ -845,6 +926,10 @@ void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"dump",    HEAVY_BASE_VAR(dump)},
     {"write",   HEAVY_BASE_VAR(write)},
     {"newline", HEAVY_BASE_VAR(newline)},
+    {"string-append", HEAVY_BASE_VAR(string_append)},
+    {"string-copy", HEAVY_BASE_VAR(string_copy)},
+    {"string-length", HEAVY_BASE_VAR(string_length)},
+    {"number->string", HEAVY_BASE_VAR(number_to_string)},
     {"eq?",     HEAVY_BASE_VAR(eq)},
     {"equal?",  HEAVY_BASE_VAR(equal)},
     {"eqv?",    HEAVY_BASE_VAR(eqv)},
@@ -874,6 +959,7 @@ void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"vector?", HEAVY_BASE_VAR(is_vector)},
     // Extended types.
     {"mlir-operation?", HEAVY_BASE_VAR(is_mlir_operation)},
+    {"source-value?", HEAVY_BASE_VAR(is_source_value)},
   });
 }
 
