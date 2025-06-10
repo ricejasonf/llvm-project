@@ -820,7 +820,10 @@ mlir::Value OpGen::createIf(SourceLocation Loc, Value Cond, Value Then,
 
   mlir::Block* ThenBlock = new mlir::Block();
   mlir::Block* ElseBlock = new mlir::Block();
-  bool RequiresContinuation = false;
+
+  auto IfContOp = create<heavy::IfContOp>(Loc, CondResult);
+  IfContOp.getThenRegion().push_back(ThenBlock);
+  IfContOp.getElseRegion().push_back(ElseBlock);
 
   {
     // Treat then/else regions as tail position since if there is
@@ -831,39 +834,24 @@ mlir::Value OpGen::createIf(SourceLocation Loc, Value Cond, Value Then,
 
     // Then
     {
+      LambdaScope LS(*this, IfContOp);
       mlir::OpBuilder::InsertionGuard IG(Builder);
       Builder.setInsertionPointToStart(ThenBlock);
       mlir::Value Result = Visit(Then);
-      if (!ThenBlock->empty() && isa<ApplyOp>(ThenBlock->back())) {
-        RequiresContinuation = true;
-      } else {
+      if (ThenBlock->empty() || !isa<ApplyOp>(ThenBlock->back()))
         create<ContOp>(Loc, Result);
-      }
     }
 
     // Else
     {
+      LambdaScope LS(*this, IfContOp);
       mlir::OpBuilder::InsertionGuard IG(Builder);
       Builder.setInsertionPointToStart(ElseBlock);
       mlir::Value Result = Visit(Else);
-      if (!ElseBlock->empty() && isa<ApplyOp>(ElseBlock->back())) {
-        RequiresContinuation = true;
-      } else {
+      if (ElseBlock->empty() || !isa<ApplyOp>(ElseBlock->back()))
         create<ContOp>(Loc, Result);
-      }
     }
   }
-
-  if (!RequiresContinuation) {
-    auto IfOp = create<heavy::IfOp>(Loc, CondResult);
-    IfOp.getThenRegion().push_back(ThenBlock);
-    IfOp.getElseRegion().push_back(ElseBlock);
-    return IfOp;
-  }
-
-  auto IfContOp = create<heavy::IfContOp>(Loc, CondResult);
-  IfContOp.getThenRegion().push_back(ThenBlock);
-  IfContOp.getElseRegion().push_back(ElseBlock);
 
   if (TailPos) return mlir::Value();
   return createContinuation(IfContOp);
@@ -920,22 +908,18 @@ mlir::Value OpGen::createGlobal(SourceLocation Loc,
       .getOperation();
   }
 
-  assert(isa<GlobalOp>(G) && "symbol should point to global");
+  // Wrap the mlir::Operation and use for the lookup.
   auto CanonicalValue = heavy::Value(G);
+  auto GlobalOp = cast<heavy::GlobalOp>(G);
 
   // Localize globals by the GlobalOp's Operation*
-  mlir::Value LocalV;
-  if (!TopLevelOp) {
-    LocalV = create<LoadGlobalOp>(Loc,
-        cast<GlobalOp>(G).getName());
+  mlir::Value LocalV = BindingTable.lookup(CanonicalValue);
+  if (!LocalV) {
+    LocalV = create<LoadGlobalOp>(Loc, GlobalOp.getName());
     BindingTable.insert(CanonicalValue, LocalV);
-  } else {
-    LocalV = BindingTable.lookup(CanonicalValue);
   }
-  // TODO Make this not require a result value from
-  //      GlobalOp.
-  mlir::Value V = LocalV ? LocalV : G->getResult(0);
-  return LocalizeValue(V, CanonicalValue);
+
+  return LocalizeValue(LocalV, CanonicalValue);
 }
 
 mlir::Value OpGen::VisitExternName(ExternName* EN) {
@@ -1152,27 +1136,7 @@ mlir::Value OpGen::LocalizeValue(mlir::Value V, heavy::Value B) {
   LambdaScopeIterator LSI = LambdaScopes.rbegin();
 
   if (mlir::Operation* Op = V.getDefiningOp()) {
-    heavy::SourceLocation Loc = {};
-    LambdaScopeNode& LS = *LSI;
     Owner = Op->getParentWithTrait<mlir::OpTrait::IsIsolatedFromAbove>();
-    if (LS.Op == Owner) return V;
-
-    mlir::Value NewVal;
-    if (auto G = dyn_cast<GlobalOp>(Op)) {
-      NewVal = create<LoadGlobalOp>(Loc, G.getName());
-    } else if (auto LG = dyn_cast<LoadGlobalOp>(Op)) {
-      // Just make a new load global with the same name.
-      NewVal = create<LoadGlobalOp>(Loc, LG.getName());
-    }
-    if (NewVal) {
-      if (B) {
-        // Prevent duplicate LoadGlobalOps in the same scope
-        // by shadowing them in the BindingTable.
-        LambdaScopeNode& LS = *LSI;
-        BindingTable.insertIntoScope(&LS.BindingScope_, B, NewVal);
-      }
-      return NewVal;
-    }
   } else {
     mlir::BlockArgument BlockArg = mlir::cast<mlir::BlockArgument>(V);
     Owner = BlockArg.getOwner()->getParentOp();
@@ -1194,6 +1158,9 @@ mlir::Value OpGen::LocalizeRec(heavy::Value B,
   heavy::SourceLocation Loc = {};
 
   mlir::Value ParentLocal = LocalizeRec(B, V, Owner, ++LSI);
+
+  if (!LS.Op->hasTrait<mlir::OpTrait::IsIsolatedFromAbove>())
+    return ParentLocal;
 
   // Capture V for use in the current function scope.
   mlir::OpBuilder::InsertionGuard IG(Builder);
