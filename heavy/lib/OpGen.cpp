@@ -420,6 +420,10 @@ heavy::FuncOp OpGen::createFunction(SourceLocation Loc,
 mlir::Value OpGen::createLambda(Value Formals, Value Body,
                                 SourceLocation Loc,
                                 llvm::StringRef Name) {
+  // Flush any internal definitions from containing body if any.
+  if (IsLocalDefineAllowed)
+    FinishLocalDefines();
+
   // Ensure we are no longer top level.
   if (!TopLevelOp)
     InsertTopLevelCommandOp(Loc);
@@ -457,9 +461,9 @@ mlir::Value OpGen::createLambda(Value Formals, Value Body,
     // If Result is null then it already
     // has a terminator.
     if (mlir::Value Result = createBody(Loc, Body)) {
-      if (IsLocalDefineAllowed) {
+      // Flush the internal definitions if we have not done so.
+      if (IsLocalDefineAllowed)
         FinishLocalDefines();
-      }
       Result = LocalizeValue(Result);
       Builder.create<ContOp>(Result.getLoc(), Result);
     }
@@ -706,6 +710,9 @@ bool OpGen::FinishLocalDefines() {
 }
 
 mlir::Value OpGen::createBody(SourceLocation Loc, Value Body) {
+  // Flush any internal definitions before starting a new body.
+  if (IsLocalDefineAllowed)
+    FinishLocalDefines();
   IsLocalDefineAllowed = true;
   return createSequence(Loc, Body);
 }

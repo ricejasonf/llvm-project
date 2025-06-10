@@ -1,6 +1,16 @@
 ; RUN: heavy-scheme %s | FileCheck %s
 (import (heavy base))
 
+; CHECK: foobar
+(define fn
+  ((lambda()
+    (define captured-foo 'foo)
+    (define captured-bar 'bar)
+    (lambda ()
+      (write captured-foo)
+      (write captured-bar)))))
+(fn)(newline)
+
 (define global -1)
 
 (set! global 1)
