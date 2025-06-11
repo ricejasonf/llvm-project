@@ -1,6 +1,7 @@
 (import (heavy base))
 (define-library (my lib)
   (import (heavy base))
+  (import (heavy mlir))
   (begin
     (define (hello-module x)
       (write "hello module!")

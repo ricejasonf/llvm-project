@@ -275,6 +275,22 @@ def heavy_LoadGlobalOp : HeavyOp<"load_global"> {
   ];
 }
 
+def heavy_LoadModuleOp : HeavyOp<"load_module"> {
+  let summary = "load_module";
+  let description = [{
+    Load a module by its mangled name and initialize it.
+    This also enables the creation of a runtime dependency graph
+    for exporting to bytecode files.
+  }];
+
+  let arguments = (ins FlatSymbolRefAttr:$name);
+  let results   = (outs);
+
+  let builders = [
+    OpBuilder<(ins "::llvm::StringRef":$name)>
+  ];
+}
+
 def heavy_ExportOp : HeavyOp<"export", [Symbol, IsolatedFromAbove,
                                         NoTerminator]> {
   let summary = "export";
