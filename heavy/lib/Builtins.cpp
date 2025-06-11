@@ -692,6 +692,10 @@ void compile(Context& C, ValueRefs Args) {
     return;
   }
 
+  // Clear any errors in the compiler too keep the dream alive.
+  if (heavy::OpGen* OpGen = Env->GetOpGen())
+    OpGen->ClearError();
+
   // If there is a provided handler then we save the results in an
   // improper, reversed ordered list (stack) to pass to the handler.
   Value ResultHandler = Undefined();

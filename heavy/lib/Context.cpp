@@ -871,7 +871,8 @@ namespace {
                      llvm::SmallVectorImpl<char>& Output) { 
     llvm::StringRef ModulePath =
         HEAVY_BASE_VAR(module_path).get(C).getStringRef();
-    llvm::Twine(ModulePath, "/").toVector(Output);
+    if (!ModulePath.empty())
+      llvm::Twine(ModulePath, "/").toVector(Output);
 
     llvm::StringRef Input = MangledName;
     Input.consume_front(Mangler::getManglePrefix());

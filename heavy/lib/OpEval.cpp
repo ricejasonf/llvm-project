@@ -95,7 +95,7 @@ public:
   }
 
   void Eval(mlir::Operation* Op) {
-    if (isa<GlobalOp, CommandOp>(Op)) {
+    if (isa<GlobalOp, CommandOp, LoadModuleOp>(Op)) {
       BlockItrTy Itr = Visit(Op);
 
       if (Itr == BlockItrTy())
@@ -192,7 +192,6 @@ private:
          if (isa<BindingOp>(Op))      return Visit(cast<BindingOp>(Op));
     else if (isa<LiteralOp>(Op))      return Visit(cast<LiteralOp>(Op));
     else if (isa<ApplyOp>(Op))        return Visit(cast<ApplyOp>(Op));
-    //else if (isa<BuiltinOp>(Op))      return Visit(cast<BuiltinOp>(Op));
     else if (isa<ContOp>(Op))         return Visit(cast<ContOp>(Op));
     else if (isa<GlobalOp>(Op))       return Visit(cast<GlobalOp>(Op));
     else if (isa<LoadClosureOp>(Op))  return Visit(cast<LoadClosureOp>(Op));
@@ -213,6 +212,7 @@ private:
     else if (isa<RenameOp>(Op))       return Visit(cast<RenameOp>(Op));
     else if (isa<ToVectorOp>(Op))     return Visit(cast<ToVectorOp>(Op));
     else if (isa<VectorOp>(Op))       return Visit(cast<VectorOp>(Op));
+    else if (isa<LoadModuleOp>(Op))   return Visit(cast<LoadModuleOp>(Op));
     else if (isa<SyntaxClosureOp>(Op))
       return Visit(cast<SyntaxClosureOp>(Op));
     else if (isa<SourceLocOp>(Op))    return Visit(cast<SourceLocOp>(Op));
@@ -483,6 +483,19 @@ private:
 
     setValue(Op.getResult(), V);
     return next(Op);
+  }
+
+  BlockItrTy Visit(LoadModuleOp Op) {
+    heavy::Symbol* ModuleName = Context.CreateSymbol(Op.getName());
+    Context.PushCont([](heavy::Context& C, ValueRefs) {
+      heavy::Symbol* ModuleName = cast<Symbol>(C.getCapture(0));
+      C.PushCont([](heavy::Context& C, ValueRefs) {
+        heavy::Symbol* ModuleName = cast<Symbol>(C.getCapture(0));
+        C.InitModule(ModuleName);
+      }, CaptureList{ModuleName});
+      C.LoadModule(ModuleName);
+    }, CaptureList{ModuleName});
+    return BlockItrTy();
   }
 
   BlockItrTy Visit(LoadGlobalOp Op) {

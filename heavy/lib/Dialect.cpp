@@ -160,6 +160,11 @@ void LoadGlobalOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
   LoadGlobalOp::build(B, OpState, HeavyValueT, SymName);
 }
 
+void LoadModuleOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                         llvm::StringRef SymName) {
+  LoadModuleOp::build(B, OpState, {}, SymName);
+}
+
 void MatchOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                     heavy::Value val, mlir::Value input) {
   assert((!isa<Pair, Vector>(val)) && "expected non-structural constant");

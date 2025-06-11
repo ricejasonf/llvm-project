@@ -90,12 +90,8 @@ mlir::ModuleOp OpGen::getModuleOp() {
 
 void OpGen::createLoadModule(heavy::SourceLocation Loc,
                              heavy::Symbol* MangledName) {
-  mlir::Value Fn = createGlobal(Loc, HEAVY_LOAD_MODULE_VAR);
-  mlir::Value LiteralOp = createLiteral(MangledName);
-  mlir::Value Args[] = {LiteralOp};
-  createCall(Loc, Fn, Args);
-  // We only want this evaluated when loading stand-alone bytecode files.
-  FinishTopLevelOp();
+  TopLevelOp = createHelper<heavy::LoadModuleOp>(ModuleBuilder, Loc,
+                                    MangledName->getStringRef());
 }
 
 mlir::Value OpGen::GetSingleResult(heavy::Value V) {
@@ -316,7 +312,8 @@ void OpGen::VisitTopLevel(Value V) {
 }
 
 void OpGen::FinishTopLevelOp() {
-  assert((TopLevelOp == nullptr || isa<CommandOp, GlobalOp>(TopLevelOp)) &&
+  assert((TopLevelOp == nullptr ||
+          isa<CommandOp, GlobalOp, LoadModuleOp>(TopLevelOp)) &&
       "Top level operation must be CommandOp or GlobalOp");
 
   if (heavy::CommandOp CommandOp =
@@ -920,10 +917,14 @@ mlir::Value OpGen::createGlobal(SourceLocation Loc,
   auto GlobalOp = cast<heavy::GlobalOp>(G);
 
   // Localize globals by the GlobalOp's Operation*
-  mlir::Value LocalV = BindingTable.lookup(CanonicalValue);
+  mlir::Value LocalV;
+  // If no TopLevelOp exists then no binding scope exists either.
+  if (TopLevelOp)
+    LocalV = BindingTable.lookup(CanonicalValue);
   if (!LocalV) {
     LocalV = create<LoadGlobalOp>(Loc, GlobalOp.getName());
     BindingTable.insert(CanonicalValue, LocalV);
+    return LocalV;
   }
 
   return LocalizeValue(LocalV, CanonicalValue);
