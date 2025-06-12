@@ -89,8 +89,10 @@ class Context : public ContinuationStack<Context>,
   static constexpr size_t MiB = 1024 * 1024;
 
   llvm::StringMap<std::unique_ptr<Module>> Modules;
-  llvm::DenseMap<void*, std::unique_ptr<Environment>> EmbeddedEnvs;
   llvm::DenseMap<String*, Value> KnownAddresses;
+
+  // DefaultEnv participates in garbage collection.
+  std::unique_ptr<heavy::Environment> DefaultEnv;
 
   // MaxMemHint
   //         - The threshold used to determine if a garbage

@@ -92,16 +92,9 @@ bool Context::CheckError() {
   return OpGen && OpGen->CheckError();
 }
 
-Environment::Environment(Environment* Parent)
-  : ValueBase(ValueKind::Environment),
-    OpGen(nullptr),
-    Parent(Parent),
-    EnvMap(0)
-{ }
 Environment::Environment(Context& C, heavy::Symbol* ModulePrefix)
   : ValueBase(ValueKind::Environment),
     OpGen(std::make_unique<heavy::OpGen>(C, ModulePrefix)),
-    Parent(nullptr),
     EnvMap(0)
 { }
 Environment::~Environment() = default;
@@ -1319,7 +1312,7 @@ public:
                    heavy::Environment* Env,
                    Value Thunk) {
     auto Ptr = std::make_unique<LibraryEnv>(std::move(EnvPtr), Env);
-    heavy::OpGen* OpGen = Ptr->Env->GetOpGen();
+    heavy::OpGen* OpGen = Ptr->Env->getOpGen();
 
     Value PrevEnv = Context.getEnvironment();
     heavy::OpGen* PrevOpGen = Context.OpGen;

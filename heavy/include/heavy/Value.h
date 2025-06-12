@@ -1655,18 +1655,16 @@ private:
   using MapTy = llvm::DenseMap<String*, String*>;
 
   std::unique_ptr<heavy::OpGen> OpGen;
-  Environment* Parent = nullptr;
   MapTy EnvMap;
 
 public:
   // Implemented in Context.cpp
-  Environment(Environment* Parent);
   Environment(heavy::Context& C, heavy::Symbol* ModulePrefix = {});
   ~Environment();
 
-  heavy::OpGen* GetOpGen() {
-    if (OpGen) return OpGen.get();
-    return Parent->GetOpGen();
+  heavy::OpGen* getOpGen() {
+    assert(OpGen && "environment should have OpGen");
+    return OpGen.get();
   }
 
   // Returns nullptr if not found

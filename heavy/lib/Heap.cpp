@@ -307,8 +307,6 @@ public:
     }
 
     VisitedSpecials.push_back(Env);
-    if (Env->Parent)
-      VisitEnvironment(Env->Parent);
     return Env;
   }
 };
@@ -327,11 +325,8 @@ void Context::CollectGarbage() {
 
   GC.VisitRootNode(EnvStack);
 
-  // EmbeddedEnvs
-  for (auto& DensePair : EmbeddedEnvs) {
-    heavy::Environment* Env = DensePair.second.get(); 
-    GC.VisitEnvironment(Env);
-  }
+  // DefaultEnv is referenced globally.
+  GC.VisitEnvironment(DefaultEnv.get());
 
   // KnownAddresses
   for (auto& DensePair : KnownAddresses) {

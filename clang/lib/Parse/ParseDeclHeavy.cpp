@@ -45,15 +45,6 @@ clang::SourceLocation getSourceLocation(heavy::FullSourceLocation Loc) {
      .getLocWithOffset(Loc.getOffset());
 }
 
-heavy::Environment* LoadEnv(heavy::HeavyScheme& HS, void* Handle) {
-  DeclContext* DC = reinterpret_cast<DeclContext*>(Handle);
-  // Here, nullptr represents the default, root environment.
-  void* ParentHandle = !DC->isTranslationUnit() ? DC->getParent()
-                                                : nullptr;
-
-  return HS.LoadEmbeddedEnv(ParentHandle, LoadEnv);
-}
-
 // It is complicated to keep the TokenBuffer alive
 // for the Preprocessor, so we use an array to give
 // ownership via the EnterTokenStream overload.
@@ -365,13 +356,9 @@ bool Parser::ParseHeavyScheme() {
     C.Cont();
   }));
 
-  // Get the nested environment for the current DeclContext.
-  DeclContext* DC = getActions().CurContext;
-  heavy::Environment* Env = HeavyScheme->LoadEmbeddedEnv(DC, LoadEnv);
-
   heavy::TokenKind Terminator = heavy::tok::r_brace;
   HeavyScheme->ProcessTopLevelCommands(SchemeLexer, heavy::base::eval,
-                                       ErrorHandler, Env, Terminator);
+                                       ErrorHandler, Terminator);
 
   // Return control to C++ Lexer
   PP.FinishEmbeddedLexer(SchemeLexer.GetByteOffset());
