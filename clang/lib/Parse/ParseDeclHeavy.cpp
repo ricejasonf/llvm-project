@@ -45,11 +45,13 @@ clang::SourceLocation getSourceLocation(heavy::FullSourceLocation Loc) {
      .getLocWithOffset(Loc.getOffset());
 }
 
-void LoadParentEnv(heavy::HeavyScheme& HS, void* Handle) {
+heavy::Environment* LoadEnv(heavy::HeavyScheme& HS, void* Handle) {
   DeclContext* DC = reinterpret_cast<DeclContext*>(Handle);
-  if (!DC->isTranslationUnit()) {
-    HS.LoadEmbeddedEnv(DC->getParent(), LoadParentEnv);
-  }
+  // Here, nullptr represents the default, root environment.
+  void* ParentHandle = !DC->isTranslationUnit() ? DC->getParent()
+                                                : nullptr;
+
+  return HS.LoadEmbeddedEnv(ParentHandle, LoadEnv);
 }
 
 // It is complicated to keep the TokenBuffer alive
@@ -154,17 +156,26 @@ bool Parser::ParseHeavyScheme() {
     };
 
     auto expr_eval = [&](heavy::Context& C, heavy::ValueRefs Args) {
-      if (Args.size() != 1) {
-        C.RaiseError("invalid arity to function", C.getCallee());
-        return;
+      heavy::SourceLocation Loc;
+      heavy::Value Input;
+      if (Args.size() == 2) {
+        // Accept any value that may have a source location.
+        Loc = Args[0].getSourceLocation();
+        Input = Args[1];
+      } else if (Args.size() == 1) {
+        Input = Args[0];
+      } else {
+        return C.RaiseError("invalid arity");
       }
-      if (!isa<heavy::String, heavy::Symbol>(Args[0])) {
+      if (!isa<heavy::String, heavy::Symbol>(Input)) {
         C.RaiseError("expecting string or identifier", C.getCallee());
         return;
       }
-      llvm::StringRef Source = Args[0].getStringRef();
-      heavy::SourceLocation Loc = Args[0].getSourceLocation();
-      if (!Loc.isValid()) Loc = C.getLoc();
+      llvm::StringRef Source = Input.getStringRef();
+      if (!Loc.isValid())
+        Loc = Input.getSourceLocation();
+      if (!Loc.isValid())
+        Loc = C.getLoc();
 
       // Prepare to revert Parser.
       TentativeParsingAction ParseReverter(P);
@@ -258,9 +269,11 @@ bool Parser::ParseHeavyScheme() {
           ClangLoc, RequestedFilename->getView(),
           false, nullptr, nullptr, nullptr, nullptr, nullptr,
           nullptr, nullptr, nullptr);
-      if (!File)
-        return C.RaiseError("error opening file",
-                            heavy::Value(RequestedFilename));
+      if (!File) {
+        heavy::String* ErrMsg = C.CreateString("error opening file: ",
+                                            RequestedFilename->getStringRef());
+        return C.RaiseError(ErrMsg, heavy::Value(RequestedFilename));
+      }
       // Determine if file is a system file... as if!
       SrcMgr::CharacteristicKind FileChar = 
         this->PP.getHeaderSearchInfo()
@@ -308,10 +321,6 @@ bool Parser::ParseHeavyScheme() {
 
   PP.InitEmbeddedLexer(LexerInitFn);
 
-  // Load the environment for the current DeclContext
-  DeclContext* DC = getActions().CurContext;
-  HeavyScheme->LoadEmbeddedEnv(DC, LoadParentEnv);
-
   bool HasError = false;
   auto ErrorHandler = [&](llvm::StringRef Err,
                           heavy::FullSourceLocation EmbeddedLoc) {
@@ -356,10 +365,13 @@ bool Parser::ParseHeavyScheme() {
     C.Cont();
   }));
 
+  // Get the nested environment for the current DeclContext.
+  DeclContext* DC = getActions().CurContext;
+  heavy::Environment* Env = HeavyScheme->LoadEmbeddedEnv(DC, LoadEnv);
+
   heavy::TokenKind Terminator = heavy::tok::r_brace;
-  HeavyScheme->ProcessTopLevelCommands(SchemeLexer,
-                                       ErrorHandler,
-                                       Terminator);
+  HeavyScheme->ProcessTopLevelCommands(SchemeLexer, heavy::base::eval,
+                                       ErrorHandler, Env, Terminator);
 
   // Return control to C++ Lexer
   PP.FinishEmbeddedLexer(SchemeLexer.GetByteOffset());

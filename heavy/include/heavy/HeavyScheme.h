@@ -32,6 +32,10 @@ using ModuleLoadNamesFn = void(heavy::Context&);
 using ValueRefs   = llvm::MutableArrayRef<heavy::Value>;
 using ValueFnTy   = void (Context&, ValueRefs);
 
+  namespace base {
+    void eval(Context& C, ValueRefs Args);
+  }
+
 // HeavyScheme - Opaque wrapper for heavy::Context and common operations
 //               needed for embedding scheme
 class HeavyScheme {
@@ -92,8 +96,9 @@ class HeavyScheme {
   //                LoadParent is called, and then the new environment is
   //                created to shadow whatever environment is loaded in
   //                Context at that point.
-  void LoadEmbeddedEnv(void* Handle,
-          llvm::function_ref<void(HeavyScheme&, void*)> LoadParent);
+  using LoadEnvFnTy = heavy::Environment*(HeavyScheme&, void*);
+  heavy::Environment* LoadEmbeddedEnv(void* Handle,
+          llvm::function_ref<LoadEnvFnTy> LoadParent);
 
   using ErrorHandlerFn = void(llvm::StringRef,
                               heavy::FullSourceLocation const&);
@@ -107,11 +112,9 @@ class HeavyScheme {
   //                 the parsing of lists that are delimited by parens)
   //              - ExprHandler defaults to `base::eval`
   void ProcessTopLevelCommands(heavy::Lexer& Lexer,
-                               llvm::function_ref<ErrorHandlerFn> ErrorHandler,
-                               heavy::tok Terminator);
-  void ProcessTopLevelCommands(heavy::Lexer& Lexer,
                                llvm::function_ref<ValueFnTy> ExprHandler,
                                llvm::function_ref<ErrorHandlerFn> ErrorHandler,
+                               heavy::Environment* Env = nullptr,
                                heavy::tok Terminator = heavy::tok::eof);
   // ProcessTopLevelCommands
   //              - Filename overload requires calling InitSourceFileStorage.

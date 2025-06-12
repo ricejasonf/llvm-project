@@ -57,7 +57,8 @@ void HeavyScheme::ProcessTopLevelCommands(llvm::StringRef Filename,
     return;
   }
   heavy::Lexer Lexer(FileResult.get());
-  ProcessTopLevelCommands(Lexer, ExprHandler, ErrorHandler, tok::eof);
+  ProcessTopLevelCommands(Lexer, ExprHandler, ErrorHandler,
+                          /*Environment=*/nullptr, tok::eof);
 }
 
 // This overload provides the default file system
