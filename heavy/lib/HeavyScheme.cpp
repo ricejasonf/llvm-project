@@ -26,11 +26,12 @@ namespace heavy {
 
 HeavyScheme::HeavyScheme(std::unique_ptr<heavy::Context> C)
   : ContextPtr(std::move(C)),
-    EnvPtr(std::make_unique<heavy::Environment>(*ContextPtr)),
     SourceManagerPtr(std::make_unique<heavy::SourceManager>()),
     SourceFileStoragePtr(nullptr, [](SourceFileStorage*) { })
 {
-  ContextPtr->setEnvironment(EnvPtr.get());
+  // Create and store the default environment.
+  ContextPtr->EmbeddedEnvs[nullptr] =
+    std::make_unique<heavy::Environment>(*ContextPtr);
 }
 
 HeavyScheme::HeavyScheme()
@@ -53,44 +54,32 @@ heavy::Lexer HeavyScheme::createEmbeddedLexer(uintptr_t ExternalRawLoc,
   return Lexer(File, BufferPos);
 }
 
-void HeavyScheme::LoadEmbeddedEnv(void* Handle,
-          llvm::function_ref<void(HeavyScheme&, void*)> LoadParent) {
-  auto& Context = getContext();
-  auto& EmbeddedEnvs = Context.EmbeddedEnvs; // TODO store EmbeddedEnvs in HeavyScheme
+heavy::Environment* HeavyScheme::LoadEmbeddedEnv(void* Handle,
+        llvm::function_ref<heavy::Environment*(HeavyScheme&, void*)> LoadParent) {
+  auto& EmbeddedEnvs = getContext().EmbeddedEnvs;
   auto itr = EmbeddedEnvs.find(Handle);
-  if (itr != EmbeddedEnvs.end()) {
-    Context.EnvStack = itr->second.get();
-    return;
-  }
+  if (itr != EmbeddedEnvs.end())
+    return itr->second.get();
 
-  LoadParent(*this, Handle);
-  Environment* Parent = cast<Environment>(Context.getEnvironment());
-  auto& Env = Context.EmbeddedEnvs[Handle] =
+  assert(Handle != nullptr && "HeavyScheme should have root environment");
+  Environment* Parent = LoadParent(*this, Handle);
+  auto& EnvPtr = EmbeddedEnvs[Handle] =
     std::make_unique<Environment>(Parent);
-  Context.setEnvironment(Env.get());
-  return;
-}
-
-void HeavyScheme::ProcessTopLevelCommands(
-                              heavy::Lexer& Lexer,
-                              llvm::function_ref<ErrorHandlerFn> ErrorHandler,
-                              heavy::tok Terminator) {
-  return ProcessTopLevelCommands(Lexer, base::eval, ErrorHandler,
-                                 Terminator);
+  return EnvPtr.get();
 }
 
 void HeavyScheme::ProcessTopLevelCommands(
                               heavy::Lexer& Lexer,
                               llvm::function_ref<ValueFnTy> ExprHandler,
                               llvm::function_ref<ErrorHandlerFn> ErrorHandler,
+                              heavy::Environment* Env,
                               heavy::tok Terminator) {
-  // This should be the only entry point so that Env is captured and
-  // participates in garbage collection.
-  heavy::Environment* Env = EnvPtr.get();
   auto& Context = getContext();
   auto& SM = getSourceManager();
   auto ParserPtr = std::make_unique<Parser>(Lexer, Context);
   Parser& Parser = *ParserPtr;
+  if (Env == nullptr)
+    Env = Context.EmbeddedEnvs[nullptr].get();
 
   auto HandleErrorFn = [&](heavy::Context& Context, ValueRefs Args) {
     heavy::FullSourceLocation FullLoc = SM.getFullSourceLocation(

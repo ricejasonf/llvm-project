@@ -41,7 +41,6 @@ heavy::ExternBuiltinSyntax lambda;
 heavy::ExternBuiltinSyntax quasiquote;
 heavy::ExternBuiltinSyntax quote;
 heavy::ExternBuiltinSyntax set;
-heavy::ExternBuiltinSyntax source_loc;
 
 
 heavy::ExternFunction add;
@@ -71,6 +70,7 @@ heavy::ExternFunction raise;
 heavy::ExternFunction error;
 heavy::ExternFunction dynamic_wind;
 heavy::ExternFunction load_module;
+heavy::ExternFunction source_loc;
 
 heavy::ExternFunction eval;
 heavy::ExternFunction op_eval;
@@ -322,17 +322,10 @@ void parse_source_file(Context& C, ValueRefs Args) {
   C.RaiseError("parse-source-file is undefined");
 }
 
-mlir::Value source_loc(OpGen& OG, Pair* P) {
-  // Convert an unevaluated value into a SourceValue.
-  // (or rather the operation to do this).
-  Pair* P2 = dyn_cast<Pair>(P->Cdr);
-  if (!P2 || !isa<Empty>(P2->Cdr)) {
-    return OG.SetError("single argument required", P);
-  }
-  // Defer creating a SourceValue until evaluation.
-  heavy::SourceLocation Loc = P2->Car.getSourceLocation();
-  auto SourceLocOp = OG.create<heavy::SourceLocOp>(Loc);
-  return SourceLocOp.getResult();
+void source_loc(Context& C, ValueRefs Args) {
+  if (Args.size() != 1)
+    return C.RaiseError("expecting single argument");
+  C.Cont(C.CreateSourceValue(Args[0].getSourceLocation()));
 }
 
 } // end of namespace heavy::base
