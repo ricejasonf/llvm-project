@@ -42,7 +42,6 @@ class HeavyScheme {
   friend class SourceFileStorage;
 
   std::unique_ptr<heavy::Context> ContextPtr;
-  std::unique_ptr<heavy::Environment> EnvPtr;
   std::unique_ptr<heavy::SourceManager> SourceManagerPtr;
   std::unique_ptr<heavy::SourceFileStorage,
                   void(*)(SourceFileStorage*)> SourceFileStoragePtr;
@@ -88,18 +87,6 @@ class HeavyScheme {
   void InitSourceFileStorage();
   void SetModulePath(llvm::StringRef ModulePath);
 
-  // LoadEmbeddedEnv
-  //              - Associates an opaque pointer with a scheme environment
-  //                and loads it as the current environment in the Context.
-  //                Any environment previously loaded with this function is
-  //                cached. If a new environment must be created,
-  //                LoadParent is called, and then the new environment is
-  //                created to shadow whatever environment is loaded in
-  //                Context at that point.
-  using LoadEnvFnTy = heavy::Environment*(HeavyScheme&, void*);
-  heavy::Environment* LoadEmbeddedEnv(void* Handle,
-          llvm::function_ref<LoadEnvFnTy> LoadParent);
-
   using ErrorHandlerFn = void(llvm::StringRef,
                               heavy::FullSourceLocation const&);
 
@@ -114,7 +101,6 @@ class HeavyScheme {
   void ProcessTopLevelCommands(heavy::Lexer& Lexer,
                                llvm::function_ref<ValueFnTy> ExprHandler,
                                llvm::function_ref<ErrorHandlerFn> ErrorHandler,
-                               heavy::Environment* Env = nullptr,
                                heavy::tok Terminator = heavy::tok::eof);
   // ProcessTopLevelCommands
   //              - Filename overload requires calling InitSourceFileStorage.

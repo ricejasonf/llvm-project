@@ -686,7 +686,7 @@ void compile(Context& C, ValueRefs Args) {
   }
 
   // Clear any errors in the compiler too keep the dream alive.
-  if (heavy::OpGen* OpGen = Env->GetOpGen())
+  if (heavy::OpGen* OpGen = Env->getOpGen())
     OpGen->ClearError();
 
   // If there is a provided handler then we save the results in an

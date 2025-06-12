@@ -3,8 +3,9 @@
 #include <type_traits>
 
 namespace foo {
-// expected-error@+6{{expected unqualified-id}}
+// expected-error@+7{{expected unqualified-id}}
 heavy_scheme {
+;// The scheme environment is orthogonal to namespaces.
 (import (my lib))
 (import (heavy base))
 
@@ -19,10 +20,7 @@ static_assert(std::is_empty_v<foo::woof>);
 
 namespace bar {
 heavy_scheme {
-; // FIXME Should we have separate scopes in different namespaces?
-(import (heavy base))
 (write hello-foo)
-(import (my lib)) ; FIXME
 (if (is-empty 'foo::woof)
   (lol-trait 'bark)
   (raise-error "expecting empty woof"))
