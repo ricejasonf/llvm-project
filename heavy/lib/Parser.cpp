@@ -226,8 +226,10 @@ ValueResult Parser::ParseExprAbbrev(Token const& StartTok, char const* Name) {
   ValueResult Result = ParseExpr(StartTok);
   if (!Result.isUsable()) return Result;
 
-  Value S = Context.CreateSymbol(Name, Abbrev.getLocation());
-  Value P = Context.CreatePair(S, Context.CreatePair(Result.get()));
+  heavy::SourceLocation Loc = Abbrev.getLocation();
+  Value S = Context.CreateSymbol(Name, Loc);
+  Value P = Context.CreatePairWithSource(
+                            S, Context.CreatePair(Result.get()), Loc);
   return P;
 }
 
