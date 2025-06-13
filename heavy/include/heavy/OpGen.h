@@ -151,6 +151,8 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   // Err - The stored error to indicate that the compiler is in an error state.
   //       (Use CheckError())
   Value Err = nullptr;
+  // Track depth of calls to RunSync to allow unwinding errors properly.
+  size_t RunSyncDepth = 0;
 
   bool IsLocalDefineAllowed = false;
   heavy::Symbol* ModulePrefix = nullptr;
@@ -330,25 +332,26 @@ public:
 
   void createLoadModule(SourceLocation Loc, Symbol* MangledName);
 
+  mlir::Value SetError(heavy::Error* NewErr) {
+    Err = NewErr;
+    Context.setLoc(Err.getSourceLocation());
+    if (RunSyncDepth == 0)
+      Context.Raise(Err);
+    else
+      Context.Yield(Err);
+    return Error();
+  }
+
   template <typename T>
   mlir::Value SetError(SourceLocation Loc, T Str, Value V = Undefined()) {
-    Err = Context.CreateError(Loc, Str, Context.CreatePair(V));
-    Context.setLoc(Loc);
-    Context.Raise(Err);
-    return Error();
+    heavy::Error* E = Context.CreateError(Loc, Str, Context.CreatePair(V));
+    return SetError(E);
   }
 
   template <typename T>
   mlir::Value SetError(T Str, Value V = Undefined()) {
     return SetError(V.getSourceLocation(), Str, V);
   }
-
-  mlir::Value SetError(heavy::Error* NewErr) {
-    Err = NewErr;
-    Context.Raise(Err);
-    return Error();
-  }
-
 
   mlir::Value Error() {
     return createUndefined();

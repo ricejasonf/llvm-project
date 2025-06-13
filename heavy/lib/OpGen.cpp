@@ -259,8 +259,11 @@ void OpGen::VisitLibrarySpec(Value LibSpec) {
   Context.PushCont([](heavy::Context& C, ValueRefs) {
     Value LibSpec = C.getCapture(0);
     bool DidCallSyntax = false;
-    if (Pair* P = dyn_cast<Pair>(LibSpec))
+    if (Pair* P = dyn_cast<Pair>(LibSpec)) {
       C.OpGen->MaybeCallSyntax(P, DidCallSyntax);
+      if (C.OpGen->CheckError())
+        return;
+    }
 
     if (!DidCallSyntax) {
       C.OpGen->SetError("expecting library spec", LibSpec);
@@ -1098,7 +1101,9 @@ mlir::Value OpGen::MaybeCallSyntax(Value Operator, Pair* P,
       Value Input = P;
       heavy::OpGen* OpGen = Context.OpGen;
       assert(OpGen == this && "sanity check");
+      ++RunSyncDepth;
       Value Result = Context.RunSync(Operator, Input);
+      --RunSyncDepth;
       assert(OpGen == Context.OpGen && "OpGen should not unwind itself");
       if (auto ResultErr = dyn_cast_or_null<heavy::Error>(Result))
         SetError(ResultErr);
