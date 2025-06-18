@@ -39,6 +39,7 @@ heavy::ContextLocal   current_builder;
 heavy::ExternSyntax<> create_op;
 heavy::ExternFunction create_op_impl;
 heavy::ExternFunction region;
+heavy::ExternFunction entry_block;
 heavy::ExternFunction results;
 heavy::ExternFunction result;
 heavy::ExternFunction at_block_begin;
@@ -49,6 +50,9 @@ heavy::ExternFunction set_insertion_point;
 heavy::ExternFunction set_insertion_after;
 heavy::ExternFunction type;
 heavy::ExternFunction attr;
+heavy::ExternFunction value_attr;
+template <typename AttrTy>
+heavy::ExternFunction string_attr;
 heavy::ExternFunction with_new_context;
 heavy::ExternFunction with_builder;
 heavy::ExternFunction load_dialect;
@@ -222,7 +226,7 @@ void create_op_impl(Context& C, ValueRefs Args) {
 //  (create-op _name_
 //    (attributes   _attrs_ ...)
 //    (operands     _values_ ...)
-//    (regions      _regions_ ...)
+//    (regions      _regions_ )
 //    (result-types _types_ ...)
 //    (successors   _blocks_ ...))
 //
@@ -260,9 +264,11 @@ void create_op(Context& C, ValueRefs Args) {  // Syntax
     else if (ArgName == "operands")
       Operands = Arg;
     else if (ArgName == "regions") {
-      if (!isa<heavy::Int>(Arg))
-        return C.RaiseError("expecting single argument");
-      NumRegions = cast<heavy::Int>(Arg);
+      // Support improper list.
+      if (auto* PArg = dyn_cast<Pair>(Arg))
+        NumRegions = PArg->Car;
+      else
+        NumRegions = Arg;
     }
     else if (ArgName == "result-types")
       ResultTypes = Arg;
@@ -343,6 +349,7 @@ void region(Context& C, ValueRefs Args) {
 
 // Get entry block from region/op by index.
 // If an op is provided the first region is used.
+// Add block to region if empty.
 void entry_block(Context& C, ValueRefs Args) {
   if (Args.size() != 1)
     return C.RaiseError("invalid arity");
@@ -359,7 +366,7 @@ void entry_block(Context& C, ValueRefs Args) {
   if (!Region)
     return C.RaiseError("expecting mlir.op/mlir.region");
   if (Region->empty())
-      return C.RaiseError("mlir.region has no entry block");
+    Region->emplaceBlock();
   mlir::Block* Block = &(Region->front());
   if (!Block)
     return C.RaiseError("invalid mlir.block");
@@ -448,14 +455,26 @@ static void with_builder_impl(Context& C, mlir::OpBuilder const& Builder,
   C.DynamicWind(Before, Thunk, After);
 }
 
-// (with-builder _builder_ _thunk_)
+// Copy the builder. (ie Do not modify.)
+// (with-builder [_builder_] _thunk_)
 void with_builder(Context& C, ValueRefs Args) {
-  if (Args.size() != 2)
+  if (Args.empty() || Args.size() > 2)
     return C.RaiseError("expecting 2 arguments");
-  mlir::OpBuilder* Builder = getBuilder(C, Args[0]);
-  if (!Builder)
-    return;
-  return with_builder_impl(C, *Builder, Args[1]);
+
+  heavy::Value Thunk;
+  mlir::MLIRContext* MLIRContext = getCurrentContext(C);
+  mlir::OpBuilder Builder(MLIRContext);
+  if (Args.size() == 2) {
+    mlir::OpBuilder* BuilderPtr = getBuilder(C, Args[0]);
+    if (!BuilderPtr)
+      return;
+    Thunk = Args[1];
+    Builder = *BuilderPtr;
+  } else {
+    Thunk = Args[0];
+  }
+
+  return with_builder_impl(C, Builder, Thunk);
 }
 
 static mlir::Block* get_arg_block(Context& C, ValueRefs Args) {
@@ -473,7 +492,7 @@ void at_block_begin(Context& C, ValueRefs Args) {
   if (mlir::Block* Block = get_arg_block(C, Args)) {
     mlir::OpBuilder* Builder = getCurrentBuilder(C);
     if (!Builder) return;
-    Builder->atBlockBegin(Block);
+    *Builder = mlir::OpBuilder::atBlockBegin(Block);
     C.Cont();
   }
   // Note: error raised in get_arg_block
@@ -485,7 +504,7 @@ void at_block_end(Context& C, ValueRefs Args) {
   if (mlir::Block* Block = get_arg_block(C, Args)) {
     mlir::OpBuilder* Builder = getCurrentBuilder(C);
     if (!Builder) return;
-    Builder->atBlockEnd(Block);
+    *Builder = mlir::OpBuilder::atBlockEnd(Block);
     C.Cont();
   }
   // Note: error raised in get_arg_block
@@ -497,7 +516,7 @@ void at_block_terminator(Context& C, ValueRefs Args) {
   if (mlir::Block* Block = get_arg_block(C, Args)) {
     mlir::OpBuilder* Builder = getCurrentBuilder(C);
     if (!Builder) return;
-    Builder->atBlockTerminator(Block);
+    *Builder = mlir::OpBuilder::atBlockTerminator(Block);
     C.Cont();
   }
   // Note: error raised in get_arg_block
@@ -561,20 +580,21 @@ void type(Context& C, ValueRefs Args) {
 }
 
 // Get an attribute by parsing a string.
-//  Usage: (attr _type_ _attr_str)
-//    type - a string or a mlir.type object
+//  Usage: (attr _attr_str [_type_])
 //    attr_str - the string to be parsed
-//  Usage: (attr _val_)
-//    val - The scheme value to convert to !heavy.value
+//    type - a string or a mlir.type object (defaults to NoneType)
 void attr(Context& C, ValueRefs Args) {
   mlir::MLIRContext* MLIRContext = getCurrentContext(C);
   mlir::Attribute Attr;
+  if (Args.size() > 2 || Args.empty())
+    return C.RaiseError("invalid arity");
 
+  heavy::Value AttrStrArg = Args[0];
+
+  mlir::Type Type;
   if (Args.size() == 2) {
-    heavy::Value TypeArg = Args[0];
-    heavy::Value AttrStrArg = Args[1];
+    heavy::Value TypeArg = Args[1];
     llvm::StringRef TypeStr = TypeArg.getStringRef();
-    mlir::Type Type;
     if (!TypeStr.empty()) {
       Type = mlir::parseType(TypeStr, MLIRContext, nullptr,
                              heavy::String::IsNullTerminated);
@@ -586,22 +606,41 @@ void attr(Context& C, ValueRefs Args) {
       if (!Type)
         return C.RaiseError("invalid mlir type");
     }
-
-    llvm::StringRef AttrStr = AttrStrArg.getStringRef();
-    if (AttrStr.empty())
-      return C.RaiseError("expecting string");
-
-    Attr = mlir::parseAttribute(AttrStr, MLIRContext,
-                                Type, nullptr,
-                                heavy::String::IsNullTerminated);
-    if (!Attr)
-      return C.RaiseError("mlir attribute parse failed");
-  } else if (Args.size() == 1) {
-    Attr = HeavyValueAttr::get(MLIRContext, Args[0]);
   }
-  else
-    return C.RaiseError("invalid arity");
+  if (!Type)
+    Type = mlir::NoneType::get(MLIRContext);
 
+  llvm::StringRef AttrStr = AttrStrArg.getStringRef();
+  if (AttrStr.empty())
+    return C.RaiseError("expecting string");
+
+  Attr = mlir::parseAttribute(AttrStr, MLIRContext,
+                              Type, nullptr,
+                              heavy::String::IsNullTerminated);
+  if (!Attr)
+    return C.RaiseError("mlir attribute parse failed");
+
+  C.Cont(CreateTagged(C, kind::mlir_attr, Attr.getImpl()));
+}
+
+// Create a heavy scheme value attribute of type !heavy.value
+void value_attr(Context& C, ValueRefs Args) {
+  if (Args.size() != 1)
+    return C.RaiseError("invalid arity");
+  mlir::MLIRContext* MLIRContext = getCurrentContext(C);
+  mlir::Attribute Attr = HeavyValueAttr::get(MLIRContext, Args[0]);
+  C.Cont(CreateTagged(C, kind::mlir_attr, Attr.getImpl()));
+}
+
+template <typename AttrTy>
+void string_attr(Context& C, ValueRefs Args) {
+  if (Args.size() != 1)
+    return C.RaiseError("invalid arity");
+  if (!isa<heavy::String, heavy::Symbol>(Args[0]))
+    return C.RaiseError("expecting string-like object");
+  llvm::StringRef Str = Args[0].getStringRef(); 
+  mlir::MLIRContext* MLIRContext = getCurrentContext(C);
+  mlir::Attribute Attr = AttrTy::get(MLIRContext, Str);
   C.Cont(CreateTagged(C, kind::mlir_attr, Attr.getImpl()));
 }
 
@@ -750,6 +789,7 @@ void HEAVY_MLIR_INIT(heavy::Context& C) {
   HEAVY_MLIR_VAR(create_op) = heavy::mlir_bind::create_op;
   HEAVY_MLIR_VAR(create_op_impl) = heavy::mlir_bind::create_op_impl;
   HEAVY_MLIR_VAR(region) = heavy::mlir_bind::region;
+  HEAVY_MLIR_VAR(entry_block) = heavy::mlir_bind::entry_block;
   HEAVY_MLIR_VAR(results) = heavy::mlir_bind::results;
   HEAVY_MLIR_VAR(result) = heavy::mlir_bind::result;
   HEAVY_MLIR_VAR(at_block_begin) = heavy::mlir_bind::at_block_begin;
@@ -761,6 +801,11 @@ void HEAVY_MLIR_INIT(heavy::Context& C) {
   HEAVY_MLIR_VAR(set_insertion_after) = heavy::mlir_bind::set_insertion_after;
   HEAVY_MLIR_VAR(type) = heavy::mlir_bind::type;
   HEAVY_MLIR_VAR(attr) = heavy::mlir_bind::attr;
+  HEAVY_MLIR_VAR(value_attr) = heavy::mlir_bind::value_attr;
+  HEAVY_MLIR_VAR(string_attr<mlir::StringAttr>)
+    = heavy::mlir_bind::string_attr<mlir::StringAttr>;
+  HEAVY_MLIR_VAR(string_attr<mlir::FlatSymbolRefAttr>)
+    = heavy::mlir_bind::string_attr<mlir::FlatSymbolRefAttr>;
   HEAVY_MLIR_VAR(load_dialect) = heavy::mlir_bind::load_dialect;
   HEAVY_MLIR_VAR(with_builder) = heavy::mlir_bind::with_builder;
   HEAVY_MLIR_VAR(with_new_context) = heavy::mlir_bind::with_new_context;
@@ -773,6 +818,7 @@ void HEAVY_MLIR_LOAD_MODULE(heavy::Context& C) {
     {"create-op", HEAVY_MLIR_VAR(create_op)},
     {"%create-op", HEAVY_MLIR_VAR(create_op_impl)},
     {"region", HEAVY_MLIR_VAR(region)},
+    {"entry-block", HEAVY_MLIR_VAR(entry_block)},
     {"results", HEAVY_MLIR_VAR(results)},
     {"result", HEAVY_MLIR_VAR(result)},
     {"at-block-begin", HEAVY_MLIR_VAR(at_block_begin)},
@@ -784,6 +830,10 @@ void HEAVY_MLIR_LOAD_MODULE(heavy::Context& C) {
     {"set-insertion-after", HEAVY_MLIR_VAR(set_insertion_after)},
     {"type", HEAVY_MLIR_VAR(type)},
     {"attr", HEAVY_MLIR_VAR(attr)},
+    {"value-attr", HEAVY_MLIR_VAR(value_attr)},
+    {"string-attr", HEAVY_MLIR_VAR(string_attr<mlir::StringAttr>)},
+    {"flat-symbolref-attr",
+      HEAVY_MLIR_VAR(string_attr<mlir::FlatSymbolRefAttr>)},
     {"with-new-context", HEAVY_MLIR_VAR(with_new_context)},
     {"with-builder", HEAVY_MLIR_VAR(with_builder)},
     {"load-dialect", HEAVY_MLIR_VAR(load_dialect)},
