@@ -12,7 +12,7 @@ include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/OpBase.td"
 
 def Nbdl_Dialect : Dialect {
-  let name = "nbdl_gen";
+  let name = "nbdl";
   let useDefaultTypePrinterParser = 1;
 }
 
@@ -28,9 +28,19 @@ class Nbdl_TypeBase<string name, string type_mnemonic,
 
 def Nbdl_OpaqueType : Nbdl_TypeBase<"OpaqueType", "opaque_type"> {
   let description = [{
-    If a C++ type is denoted without any additional semantic
-    information, then we call it opaque. This can be useful
-    for visitor functions, keys etc.
+    Represent an unknown C++ type.
+  }];
+}
+
+def Nbdl_Struct : Nbdl_TypeBase<"Struct", "struct"> {
+  let summary = "C++ semiregular aggregate type";
+  let description = [{
+    Represent C++ semiregular types whose members
+    are accessed by their name.
+
+    Struct is equivalent to State except that there is no
+    way to access the members without reflection or generated
+    code.
   }];
 }
 
@@ -59,52 +69,80 @@ def Nbdl_Tag : Nbdl_TypeBase<"Tag", "tag_type"> {
   }];
 }
 
-def Nbdl_Type : AnyTypeOf<[Nbdl_OpaqueType,
-                          Nbdl_Store,
-                          Nbdl_State,
-                          Nbdl_Tag]>;
+def Nbdl_Symbol : Nbdl_TypeBase<"Symbol", "symbol_type"> {
+  let summary = "Nbdl symbol type";
+  let description = [{
+    Represent a string that is a valid C++ identifier.
+    The intended primary use case is to specify a member of a Struct.
+  }];
+}
 
 // Keys are optional, but we are using variadic arguments
 // so we resort to using this sum type.
-def Nbdl_Key : AnyTypeOf<[Nbdl_OpaqueType, NoneType]>;
+def Nbdl_KeyType : AnyTypeOf<[Nbdl_OpaqueType, Nbdl_Tag,
+                              Nbdl_Symbol, NoneType]>;
+
+def Nbdl_Type : AnyTypeOf<[Nbdl_OpaqueType,
+                           Nbdl_Store,
+                           Nbdl_Struct,
+                           Nbdl_State,
+                           Nbdl_Tag]>;
+
+def Nbdl_TagAttr : AttrDef<Nbdl_Dialect, "tag_attr"> {
+  let attrName = "nbdl.tag_attr";
+  let parameters = (ins "::mlir::StringAttr":$cppTypeName);
+}
+
+def Nbdl_TypenameAttr : AttrDef<Nbdl_Dialect, "typename_attr"> {
+  let attrName = "nbdl.typename_attr";
+  let parameters = (ins "::mlir::StringAttr":$cppTypeName);
+}
+
+def Nbdl_SymbolAttr : AttrDef<Nbdl_Dialect, "symbol_attr"> {
+  let attrName = "nbdl.symbol_attr";
+  let parameters = (ins "::mlir::StringAttr":$cppIdentifier);
+}
+
+def Nbdl_KeyAttr : AnyAttrOf<[Nbdl_TagAttr,
+                              Nbdl_TypenameAttr,
+                              Nbdl_SymbolAttr]>;
 
 class Nbdl_Op<string mnemonic, list<Trait> traits = []> :
     Op<Nbdl_Dialect, mnemonic, traits>;
 
-def Nbdl_TagOp : Nbdl_Op<"tag", []> {
-  let summary = "tag";
+// FIXME I think KeyOp is redundant with KeyAttr
+/*
+def Nbdl_KeyOp : Nbdl_Op<"key", []> {
+  let summary = "key";
   let description = [{
-    Create an instance of a tag_type.
-    These are intended primarily for use as
-    keys and allow avoiding capture of stateless
-    values.
+    Create an instance of a stateless key object.
+    These are intended primarily to allow avoiding
+    capture of stateless values.
   }];
 
-  let results   = (outs Nbdl_Tag:$result);
+  let arguments = (ins Nbdl_KeyAttr:$key);
+  let results   = (outs Nbdl_Keytype:$result);
 }
+*/
 
 def Nbdl_GetOp : Nbdl_Op<"get", []> {
   let summary = "get";
   let description = [{
   }];
   let arguments = (ins Nbdl_State:$state,
-                       Nbdl_Key:$key);
+                       Nbdl_KeyType:$key);
   let results   = (outs Nbdl_OpaqueType:$result);
 }
 
 def Nbdl_MatchOp : Nbdl_Op<"match", [Terminator, NoTerminator]> {
   let summary = "match";
   let description = [{
-    Given a continuation function, a nbdl::Store and, optionally, a key,
+    Given a nbdl::Store and, optionally, a key,
     `match` visits an element contained within that Store using a
-    continuation for each of the possible typed alternatives.
+    continuation for each of the possible specified overloads.
 
-    Stores match values of different types, so a region is
-    used to provide the continuation for each possible
-    alternative which is checked linearly.
-
-    It is an error for the matched object to not have a matching
-    alternative.
+    It is an error if there exists an alternative for which there
+    exists no matching overload.
 
     For an example, a `std::unordered_map<int, std::string>` is a store
     that can provide access to a contained element with a key `5`. If the
@@ -113,14 +151,10 @@ def Nbdl_MatchOp : Nbdl_Op<"match", [Terminator, NoTerminator]> {
     also provides access to its contained element without a key
     (ie it is just unwrapped). This requires a visitor to be overloaded
     with every possible alternative.
-
-    Each region receives fn, store, and the captures as their
-    arguments.
   }];
-  let arguments = (ins Nbdl_OpaqueType:$fn,
-                       AnyTypeOf<[Nbdl_Store, Nbdl_State]>:$store,
-                       Nbdl_Key:$key,
-                       Variadic<Nbdl_Type>:$captures);
+  // FIXME $store should only be a Nbdl_Store right?
+  let arguments = (ins Nbdl_Store:$store,
+                       Nbdl_KeyType:$key);
   let results = (outs);
   let regions = (region SizedRegion<1>:$overloads);
 }
@@ -128,18 +162,28 @@ def Nbdl_MatchOp : Nbdl_Op<"match", [Terminator, NoTerminator]> {
 def Nbdl_OverloadOp : Nbdl_Op<"overload", []> {
   let description = [{
     In the region of a MatchOp we specify a function overload of the
-    given Nbdl_OpaqueType using OverloadOp.
-    Each overload is checked linearly (sequentially) and a valid
-    overload serves as a continuation.
-    It is an error if no overload matches the matched alternative.
+    given Nbdl_TypenameAttr using OverloadOp.
+    The body of the overload takes an argument that is the matched
+    object and the rest of the arguments are the captures.
   }];
-  let arguments = (ins Nbdl_Type:$arg,
+  let arguments = (ins Nbdl_TypenameAttr:$typeName,
                        Variadic<Nbdl_Type>:$captures);
   let results = (outs);
+  let regions = (region SizedRegion<1>:$body);
+}
+
+def Nbdl_MatchIfOp : Nbdl_Op<"match_if", [Terminator]> {
+  let description = [{
+    Apply a predicate to an object and branch on the result
+    like an if/else statement.
+  }];
+
+  let arguments = (ins Nbdl_Type:$obj, Nbdl_OpaqueType:$pred);
+  let regions   = (region SizedRegion<1>:$thenRegion,
+                          SizedRegion<1>:$elseRegion);
 }
 
 def Nbdl_ContOp : Nbdl_Op<"cont", [Terminator]> {
-  let summary = "cont";
   let description = [{
     ContOp represents the call to an opaque continuation object
     passing the resolved object and any additional captures
@@ -149,6 +193,14 @@ def Nbdl_ContOp : Nbdl_Op<"cont", [Terminator]> {
   let arguments = (ins StrAttr:$fn_id,
                        Variadic<Nbdl_Type>:$args);
   let results = (outs);
+}
+
+def Nbdl_ConstexprOp : Nbdl_Op<"constexpr", []> {
+  let description = [{
+    The result of a constant expression in C++.
+  }];
+  let arguments = (ins StrAttr:$expr);
+  let results = (outs Nbdl_OpaqueType:$result);
 }
 
 #endif

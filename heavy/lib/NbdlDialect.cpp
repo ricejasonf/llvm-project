@@ -26,7 +26,7 @@
 #define GET_OP_CLASSES
 #include "nbdl_gen/NbdlOps.cpp.inc"
 
-void nbdl_gen::NbdlDialect::initialize() {
+void nbdl::NbdlDialect::initialize() {
   addTypes<
 #define GET_TYPEDEF_LIST
 #include "nbdl_gen/NbdlTypes.cpp.inc"
