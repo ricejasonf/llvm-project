@@ -36,6 +36,7 @@
 
 namespace mlir {
   class MLIRContext;
+  class DialectRegistry;
 }
 
 namespace heavy {
@@ -110,10 +111,11 @@ class Context : public ContinuationStack<Context>,
   Value EnvStack;
 
 public: // Provide access in lib/Mlir bindings.
+  std::unique_ptr<mlir::DialectRegistry> DialectRegistry;
   std::unique_ptr<mlir::MLIRContext> MLIRContext;
 private:
   SourceLocation Loc = {}; // last known location for errors
-  Value Err = nullptr;
+  Value Err = nullptr; // FIXME Remove Context.Err I think.
   Value ExceptionHandlers = heavy::Empty();
   mlir::Operation* ModuleOp = nullptr;
 

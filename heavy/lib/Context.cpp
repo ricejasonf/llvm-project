@@ -23,6 +23,7 @@
 #include "heavy/ValueVisitor.h"
 #include "mlir/Bytecode/BytecodeReader.h"
 #include "mlir/Bytecode/BytecodeWriter.h"
+#include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Verifier.h" // TODO move to OpGen
 #include "mlir/Support/FileUtilities.h" // openOutputFile
@@ -72,7 +73,8 @@ Context::Context()
     ContextLocalLookup(),
     Heap(MiB),
     EnvStack(Empty()),
-    MLIRContext(std::make_unique<mlir::MLIRContext>()),
+    DialectRegistry(std::make_unique<mlir::DialectRegistry>()),
+    MLIRContext(std::make_unique<mlir::MLIRContext>(*DialectRegistry)),
     OpGen(nullptr)
 {
   NameForImportVar = HEAVY_IMPORT_VAR;
@@ -1351,21 +1353,16 @@ void Context::WithEnv(std::unique_ptr<heavy::Environment> EnvPtr,
 //           This is used for *nested* calls in C++ when finishing
 //           the operation on the current C++ call stack is needed.
 Value Context::RunSync(Value Callee, Value SingleArg) {
+  Value CatchHandler = CreateLambda(
+    [](heavy::Context& C, ValueRefs Args) {
+      C.Yield(Args);
+    });
+  Value PrevHandlers = ExceptionHandlers;
+  ExceptionHandlers = CatchHandler;
   PushBreak();
-  CallCC(CreateLambda([](Context& C, ValueRefs Args) {
-    heavy::Value Callee = C.getCapture(0);
-    heavy::Value SingleArg = C.getCapture(1);
-    Value CC = Args[0];
-    heavy::Value Thunk = C.CreateLambda([](heavy::Context& C,
-                                         heavy::ValueRefs) {
-      heavy::Value Callee = C.getCapture(0);
-      heavy::Value SingleArg = C.getCapture(1);
-      C.Apply(Callee, ValueRefs{SingleArg});
-    }, CaptureList{Callee, SingleArg});
-    heavy::Value HandleError = CC;
-    C.WithExceptionHandler(HandleError, Thunk);
-  }, CaptureList{Callee, SingleArg}));
+  Apply(Callee, ValueRefs{SingleArg});
   Resume();
+  ExceptionHandlers = PrevHandlers;
   return getCurrentResult();
 }
 

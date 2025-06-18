@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <nbdl_gen/Dialect.h>
 #include <heavy/Context.h>
 #include <heavy/Dialect.h>
 #include <heavy/Mlir.h>
@@ -243,6 +244,8 @@ void create_op(Context& C, ValueRefs Args) {  // Syntax
 
   // Require the _name_ argument.
   mlir::Value OpName = OpGen.GetSingleResult(Input->Car);
+  if (OpGen.CheckError())
+    return;
 
   // Process named arguments which are optional.
   for (auto [Loc, Arg] : WithSource(Input->Cdr)) {
@@ -275,6 +278,8 @@ void create_op(Context& C, ValueRefs Args) {  // Syntax
     for (auto [Loc, X] : WithSource(Inputs)) {
       C.setLoc(Loc);
       mlir::Value V = OpGen.GetSingleResult(X);
+      if (OpGen.CheckError())
+        return mlir::Value();
       Vals.push_back(V);
     }
 
@@ -291,6 +296,8 @@ void create_op(Context& C, ValueRefs Args) {  // Syntax
   mlir::Value AttrVals = createInputVector(Attributes);
   mlir::Value OperandVals = createInputVector(Operands);
   mlir::Value NumRegionsVal = OpGen.GetSingleResult(NumRegions);
+  if (OpGen.CheckError())
+    return;
   mlir::Value ResultTypeVals = createInputVector(ResultTypes);
   mlir::Value SuccessorVals = createInputVector(Successors);
 
@@ -610,7 +617,7 @@ void with_new_context(heavy::Context& C, heavy::ValueRefs Args) {
   if (!Thunk)
     return C.RaiseError("expecting thunk");
 
-  auto NewContextPtr = std::make_unique<mlir::MLIRContext>();
+  auto NewContextPtr = std::make_unique<mlir::MLIRContext>(*C.DialectRegistry);
   heavy::Value NewMC = CreateTagged(C, kind::mlir_context,
                                     NewContextPtr.get());
   heavy::Value NewBuilder = CreateTagged(C, kind::mlir_builder,
@@ -728,12 +735,17 @@ void verify(Context& C, heavy::ValueRefs Args) {
 extern "C" {
 // initialize the module for run-time independent of the compiler
 void HEAVY_MLIR_INIT(heavy::Context& C) {
+  // TODO Register dialects in their corresponding
+  //      scheme modules instead of here.
+  C.DialectRegistry->insert<heavy::Dialect,
+                            nbdl::NbdlDialect>();
+
   mlir::MLIRContext* MC = C.MLIRContext.get();
   heavy::Value MC_Val = CreateTagged(C, kind::mlir_context, MC);
   heavy::Value BuilderVal = CreateTagged(C, kind::mlir_builder,
                                          mlir::OpBuilder(MC));
-  HEAVY_MLIR_VAR(current_context).init(C, MC_Val);
-  HEAVY_MLIR_VAR(current_builder).init(C, BuilderVal);
+  HEAVY_MLIR_VAR(current_context).init(C, C.CreateBinding(MC_Val));
+  HEAVY_MLIR_VAR(current_builder).init(C, C.CreateBinding(BuilderVal));
 
   HEAVY_MLIR_VAR(create_op) = heavy::mlir_bind::create_op;
   HEAVY_MLIR_VAR(create_op_impl) = heavy::mlir_bind::create_op_impl;

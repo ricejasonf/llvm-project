@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef NBDL_DIALECT_H
-#define NBDL_DIALECT_H
+#ifndef NBDL_GEN_DIALECT_H
+#define NBDL_GEN_DIALECT_H
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"

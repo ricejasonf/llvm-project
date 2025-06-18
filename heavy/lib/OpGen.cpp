@@ -60,6 +60,14 @@ OpGen::OpGen(heavy::Context& C, heavy::Symbol* ModulePrefix)
   LambdaScopes.emplace_back(ModuleOp, /*CallOp=*/nullptr, BindingTable);
 }
 
+OpGen::~OpGen() {
+  assert((LambdaScopes.size() == 1 || CheckError())
+      && "LambdaScopes should be unwound");
+  // Unwind if there was an error.
+  while (LambdaScopes.size() > 1)
+    LambdaScopes.pop_back();
+}
+
 std::string OpGen::mangleModule(heavy::Value NameSpec) {
   heavy::Mangler Mangler(Context);
   return Mangler.mangleModule(NameSpec);
@@ -98,6 +106,8 @@ mlir::Value OpGen::GetSingleResult(heavy::Value V) {
   TailPosScope TPS(*this);
   IsTailPos = false;
   mlir::Value Result = Visit(V);
+  if (CheckError())
+    return Error();
   // mlir::Value() is only returned for expressions in tail position
   //               or syntax that should not be used outside proper
   //               context such as `import`, `define-syntax`, etc.
@@ -541,7 +551,7 @@ mlir::Value OpGen::createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall) {
   auto SyntaxOp = Result ? Result.getDefiningOp<heavy::SyntaxOp>()
                          : heavy::SyntaxOp();
   if (CheckError())
-    return Result;
+    return Error();
   if (!DidCallSyntax || !SyntaxOp)
     return SetError("expecting syntax transformer", SyntaxSpec);
 
@@ -661,6 +671,8 @@ mlir::Value OpGen::createSequence(SourceLocation Loc, Value Body) {
         break;
       }
       Visit(Current->Car);
+      if (CheckError())
+        return Error();
     }
   }
   // This could be in tail position
@@ -988,10 +1000,14 @@ mlir::Value OpGen::HandleCall(Pair* P) {
     IsTailPos = false;
 
     Fn = GetSingleResult(P->Car);
+    if (CheckError())
+      return Error();
 
     Value V = P->Cdr;
     while (auto* P2 = dyn_cast<Pair>(V)) {
       mlir::Value Arg = GetSingleResult(P2->Car);
+      if (CheckError())
+        return Error();
       if (mlir::Operation* Op = Arg.getDefiningOp()) {
         Op->setLoc(mlir::OpaqueLoc::get(
               P2->getSourceLocation().getOpaqueEncoding(),
@@ -1001,7 +1017,7 @@ mlir::Value OpGen::HandleCall(Pair* P) {
       V = P2->Cdr;
     }
     if (!isa<Empty>(V)) {
-      return SetError("improper list as call expression", V);
+      return SetError("improper list as call expression", P);
     }
   }
   return createCall(Loc, Fn , Args);

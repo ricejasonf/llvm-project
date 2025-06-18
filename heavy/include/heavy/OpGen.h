@@ -181,6 +181,7 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
 
 public:
   explicit OpGen(heavy::Context& C, heavy::Symbol* ModulePrefix = nullptr);
+  ~OpGen();
 
   heavy::Context& getContext() { return Context; }
 
@@ -333,6 +334,7 @@ public:
   void createLoadModule(SourceLocation Loc, Symbol* MangledName);
 
   mlir::Value SetError(heavy::Error* NewErr) {
+    assert((!Err || Value(NewErr) == Err) && "no squashing errors");
     Err = NewErr;
     Context.setLoc(Err.getSourceLocation());
     if (RunSyncDepth == 0)
