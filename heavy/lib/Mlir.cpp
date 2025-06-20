@@ -424,10 +424,9 @@ void block_arg(Context& C, ValueRefs Args) {
 
 static void with_builder_impl(Context& C, mlir::OpBuilder const& Builder,
                               heavy::Value Thunk) {
-  mlir::MLIRContext* MLIRContext = getCurrentContext(C);
   heavy::Value PrevBuilder = C.CreateBinding(heavy::Empty());
   heavy::Value NewBuilder = CreateTagged(C, kind::mlir_builder,
-                              mlir::OpBuilder(MLIRContext));
+                              Builder);
 
   heavy::Value Before = C.CreateLambda(
     [](heavy::Context& C, heavy::ValueRefs Args) {
@@ -712,6 +711,8 @@ void load_dialect(Context& C, heavy::ValueRefs Args) {
     return C.RaiseError("expecting dialect name");
 
   mlir::MLIRContext* MLIRContext = getCurrentContext(C);
+  // Ensure the registry is up to date.
+  MLIRContext->appendDialectRegistry(*C.DialectRegistry);
   mlir::Dialect* Dialect = MLIRContext->getOrLoadDialect(Name);
   if (Dialect == nullptr)
     return C.RaiseError(C.CreateString("failed to load dialect: ", Name), {});
@@ -817,6 +818,7 @@ void HEAVY_MLIR_LOAD_MODULE(heavy::Context& C) {
   heavy::initModuleNames(C, HEAVY_MLIR_LIB_STR, {
     {"create-op", HEAVY_MLIR_VAR(create_op)},
     {"%create-op", HEAVY_MLIR_VAR(create_op_impl)},
+    {"current-builder", HEAVY_MLIR_VAR(current_builder).get_binding(C)},
     {"region", HEAVY_MLIR_VAR(region)},
     {"entry-block", HEAVY_MLIR_VAR(entry_block)},
     {"results", HEAVY_MLIR_VAR(results)},

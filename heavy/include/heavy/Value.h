@@ -2043,6 +2043,7 @@ struct ContextLocal {
   heavy::Value init(heavy::Context& C, heavy::Value Value = nullptr);
   uintptr_t key() const { return reinterpret_cast<uintptr_t>(this); }
   heavy::Value get(heavy::ContextLocalLookup const& C) const;
+  heavy::Value get_binding(heavy::ContextLocalLookup const& C) const;
   void set(heavy::ContextLocalLookup& C, heavy::Value Value);
 };
 
