@@ -689,7 +689,8 @@ mlir::Value OpGen::createSequence(SourceLocation Loc, Value Body) {
 //    in the lexical order that they were defined.
 bool OpGen::WalkDefineInits(Value Env,
                             llvm::SmallPtrSetImpl<String*>& LocalNames) {
-  Pair* P = cast<Pair>(Env);
+  Pair* P = dyn_cast<Pair>(Env);
+  if (!P) return false;
   if (isa<EnvFrame>(P->Car)) return false;
   if (WalkDefineInits(P->Cdr, LocalNames)) return true;
 
