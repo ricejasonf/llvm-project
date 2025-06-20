@@ -1447,6 +1447,12 @@ heavy::Value ContextLocal::get(heavy::ContextLocalLookup const& C) const {
   return Value;
 }
 
+heavy::Value ContextLocal::get_binding(
+      heavy::ContextLocalLookup const& C) const {
+  heavy::Value Value = C.LookupTable.lookup(key());
+  return dyn_cast<heavy::Binding>(Value);
+}
+
 
 // Module
 
