@@ -61,6 +61,13 @@ def Nbdl_Store : Nbdl_TypeBase<"Store", "store"> {
   }];
 }
 
+def Nbdl_Variant : Nbdl_TypeBase<"Variant", "variant"> {
+  let summary = "Nbdl Variant type";
+  let description = [{
+    Variant is a store that is a sum type with a type index.
+  }];
+}
+
 def Nbdl_Tag : Nbdl_TypeBase<"Tag", "tag_type"> {
   let summary = "Nbdl tag type";
   let description = [{
@@ -201,6 +208,44 @@ def Nbdl_ConstexprOp : Nbdl_Op<"constexpr", []> {
   }];
   let arguments = (ins StrAttr:$expr);
   let results = (outs Nbdl_OpaqueType:$result);
+}
+
+def Nbdl_StoreComposeOp : NbdlOp<"store_compose", []> {
+  let description = [{
+    Add a store $rhs as a member to another store $lhs using a key $key
+    to access the member. The set of keys in $lhs are shadowed by their
+    intersection with $key.
+  }];
+
+  let arguments = (ins Nbdl_Type:$lhs, Nbdl_Type:$rhs, Nbdl_KeyAttr:$key);
+  let results = (outs Nbdl_Type:$result);
+}
+
+def Nbdl_VariantOp : NbdlOp<"variant", []> {
+  let description = [{
+    Create a sum type provided stores.
+
+    VariantOps can be folded so the type index
+    is unspecified.
+  }];
+  let arguments = (ins Variadic<Nbdl_Type>:$operands);
+  let results = (outs Nbdl_Variant:$result);
+}
+
+def Nbdl_CreateStoreOp : NbdlOp<"create_store", [Symbol, IsolatedFromAbove]> {
+  let description = [{
+    If no region exists, then the operation is considered external
+    and should refer to an existing C++ type that satisfies nbdl::Store.
+    Otherwise, a new C++ struct type is created. The symbol should be a
+    fully namespace qualified C++ type name.
+
+    Use ContOp to terminate and finalize the object.
+    If ContOp receives the body argument directly then the
+    created type is a Tag.
+  }];
+  let regions = (region AnyRegion:$body);
+  let arguments = (ins FlatSymbolRefAttr:$name);
+  let results = (outs);
 }
 
 #endif
