@@ -10,6 +10,7 @@
 
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/OpBase.td"
+include "mlir/IR/SymbolInterfaces.td"
 
 def Nbdl_Dialect : Dialect {
   let name = "nbdl";
@@ -210,18 +211,25 @@ def Nbdl_ConstexprOp : Nbdl_Op<"constexpr", []> {
   let results = (outs Nbdl_OpaqueType:$result);
 }
 
-def Nbdl_StoreComposeOp : NbdlOp<"store_compose", []> {
+def Nbdl_StoreComposeOp : Nbdl_Op<"store_compose", []> {
   let description = [{
     Add a store $rhs as a member to another store $lhs using a key $key
     to access the member. The set of keys in $lhs are shadowed by their
     intersection with $key.
+
+    If the optional construction argument is present, then
+    $key must be a Nbdl_Symbol and the path depth must be 1.
   }];
 
-  let arguments = (ins Nbdl_Type:$lhs, Nbdl_Type:$rhs, Nbdl_KeyAttr:$key);
+  let arguments = (ins
+    Nbdl_Type:$lhs,
+    Nbdl_KeyAttr:$key,
+    Nbdl_Type:$rhs,
+    Optional<Nbdl_OpaqueType>:$cnstrArg);
   let results = (outs Nbdl_Type:$result);
 }
 
-def Nbdl_VariantOp : NbdlOp<"variant", []> {
+def Nbdl_VariantOp : Nbdl_Op<"variant", []> {
   let description = [{
     Create a sum type provided stores.
 
@@ -232,7 +240,7 @@ def Nbdl_VariantOp : NbdlOp<"variant", []> {
   let results = (outs Nbdl_Variant:$result);
 }
 
-def Nbdl_CreateStoreOp : NbdlOp<"create_store", [Symbol, IsolatedFromAbove]> {
+def Nbdl_CreateStoreOp : Nbdl_Op<"create_store", [Symbol, IsolatedFromAbove]> {
   let description = [{
     If no region exists, then the operation is considered external
     and should refer to an existing C++ type that satisfies nbdl::Store.
@@ -244,7 +252,9 @@ def Nbdl_CreateStoreOp : NbdlOp<"create_store", [Symbol, IsolatedFromAbove]> {
     created type is a Tag.
   }];
   let regions = (region AnyRegion:$body);
-  let arguments = (ins FlatSymbolRefAttr:$name);
+  let arguments = (ins
+    FlatSymbolRefAttr:$name,
+    OptionalAttr<DictArrayAttr>:$cnstrArgs);
   let results = (outs);
 }
 
