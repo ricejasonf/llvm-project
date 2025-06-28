@@ -17,6 +17,26 @@ def Nbdl_Dialect : Dialect {
   let useDefaultTypePrinterParser = 1;
 }
 
+def Nbdl_Empty : TypeDef<Nbdl_Dialect, "Empty", []> {
+  let mnemonic = "empty";
+  let description = [{
+    We define empty_type as a type with no information either
+    compile-time or run-time.
+
+    This serves as the identity element for product types.
+  }];
+}
+
+def Nbdl_Void : TypeDef<Nbdl_Dialect, "Void", []> {
+  let mnemonic = "void";
+  let description = [{
+    We define void_type as a unit type with no run-time information
+    and no run-time instantiation.
+
+    This serves as the identity element for sum types.
+  }];
+}
+
 // We keep cpp_typename around for when
 // we want to go back to c++.
 class Nbdl_TypeBase<string name, string type_mnemonic,
@@ -27,24 +47,23 @@ class Nbdl_TypeBase<string name, string type_mnemonic,
   let assemblyFormat = "`<` $cpp_typename `>`";
 }
 
-def Nbdl_OpaqueType : Nbdl_TypeBase<"OpaqueType", "opaque_type"> {
+def Nbdl_Opaque : Nbdl_TypeBase<"Opaque", "opaque"> {
   let description = [{
     Represent an unknown C++ type.
   }];
 }
 
+/* FIXME Should this have member information?
 def Nbdl_Struct : Nbdl_TypeBase<"Struct", "struct"> {
   let summary = "C++ semiregular aggregate type";
   let description = [{
-    Represent C++ semiregular types whose members
+    Represent C++ struct types whose members
     are accessed by their name.
-
-    Struct is equivalent to State except that there is no
-    way to access the members without reflection or generated
-    code.
   }];
 }
+*/
 
+/* FIXME This is not useful without the key.
 def Nbdl_State : Nbdl_TypeBase<"State", "state"> {
   let summary = "Nbdl State type";
   let description = [{
@@ -52,6 +71,7 @@ def Nbdl_State : Nbdl_TypeBase<"State", "state"> {
     elements where paths are resolved at compile-time.
   }];
 }
+*/
 
 def Nbdl_Store : Nbdl_TypeBase<"Store", "store"> {
   let summary = "Nbdl Store type";
@@ -60,6 +80,7 @@ def Nbdl_Store : Nbdl_TypeBase<"Store", "store"> {
     alternative paths that are determined at run-time.
     A State object is also a Store.
   }];
+  // TODO Stores should have a list of keys that we know they match.
 }
 
 def Nbdl_Variant : Nbdl_TypeBase<"Variant", "variant"> {
@@ -87,28 +108,25 @@ def Nbdl_Symbol : Nbdl_TypeBase<"Symbol", "symbol_type"> {
 
 // Keys are optional, but we are using variadic arguments
 // so we resort to using this sum type.
-def Nbdl_KeyType : AnyTypeOf<[Nbdl_OpaqueType, Nbdl_Tag,
+def Nbdl_KeyType : AnyTypeOf<[Nbdl_Opaque, Nbdl_Tag,
                               Nbdl_Symbol, NoneType]>;
 
-def Nbdl_Type : AnyTypeOf<[Nbdl_OpaqueType,
-                           Nbdl_Store,
-                           Nbdl_Struct,
-                           Nbdl_State,
-                           Nbdl_Tag]>;
+def Nbdl_Type : AnyTypeOf<[Nbdl_Void, Nbdl_Empty, Nbdl_Opaque,
+                           Nbdl_Store, Nbdl_Tag]>;
 
 def Nbdl_TagAttr : AttrDef<Nbdl_Dialect, "tag_attr"> {
   let attrName = "nbdl.tag_attr";
-  let parameters = (ins "::mlir::StringAttr":$cppTypeName);
+  let parameters = (ins StringRefParameter<>:$cppTypeName);
 }
 
 def Nbdl_TypenameAttr : AttrDef<Nbdl_Dialect, "typename_attr"> {
   let attrName = "nbdl.typename_attr";
-  let parameters = (ins "::mlir::StringAttr":$cppTypeName);
+  let parameters = (ins StringRefParameter<>:$cppTypeName);
 }
 
 def Nbdl_SymbolAttr : AttrDef<Nbdl_Dialect, "symbol_attr"> {
   let attrName = "nbdl.symbol_attr";
-  let parameters = (ins "::mlir::StringAttr":$cppIdentifier);
+  let parameters = (ins StringRefParameter<>:$cppIdentifier);
 }
 
 def Nbdl_KeyAttr : AnyAttrOf<[Nbdl_TagAttr,
@@ -137,9 +155,9 @@ def Nbdl_GetOp : Nbdl_Op<"get", []> {
   let summary = "get";
   let description = [{
   }];
-  let arguments = (ins Nbdl_State:$state,
+  let arguments = (ins Nbdl_Type:$state,
                        Nbdl_KeyType:$key);
-  let results   = (outs Nbdl_OpaqueType:$result);
+  let results   = (outs Nbdl_Opaque:$result);
 }
 
 def Nbdl_MatchOp : Nbdl_Op<"match", [Terminator, NoTerminator]> {
@@ -160,8 +178,8 @@ def Nbdl_MatchOp : Nbdl_Op<"match", [Terminator, NoTerminator]> {
     (ie it is just unwrapped). This requires a visitor to be overloaded
     with every possible alternative.
   }];
-  // FIXME $store should only be a Nbdl_Store right?
-  let arguments = (ins Nbdl_Store:$store,
+
+  let arguments = (ins Nbdl_Type:$store,
                        Nbdl_KeyType:$key);
   let results = (outs);
   let regions = (region SizedRegion<1>:$overloads);
@@ -186,7 +204,7 @@ def Nbdl_MatchIfOp : Nbdl_Op<"match_if", [Terminator]> {
     like an if/else statement.
   }];
 
-  let arguments = (ins Nbdl_Type:$obj, Nbdl_OpaqueType:$pred);
+  let arguments = (ins Nbdl_Type:$obj, Nbdl_Opaque:$pred);
   let regions   = (region SizedRegion<1>:$thenRegion,
                           SizedRegion<1>:$elseRegion);
 }
@@ -208,40 +226,38 @@ def Nbdl_ConstexprOp : Nbdl_Op<"constexpr", []> {
     The result of a constant expression in C++.
   }];
   let arguments = (ins StrAttr:$expr);
-  let results = (outs Nbdl_OpaqueType:$result);
+  let results = (outs Nbdl_Opaque:$result);
 }
 
 def Nbdl_StoreComposeOp : Nbdl_Op<"store_compose", []> {
   let description = [{
-    Add a store $rhs as a member to another store $lhs using a key $key
-    to access the member. The set of keys in $lhs are shadowed by their
-    intersection with $key.
+    Add a store $lhs as a member to another store $rhs using a key $key
+    to access the member. The type $key will shadow any key of the same
+    type in $rhs (ie values are not considered.)
 
-    If the optional construction argument is present, then
-    $key must be a Nbdl_Symbol and the path depth must be 1.
+    (Writing logic to shadow a subset of key
+     values is better implemented in C++.)
   }];
 
   let arguments = (ins
+    TypeAttr:$key,
     Nbdl_Type:$lhs,
-    Nbdl_KeyAttr:$key,
-    Nbdl_Type:$rhs,
-    Optional<Nbdl_OpaqueType>:$cnstrArg);
+    Nbdl_Type:$rhs);
   let results = (outs Nbdl_Type:$result);
 }
 
 def Nbdl_VariantOp : Nbdl_Op<"variant", []> {
   let description = [{
-    Create a sum type provided stores.
-
-    VariantOps can be folded so the type index
-    is unspecified.
+    Create a sum type.
   }];
-  let arguments = (ins Variadic<Nbdl_Type>:$operands);
+  let arguments = (ins Variadic<Nbdl_Type>:$args);
   let results = (outs Nbdl_Variant:$result);
 }
 
 def Nbdl_CreateStoreOp : Nbdl_Op<"create_store", [Symbol, IsolatedFromAbove]> {
   let description = [{
+    Define a store object, and expose its interface (type) to the user.
+
     If no region exists, then the operation is considered external
     and should refer to an existing C++ type that satisfies nbdl::Store.
     Otherwise, a new C++ struct type is created. The symbol should be a
@@ -251,11 +267,53 @@ def Nbdl_CreateStoreOp : Nbdl_Op<"create_store", [Symbol, IsolatedFromAbove]> {
     If ContOp receives the body argument directly then the
     created type is a Tag.
   }];
+
+  // Copying the approach used for scheme globals
+  let extraClassDeclaration = [{
+    bool isExternal() { return getBody().empty(); }
+  }];
+
   let regions = (region AnyRegion:$body);
   let arguments = (ins
     FlatSymbolRefAttr:$name,
     OptionalAttr<DictArrayAttr>:$cnstrArgs);
   let results = (outs);
+}
+
+def Nbdl_StoreOp : Nbdl_Op<"store", []> {
+  let description = [{
+    Construct a store object. The name should be a
+    symbol that refers to a CreateStoreOp which can
+    be external.
+  }];
+
+  let arguments = (ins
+    FlatSymbolRefAttr:$name,
+    Variadic<AnyType>:$args);
+  let results = (outs Nbdl_Type:$result);
+}
+
+def Nbdl_ApplyOp : Nbdl_Op<"apply", []> {
+  let description = [{
+    Apply a function.
+  }];
+  let arguments = (ins TypeAttr:$fn,
+                       Variadic<Nbdl_Type>:$args);
+  let results = (outs Nbdl_Variant:$result);
+}
+
+def Nbdl_ConsumerOp : Nbdl_Op<"consumer", []> {
+  let description = [{
+    A consumer is an object provided with an object
+    to match a set of objects in a store.
+    The $name should be a template that takes the
+    type of $matchFn yielding the type to construct.
+  }];
+
+  let arguments = (ins
+    FlatSymbolRefAttr:$name,
+    AnyType:$matchFn);
+  let results = (outs Nbdl_Type:$result);
 }
 
 #endif
