@@ -11,12 +11,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Support/Casting.h"
+#include <llvm/ADT/Twine.h>
+#include <llvm/Support/Casting.h>
+#include <memory>
+#include <string>
 
 namespace {
 class NbdlWriter {
   // Map mlir values to names within a function scope.
-  using ValueMapTy = llvm::ScopedHashTable<mlir::Value, std::string>;
+  // (FIXME The unique_ptr is probably unnecessary.)
+  using ValueMapTy = llvm::ScopedHashTable<mlir::Value,
+                              std::unique_ptr<std::string>>;
   using Scope = typename ValueMapTy::ScopeTy;
 
   ValueMapTy ValueMap;
@@ -53,19 +58,27 @@ class NbdlWriter {
     Err = Context.CreateError(Loc, Str, heavy::Value(Op));
   }
 
-  void setLocalVar(mlir::Value V, std::string&& Name) {
+  llvm::StringRef GetLocalVar(mlir::Value V) {
+    std::unique_ptr<std::string> name = ValueMap.lookup(V);
+    return llvm::StringRef(*name);
+  }
+
+  llvm::StringRef SetLocalVar(mlir::Value V, llvm::Twine Name)
     assert(ValueMap.count(Name) == 0 && "no shadowing variable names");
-    ValueMap.insert(V, std::move(Name));
+    auto NameStr = std::make_unique<std::string>(new std::string(Name.str()));
+    auto NameStrRef = llvm::StringRef(*NameStr);
+    ValueMap.insert(V, std::move(NameStr));
+    return NameStrRef;
   }
 
-  void setLocalVar(mlir::Value) {
-    // Create anonymous name.
-    std::string AnonName = "anon_TODO";
-    setLocalVar(mlir::Value, std::move(AnonName));
+  llvm::StringRef SetLocalVar(mlir::Value V, llvm::StringRef Name,
+                              unsigned Num) {
+    return SetLocalVar(V, llvm::Twine(Name, Num));
   }
 
-  void tetLocalVar(mlir::Value, llvm::StringRef Name) {
-    // TODO
+  llvm::StringRef SetLocalVar(mlir::Value V) {
+    // Create anonymous name for variable.
+    return SetLocalVar(V, "anon_", CurrentAnonVarCount++);
   }
 
   void Visit(mlir::Operation* Op) {
@@ -170,40 +183,43 @@ class NbdlWriter {
     // Write the function name.
     OS << ' ' << Name << '(';
 
+    mlir::Region& BodyRegion = Op.getBody();
+    if (BodyRegion.empty())
+      return SetError("empty function body", Op);
+
+    Scope(ValueMap);
+    mlir::Block* EntryBlock = BodyRegion.begin();
     // Write the parameter list.
     {
       unsigned I = 0;
-      for (mlir::Type ParamType : FT.getInputs()) {
-        VisitType(ParamType);
-        // TODO handle LocalVarNames and add them to scope.
-        OS << "arg_" << I;
+      llvm::interleaveComma(EntryBlock.getArguments(), OS,
+          [&](mlir::Operand const& Operand) {
+            OS << SetLocalVar(Arg, "arg_", I)
+          }, OS);
+      for (mlir::BlockArgument Arg : EntryBlock.getArguments()) {
+        VisitType(Arg.getType());
+        OS << SetLocalVar(Arg, "arg_", I);
         ++I;
       }
     }
 
     OS << ") { ";
 
-    // Print the body.
-    mlir::Region& BodyRegion = Op.getBody();
-    if (BodyRegion.empty())
-      return SetError("empty function body", Op);
-    // Assume there is only one block.
-    mlir::Block* Block = BodyRegion.begin();
-    for (mlir::Operation* Operation : Block)
+    // Print the body assuming a single block.
+    for (mlir::Operation* Operation : EntryBlock)
       Visit(Operation);
 
     OS << "}";
   }
 
   Visit(GetOp Op) {
-    llvm::StringRef ResultVarName = setLocalVar(Op.getResult());
-    OS << "decltype(auto) " <<
-          ResultVarName <<
-          "nbdl::get(" <<
-          getLocalVar(Op.getState()) <<
-          ", " <<
-          getLocalVar(Op.getKey()) <<
-          ");";
+    OS << "decltype(auto) "
+       << SetLocalVar(Op.getResult())
+       << "nbdl::get("
+       << GetLocalVar(Op.getState())
+       << ", "
+       << GetLocalVar(Op.getKey())
+       << ");";
   }
 
   /************************************
