@@ -12,6 +12,7 @@
 
 #include "heavy/Builtins.h"
 #include "heavy/Context.h"
+#include "heavy/Dialect.h"
 #include "heavy/OpGen.h"
 #include "heavy/Value.h"
 #include "llvm/ADT/StringExtras.h"
@@ -812,6 +813,7 @@ void is_source_value(Context& C, ValueRefs Args) {
 
 // initialize the module for run-time independent of the compiler
 void HEAVY_BASE_INIT(heavy::Context& Context) {
+  Context.DialectRegistry->insert<heavy::Dialect>();
   // syntax
   HEAVY_BASE_VAR(define)          = heavy::base::define;
   HEAVY_BASE_VAR(define_syntax)   = heavy::base::define_syntax;

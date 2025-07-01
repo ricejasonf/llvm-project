@@ -11,69 +11,91 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <nbdl_gen/Dialect.h>
+#include <llvm/ADT/ScopedHashTable.h>
 #include <llvm/ADT/Twine.h>
 #include <llvm/Support/Casting.h>
+#include <mlir/IR/Value.h>
+#include <mlir/IR/Operation.h>
 #include <memory>
 #include <string>
+#include <tuple>
+
+namespace heavy {
+class SourceLocationEncoding;
+}
 
 namespace {
+using namespace nbdl_gen;
+using llvm::isa;
+using llvm::cast;
+using llvm::dyn_cast;
+
 class NbdlWriter {
+public:
   // Map mlir values to names within a function scope.
-  // (FIXME The unique_ptr is probably unnecessary.)
-  using ValueMapTy = llvm::ScopedHashTable<mlir::Value,
-                              std::unique_ptr<std::string>>;
-  using Scope = typename ValueMapTy::ScopeTy;
+  using ValueMapTy = llvm::ScopedHashTable<mlir::Value, llvm::StringRef>;
+  using ValueMapScope = typename ValueMapTy::ScopeTy;
 
   ValueMapTy ValueMap;
-  heavy::Context& Context;
-  heavy::Value Err;
-  std::string Buffer;
-  llvm::raw_string_ostream OS;
+  llvm::BumpPtrAllocator StringHeap;
+  // Irritant may be nullptr even with error present.
+  mlir::Operation* Irritant = nullptr;
+  std::string ErrMsg;
+  heavy::SourceLocationEncoding* ErrLoc;
+  llvm::raw_ostream& OS;
 
   // Track number of members for CreateStoreOp
   // to generate anonymous identifiers if needed.
   unsigned CurrentMemberCount = 0;
+  unsigned CurrentAnonVarCount = 0;
 
-  // Copied from OpEval
-  static heavy::SourceLocation getSourceLocation(mlir::Location Loc) {
-    if (!mlir::isa<mlir::OpaqueLoc>(Loc)) return {};
-    return heavy::SourceLocation(
-      mlir::OpaqueLoc::getUnderlyingLocation<heavy::SourceLocationEncoding*>(
-        mlir::cast<mlir::OpaqueLoc>(Loc)));
-  }
+  NbdlWriter(llvm::raw_ostream& OS)
+    : OS(OS)
+  { }
 
   bool CheckError() {
     //  - Returns true if there is an error.
-    return Err != Value();
+    return !ErrMsg.empty();
   }
 
-  void SetError(heavy::SourceLocation Loc, llvm::StringRef Msg) {
-    assert(!Err && "no squashing errors");
-    Err = Context.CreateError(Loc, Str);
+  void SetError(mlir::Location Loc, llvm::StringRef Msg) {
+    assert(ErrMsg.empty() && "no squashing errors");
+    ErrMsg = Msg.str();
+    ErrLoc = mlir::OpaqueLoc
+      ::getUnderlyingLocationOrNull<heavy::SourceLocationEncoding*>(Loc);
   }
 
   void SetError(llvm::StringRef Msg, mlir::Operation* Op) {
-    assert(!Err && "no squashing errors");
-    heavy::SourceLocation Loc = getSourceLocation(Op->getLoc());
-    Err = Context.CreateError(Loc, Str, heavy::Value(Op));
+    assert(ErrMsg.empty() && "no squashing errors");
+
+    SetError(Op->getLoc(), Msg);
+    Irritant = Op;
   }
 
   llvm::StringRef GetLocalVar(mlir::Value V) {
-    std::unique_ptr<std::string> name = ValueMap.lookup(V);
-    return llvm::StringRef(*name);
+    // ScopedHashTable has a weird interface.
+    llvm::StringRef Name = ValueMap.lookup(V);
+    if (Name.empty()) {
+      SetError(V.getLoc(), "Name not in ValueMap");
+      return "ERROR";
+    }
+    return Name;
   }
 
-  llvm::StringRef SetLocalVar(mlir::Value V, llvm::Twine Name)
-    assert(ValueMap.count(Name) == 0 && "no shadowing variable names");
-    auto NameStr = std::make_unique<std::string>(new std::string(Name.str()));
-    auto NameStrRef = llvm::StringRef(*NameStr);
-    ValueMap.insert(V, std::move(NameStr));
-    return NameStrRef;
+  llvm::StringRef SetLocalVar(mlir::Value V, llvm::Twine NameTwine) {
+    llvm::SmallString<128> NameTemp;
+    NameTwine.toVector(NameTemp);
+    // Store the string to have a reliable llvm::StringRef.
+    llvm::StringRef Name = NameTemp.str().copy(StringHeap);
+    ValueMap.insert(V, Name);
+
+    return Name;
   }
 
   llvm::StringRef SetLocalVar(mlir::Value V, llvm::StringRef Name,
                               unsigned Num) {
-    return SetLocalVar(V, llvm::Twine(Name, Num));
+    return SetLocalVar(V, llvm::Twine(Name).concat(llvm::Twine(Num)));
   }
 
   llvm::StringRef SetLocalVar(mlir::Value V) {
@@ -90,11 +112,10 @@ class NbdlWriter {
     else if (isa<VariantOp>(Op))      return Visit(cast<VariantOp>(Op));
     else if (isa<StoreComposeOp>(Op)) return Visit(cast<StoreComposeOp>(Op));
     else if (isa<ConstexprOp>(Op))    return Visit(cast<ConstexprOp>(Op));
-    else if (isa<ConstructOp>(Op))    return Visit(cast<ConstructOp>(Op));
     else if (isa<ContOp>(Op))         return Visit(cast<ContOp>(Op));
     else if (isa<FuncOp>(Op))         return Visit(cast<FuncOp>(Op));
     else
-      SetError("unhandled operation", heavy::Value(Op));
+      SetError("unhandled operation", Op);
   }
 
   void Visit(CreateStoreOp Op) {
@@ -105,7 +126,7 @@ class NbdlWriter {
     llvm::SmallVector<llvm::StringRef, 8> ConstructArgs;
     llvm_unreachable("TODO");
 #if 0
-    auto ConstructOp = cast<nbdl::ConstructOp>(Op.getBody().back());
+    auto ConstructOp = cast<nbdl_gen::ConstructOp>(Op.getBody().back());
     mlir::Value Input = ConstructOp.getInput();
     assert(isa<mlir::Operation>(Input) && "expecting store as result");
     Visit(Input.getDefiningOp());
@@ -113,12 +134,14 @@ class NbdlWriter {
   }
 
   void Visit(StoreOp Op) {
+#if 0
     llvm::StringRef Name = Op.getName();
     mlir::OperandRange Args = Op.getArgs();
     if (!Args.empty())
       return SetError("TODO implement construction args for StoreOp",
-                      heavy::Value(Op.getOperation()));
+                      Op.getOperation());
 
+#endif
     llvm_unreachable("TODO");
   }
 
@@ -128,9 +151,10 @@ class NbdlWriter {
 
   void Visit(StoreComposeOp Op) {
     llvm_unreachable("TODO FINISH");
+#if 0
     if (isTopLevel()) {
       // Add the RHS as a member.
-      assert(isa<heavy::CreateStoreOp>(Op.getParentOp()) &&
+      assert(isa<nbdl_gen::CreateStoreOp>(Op.getParentOp()) &&
              "should be in context of creating a store");
 
       // Temporarily store anonymous member name if needed.
@@ -140,7 +164,7 @@ class NbdlWriter {
       // If the key is not an identifier, then there should
       // be a GetImplOp elsewhere.
       mlir::Attribute KeyAttr = Op.getKey();
-      if (auto SymName = dyn_cast<nbdl::SymbolAttr>(KeyAttr))
+      if (auto SymName = dyn_cast<nbdl_gen::SymbolAttr>(KeyAttr))
         MemberName = SymName.getCppIdentifier();
 
       if (MemberName.empty()) {
@@ -154,6 +178,7 @@ class NbdlWriter {
     } else {
       // Create the store_composite type... oof.
     }
+#endif
   }
 
   void Visit(ConstexprOp) {
@@ -174,11 +199,11 @@ class NbdlWriter {
 
     // Write the return type.
     if (FT.getNumResults() > 1)
-      return SetError("Function should have less than 2 results.");
+      return SetError("Function should have less than 2 results.", Op);
     if (FT.getNumResults() == 0)
       OS << "void";
     else
-      VisitType(Ft.getResult(0));
+      VisitType(Op.getLoc(), FT.getResult(0));
 
     // Write the function name.
     OS << ' ' << Name << '(';
@@ -187,32 +212,28 @@ class NbdlWriter {
     if (BodyRegion.empty())
       return SetError("empty function body", Op);
 
-    Scope(ValueMap);
-    mlir::Block* EntryBlock = BodyRegion.begin();
+    ValueMapScope Scope(ValueMap);
+    mlir::Block& EntryBlock = BodyRegion.front();
     // Write the parameter list.
     {
       unsigned I = 0;
       llvm::interleaveComma(EntryBlock.getArguments(), OS,
-          [&](mlir::Operand const& Operand) {
-            OS << SetLocalVar(Arg, "arg_", I)
-          }, OS);
-      for (mlir::BlockArgument Arg : EntryBlock.getArguments()) {
-        VisitType(Arg.getType());
-        OS << SetLocalVar(Arg, "arg_", I);
-        ++I;
-      }
+          [&](mlir::BlockArgument const& Arg) {
+            OS << SetLocalVar(Arg, "arg_", I);
+            ++I;
+          });
     }
 
     OS << ") { ";
 
     // Print the body assuming a single block.
-    for (mlir::Operation* Operation : EntryBlock)
-      Visit(Operation);
+    for (mlir::Operation& Operation : EntryBlock)
+      Visit(&Operation);
 
     OS << "}";
   }
 
-  Visit(GetOp Op) {
+  void Visit(GetOp Op) {
     OS << "decltype(auto) "
        << SetLocalVar(Op.getResult())
        << "nbdl::get("
@@ -229,32 +250,31 @@ class NbdlWriter {
   void VisitType(mlir::Operation* Op) {
          if (isa<CreateStoreOp>(Op))
            return VisitType(cast<CreateStoreOp>(Op));
-    else if (isa<LoadStoreOp>(Op))    return VisitType(cast<LoadStoreOp>(Op));
+    else if (isa<StoreOp>(Op))    return VisitType(cast<StoreOp>(Op));
     else if (isa<VariantOp>(Op))      return VisitType(cast<VariantOp>(Op));
     else if (isa<StoreComposeOp>(Op))
           return VisitType(cast<StoreComposeOp>(Op));
     else if (isa<ConstexprOp>(Op))    return VisitType(cast<ConstexprOp>(Op));
-    else if (isa<ConstructOp>(Op))    return VisitType(cast<ConstructOp>(Op));
     else
-      SetError("unhandled operation (VisitType)", heavy::Value(Op));
+      SetError("unhandled operation (VisitType)", Op);
   }
 
   void VisitType(CreateStoreOp Op) {
     OS << Op.getName();
   }
 
-  void VisitType(LoadStoreOp Op) {
+  void VisitType(StoreOp Op) {
     mlir::Value Result = Op.getResult();
-    VisitType(Result);
+    VisitType(Op.getLoc(), Result);
   }
 
   void VisitType(VariantOp Op) {
     OS << "nbdl::variant<";
     llvm::interleaveComma(Op.getOperands(), OS,
-        [&](mlir::Operand const& Operand) {
-          mlir::Value V = Operand.get();   
-          VisitType(V);
-        }, OS);
+        [&](mlir::Value const& Val) {
+          mlir::Value V = Val;
+          VisitType(Op.getLoc(), V);
+        });
     OS << ">";
   }
 
@@ -262,49 +282,52 @@ class NbdlWriter {
     OS << "nbdl::store_composite<";
 
     // Key
-    auto KeyAttr = cast<mlir::TypeAttr>(Op.getKey());
-    mlir::Type KeyType = KeyAttr.getValue();
-    VisitType(KeyType);
+    mlir::Type KeyType = Op.getKey();
+    VisitType(Op.getLoc(), KeyType);
     OS << ", ";
 
     // LHS, RHS
-    VisitType(Op.getLhs());
+    VisitType(Op.getLoc(), Op.getLhs());
     OS << ", ";
-    VisitType(Op.getLhs());
+    VisitType(Op.getLoc(), Op.getLhs());
     OS << ">";
   }
 
   void VisitType(ConstexprOp Op) {
     mlir::Value Result = Op.getResult();
-    VisitType(Result);
+    VisitType(Op.getLoc(), Result);
   }
 
-  void VisitType(mlir::Value V) {
-    mlir::Type = V.getType();
-    VisitType(getSourceLocation(V.getLoc()), V.getType());
+  void VisitType(mlir::Location Loc, mlir::Value V) {
+    VisitType(Loc, V.getType());
   }
 
-  void VisitType(mlir::TypeAttr TA) {
-    mlir::Type = A.getValue();
-    VisitType(getSourceLocation(TA.getLoc()), V.getType());
+  void VisitType(mlir::Location Loc, mlir::TypeAttr TA) {
+    VisitType(Loc, TA.getValue());
   }
 
-  void VisitType(heavy::SourceLocation Loc, mlir::Type Type) {
-    if (auto OpaqueType = dyn_cast<nbdl::OpaqueType>(Type))
-      OS << Type.getCppTypename();
-    else if (auto StoreType = dyn_cast<nbdl::StoreType>(Type))
-      OS << Type.getCppTypeName();
-    else if (auto StoreType = dyn_cast<nbdl::VariantType>(Type))
-      OS << Type.getCppTypeName();
-    else if (auto TagType = dyn_cast<nbdl::TagType>(Type))
-      OS << Type.getCppTypeName();
+  void VisitType(mlir::Location Loc, mlir::Type Type) {
+    if (auto OpaqueType = dyn_cast<nbdl_gen::OpaqueType>(Type))
+      OS << OpaqueType.getCppTypename();
+    else if (auto StoreType = dyn_cast<nbdl_gen::StoreType>(Type))
+      OS << StoreType.getCppTypename();
+    else if (auto VariantType = dyn_cast<nbdl_gen::VariantType>(Type))
+      OS << VariantType.getCppTypename();
+    else if (auto TagType = dyn_cast<nbdl_gen::TagType>(Type))
+      OS << TagType.getCppTypename();
     else
       SetError(Loc, "unprintable type");
   }
-
-public:
-  NbdlWriter()
-    : OS(Buffer)
-  { }
 };
+}
+
+namespace nbdl_gen {
+std::tuple<std::string, heavy::SourceLocationEncoding*, mlir::Operation*>
+translate_cpp(llvm::raw_ostream& OS, mlir::Operation* Op) {
+  NbdlWriter Writer(OS);
+  Writer.Visit(Op);
+  return std::make_tuple(std::move(Writer.ErrMsg),
+                         Writer.ErrLoc, Writer.Irritant);
+
+}
 }

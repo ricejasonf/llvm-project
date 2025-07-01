@@ -69,10 +69,8 @@ class OpEvalImpl {
   }
 
   static heavy::SourceLocation getSourceLocation(mlir::Location Loc) {
-    if (!mlir::isa<mlir::OpaqueLoc>(Loc)) return {};
-    return heavy::SourceLocation(
-      mlir::OpaqueLoc::getUnderlyingLocation<heavy::SourceLocationEncoding*>(
-        mlir::cast<mlir::OpaqueLoc>(Loc)));
+    return heavy::SourceLocation(mlir::OpaqueLoc
+      ::getUnderlyingLocationOrNull<heavy::SourceLocationEncoding*>(Loc));
   }
 
 public:

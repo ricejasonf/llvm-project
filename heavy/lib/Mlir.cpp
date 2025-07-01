@@ -10,7 +10,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <nbdl_gen/Dialect.h>
 #include <heavy/Context.h>
 #include <heavy/Dialect.h>
 #include <heavy/Mlir.h>
@@ -775,11 +774,6 @@ void verify(Context& C, heavy::ValueRefs Args) {
 extern "C" {
 // initialize the module for run-time independent of the compiler
 void HEAVY_MLIR_INIT(heavy::Context& C) {
-  // TODO Register dialects in their corresponding
-  //      scheme modules instead of here.
-  C.DialectRegistry->insert<heavy::Dialect,
-                            nbdl::NbdlDialect>();
-
   mlir::MLIRContext* MC = C.MLIRContext.get();
   heavy::Value MC_Val = CreateTagged(C, kind::mlir_context, MC);
   heavy::Value BuilderVal = CreateTagged(C, kind::mlir_builder,
