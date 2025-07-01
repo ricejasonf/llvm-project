@@ -16,6 +16,7 @@
 #include "heavy/Lexer.h"
 #include "heavy/Mangle.h"
 #include "heavy/Mlir.h"
+#include "heavy/Nbdl.h"
 #include "heavy/OpGen.h"
 #include "heavy/Parser.h"
 #include "heavy/Source.h"
@@ -85,6 +86,7 @@ Context::Context()
                   _HEAVY_load_module);
   RegisterModule(HEAVY_BASE_LIB_STR, HEAVY_BASE_LOAD_MODULE);
   RegisterModule(HEAVY_MLIR_LIB_STR, HEAVY_MLIR_LOAD_MODULE);
+  RegisterModule(HEAVY_NBDL_LIB_STR, HEAVY_NBDL_LOAD_MODULE);
   HEAVY_BASE_INIT(*this);
 }
 

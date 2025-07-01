@@ -15,7 +15,9 @@ add_heavy_library(heavy
   Quasiquote.cpp
   SourceFileStorage.cpp
   SourceManager.cpp
+  Nbdl.cpp
   NbdlDialect.cpp
+  NbdlWriter.cpp
   # TODO Do not use Clangs CharInfo.
   ${CLANG_LIB_DIR}/Basic/CharInfo.cpp
 

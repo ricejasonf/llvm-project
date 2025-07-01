@@ -14,6 +14,7 @@ include "mlir/IR/SymbolInterfaces.td"
 
 def Nbdl_Dialect : Dialect {
   let name = "nbdl";
+  let cppNamespace = "nbdl_gen";
   let useDefaultTypePrinterParser = 1;
 }
 
