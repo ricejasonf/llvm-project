@@ -235,7 +235,13 @@ bool consumeNameSegment(llvm::StringRef& Buf) {
 //                     but is undefined and may trigger assertions.
 llvm::StringRef Mangler::parseModulePrefix(llvm::StringRef Name) {
   llvm::StringRef Ending = Name.drop_front(getManglePrefix().size());
+  size_t PrevEndingSize = 0;
   while (Ending.size() > 0) {
+    // Check for progress.
+    if (Ending.size() == PrevEndingSize)
+      return {};
+    PrevEndingSize = Ending.size();
+
     switch (Ending[0]) {
       case 'V': case 'F': case 'A':
         // Break from the loop
@@ -244,6 +250,12 @@ llvm::StringRef Mangler::parseModulePrefix(llvm::StringRef Name) {
         // Library name
         Ending = Ending.drop_front(1);
         continue;
+      case '_': {
+        llvm::StringRef ModuleFile("__module_file");
+        if (Ending.starts_with(ModuleFile))
+          Ending.consume_front(ModuleFile);
+        continue;
+      }
       default:
         if (!consumeNameSegment(Ending))
           return {};  // Something was invalid.
