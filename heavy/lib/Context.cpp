@@ -1333,13 +1333,21 @@ public:
 
     // Since we don't own PrevEnv do not capture it in scheme land.
     Value After = Context.CreateLambda(
-      [PrevOpGen, PrevEnv](heavy::Context& C, ValueRefs) {
+      [PrevOpGen, PrevEnv](heavy::Context& C, ValueRefs Args) {
         C.setEnvironment(PrevEnv);
         C.OpGen = PrevOpGen;
+        if (Args.size() == 1 && isa<Error>(Args[0]))
+          return C.Cont(Args[0]);
         C.Cont();
       }, {});
 
-    Context.DynamicWind(std::move(Ptr), Before, Thunk, After);
+    Value SafeThunk = Context.CreateLambda([](heavy::Context& C, ValueRefs) {
+      heavy::Value Thunk = C.getCapture(0);
+      heavy::Value After = C.getCapture(1);
+      // Clean up with the After-thunk.
+      C.WithExceptionHandler(After, Thunk);
+    }, CaptureList{Thunk, After});
+    Context.DynamicWind(std::move(Ptr), Before, SafeThunk, After);
   }
 };
 } // namespace
