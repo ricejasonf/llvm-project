@@ -408,7 +408,9 @@ private:
     llvm::StringRef ModuleName = Mangler::parseModulePrefix(MangledName);
     auto M = dyn_cast_or_null<mlir::ModuleOp>(
         TopModuleOp.lookupSymbol(ModuleName));
-    auto F = dyn_cast_or_null<heavy::FuncOp>(M.lookupSymbol(MangledName));
+    heavy::FuncOp F;
+    if (M)
+      F = dyn_cast_or_null<heavy::FuncOp>(M.lookupSymbol(MangledName));
     if (!F) {
       String* ErrMsg = Context.CreateString(
           "undefined reference to function ", MangledName);
