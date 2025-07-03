@@ -397,7 +397,7 @@ public:
   mlir::Value VisitBinding(Binding* B);
 
   mlir::Value VisitPair(Pair* P);
-  // TODO mlir::Value VisitVector(Vector* V);
+  mlir::Value VisitVector(Vector* V);
 
   mlir::Value Lookup(heavy::Value V) {
     return BindingTable.lookup(V);
