@@ -1141,18 +1141,21 @@ mlir::Value OpGen::VisitPair(Pair* P) {
   return HandleCall(P);
 }
 
-#if 0 // TODO VectorOp??
 mlir::Value OpGen::VisitVector(Vector* V) {
-  llvm::ArrayRef<Value> Xs = V->getElements();
-  Vector* New = Context.CreateVector(Xs.size());
-  llvm::MutableArrayRef<Value> Ys = New->getElements();
-  for (unsigned i = 0; i < Xs.size(); ++i) {
-    Visit(Xs[i]);
-    Ys[i] = Visit(Xs[i]);
+  llvm::SmallVector<mlir::Value, 8> Vals;
+  for (auto X : V->getElements()) {
+    mlir::Value Val = GetSingleResult(X);
+    if (CheckError())
+      return mlir::Value();
+    Vals.push_back(Val);
   }
-  return New;
+
+  // Localize the values in the current context.
+  for (mlir::Value& Val : Vals)
+    Val = LocalizeValue(Val);
+
+  return create<heavy::VectorOp>(Context.getLoc(), Vals);
 }
-#endif
 
 // LocalizeValue - If a value belongs to a parent region from
 //                 which the current region should be isolated
