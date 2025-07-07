@@ -40,6 +40,7 @@ def Nbdl_Void : TypeDef<Nbdl_Dialect, "Void", []> {
 
 // We keep cpp_typename around for when
 // we want to go back to c++.
+// DEPRECATED
 class Nbdl_TypeBase<string name, string type_mnemonic,
                     list<Trait> traits = []>
   : TypeDef<Nbdl_Dialect, name, traits> {
@@ -48,7 +49,8 @@ class Nbdl_TypeBase<string name, string type_mnemonic,
   let assemblyFormat = "`<` $cpp_typename `>`";
 }
 
-def Nbdl_Opaque : Nbdl_TypeBase<"Opaque", "opaque"> {
+def Nbdl_Opaque : TypeDef<Nbdl_Dialect, "Opaque", []> {
+  let mnemonic = "opaque";
   let description = [{
     Represent an unknown C++ type.
   }];
@@ -64,46 +66,41 @@ def Nbdl_Struct : Nbdl_TypeBase<"Struct", "struct"> {
 }
 */
 
-/* FIXME This is not useful without the key.
-def Nbdl_State : Nbdl_TypeBase<"State", "state"> {
-  let summary = "Nbdl State type";
+def Nbdl_State : TypeDef<Nbdl_Dialect, "State", []> {
+  let mnemonic = "state";
   let description = [{
-    In Nbdl, a State object uses a static key to access
-    elements where paths are resolved at compile-time.
-  }];
-}
-*/
-
-def Nbdl_Store : Nbdl_TypeBase<"Store", "store"> {
-  let summary = "Nbdl Store type";
-  let description = [{
-    In Nbdl, a Store object has state that may have multiple
-    alternative paths that are determined at run-time.
-    A State object is also a Store.
-  }];
-  // TODO Stores should have a list of keys that we know they match.
-}
-
-def Nbdl_Variant : Nbdl_TypeBase<"Variant", "variant"> {
-  let summary = "Nbdl Variant type";
-  let description = [{
-    Variant is a store that is a sum type with a type index.
+    A type satisfying the nbdl::State concept
   }];
 }
 
-def Nbdl_Tag : Nbdl_TypeBase<"Tag", "tag_type"> {
-  let summary = "Nbdl tag type";
+def Nbdl_Store : TypeDef<Nbdl_Dialect, "Store", []> {
+  let mnemonic = "store";
   let description = [{
-    In Nbdl, an empty type that only carries information
+    A type satisfying the nbdl::Store concept
+  }];
+}
+
+def Nbdl_Variant : TypeDef<Nbdl_Dialect, "Variant", []> {
+  let mnemonic = "variant";
+  let description = [{
+    A type satisfying the nbdl::Variant concept
+  }];
+}
+
+def Nbdl_Tag : TypeDef<Nbdl_Dialect, "Tag", []> {
+  let mnemonic = "tag";
+  let description = [{
+    An empty type that only carries information
     at compile-time is called a tag type.
   }];
 }
 
-def Nbdl_Symbol : Nbdl_TypeBase<"Symbol", "symbol_type"> {
-  let summary = "Nbdl symbol type";
+def Nbdl_Symbol : Nbdl_TypeBase<"Symbol", "symbol"> {
   let description = [{
     Represent a string that is a valid C++ identifier.
     The intended primary use case is to specify a member of a Struct.
+
+    FIXME using this?
   }];
 }
 
@@ -113,7 +110,7 @@ def Nbdl_KeyType : AnyTypeOf<[Nbdl_Opaque, Nbdl_Tag,
                               Nbdl_Symbol, NoneType]>;
 
 def Nbdl_Type : AnyTypeOf<[Nbdl_Void, Nbdl_Empty, Nbdl_Opaque,
-                           Nbdl_Store, Nbdl_Tag]>;
+                           Nbdl_Store, Nbdl_State, Nbdl_Tag]>;
 
 def Nbdl_TagAttr : AttrDef<Nbdl_Dialect, "tag_attr"> {
   let attrName = "nbdl.tag_attr";
