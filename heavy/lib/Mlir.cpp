@@ -48,7 +48,9 @@ heavy::ExternFunction block_op;
 heavy::ExternFunction set_insertion_point;
 heavy::ExternFunction set_insertion_after;
 heavy::ExternFunction type;
+heavy::ExternFunction function_type_impl;
 heavy::ExternFunction attr;
+heavy::ExternFunction type_attr;
 heavy::ExternFunction value_attr;
 template <typename AttrTy>
 heavy::ExternFunction string_attr;
@@ -58,6 +60,7 @@ heavy::ExternFunction load_dialect;
 heavy::ExternFunction parent_op;
 heavy::ExternFunction op_next;
 heavy::ExternFunction verify;
+heavy::ExternFunction module_lookup;
 }
 
 namespace {
@@ -577,6 +580,45 @@ void type(Context& C, ValueRefs Args) {
   C.Cont(CreateTagged(C, kind::mlir_type, Type.getImpl()));
 }
 
+// Create a function type (using vector literals.
+// (%function-type #(<arg-types>...) #(<result-types>...))
+void function_type_impl(Context& C, ValueRefs Args) {
+  mlir::MLIRContext* MLIRContext = getCurrentContext(C);
+  if (Args.size() != 2)
+    return C.RaiseError("invalid arity");
+  auto* ArgTypeVals = heavy::dyn_cast<heavy::Vector>(Args[0]);
+  auto* ResultTypeVals = heavy::dyn_cast<heavy::Vector>(Args[1]);
+  if (!ArgTypeVals || !ResultTypeVals)
+    return C.RaiseError("expecting vectors");
+
+  // Arg types
+  llvm::SmallVector<mlir::Type, 8> ArgTypes;
+  Args = Args.drop_front();
+  for (heavy::Value Arg : ArgTypeVals->getElements()) {
+    mlir::Type ArgType = GetTagged<mlir::Type>(C, kind::mlir_type, Arg);
+    if (!ArgType)
+      return C.RaiseError("expecting mlir.type");
+    ArgTypes.push_back(ArgType);
+  }
+
+  // Result types
+  llvm::SmallVector<mlir::Type, 8> ResultTypes;
+  for (heavy::Value Result : ResultTypeVals->getElements()) {
+    mlir::Type ResultType = GetTagged<mlir::Type>(C, kind::mlir_type, Result);
+    if (!ResultType)
+      return C.RaiseError("expecting mlir.type");
+    ResultTypes.push_back(ResultType);
+  }
+
+  mlir::Type Type = mlir::FunctionType::get(MLIRContext, ArgTypes,
+                                            ResultTypes);
+
+  if (!Type)
+    return C.RaiseError("mlir build function type failed");
+
+  C.Cont(CreateTagged(C, kind::mlir_type, Type.getImpl()));
+}
+
 // Get an attribute by parsing a string.
 //  Usage: (attr _attr_str [_type_])
 //    attr_str - the string to be parsed
@@ -618,6 +660,17 @@ void attr(Context& C, ValueRefs Args) {
   if (!Attr)
     return C.RaiseError("mlir attribute parse failed");
 
+  C.Cont(CreateTagged(C, kind::mlir_attr, Attr.getImpl()));
+}
+
+// (type-attr (type "!type-goes-here"))
+void type_attr(Context& C, ValueRefs Args) {
+  if (Args.size() != 1)
+    return C.RaiseError("invalid arity");
+  mlir::Type Type = GetTagged<mlir::Type>(C, kind::mlir_type, Args[0]);
+  if (!Type)
+    return C.RaiseError("expecting a mlir.type");
+  mlir::Attribute Attr = mlir::TypeAttr::get(Type);
   C.Cont(CreateTagged(C, kind::mlir_attr, Attr.getImpl()));
 }
 
@@ -769,6 +822,24 @@ void verify(Context& C, heavy::ValueRefs Args) {
   }
 }
 
+// (symbol-table-lookup _module-op_ _"symbolname"_)
+void module_lookup(Context& C, heavy::ValueRefs Args) {
+  if (Args.size() != 2)
+    return C.RaiseError("invalid arity");
+
+  mlir::ModuleOp ModuleOp = dyn_cast_or_null<mlir::ModuleOp>(
+      dyn_cast<mlir::Operation>(Args[0]));
+  llvm::StringRef SymbolName = Args[1].getStringRef();
+  if (!ModuleOp)
+    return C.RaiseError("expecting mlir::ModuleOp");
+  if (SymbolName.empty())
+    return C.RaiseError("expecting nonempty string-like object");
+
+  mlir::Operation* Op = ModuleOp.lookupSymbol(SymbolName);
+  heavy::Value Result = Op != nullptr ? heavy::Value(Op) : heavy::Empty();
+  C.Cont(Result);
+}
+
 }  // namespace heavy::mlir_bind
 
 extern "C" {
@@ -795,7 +866,9 @@ void HEAVY_MLIR_INIT(heavy::Context& C) {
   HEAVY_MLIR_VAR(set_insertion_point) = heavy::mlir_bind::set_insertion_point;
   HEAVY_MLIR_VAR(set_insertion_after) = heavy::mlir_bind::set_insertion_after;
   HEAVY_MLIR_VAR(type) = heavy::mlir_bind::type;
+  HEAVY_MLIR_VAR(function_type_impl) = heavy::mlir_bind::function_type_impl;
   HEAVY_MLIR_VAR(attr) = heavy::mlir_bind::attr;
+  HEAVY_MLIR_VAR(type_attr) = heavy::mlir_bind::type_attr;
   HEAVY_MLIR_VAR(value_attr) = heavy::mlir_bind::value_attr;
   HEAVY_MLIR_VAR(string_attr<mlir::StringAttr>)
     = heavy::mlir_bind::string_attr<mlir::StringAttr>;
@@ -805,6 +878,7 @@ void HEAVY_MLIR_INIT(heavy::Context& C) {
   HEAVY_MLIR_VAR(with_builder) = heavy::mlir_bind::with_builder;
   HEAVY_MLIR_VAR(with_new_context) = heavy::mlir_bind::with_new_context;
   HEAVY_MLIR_VAR(verify) = heavy::mlir_bind::verify;
+  HEAVY_MLIR_VAR(module_lookup) = heavy::mlir_bind::module_lookup;
 }
 
 void HEAVY_MLIR_LOAD_MODULE(heavy::Context& C) {
@@ -825,7 +899,9 @@ void HEAVY_MLIR_LOAD_MODULE(heavy::Context& C) {
     {"set-insertion-point", HEAVY_MLIR_VAR(set_insertion_point)},
     {"set-insertion-after", HEAVY_MLIR_VAR(set_insertion_after)},
     {"type", HEAVY_MLIR_VAR(type)},
+    {"%function-type", HEAVY_MLIR_VAR(function_type_impl)},
     {"attr", HEAVY_MLIR_VAR(attr)},
+    {"type-attr", HEAVY_MLIR_VAR(type_attr)},
     {"value-attr", HEAVY_MLIR_VAR(value_attr)},
     {"string-attr", HEAVY_MLIR_VAR(string_attr<mlir::StringAttr>)},
     {"flat-symbolref-attr",
@@ -834,6 +910,7 @@ void HEAVY_MLIR_LOAD_MODULE(heavy::Context& C) {
     {"with-builder", HEAVY_MLIR_VAR(with_builder)},
     {"load-dialect", HEAVY_MLIR_VAR(load_dialect)},
     {"verify", HEAVY_MLIR_VAR(verify)},
+    {"module-lookup", HEAVY_MLIR_VAR(module_lookup)},
   });
 }
 }

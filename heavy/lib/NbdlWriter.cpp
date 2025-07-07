@@ -264,8 +264,7 @@ public:
   }
 
   void VisitType(StoreOp Op) {
-    mlir::Value Result = Op.getResult();
-    VisitType(Op.getLoc(), Result);
+    OS << Op.getName();
   }
 
   void VisitType(VariantOp Op) {
@@ -307,16 +306,7 @@ public:
   }
 
   void VisitType(mlir::Location Loc, mlir::Type Type) {
-    if (auto OpaqueType = dyn_cast<nbdl_gen::OpaqueType>(Type))
-      OS << OpaqueType.getCppTypename();
-    else if (auto StoreType = dyn_cast<nbdl_gen::StoreType>(Type))
-      OS << StoreType.getCppTypename();
-    else if (auto VariantType = dyn_cast<nbdl_gen::VariantType>(Type))
-      OS << VariantType.getCppTypename();
-    else if (auto TagType = dyn_cast<nbdl_gen::TagType>(Type))
-      OS << TagType.getCppTypename();
-    else
-      SetError(Loc, "unprintable type");
+    SetError(Loc, "unprintable type");
   }
 };
 }
