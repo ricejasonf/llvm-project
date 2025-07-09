@@ -134,20 +134,16 @@ def Nbdl_KeyAttr : AnyAttrOf<[Nbdl_TagAttr,
 class Nbdl_Op<string mnemonic, list<Trait> traits = []> :
     Op<Nbdl_Dialect, mnemonic, traits>;
 
-// FIXME I think KeyOp is redundant with KeyAttr
-/*
-def Nbdl_KeyOp : Nbdl_Op<"key", []> {
-  let summary = "key";
+def Nbdl_LiteralOp : Nbdl_Op<"literal", []> {
   let description = [{
-    Create an instance of a stateless key object.
-    These are intended primarily to allow avoiding
-    capture of stateless values.
+    Represent a literal such as an int or a string
+    that is liftable to some compile-time object
+    in C++. Only integers and strings are supported.
   }];
 
-  let arguments = (ins Nbdl_KeyAttr:$key);
-  let results   = (outs Nbdl_Keytype:$result);
+  let arguments = (ins AnyAttrOf<[I32Attr, StrAttr]>:$value);
+  let results   = (outs Nbdl_Tag:$result);
 }
-*/
 
 def Nbdl_GetOp : Nbdl_Op<"get", []> {
   let summary = "get";
@@ -155,7 +151,17 @@ def Nbdl_GetOp : Nbdl_Op<"get", []> {
   }];
   let arguments = (ins Nbdl_Type:$state,
                        Nbdl_KeyType:$key);
-  let results   = (outs Nbdl_Opaque:$result);
+  let results   = (outs Nbdl_Type:$result);
+}
+
+def VisitOp : Nbdl_Op<"visit", [Terminator]> {
+  let description = [{
+    Visit a single result with a function object.
+    VisitOp is a simplification of MatchOp for leaf nodes.
+  }];
+
+  let arguments = (ins Nbdl_Type:$fn, Nbdl_Type:$arg);
+  let results   = (outs);
 }
 
 def Nbdl_MatchOp : Nbdl_Op<"match", [Terminator, NoTerminator]> {

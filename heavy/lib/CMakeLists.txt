@@ -9,6 +9,7 @@ add_heavy_library(heavy
   Lexer.cpp
   Mangle.cpp
   Mlir.cpp
+  MlirHelper.cpp
   OpEval.cpp
   OpGen.cpp
   Parser.cpp
