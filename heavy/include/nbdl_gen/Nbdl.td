@@ -213,18 +213,6 @@ def Nbdl_MatchIfOp : Nbdl_Op<"match_if", [Terminator]> {
                           SizedRegion<1>:$elseRegion);
 }
 
-def Nbdl_ContOp : Nbdl_Op<"cont", [Terminator]> {
-  let description = [{
-    ContOp represents the call to an opaque continuation object
-    passing the resolved object and any additional captures
-    as arguments. The `fn_id` is the name used to lookup the function
-    within the scope of the code being generated.
-  }];
-  let arguments = (ins StrAttr:$fn_id,
-                       Variadic<Nbdl_Type>:$args);
-  let results = (outs);
-}
-
 def Nbdl_ConstexprOp : Nbdl_Op<"constexpr", []> {
   let description = [{
     The result of a constant expression in C++.

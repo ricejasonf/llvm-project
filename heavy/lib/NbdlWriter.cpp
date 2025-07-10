@@ -73,7 +73,7 @@ public:
     Irritant = Op;
   }
 
-  llvm::StringRef GetLocalVar(mlir::Value V) {
+  llvm::StringRef GetLocalVal(mlir::Value V) {
     // ScopedHashTable has a weird interface.
     llvm::StringRef Name = ValueMap.lookup(V);
     if (Name.empty()) {
@@ -83,7 +83,7 @@ public:
     return Name;
   }
 
-  llvm::StringRef SetLocalVar(mlir::Value V, llvm::Twine NameTwine) {
+  llvm::StringRef SetLocalVal(mlir::Value V, llvm::Twine NameTwine) {
     llvm::SmallString<128> NameTemp;
     NameTwine.toVector(NameTemp);
     // Store the string to have a reliable llvm::StringRef.
@@ -93,14 +93,30 @@ public:
     return Name;
   }
 
-  llvm::StringRef SetLocalVar(mlir::Value V, llvm::StringRef Name,
+  llvm::StringRef SetLocalVal(mlir::Value V, llvm::StringRef Name,
                               unsigned Num) {
-    return SetLocalVar(V, llvm::Twine(Name).concat(llvm::Twine(Num)));
+    return SetLocalVal(V, llvm::Twine(Name).concat(llvm::Twine(Num)));
   }
 
-  llvm::StringRef SetLocalVar(mlir::Value V) {
+  llvm::StringRef SetLocalVal(mlir::Value V) {
     // Create anonymous name for variable.
-    return SetLocalVar(V, "anon_", CurrentAnonVarCount++);
+    return SetLocalVal(V, "anon_", CurrentAnonVarCount++);
+  }
+
+  void WriteForwardedExpr(mlir::Value V) {
+    llvm::StringRef Expr = GetLocalVal(V);
+
+    // We do not need to forward literals and junk.
+    if (mlir::Operation* Op = V.getDefiningOp()) {
+      if (isa<LiteralOp, ConstexprOp>(Op)) {
+        OS << Expr;
+        return;
+      }
+    }
+
+    OS << "static_cast<decltype(" << Expr << ")>("
+       << Expr
+       << ")";
   }
 
   void Visit(mlir::Operation* Op) {
@@ -109,11 +125,13 @@ public:
 
          if (isa<CreateStoreOp>(Op))  return Visit(cast<CreateStoreOp>(Op));
     else if (isa<StoreOp>(Op))        return Visit(cast<StoreOp>(Op));
+    else if (isa<GetOp>(Op))          return Visit(cast<GetOp>(Op));
+    else if (isa<VisitOp>(Op))        return Visit(cast<VisitOp>(Op));
     else if (isa<VariantOp>(Op))      return Visit(cast<VariantOp>(Op));
     else if (isa<StoreComposeOp>(Op)) return Visit(cast<StoreComposeOp>(Op));
     else if (isa<ConstexprOp>(Op))    return Visit(cast<ConstexprOp>(Op));
-    else if (isa<ContOp>(Op))         return Visit(cast<ContOp>(Op));
     else if (isa<FuncOp>(Op))         return Visit(cast<FuncOp>(Op));
+    else if (isa<LiteralOp>(Op))      return Visit(cast<LiteralOp>(Op));
     else
       SetError("unhandled operation", Op);
   }
@@ -185,10 +203,6 @@ public:
     llvm_unreachable("TODO");
   }
 
-  void Visit(ContOp) {
-    llvm_unreachable("TODO");
-  }
-
   void Visit(ConsumerOp Op) {
     llvm_unreachable("TODO");
   }
@@ -219,12 +233,12 @@ public:
       unsigned I = 0;
       llvm::interleaveComma(EntryBlock.getArguments(), OS,
           [&](mlir::BlockArgument const& Arg) {
-            OS << SetLocalVar(Arg, "arg_", I);
+            OS << "auto&& " << SetLocalVal(Arg, "arg_", I);
             ++I;
           });
     }
 
-    OS << ") { ";
+    OS << ") {\n";
 
     // Print the body assuming a single block.
     for (mlir::Operation& Operation : EntryBlock)
@@ -233,14 +247,34 @@ public:
     OS << "}";
   }
 
+  void Visit(LiteralOp Op) {
+    // Save the expression with SetLocalVal.
+    mlir::Attribute Attr = Op.getValue();
+    if (auto IA = dyn_cast<mlir::IntegerAttr>(Attr);
+        IA &&
+        (IA.getType().isIndex() || IA.getType().isSignlessInteger())) {
+      SetLocalVal(Op.getResult(), llvm::Twine(IA.getInt()));
+    } else if (auto SA = dyn_cast<mlir::StringAttr>(Attr)) {
+      SetLocalVal(Op.getResult(), llvm::Twine(llvm::StringRef(SA)));
+    } else {
+      SetError("unknown literal type", Op);
+    }
+  }
+
   void Visit(GetOp Op) {
     OS << "decltype(auto) "
-       << SetLocalVar(Op.getResult())
-       << "nbdl::get("
-       << GetLocalVar(Op.getState())
-       << ", "
-       << GetLocalVar(Op.getKey())
-       << ");";
+       << SetLocalVal(Op.getResult())
+       << " = nbdl::get(";
+    WriteForwardedExpr(Op.getState());
+    OS << ", ";
+    WriteForwardedExpr(Op.getKey());
+    OS << ");\n";
+  }
+
+  void Visit(VisitOp Op) {
+    OS << GetLocalVal(Op.getFn()) << "(";
+    WriteForwardedExpr(Op.getArg());
+    OS << ");\n";
   }
 
   /************************************
