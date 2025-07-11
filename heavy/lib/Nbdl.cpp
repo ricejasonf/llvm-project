@@ -30,6 +30,7 @@ namespace heavy::nbdl_bind_var {
 heavy::ContextLocal current_nbdl_module;
 heavy::ExternFunction translate_cpp;
 heavy::ExternFunction build_match_params_impl;
+heavy::ExternFunction build_overload_impl;
 }
 
 namespace {
@@ -100,8 +101,7 @@ void build_match_params_impl(Context& C, ValueRefs Args) {
     heavy::Value Callback = C.getCapture(0);
     llvm::SmallVector<heavy::Value, 8> BlockArgs;
     assert(!FuncOp.getBody().empty() && "should have entry block");
-    mlir::Block& EntryBlock = FuncOp.getBody().front();
-    for (mlir::Value MVal : EntryBlock.getArguments()) {
+    for (mlir::Value MVal : FuncOp.getBody().getArguments()) {
       heavy::Value V = mlir_helper::createTagged(C,
           mlir_helper::kind::mlir_value, MVal);
       BlockArgs.push_back(V);
@@ -113,6 +113,48 @@ void build_match_params_impl(Context& C, ValueRefs Args) {
   // Call the thunk with a Builder at the entry point.
   Builder = mlir::OpBuilder(FuncOp.getBody());
   mlir_helper::with_builder_impl(C, Builder, Thunk);
+}
+
+// _callback_ takes a single argument is the block argument.
+// (%build_overload _loc_ _typename_ _callback_)
+void build_overload_impl(Context& C, ValueRefs Args) {
+  if (Args.size() != 3)
+    return C.RaiseError("invalid arity");
+
+  mlir::OpBuilder* Builder = mlir_helper::getCurrentBuilder(C);
+  if (!Builder)
+    return;
+
+  // Create the operation with an entry block with a single argument.
+  heavy::SourceLocation Loc = Args[0].getSourceLocation();
+  llvm::StringRef Typename = Args[1].getStringRef();
+  heavy::Value Callback = Args[2];
+
+  if (Typename.empty())
+    return C.RaiseError("expecting nonempty string-like object for typename");
+
+  mlir::Location MLoc = mlir::OpaqueLoc::get(Loc.getOpaqueEncoding(),
+                                             Builder->getContext());
+  auto OverloadOp = Builder->create<nbdl_gen::OverloadOp>(MLoc, Typename);
+  OverloadOp.getBody().emplaceBlock();
+  assert(OverloadOp.getBody().hasOneBlock() && "expecting a single block");
+
+  heavy::Value Thunk = C.CreateLambda(
+    [OverloadOp](Context& C, ValueRefs) mutable {
+      heavy::Value Callback = C.getCapture(0);
+      mlir::Region& Body = OverloadOp.getBody();
+      mlir::Location MLoc = OverloadOp.getLoc();
+      mlir::Type Type = mlir::OpBuilder(OverloadOp)
+        .getType<nbdl_gen::OpaqueType>();
+      mlir::BlockArgument BlockArg = Body.addArgument(Type, MLoc);
+      heavy::Value V = mlir_helper::createTagged(C,
+          mlir_helper::kind::mlir_value, mlir::Value(BlockArg));
+      C.Apply(Callback, V);
+    }, CaptureList{Callback});
+
+  // Call the thunk with a Builder at the entry point.
+  mlir::OpBuilder NewBuilder = mlir::OpBuilder(OverloadOp.getBody());
+  mlir_helper::with_builder_impl(C, NewBuilder, Thunk);
 }
 
 // Translate a nbdl dialect operation to C++.
@@ -164,6 +206,8 @@ void HEAVY_NBDL_INIT(heavy::Context& C) {
   heavy::nbdl_bind_var::translate_cpp = heavy::nbdl_bind::translate_cpp;
   heavy::nbdl_bind_var::build_match_params_impl
     = heavy::nbdl_bind::build_match_params_impl;
+  heavy::nbdl_bind_var::build_overload_impl
+    = heavy::nbdl_bind::build_overload_impl;
 }
 
 void HEAVY_NBDL_LOAD_MODULE(heavy::Context& C) {
@@ -172,6 +216,7 @@ void HEAVY_NBDL_LOAD_MODULE(heavy::Context& C) {
     {"current-nbdl-module", heavy::nbdl_bind_var::current_nbdl_module.get(C)},
     {"translate-cpp", heavy::nbdl_bind_var::translate_cpp},
     {"%build-match-params", heavy::nbdl_bind_var::build_match_params_impl},
+    {"%build-overload", heavy::nbdl_bind_var::build_overload_impl},
   });
 }
 }
