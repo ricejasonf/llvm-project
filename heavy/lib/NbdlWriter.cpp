@@ -136,10 +136,12 @@ public:
 
          if (isa<CreateStoreOp>(Op))  return Visit(cast<CreateStoreOp>(Op));
     else if (isa<StoreOp>(Op))        return Visit(cast<StoreOp>(Op));
+    else if (isa<ApplyOp>(Op))        return Visit(cast<ApplyOp>(Op));
     else if (isa<GetOp>(Op))          return Visit(cast<GetOp>(Op));
     else if (isa<VisitOp>(Op))        return Visit(cast<VisitOp>(Op));
     else if (isa<MatchOp>(Op))        return Visit(cast<MatchOp>(Op));
     else if (isa<OverloadOp>(Op))     return Visit(cast<OverloadOp>(Op));
+    else if (isa<MatchIfOp>(Op))      return Visit(cast<MatchIfOp>(Op));
     else if (isa<NoOp>(Op))           return Visit(cast<NoOp>(Op));
     else if (isa<VariantOp>(Op))      return Visit(cast<VariantOp>(Op));
     else if (isa<StoreComposeOp>(Op)) return Visit(cast<StoreComposeOp>(Op));
@@ -148,6 +150,14 @@ public:
     else if (isa<LiteralOp>(Op))      return Visit(cast<LiteralOp>(Op));
     else
       SetError("unhandled operation", Op);
+  }
+
+  void Visit(mlir::Region& R) {
+    if (!R.hasOneBlock())
+      return SetError("expecting a region with a single block",
+                      R.getParentOp());
+    for (mlir::Operation& Op : R.front())
+      Visit(&Op);
   }
 
   void Visit(CreateStoreOp Op) {
@@ -246,12 +256,7 @@ public:
     OS << ')';
 
     OS << "{\n";
-
-    // Print the body assuming a single block.
-    mlir::Block& EntryBlock = Body.front();
-    for (mlir::Operation& Operation : EntryBlock)
-      Visit(&Operation);
-
+    Visit(Body);
     OS << '}';
   }
 
@@ -277,7 +282,7 @@ public:
 
   void Visit(GetOp Op) {
     OS << "decltype(auto) "
-       << SetLocalVarName(Op.getResult())
+       << SetLocalVarName(Op.getResult(), "get_")
        << " = nbdl::get(";
     WriteForwardedExpr(Op.getState());
     OS << ',';
@@ -314,14 +319,45 @@ public:
     OS << "[&]";
     // Write parameters.
     OS << '(';
-    mlir::BlockArgument& Arg = Op.getBody().getArguments().front();
+    mlir::BlockArgument& Arg = Body.getArguments().front();
     OS << Op.getType() << ' ' << SetLocalVarName(Arg, "arg_");
     OS << ')';
     OS << "{\n";
-    for (mlir::Operation& BodyOp : Body.front()) {
-      Visit(&BodyOp);
-    }
+    Visit(Body);
     OS << '}';
+  }
+
+  void Visit(MatchIfOp Op) {
+    mlir::Region& Then = Op.getThenRegion();
+    mlir::Region& Else = Op.getElseRegion();
+    OS << "if (" << GetLocalVal(Op.getPred()) << '('
+       << GetLocalVal(Op.getInput()) << ")) {\n";
+    Visit(Then);
+
+    // Check if the the else region is a single MatchIfOp
+    // for pretty chaining.
+    OS << "} else ";
+    if (auto ChainedIfOp = dyn_cast<MatchIfOp>(Else.front().front())) {
+      Visit(ChainedIfOp);
+    } else {
+      OS << "{\n";
+      Visit(Op.getElseRegion());
+    }
+    OS << "}\n";
+  }
+
+  void Visit(ApplyOp Op) {
+    OS << "decltype(auto) "
+       << SetLocalVarName(Op.getResult(), "apply_")
+       << " = ";
+    // No forwarding stuff here
+    OS << GetLocalVal(Op.getFn());
+    OS << '(';
+    llvm::interleaveComma(Op.getArgs(), OS,
+        [&](mlir::Value Val) {
+          OS << GetLocalVal(Val);
+        });
+    OS << ");\n";
   }
 
   void Visit(NoOp Op) {

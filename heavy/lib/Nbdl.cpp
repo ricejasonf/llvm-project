@@ -31,6 +31,7 @@ heavy::ContextLocal current_nbdl_module;
 heavy::ExternFunction translate_cpp;
 heavy::ExternFunction build_match_params_impl;
 heavy::ExternFunction build_overload_impl;
+heavy::ExternFunction build_match_if_impl;
 }
 
 namespace {
@@ -157,6 +158,42 @@ void build_overload_impl(Context& C, ValueRefs Args) {
   mlir_helper::with_builder_impl(C, NewBuilder, Thunk);
 }
 
+void build_match_if_impl(Context& C, ValueRefs Args) {
+  if (Args.size() != 5)
+    return C.RaiseError("invalid arity");
+
+  mlir::OpBuilder* Builder = mlir_helper::getCurrentBuilder(C);
+  if (!Builder)
+    return;
+
+  // Create the operation with an entry block with a single argument.
+  heavy::SourceLocation Loc = Args[0].getSourceLocation();
+  mlir::Value Pred = mlir_helper::getTagged<mlir::Value>(C,
+      mlir_helper::kind::mlir_value, Args[1]);
+  mlir::Value Input = mlir_helper::getTagged<mlir::Value>(C,
+      mlir_helper::kind::mlir_value, Args[2]);
+  heavy::Value ThenThunk = Args[3];
+  heavy::Value ElseThunk = Args[4];
+
+  if (!Pred || !Input)
+    return C.RaiseError("expecting mlir.value");
+
+  mlir::Location MLoc = mlir::OpaqueLoc::get(Loc.getOpaqueEncoding(),
+                                             Builder->getContext());
+  auto MatchIfOp = Builder->create<nbdl_gen::MatchIfOp>(MLoc, Input, Pred);
+  MatchIfOp.getThenRegion().emplaceBlock();
+  MatchIfOp.getElseRegion().emplaceBlock();
+
+  C.PushCont([MatchIfOp](Context& C, ValueRefs Args) mutable {
+    heavy::Value ElseThunk = C.getCapture(0);
+    mlir::OpBuilder ElseBuilder(MatchIfOp.getElseRegion());
+    mlir_helper::with_builder_impl(C, ElseBuilder, ElseThunk);
+  }, CaptureList{ElseThunk});
+
+  mlir::OpBuilder ThenBuilder(MatchIfOp.getThenRegion());
+  mlir_helper::with_builder_impl(C, ThenBuilder, ThenThunk);
+}
+
 // Translate a nbdl dialect operation to C++.
 // (translate-cpp op port)
 // Currently the "port" has to be a tagged llvm::raw_ostream.
@@ -208,6 +245,8 @@ void HEAVY_NBDL_INIT(heavy::Context& C) {
     = heavy::nbdl_bind::build_match_params_impl;
   heavy::nbdl_bind_var::build_overload_impl
     = heavy::nbdl_bind::build_overload_impl;
+  heavy::nbdl_bind_var::build_match_if_impl
+    = heavy::nbdl_bind::build_match_if_impl;
 }
 
 void HEAVY_NBDL_LOAD_MODULE(heavy::Context& C) {
@@ -217,6 +256,7 @@ void HEAVY_NBDL_LOAD_MODULE(heavy::Context& C) {
     {"translate-cpp", heavy::nbdl_bind_var::translate_cpp},
     {"%build-match-params", heavy::nbdl_bind_var::build_match_params_impl},
     {"%build-overload", heavy::nbdl_bind_var::build_overload_impl},
+    {"%build-match-if", heavy::nbdl_bind_var::build_match_if_impl},
   });
 }
 }

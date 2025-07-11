@@ -196,7 +196,7 @@ def Nbdl_MatchIfOp : Nbdl_Op<"match_if", [Terminator]> {
     like an if/else statement.
   }];
 
-  let arguments = (ins Nbdl_Type:$obj, Nbdl_Opaque:$pred);
+  let arguments = (ins Nbdl_Type:$input, Nbdl_Opaque:$pred);
   let regions   = (region SizedRegion<1>:$thenRegion,
                           SizedRegion<1>:$elseRegion);
 }
@@ -277,9 +277,9 @@ def Nbdl_ApplyOp : Nbdl_Op<"apply", []> {
   let description = [{
     Apply a function.
   }];
-  let arguments = (ins TypeAttr:$fn,
+  let arguments = (ins Nbdl_Opaque:$fn,
                        Variadic<Nbdl_Type>:$args);
-  let results = (outs Nbdl_Variant:$result);
+  let results = (outs Nbdl_Opaque:$result);
 }
 
 def Nbdl_ConsumerOp : Nbdl_Op<"consumer", []> {
