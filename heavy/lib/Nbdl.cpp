@@ -168,9 +168,9 @@ void build_match_if_impl(Context& C, ValueRefs Args) {
 
   // Create the operation with an entry block with a single argument.
   heavy::SourceLocation Loc = Args[0].getSourceLocation();
-  mlir::Value Pred = mlir_helper::getTagged<mlir::Value>(C,
-      mlir_helper::kind::mlir_value, Args[1]);
   mlir::Value Input = mlir_helper::getTagged<mlir::Value>(C,
+      mlir_helper::kind::mlir_value, Args[1]);
+  mlir::Value Pred = mlir_helper::getTagged<mlir::Value>(C,
       mlir_helper::kind::mlir_value, Args[2]);
   heavy::Value ThenThunk = Args[3];
   heavy::Value ElseThunk = Args[4];
