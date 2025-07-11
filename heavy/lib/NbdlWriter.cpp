@@ -342,8 +342,8 @@ public:
     } else {
       OS << "{\n";
       Visit(Op.getElseRegion());
+      OS << "}\n";
     }
-    OS << "}\n";
   }
 
   void Visit(ApplyOp Op) {
