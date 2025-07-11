@@ -112,25 +112,6 @@ def Nbdl_KeyType : AnyTypeOf<[Nbdl_Opaque, Nbdl_Tag,
 def Nbdl_Type : AnyTypeOf<[Nbdl_Void, Nbdl_Empty, Nbdl_Opaque,
                            Nbdl_Store, Nbdl_State, Nbdl_Tag]>;
 
-def Nbdl_TagAttr : AttrDef<Nbdl_Dialect, "tag_attr"> {
-  let attrName = "nbdl.tag_attr";
-  let parameters = (ins StringRefParameter<>:$cppTypeName);
-}
-
-def Nbdl_TypenameAttr : AttrDef<Nbdl_Dialect, "typename_attr"> {
-  let attrName = "nbdl.typename_attr";
-  let parameters = (ins StringRefParameter<>:$cppTypeName);
-}
-
-def Nbdl_SymbolAttr : AttrDef<Nbdl_Dialect, "symbol_attr"> {
-  let attrName = "nbdl.symbol_attr";
-  let parameters = (ins StringRefParameter<>:$cppIdentifier);
-}
-
-def Nbdl_KeyAttr : AnyAttrOf<[Nbdl_TagAttr,
-                              Nbdl_TypenameAttr,
-                              Nbdl_SymbolAttr]>;
-
 class Nbdl_Op<string mnemonic, list<Trait> traits = []> :
     Op<Nbdl_Dialect, mnemonic, traits>;
 
@@ -142,7 +123,7 @@ def Nbdl_LiteralOp : Nbdl_Op<"literal", []> {
   }];
 
   let arguments = (ins AnyAttrOf<[I32Attr, StrAttr]>:$value);
-  let results   = (outs Nbdl_Tag:$result);
+  let results   = (outs Nbdl_Type:$result);
 }
 
 def Nbdl_GetOp : Nbdl_Op<"get", []> {
@@ -196,10 +177,17 @@ def Nbdl_OverloadOp : Nbdl_Op<"overload", []> {
     The body of the overload takes an argument that is the matched
     object and the rest of the arguments are the captures.
   }];
-  let arguments = (ins Nbdl_TypenameAttr:$typeName,
-                       Variadic<Nbdl_Type>:$captures);
+  let arguments = (ins StrAttr:$type);
   let results = (outs);
   let regions = (region SizedRegion<1>:$body);
+}
+
+def Nbdl_NoOp : Nbdl_Op<"noop", [Terminator]> {
+  let description = [{
+    NoOp is used primarily for match overloads that do nothing.
+  }];
+  let arguments = (ins);
+  let results = (outs);
 }
 
 def Nbdl_MatchIfOp : Nbdl_Op<"match_if", [Terminator]> {
@@ -218,7 +206,7 @@ def Nbdl_ConstexprOp : Nbdl_Op<"constexpr", []> {
     The result of a constant expression in C++.
   }];
   let arguments = (ins StrAttr:$expr);
-  let results = (outs Nbdl_Opaque:$result);
+  let results = (outs Nbdl_Type:$result);
 }
 
 def Nbdl_StoreComposeOp : Nbdl_Op<"store_compose", []> {

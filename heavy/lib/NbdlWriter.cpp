@@ -83,9 +83,9 @@ public:
     return Name;
   }
 
-  llvm::StringRef SetLocalVal(mlir::Value V, llvm::Twine NameTwine) {
+  llvm::StringRef SetLocalVal(mlir::Value V, llvm::Twine Twine) {
     llvm::SmallString<128> NameTemp;
-    NameTwine.toVector(NameTemp);
+    Twine.toVector(NameTemp);
     // Store the string to have a reliable llvm::StringRef.
     llvm::StringRef Name = NameTemp.str().copy(StringHeap);
     ValueMap.insert(V, Name);
@@ -93,14 +93,16 @@ public:
     return Name;
   }
 
-  llvm::StringRef SetLocalVal(mlir::Value V, llvm::StringRef Name,
-                              unsigned Num) {
-    return SetLocalVal(V, llvm::Twine(Name).concat(llvm::Twine(Num)));
+  // Use for variables names to suffix with a unique counter value.
+  llvm::StringRef SetLocalVarName(mlir::Value V, llvm::StringRef Name) {
+    return SetLocalVal(V,
+      llvm::Twine(Name).concat(
+          llvm::Twine(CurrentAnonVarCount++)));
   }
 
-  llvm::StringRef SetLocalVal(mlir::Value V) {
+  llvm::StringRef SetLocalVarName(mlir::Value V) {
     // Create anonymous name for variable.
-    return SetLocalVal(V, "anon_", CurrentAnonVarCount++);
+    return SetLocalVarName(V, "anon_");
   }
 
   void WriteForwardedExpr(mlir::Value V) {
@@ -119,6 +121,15 @@ public:
        << ")";
   }
 
+  void WriteParamList(llvm::ArrayRef<mlir::BlockArgument> Args) {
+    OS << '(';
+    llvm::interleaveComma(Args, OS,
+        [&](mlir::BlockArgument const& Arg) {
+          OS << "auto&& " << SetLocalVarName(Arg, "arg_");
+        });
+    OS << ')';
+  }
+
   void Visit(mlir::Operation* Op) {
     if (CheckError())
       return;
@@ -127,6 +138,9 @@ public:
     else if (isa<StoreOp>(Op))        return Visit(cast<StoreOp>(Op));
     else if (isa<GetOp>(Op))          return Visit(cast<GetOp>(Op));
     else if (isa<VisitOp>(Op))        return Visit(cast<VisitOp>(Op));
+    else if (isa<MatchOp>(Op))        return Visit(cast<MatchOp>(Op));
+    else if (isa<OverloadOp>(Op))     return Visit(cast<OverloadOp>(Op));
+    else if (isa<NoOp>(Op))           return Visit(cast<NoOp>(Op));
     else if (isa<VariantOp>(Op))      return Visit(cast<VariantOp>(Op));
     else if (isa<StoreComposeOp>(Op)) return Visit(cast<StoreComposeOp>(Op));
     else if (isa<ConstexprOp>(Op))    return Visit(cast<ConstexprOp>(Op));
@@ -199,10 +213,6 @@ public:
 #endif
   }
 
-  void Visit(ConstexprOp) {
-    llvm_unreachable("TODO");
-  }
-
   void Visit(ConsumerOp Op) {
     llvm_unreachable("TODO");
   }
@@ -220,35 +230,39 @@ public:
       VisitType(Op.getLoc(), FT.getResult(0));
 
     // Write the function name.
-    OS << ' ' << Name << '(';
+    OS << ' ' << Name;
 
-    mlir::Region& BodyRegion = Op.getBody();
-    if (BodyRegion.empty())
+    mlir::Region& Body = Op.getBody();
+    if (Body.empty())
       return SetError("empty function body", Op);
 
     ValueMapScope Scope(ValueMap);
-    mlir::Block& EntryBlock = BodyRegion.front();
-    // Write the parameter list.
-    {
-      unsigned I = 0;
-      llvm::interleaveComma(EntryBlock.getArguments(), OS,
-          [&](mlir::BlockArgument const& Arg) {
-            OS << "auto&& " << SetLocalVal(Arg, "arg_", I);
-            ++I;
-          });
-    }
+    // Write parameters.
+    OS << '(';
+    llvm::interleaveComma(Body.getArguments(), OS,
+        [&](mlir::BlockArgument const& Arg) {
+          OS << "auto&& " << SetLocalVarName(Arg, "arg_");
+        });
+    OS << ')';
 
-    OS << ") {\n";
+    OS << "{\n";
 
     // Print the body assuming a single block.
+    mlir::Block& EntryBlock = Body.front();
     for (mlir::Operation& Operation : EntryBlock)
       Visit(&Operation);
 
-    OS << "}";
+    OS << '}';
+  }
+
+  void Visit(ConstexprOp Op) {
+    llvm::StringRef Expr = Op.getExpr();
+    if (Expr.empty())
+      SetError("expecting expr", Op);
+    SetLocalVal(Op.getResult(), llvm::Twine(Expr));
   }
 
   void Visit(LiteralOp Op) {
-    // Save the expression with SetLocalVal.
     mlir::Attribute Attr = Op.getValue();
     if (auto IA = dyn_cast<mlir::IntegerAttr>(Attr);
         IA &&
@@ -263,18 +277,55 @@ public:
 
   void Visit(GetOp Op) {
     OS << "decltype(auto) "
-       << SetLocalVal(Op.getResult())
+       << SetLocalVarName(Op.getResult())
        << " = nbdl::get(";
     WriteForwardedExpr(Op.getState());
-    OS << ", ";
+    OS << ',';
     WriteForwardedExpr(Op.getKey());
     OS << ");\n";
   }
 
   void Visit(VisitOp Op) {
-    OS << GetLocalVal(Op.getFn()) << "(";
+    WriteForwardedExpr(Op.getFn());
+    OS << '(';
     WriteForwardedExpr(Op.getArg());
     OS << ");\n";
+  }
+
+  void Visit(MatchOp Op) {
+    OS << "nbdl::match(";
+    WriteForwardedExpr(Op.getStore());
+    OS << ", ";
+    WriteForwardedExpr(Op.getKey());
+    OS << ", ";
+    OS << "\nboost::hana::overload_linearly(";
+
+    auto& Ops = Op.getOverloads().front().getOperations();
+    llvm::interleave(Ops, OS,
+        [&](mlir::Operation const& OverloadOp) {
+          Visit(const_cast<mlir::Operation*>(&OverloadOp));
+        }, ",\n");
+
+    OS << "));\n";
+  }
+
+  void Visit(OverloadOp Op) {
+    mlir::Region& Body = Op.getBody();
+    OS << "[&]";
+    // Write parameters.
+    OS << '(';
+    mlir::BlockArgument& Arg = Op.getBody().getArguments().front();
+    OS << Op.getType() << ' ' << SetLocalVarName(Arg, "arg_");
+    OS << ')';
+    OS << "{\n";
+    for (mlir::Operation& BodyOp : Body.front()) {
+      Visit(&BodyOp);
+    }
+    OS << '}';
+  }
+
+  void Visit(NoOp Op) {
+    // Do nothing.
   }
 
   /************************************
