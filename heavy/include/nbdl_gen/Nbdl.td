@@ -18,6 +18,7 @@ def Nbdl_Dialect : Dialect {
   let useDefaultTypePrinterParser = 1;
 }
 
+// FIXME Maybe we should just use MLIR's NoneType for this.
 def Nbdl_Empty : TypeDef<Nbdl_Dialect, "Empty", []> {
   let mnemonic = "empty";
   let description = [{
@@ -52,7 +53,21 @@ class Nbdl_TypeBase<string name, string type_mnemonic,
 def Nbdl_Opaque : TypeDef<Nbdl_Dialect, "Opaque", []> {
   let mnemonic = "opaque";
   let description = [{
-    Represent an unknown C++ type.
+    Represent an placeholder C++ type (typically `auto&&`).
+    Values of this type imply an immediate construction.
+    That is, it represents a run-time value in the context
+    where it appears (e.g. an argument to a function).
+  }];
+}
+
+def Nbdl_Store : TypeDef<Nbdl_Dialect, "Store", []> {
+  let mnemonic = "store";
+  let description = [{
+    An Object of store type represents a member of our state graph.
+    Since a store object can exist as an inactive alternative
+    of a variant, it is not necessarily have an immediate
+    construction.  Hence, we require it to be semiregular.
+    (FIXME or just default constructible?)
   }];
 }
 
@@ -64,19 +79,11 @@ def Nbdl_Struct : Nbdl_TypeBase<"Struct", "struct"> {
     are accessed by their name.
   }];
 }
-*/
 
 def Nbdl_State : TypeDef<Nbdl_Dialect, "State", []> {
   let mnemonic = "state";
   let description = [{
     A type satisfying the nbdl::State concept
-  }];
-}
-
-def Nbdl_Store : TypeDef<Nbdl_Dialect, "Store", []> {
-  let mnemonic = "store";
-  let description = [{
-    A type satisfying the nbdl::Store concept
   }];
 }
 
@@ -86,6 +93,7 @@ def Nbdl_Variant : TypeDef<Nbdl_Dialect, "Variant", []> {
     A type satisfying the nbdl::Variant concept
   }];
 }
+*/
 
 def Nbdl_Tag : TypeDef<Nbdl_Dialect, "Tag", []> {
   let mnemonic = "tag";
@@ -95,12 +103,11 @@ def Nbdl_Tag : TypeDef<Nbdl_Dialect, "Tag", []> {
   }];
 }
 
-def Nbdl_Symbol : Nbdl_TypeBase<"Symbol", "symbol"> {
+def Nbdl_Symbol : TypeDef<Nbdl_Dialect, "Symbol"> {
+  let mnemonic = "symbol";
   let description = [{
     Represent a string that is a valid C++ identifier.
     The intended primary use case is to specify a member of a Struct.
-
-    FIXME using this?
   }];
 }
 
@@ -110,7 +117,7 @@ def Nbdl_KeyType : AnyTypeOf<[Nbdl_Opaque, Nbdl_Tag,
                               Nbdl_Symbol, NoneType]>;
 
 def Nbdl_Type : AnyTypeOf<[Nbdl_Void, Nbdl_Empty, Nbdl_Opaque,
-                           Nbdl_Store, Nbdl_State, Nbdl_Tag]>;
+                           Nbdl_Store, Nbdl_Tag]>;
 
 class Nbdl_Op<string mnemonic, list<Trait> traits = []> :
     Op<Nbdl_Dialect, mnemonic, traits>;
@@ -209,6 +216,15 @@ def Nbdl_ConstexprOp : Nbdl_Op<"constexpr", []> {
   let results = (outs Nbdl_Type:$result);
 }
 
+def Nbdl_MemberNameOp : Nbdl_Op<"member_name", []> {
+  let description = [{
+    Denote a member name as a value.
+  }];
+
+  let arguments = (ins StrAttr:$name);
+  let results = (outs Nbdl_Symbol:$result);
+}
+
 def Nbdl_StoreComposeOp : Nbdl_Op<"store_compose", []> {
   let description = [{
     Add a store $lhs as a member to another store $rhs using a key $key
@@ -231,7 +247,7 @@ def Nbdl_VariantOp : Nbdl_Op<"variant", []> {
     Create a sum type.
   }];
   let arguments = (ins Variadic<Nbdl_Type>:$args);
-  let results = (outs Nbdl_Variant:$result);
+  let results = (outs Nbdl_Type:$result);
 }
 
 def Nbdl_CreateStoreOp : Nbdl_Op<"create_store", [Symbol, IsolatedFromAbove]> {

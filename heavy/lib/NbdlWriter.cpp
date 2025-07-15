@@ -148,6 +148,7 @@ public:
     else if (isa<ConstexprOp>(Op))    return Visit(cast<ConstexprOp>(Op));
     else if (isa<FuncOp>(Op))         return Visit(cast<FuncOp>(Op));
     else if (isa<LiteralOp>(Op))      return Visit(cast<LiteralOp>(Op));
+    else if (isa<MemberNameOp>(Op))   return Visit(cast<MemberNameOp>(Op));
     else
       SetError("unhandled operation", Op);
   }
@@ -281,13 +282,21 @@ public:
   }
 
   void Visit(GetOp Op) {
-    OS << "decltype(auto) "
-       << SetLocalVarName(Op.getResult(), "get_")
-       << " = nbdl::get(";
-    WriteForwardedExpr(Op.getState());
-    OS << ',';
-    WriteForwardedExpr(Op.getKey());
-    OS << ");\n";
+    auto MemberNameOp = Op.getKey().getDefiningOp<nbdl_gen::MemberNameOp>();
+      OS << "decltype(auto) "
+         << SetLocalVarName(Op.getResult(), "get_")
+         << " = ";
+    if (MemberNameOp) {
+      WriteForwardedExpr(Op.getState());
+      OS << '.' << MemberNameOp.getName()
+         << ";\n";
+    } else {
+      OS << "nbdl::get(";
+      WriteForwardedExpr(Op.getState());
+      OS << ',';
+      WriteForwardedExpr(Op.getKey());
+      OS << ");\n";
+    }
   }
 
   void Visit(VisitOp Op) {
@@ -358,6 +367,13 @@ public:
           OS << GetLocalVal(Val);
         });
     OS << ");\n";
+  }
+
+  void Visit(MemberNameOp Op) {
+    // Member name is meaningless without the parent object
+    // so we print it in GetOp.
+    // We could implement in MatchOp, but it is a very
+    // unlikely use case.
   }
 
   void Visit(NoOp Op) {
