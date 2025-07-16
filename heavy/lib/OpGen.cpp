@@ -1023,6 +1023,8 @@ mlir::Value OpGen::VisitBinding(Binding* B) {
 }
 
 mlir::Value OpGen::HandleCall(Pair* P) {
+  if (IsLocalDefineAllowed)
+    FinishLocalDefines();
   heavy::SourceLocation Loc = P->getSourceLocation();
   mlir::Value Fn;
   llvm::SmallVector<mlir::Value, 16> Args;
