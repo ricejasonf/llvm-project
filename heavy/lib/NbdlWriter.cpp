@@ -45,7 +45,7 @@ public:
   heavy::SourceLocationEncoding* ErrLoc;
   llvm::raw_ostream& OS;
 
-  // Track number of members for CreateStoreOp
+  // Track number of members of context
   // to generate anonymous identifiers if needed.
   unsigned CurrentMemberCount = 0;
   unsigned CurrentAnonVarCount = 0;
@@ -134,7 +134,7 @@ public:
     if (CheckError())
       return;
 
-         if (isa<CreateStoreOp>(Op))  return Visit(cast<CreateStoreOp>(Op));
+         if (isa<ContextOp>(Op))      return Visit(cast<ContextOp>(Op));
     else if (isa<StoreOp>(Op))        return Visit(cast<StoreOp>(Op));
     else if (isa<ApplyOp>(Op))        return Visit(cast<ApplyOp>(Op));
     else if (isa<GetOp>(Op))          return Visit(cast<GetOp>(Op));
@@ -161,7 +161,7 @@ public:
       Visit(&Op);
   }
 
-  void Visit(CreateStoreOp Op) {
+  void Visit(ContextOp Op) {
     // Skip externally defined stores.
     if (Op.isExternal())
       return;
@@ -197,7 +197,7 @@ public:
 #if 0
     if (isTopLevel()) {
       // Add the RHS as a member.
-      assert(isa<nbdl_gen::CreateStoreOp>(Op.getParentOp()) &&
+      assert(isa<nbdl_gen::ContextOp>(Op.getParentOp()) &&
              "should be in context of creating a store");
 
       // Temporarily store anonymous member name if needed.
@@ -385,8 +385,8 @@ public:
    ************************************/
 
   void VisitType(mlir::Operation* Op) {
-         if (isa<CreateStoreOp>(Op))
-           return VisitType(cast<CreateStoreOp>(Op));
+         if (isa<ContextOp>(Op))
+           return VisitType(cast<ContextOp>(Op));
     else if (isa<StoreOp>(Op))    return VisitType(cast<StoreOp>(Op));
     else if (isa<VariantOp>(Op))      return VisitType(cast<VariantOp>(Op));
     else if (isa<StoreComposeOp>(Op))
@@ -396,7 +396,7 @@ public:
       SetError("unhandled operation (VisitType)", Op);
   }
 
-  void VisitType(CreateStoreOp Op) {
+  void VisitType(ContextOp Op) {
     OS << Op.getName();
   }
 
@@ -415,6 +415,8 @@ public:
   }
 
   void VisitType(StoreComposeOp Op) {
+    llvm_unreachable("TODO");
+#if 0
     OS << "nbdl::store_composite<";
 
     // Key
@@ -427,6 +429,7 @@ public:
     OS << ", ";
     VisitType(Op.getLoc(), Op.getLhs());
     OS << ">";
+#endif
   }
 
   void VisitType(ConstexprOp Op) {
