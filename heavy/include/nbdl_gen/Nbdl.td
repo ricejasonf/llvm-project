@@ -18,7 +18,6 @@ def Nbdl_Dialect : Dialect {
   let useDefaultTypePrinterParser = 1;
 }
 
-// FIXME Maybe we should just use MLIR's NoneType for this.
 def Nbdl_Empty : TypeDef<Nbdl_Dialect, "Empty", []> {
   let mnemonic = "empty";
   let description = [{
@@ -114,7 +113,7 @@ def Nbdl_Symbol : TypeDef<Nbdl_Dialect, "Symbol"> {
 // Keys are optional, but we are using variadic arguments
 // so we resort to using this sum type.
 def Nbdl_KeyType : AnyTypeOf<[Nbdl_Opaque, Nbdl_Tag,
-                              Nbdl_Symbol, NoneType]>;
+                              Nbdl_Symbol, Nbdl_Empty]>;
 
 def Nbdl_Type : AnyTypeOf<[Nbdl_Void, Nbdl_Empty, Nbdl_Opaque,
                            Nbdl_Store, Nbdl_Tag]>;
@@ -236,7 +235,7 @@ def Nbdl_StoreComposeOp : Nbdl_Op<"store_compose", []> {
   }];
 
   let arguments = (ins
-    TypeAttr:$key,
+    Nbdl_KeyType:$key,
     Nbdl_Type:$lhs,
     Nbdl_Type:$rhs);
   let results = (outs Nbdl_Type:$result);
@@ -250,7 +249,7 @@ def Nbdl_VariantOp : Nbdl_Op<"variant", []> {
   let results = (outs Nbdl_Type:$result);
 }
 
-def Nbdl_CreateStoreOp : Nbdl_Op<"create_store", [Symbol, IsolatedFromAbove]> {
+def Nbdl_ContextOp : Nbdl_Op<"context", [Symbol, IsolatedFromAbove]> {
   let description = [{
     Define a store object, and expose its interface (type) to the user.
 
@@ -270,9 +269,16 @@ def Nbdl_CreateStoreOp : Nbdl_Op<"create_store", [Symbol, IsolatedFromAbove]> {
   }];
 
   let regions = (region AnyRegion:$body);
-  let arguments = (ins
-    FlatSymbolRefAttr:$name,
-    OptionalAttr<DictArrayAttr>:$cnstrArgs);
+  let arguments = (ins StrAttr:$sym_name);
+  let results = (outs);
+}
+
+def Nbdl_ContOp : Nbdl_Op<"cont", [Terminator]> {
+  let description = [{
+    The terminator we need.
+  }];
+
+  let arguments = (ins Nbdl_Type:$arg);
   let results = (outs);
 }
 
@@ -287,6 +293,15 @@ def Nbdl_StoreOp : Nbdl_Op<"store", []> {
     FlatSymbolRefAttr:$name,
     Variadic<AnyType>:$args);
   let results = (outs Nbdl_Type:$result);
+}
+
+def Nbdl_EmptyOp : Nbdl_Op<"empty", []> {
+  let description = [{
+    An operation that produces an object of the empty type.
+  }];
+
+  let arguments = (ins);
+  let results = (outs Nbdl_Empty:$result);
 }
 
 def Nbdl_ApplyOp : Nbdl_Op<"apply", []> {

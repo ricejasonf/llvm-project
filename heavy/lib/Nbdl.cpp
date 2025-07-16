@@ -32,6 +32,7 @@ heavy::ExternFunction translate_cpp;
 heavy::ExternFunction build_match_params_impl;
 heavy::ExternFunction build_overload_impl;
 heavy::ExternFunction build_match_if_impl;
+heavy::ExternFunction build_context_impl;
 }
 
 namespace {
@@ -226,7 +227,63 @@ void translate_cpp(Context& C, ValueRefs Args) {
   }
   C.Cont();
 }
+
+void build_context_impl(Context& C, ValueRefs Args) {
+  if (Args.size() != 3)
+    return C.RaiseError("invalid arity");
+
+  std::optional<mlir::OpBuilder> BuilderOpt = getModuleBuilder(C);
+  if (!BuilderOpt)
+    return;
+  mlir::OpBuilder Builder = BuilderOpt.value();
+
+  // This part is exactly like build_match_params_impl
+  heavy::SourceLocation Loc = Args[0].getSourceLocation();
+  // Require a heavy::Symbol so it has a source location.
+  heavy::Symbol* NameSym = dyn_cast<heavy::Symbol>(Args[0]);
+  llvm::StringRef Name = NameSym->getStringRef();
+  heavy::Value NumParamsVal = Args[1];
+  heavy::Value Callback = Args[2];
+
+  int32_t NumParams = isa<heavy::Int>(NumParamsVal)
+      ? int32_t(cast<heavy::Int>(NumParamsVal))
+      : int32_t(-1);
+
+  if (NumParams < 0)
+    return C.RaiseError("expecting positive integer for num_params");
+  if (!NameSym || Name.empty())
+    return C.RaiseError("expecting function name (symbol literal)");
+
+  mlir::Location MLoc = mlir::OpaqueLoc::get(Loc.getOpaqueEncoding(),
+                                             Builder.getContext());
+  // Create the ContextOp.
+  auto ContextOp = Builder.create<nbdl_gen::ContextOp>(MLoc, Name);
+  mlir::Block& EntryBlock = ContextOp.getBody().emplaceBlock();
+
+  // Create the arguments.
+  auto OpaqueTy = Builder.getType<nbdl_gen::OpaqueType>();
+  for (int32_t i = 0; i < NumParams; i++)
+    EntryBlock.addArgument(OpaqueTy, MLoc);
+
+  heavy::Value Thunk = C.CreateLambda([ContextOp](Context& C,
+                                                  ValueRefs) mutable {
+    heavy::Value Callback = C.getCapture(0);
+    llvm::SmallVector<heavy::Value, 8> BlockArgs;
+    assert(!ContextOp.getBody().empty() && "should have entry block");
+    for (mlir::Value MVal : ContextOp.getBody().getArguments()) {
+      heavy::Value V = mlir_helper::createTagged(C,
+          mlir_helper::kind::mlir_value, MVal);
+      BlockArgs.push_back(V);
+    }
+
+    C.Apply(Callback, BlockArgs);
+  }, CaptureList{Callback});
+
+  // Call the thunk with a Builder at the entry point.
+  Builder = mlir::OpBuilder(ContextOp.getBody());
+  mlir_helper::with_builder_impl(C, Builder, Thunk);
 }
+} //  end namespace heavy::nbdl_bind
 
 extern "C" {
 // initialize the module for run-time independent of the compiler
@@ -247,6 +304,8 @@ void HEAVY_NBDL_INIT(heavy::Context& C) {
     = heavy::nbdl_bind::build_overload_impl;
   heavy::nbdl_bind_var::build_match_if_impl
     = heavy::nbdl_bind::build_match_if_impl;
+  heavy::nbdl_bind_var::build_context_impl
+    = heavy::nbdl_bind::build_context_impl;
 }
 
 void HEAVY_NBDL_LOAD_MODULE(heavy::Context& C) {
@@ -257,6 +316,7 @@ void HEAVY_NBDL_LOAD_MODULE(heavy::Context& C) {
     {"%build-match-params", heavy::nbdl_bind_var::build_match_params_impl},
     {"%build-overload", heavy::nbdl_bind_var::build_overload_impl},
     {"%build-match-if", heavy::nbdl_bind_var::build_match_if_impl},
+    {"%build-context", heavy::nbdl_bind_var::build_context_impl},
   });
 }
 }
