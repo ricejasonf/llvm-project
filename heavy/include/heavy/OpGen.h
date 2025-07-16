@@ -44,6 +44,7 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
                                             mlir::Value>;
   using BindingScope = typename BindingScopeTable::ScopeTy;
 
+  struct LambdaScope;
   struct LambdaScopeNode {
     mlir::Operation* Op; // The function of the continuation.
     mlir::Operation* CallOp = nullptr;  // The call to insert PushCont before.
@@ -58,41 +59,6 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
         Captures(),
         BindingScope_(Table)
     { }
-  };
-
-  // LambdaScope - RAII object that pushes an operation that is
-  //               FunctionLike to the scope stack along with a
-  //               BindingScope where we can insert stack local
-  //               values resulting from operations that load from
-  //               a global or variable captured by a closure.
-  //
-  //               Note that BindingScope is still used for
-  //               non-isolated scopes (e.g. `let` syntax).
-  struct LambdaScope {
-    OpGen& O;
-    LambdaScopeNode& Node;
-
-    LambdaScope(OpGen& O, mlir::Operation* Op)
-      : O(O),
-        Node((O.LambdaScopes.emplace_back(Op, /*CallOp*/nullptr,
-                                          O.BindingTable),
-              O.LambdaScopes.back()))
-    { }
-
-    ~LambdaScope() {
-      // pop all intermediate continuation scopes
-      // and then our own lambda scope
-      while (O.LambdaScopes.size() > 0) {
-        mlir::Operation* CurOp = O.LambdaScopes.back().Op;
-        if (CurOp == Node.Op) {
-          O.LambdaScopes.pop_back();
-          return;
-        } else {
-          O.PopContinuationScope();
-        }
-      }
-      llvm_unreachable("scope should be on stack");
-    }
   };
 
   // Continuation scopes get popped by their containing

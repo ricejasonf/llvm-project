@@ -30,6 +30,40 @@
 #include <memory>
 
 using namespace heavy;
+// LambdaScope - RAII object that pushes an operation that is
+//               FunctionLike to the scope stack along with a
+//               BindingScope where we can insert stack local
+//               values resulting from operations that load from
+//               a global or variable captured by a closure.
+//
+//               Note that BindingScope is still used for
+//               non-isolated scopes (e.g. `let` syntax).
+struct OpGen::LambdaScope {
+  OpGen& O;
+  LambdaScopeNode& Node;
+
+  LambdaScope(OpGen& O, mlir::Operation* Op)
+    : O(O),
+      Node((O.LambdaScopes.emplace_back(Op, /*CallOp*/nullptr,
+                                        O.BindingTable),
+            O.LambdaScopes.back()))
+  { }
+
+  ~LambdaScope() {
+    // pop all intermediate continuation scopes
+    // and then our own lambda scope
+    while (O.LambdaScopes.size() > 0) {
+      mlir::Operation* CurOp = O.LambdaScopes.back().Op;
+      if (CurOp == Node.Op) {
+        O.LambdaScopes.pop_back();
+        return;
+      } else {
+        O.PopContinuationScope();
+      }
+    }
+    llvm_unreachable("scope should be on stack");
+  }
+};
 
 OpGen::OpGen(heavy::Context& C, heavy::Symbol* ModulePrefix)
   : Context(C),
@@ -768,12 +802,6 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
   // scope information on top of it
   Environment* Env = cast<Environment>(Context.EnvStack);
 
-#if 0 // FIXME Values should report mutability properly
-  if (Env->isImmutable()) {
-    return SetError("define used in immutable environment", OrigCall);
-  }
-#endif
-
   EnvEntry Entry = Env->Lookup(Context, S);
   if (Entry.Value && Entry.MangledName) {
     if (Mangler::isExternalVariable(getModulePrefix(),
@@ -783,23 +811,22 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
 
   // If the name already exists in the current module
   // then it behaves like `set!`
-  if (Binding* B = dyn_cast_or_null<Binding>(Entry.Value)) {
-    assert(Entry.MangledName && "global should have mangled name");
+  //auto* Binding = dyn_cast_or_null<heavy::Binding>(Entry.Value);
+  if (Entry.MangledName) {
+    llvm::StringRef MangledName = Entry.MangledName->getStringRef();
     TailPosScope TPS(*this);
     IsTailPos = false;
     mlir::Value Init = VisitDefineArgs(DefineArgs);
-    // FIXME Why do we localize a value for a top level define?
-    //mlir::Value BVal = LocalizeValue(BindingTable.lookup(B), B);
-    mlir::Value BVal = createGlobal(B->getSourceLocation(),
-                                    Entry.MangledName->getView());
-    assert(BVal && "expecting BindingOp for Binding");
-    return create<SetOp>(DefineLoc, BVal, Init);
+    mlir::Value LocalV = create<LoadGlobalOp>(DefineLoc, MangledName);
+    return create<SetOp>(DefineLoc, LocalV, Init);
   }
 
   heavy::Mangler Mangler(Context);
   std::string MangledName = Mangler.mangleVariable(getModulePrefix(), S);
   if (MangledName.empty())
     return Error();
+  // It is possible someone used a variable name not in scope
+  // so we created a global and they are defining it now.
   auto GlobalOp = dyn_cast_or_null<heavy::GlobalOp>(
       LookupSymbol(MangledName));
   if (GlobalOp) {
@@ -824,7 +851,7 @@ mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
     }
   }
 
-  return GlobalOp;
+  return mlir::Value();
 }
 
 mlir::Value OpGen::createIf(SourceLocation Loc, Value Cond, Value Then,
@@ -898,13 +925,15 @@ mlir::Value OpGen::createSet(SourceLocation Loc, Value LHS,
 mlir::Value OpGen::VisitDefineArgs(Value Args) {
   Pair* P = cast<Pair>(Args);
   if (Pair* LambdaSpec = dyn_cast<Pair>(P->Car)) {
-    // we already checked the name
+    // We already checked the name.
     Symbol* S = cast<Symbol>(LambdaSpec->Car);
     Value Formals = LambdaSpec->Cdr;
     Value Body = P->Cdr;
+    llvm::StringRef Name = isTopLevel() ? S->getStringRef()
+                                        : llvm::StringRef();
     return createLambda(Formals, Body,
                         S->getSourceLocation(),
-                        S->getVal());
+                        Name);
   }
   if (isa<Symbol>(P->Car) && isa<Pair>(P->Cdr)) {
     return Visit(cast<Pair>(P->Cdr)->Car);
