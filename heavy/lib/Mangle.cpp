@@ -199,7 +199,8 @@ bool Mangler::isExternalVariable(llvm::StringRef ModulePrefix,
   if (!VarName.starts_with(ModulePrefix))
     return false;
   llvm::StringRef Result = parseModulePrefix(VarName);
-  return Result == ModulePrefix;
+  // VarName is external if it does NOT have the same prefix.
+  return Result != ModulePrefix;
 }
 
 namespace {
