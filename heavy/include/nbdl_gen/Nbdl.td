@@ -70,7 +70,7 @@ def Nbdl_Store : TypeDef<Nbdl_Dialect, "Store", []> {
   }];
 }
 
-/* FIXME Should this have member information?
+/* FIXME Types should only be based on corresponding concepts in nbdl.
 def Nbdl_Struct : Nbdl_TypeBase<"Struct", "struct"> {
   let summary = "C++ semiregular aggregate type";
   let description = [{
@@ -179,7 +179,7 @@ def Nbdl_MatchOp : Nbdl_Op<"match", [Terminator, NoTerminator]> {
 def Nbdl_OverloadOp : Nbdl_Op<"overload", []> {
   let description = [{
     In the region of a MatchOp we specify a function overload of the
-    given Nbdl_TypenameAttr using OverloadOp.
+    given typename using OverloadOp.
     The body of the overload takes an argument that is the matched
     object and the rest of the arguments are the captures.
   }];
@@ -226,7 +226,7 @@ def Nbdl_MemberNameOp : Nbdl_Op<"member_name", []> {
 
 def Nbdl_StoreComposeOp : Nbdl_Op<"store_compose", []> {
   let description = [{
-    Add a store $lhs as a member to another store $rhs using a key $key
+    Add a value $lhs as a member to another store $rhs using a key $key
     to access the member. The type $key will shadow any key of the same
     type in $rhs (ie values are not considered.)
 
@@ -263,14 +263,22 @@ def Nbdl_ContextOp : Nbdl_Op<"context", [Symbol, IsolatedFromAbove]> {
     created type is a Tag.
   }];
 
-  // Copying the approach used for scheme globals
-  let extraClassDeclaration = [{
-    bool isExternal() { return getBody().empty(); }
-  }];
-
   let regions = (region AnyRegion:$body);
   let arguments = (ins StrAttr:$sym_name);
   let results = (outs);
+  let extraClassDeclaration = [{
+    bool isExternal() { return getBody().empty(); }
+
+    // Get the fully qualified name.
+    // This is needed for defining template specializations.
+    llvm::StringRef getFullName() { return getSymName(); }
+
+    // Get the unqualified name.
+    llvm::StringRef getName() {
+      llvm::StringRef SymName = getSymName();
+      return SymName.take_back(SymName.rfind(':'));
+    }
+  }];
 }
 
 def Nbdl_ContOp : Nbdl_Op<"cont", [Terminator]> {
