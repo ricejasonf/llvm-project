@@ -126,6 +126,17 @@ void create_op_impl(Context& C, ValueRefs Args) {
 
   // operands
   for (heavy::Value V : Operands->getElements()) {
+    // FIXME
+    // Implicitly unwrapping lists here because
+    // unquote-splicing is not implemented.
+    if (isa<heavy::Pair, heavy::Empty>(V)) {
+      for (heavy::Value V2 : V) {
+        auto MVal = getTagged<mlir::Value>(C, kind::mlir_value, V2);
+        if (!MVal)
+          return C.RaiseError("expecting mlir.value", V2);
+        OpState.operands.push_back(MVal);
+      }
+    }
     auto MVal = getTagged<mlir::Value>(C, kind::mlir_value, V);
     if (!MVal)
       return C.RaiseError("expecting mlir.value", V);
