@@ -17,8 +17,8 @@ add_heavy_library(heavy
   SourceFileStorage.cpp
   SourceManager.cpp
   Nbdl.cpp
-  NbdlDialect.cpp
-  NbdlWriter.cpp
+  Nbdl/NbdlDialect.cpp
+  Nbdl/NbdlWriter.cpp
   # TODO Do not use Clangs CharInfo.
   ${CLANG_LIB_DIR}/Basic/CharInfo.cpp
 
