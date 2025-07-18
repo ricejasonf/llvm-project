@@ -2,7 +2,6 @@
 (import (heavy base))
 
 ; CHECK: (1 2 "yo")
-; COM:CHECK: (1 2 . "yo")
 (write (list 1 2 "yo"))(newline)
 
 (define nums (list 1 2 3))
@@ -34,33 +33,48 @@
 (write nums)(newline)
 
 ;; List Formals
-; CHECK-NEXT #t
+; CHECK-NEXT: #t
 (write
   ((lambda args
      (null? args))))
 (newline)
 
-; CHECK-NEXT (1 2 4 5 6)
+; CHECK-NEXT: (1 2 4 5 6)
 (write
   ((lambda args
      args)
    1 2 4 5 6))
 (newline)
 
-; CHECK-NEXT (foo bar 4 5 6)
+; CHECK-NEXT: #(1 ())
 (write
-  ((lambda (foo . bar)
-     (append foo bar))
-   '(foo bar) 4 5 6))
+  ((lambda (arg . args)
+     #(arg args))
+   1))
 (newline)
-; CHECK-NEXT (foo bar 4 5 6)
+
+; CHECK-NEXT: #(1 (2))
+(write
+  ((lambda (arg . args)
+     #(arg args))
+   1 2))
+(newline)
+
+; CHECK-NEXT: (foo bar 4 5 6)
 (write
   ((lambda (foo . bar)
      (append foo bar))
    '(foo bar) 4 5 6))
 (newline)
 
-; CHECK-NEXT (foo bar 4 5 6)
+; CHECK-NEXT: (foo bar 4 5 6)
+(write
+  ((lambda (foo . bar)
+     (append foo bar))
+   '(foo bar) 4 5 6))
+(newline)
+
+; CHECK-NEXT: (foo bar 4 5 6)
 (write
   ((lambda (foo bar . baz)
      (append foo (list bar) baz))
