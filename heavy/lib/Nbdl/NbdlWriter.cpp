@@ -124,20 +124,50 @@ public:
     return SetLocalVarName(V, "anon_");
   }
 
-  void WriteForwardedExpr(mlir::Value V) {
-    llvm::StringRef Expr = GetLocalVal(V);
+  /************************************
+   *********** Expr Printing **********
+   ************************************/
 
+  void WriteExpr(mlir::Value V, bool IsFwd = false) {
     // We do not need to forward literals and junk.
-    if (mlir::Operation* Op = V.getDefiningOp()) {
-      if (isa<LiteralOp, ConstexprOp>(Op)) {
+    if (auto Op = V.getDefiningOp<LiteralOp>()) {
+      WriteExpr(Op);
+    } else if (auto Op = V.getDefiningOp<ConstexprOp>()) {
+      WriteExpr(Op);
+    } else {
+      llvm::StringRef Expr = GetLocalVal(V);
+      if (IsFwd) {
+        OS << "static_cast<decltype(" << Expr << ")>("
+           << Expr
+           << ")";
+      } else {
         OS << Expr;
-        return;
       }
     }
+  }
 
-    OS << "static_cast<decltype(" << Expr << ")>("
-       << Expr
-       << ")";
+  void WriteForwardedExpr(mlir::Value V) {
+    WriteExpr(V, /*IsFwd=*/true);
+  }
+
+  void WriteExpr(ConstexprOp Op) {
+    llvm::StringRef Expr = Op.getExpr();
+    if (Expr.empty())
+      SetError("expecting expr", Op);
+    OS << Expr;
+  }
+
+  void WriteExpr(LiteralOp Op) {
+    mlir::Attribute Attr = Op.getValue();
+    if (auto IA = dyn_cast<mlir::IntegerAttr>(Attr);
+        IA &&
+        (IA.getType().isIndex() || IA.getType().isSignlessInteger())) {
+      OS << IA.getInt();
+    } else if (auto SA = dyn_cast<mlir::StringAttr>(Attr)) {
+      OS << llvm::StringRef(SA);
+    } else {
+      SetError("unknown literal type", Op);
+    }
   }
 
   /************************************
@@ -272,13 +302,16 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
   }
 
   void Visit(ConstexprOp Op) {
+#if 0
     llvm::StringRef Expr = Op.getExpr();
     if (Expr.empty())
       SetError("expecting expr", Op);
     SetLocalVal(Op.getResult(), llvm::Twine(Expr));
+#endif
   }
 
   void Visit(LiteralOp Op) {
+#if 0
     mlir::Attribute Attr = Op.getValue();
     if (auto IA = dyn_cast<mlir::IntegerAttr>(Attr);
         IA &&
@@ -289,6 +322,7 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
     } else {
       SetError("unknown literal type", Op);
     }
+#endif
   }
 
   void Visit(GetOp Op) {
@@ -349,8 +383,11 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
   void Visit(MatchIfOp Op) {
     mlir::Region& Then = Op.getThenRegion();
     mlir::Region& Else = Op.getElseRegion();
-    OS << "if (" << GetLocalVal(Op.getPred()) << '('
-       << GetLocalVal(Op.getInput()) << ")) {\n";
+    OS << "if (";
+    WriteExpr(Op.getPred());
+    OS << '(';
+    WriteExpr(Op.getInput());
+    OS << ")) {\n";
     VisitRegion(Then);
 
     // Check if the the else region is a single MatchIfOp
@@ -370,11 +407,11 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
        << SetLocalVarName(Op.getResult(), "apply_")
        << " = ";
     // No forwarding stuff here
-    OS << GetLocalVal(Op.getFn());
+    WriteExpr(Op.getFn());
     OS << '(';
     llvm::interleaveComma(Op.getArgs(), OS,
         [&](mlir::Value Val) {
-          OS << GetLocalVal(Val);
+          WriteExpr(Val);
         });
     OS << ");\n";
   }

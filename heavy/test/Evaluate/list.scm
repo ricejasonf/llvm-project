@@ -53,6 +53,13 @@
    1))
 (newline)
 
+; CHECK-NEXT: #(1 2 ())
+(write
+  ((lambda (arg1 arg2 . args)
+     #(arg1 arg2 ()))
+   1 2))
+(newline)
+
 ; CHECK-NEXT: #(1 (2))
 (write
   ((lambda (arg . args)
