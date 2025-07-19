@@ -136,6 +136,7 @@ void create_op_impl(Context& C, ValueRefs Args) {
           return C.RaiseError("expecting mlir.value", V2);
         OpState.operands.push_back(MVal);
       }
+      break;
     }
     auto MVal = getTagged<mlir::Value>(C, kind::mlir_value, V);
     if (!MVal)
