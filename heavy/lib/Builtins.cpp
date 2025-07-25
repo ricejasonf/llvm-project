@@ -51,6 +51,7 @@ heavy::ExternFunction mul;
 heavy::ExternFunction gt;
 heavy::ExternFunction lt;
 heavy::ExternFunction list;
+heavy::ExternFunction length;
 heavy::ExternFunction cons;
 heavy::ExternFunction car;
 heavy::ExternFunction cdr;
@@ -577,6 +578,31 @@ void list(Context& C, ValueRefs Args) {
   C.Cont(C.CreateList(Args));
 }
 
+void length(Context& C, ValueRefs Args) {
+  if (Args.size() != 1)
+    return C.RaiseError("invalid arity");
+
+  Value Cur = Args[0];
+  Value CurFast = Cur;
+  int32_t Count = 0;
+  while (!isa<Empty>(Cur)) {
+    Pair* P1 = dyn_cast<Pair>(Cur);
+    Pair* P2 = dyn_cast_or_null<Pair>(CurFast);
+    if (!P1)
+      return C.RaiseError("expecting a list");
+
+    Cur = P1->Cdr;
+    CurFast = P2 ? P2->Cdr.cdr() : nullptr;
+
+    if (Cur == CurFast)
+      return C.RaiseError("cycle detected");
+
+    ++Count;
+  }
+
+  return C.Cont(Int{Count});
+}
+
 void cons(Context& C, ValueRefs Args) {
   if (Args.size() != 2)
     return C.RaiseError("invalid arity");
@@ -842,6 +868,7 @@ void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(gt)      = heavy::base::gt;
   HEAVY_BASE_VAR(lt)      = heavy::base::lt;
   HEAVY_BASE_VAR(list)    = heavy::base::list;
+  HEAVY_BASE_VAR(length)  = heavy::base::length;
   HEAVY_BASE_VAR(cons)    = heavy::base::cons;
   HEAVY_BASE_VAR(car)     = heavy::base::car;
   HEAVY_BASE_VAR(cdr)     = heavy::base::cdr;
@@ -918,6 +945,7 @@ void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {">",       HEAVY_BASE_VAR(gt)},
     {"<",       HEAVY_BASE_VAR(lt)},
     {"list",    HEAVY_BASE_VAR(list)},
+    {"length",  HEAVY_BASE_VAR(length)},
     {"cons",    HEAVY_BASE_VAR(cons)},
     {"car",     HEAVY_BASE_VAR(car)},
     {"cdr",     HEAVY_BASE_VAR(cdr)},

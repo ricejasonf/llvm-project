@@ -87,3 +87,11 @@
      (append foo (list bar) baz))
    '(foo bar) 4 5 6))
 (newline)
+
+; CHECK-NEXT: (0 1 2 3 4)
+(write
+  (list (length '())
+        (length '(9))
+        (length '(9 42))
+        (length '(9 (foo bar) 42))
+        (length '((foo bar) 42 9 moo))))
