@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 //
 //  This file implements the Lexer
+//  Some comments are excerpted from R7RS.
 //
 //===----------------------------------------------------------------------===//
 
@@ -40,22 +41,48 @@ bool isInitialChar(char c) {
   }
 }
 
-bool isSignSubsequent(char c, char next_c) {
-  bool IsSignSub1 = isInitialChar(c) || c == '+' || c == '-' || c == '@';
-  if (Lexer::isDelimiter(c) || IsSignSub1) {
-    return true;
-  } else if (c == '.') {
-    // <dot-subsequent>
-    c = next_c;
-    return isInitialChar(c) || c == '+' || c == '-' || c == '@' || c == '.';
-  }
-  return false;
+// 〈digit〉 −→ 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
+bool isDigit(char c) {
+  return c >= '0' && c <= '9';
 }
 
-// InitChar - The '+', '-' or '.'
+// 〈subsequent〉 −→ 〈initial〉 | 〈digit〉
+//    | 〈special subsequent〉
+// 〈special subsequent〉 −→ 〈explicit sign〉 | . | @
+bool isSubsequent(char c) {
+  return isInitialChar(c) || isDigit(c) ||
+         c == '+' || c == '-' || c == '.' ||
+         c == '@';
+}
+
+bool isExplicitSign(char c) {
+  return c == '+' || c == '-';
+}
+
+// 〈sign subsequent〉 −→ 〈initial〉 | 〈explicit sign〉 | @
+bool isSignSubsequent(char c) {
+  return isInitialChar(c) || isExplicitSign(c) || c == '@';
+}
+
+// 〈dot subsequent〉 −→ 〈sign subsequent〉 | .
+bool isDotSubsequent(char c) {
+  return isSignSubsequent(c) || c == '.';
+}
+
 bool isPeculiarIdentifierPrefix(char InitChar, char const* CurPtr) {
+  // InitChar - The '+', '-' or '.'
   char Char = *CurPtr;
-  char NextChar = *(CurPtr + 1);
+  char NextChar;
+  char NextNextChar;
+  if (Char != '\0')
+    NextChar = *(CurPtr + 1);
+  if (NextChar != '\0')
+    NextNextChar = *(CurPtr + 2);
+
+
+  // Note that +i, -i and 〈infnan〉 below are exceptions to the
+  // 〈peculiar identiﬁer〉 rule; they are parsed as numbers, not
+  // identiﬁers.
   if (InitChar == '+' || InitChar == '-') {
     if (Char == 'i' || Char == 'n') {
       // Check for infnan and complex number.
@@ -66,12 +93,20 @@ bool isPeculiarIdentifierPrefix(char InitChar, char const* CurPtr) {
           Rest.starts_with("inf.0"))
         return false;
     }
-    return Lexer::isDelimiter(Char) || isSignSubsequent(Char, NextChar);
   }
-  else if (InitChar == '.') // <dot-subsequent>
-    return Lexer::isDelimiter(NextChar) &&
-      (Char == '.' || isSignSubsequent(Char, NextChar));
-  return false;
+
+  // 〈peculiar identiﬁer〉 −→ 〈explicit sign〉
+  //    | 〈explicit sign〉 〈sign subsequent〉 〈subsequent〉*
+  //    | 〈explicit sign〉 . 〈dot subsequent〉 〈subsequent〉*
+  //    | . 〈dot subsequent〉 〈subsequent〉*
+  return (isExplicitSign(InitChar) && Lexer::isDelimiter(Char)) ||
+    (isExplicitSign(InitChar) && isSignSubsequent(Char) &&
+      (isSubsequent(NextChar) || Lexer::isDelimiter(NextChar))) ||
+    (isExplicitSign(InitChar) && Char == '.' &&
+     isDotSubsequent(NextChar) &&
+     (isSubsequent(NextNextChar) || Lexer::isDelimiter(NextNextChar))) ||
+    (InitChar == '.' && isDotSubsequent(Char) &&
+      (isSubsequent(NextChar) || Lexer::isDelimiter(NextChar)));
 }
 }
 

@@ -73,11 +73,13 @@ foo\lambda
 
 ; Support peculiar identifiers starting with explicit sign +-.
 +hello
-; Check:+hello
+; CHECK:+hello
 ..
-; Check:..
+; CHECK:..
+...
+; CHECK:...
 +..
-; Check:+..
+; CHECK:+..
 
 ; Handle escaped symbols that look like numbers.
 |+inf.0| |-inf.0| |+nan.0| |-nan.0| |+i| |-i| |0| |5| |5.0| |+5| |#xFF|
