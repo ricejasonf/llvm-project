@@ -332,7 +332,7 @@ def heavy_MatchOp : HeavyOp<"match", [HasParent<"PatternOp">]> {
 def heavy_MatchIdOp : HeavyOp<"match-id", [HasParent<"PatternOp">]> {
   let summary = "match-id";
   let description = [{
-    Perform matching of a non-static value and input value such that they
+    Perform matching of a non-literal value and input value such that they
     have the same binding or pointer address.
   }];
 

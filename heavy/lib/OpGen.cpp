@@ -477,6 +477,8 @@ mlir::Value OpGen::createLambda(Value Formals, Value Body,
   if (MangledName.empty())
     return Error();
 
+  // Expand any SyntaxClosures in the Formals literal.
+  Formals = Context.RebuildLiteral(Formals);
   bool HasRestParam = false;
   heavy::EnvFrame* EnvFrame = Context.PushLambdaFormals(Formals,
                                                         HasRestParam);
@@ -981,11 +983,14 @@ mlir::Value OpGen::VisitExternName(ExternName* EN) {
 }
 
 mlir::Value OpGen::VisitSyntaxClosure(SyntaxClosure* SC) {
+#if 0 // FIXME We need to "extend" the current environment
+      // to make local syntax work. (I think)
   Value PrevEnv = Context.getEnvironment();
   Context.setEnvironment(SC->Env);
   auto ScopeExit = llvm::make_scope_exit([&] {
     Context.setEnvironment(PrevEnv);
   });
+#endif
   return Visit(SC->Node);
 }
 

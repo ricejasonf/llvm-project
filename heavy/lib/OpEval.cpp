@@ -207,6 +207,7 @@ private:
     else if (isa<SyntaxOp>(Op))       return Visit(cast<SyntaxOp>(Op));
     else if (isa<MatchPairOp>(Op))    return Visit(cast<MatchPairOp>(Op));
     else if (isa<MatchOp>(Op))        return Visit(cast<MatchOp>(Op));
+    else if (isa<MatchIdOp>(Op))      return Visit(cast<MatchIdOp>(Op));
     else if (isa<RenameOp>(Op))       return Visit(cast<RenameOp>(Op));
     else if (isa<ToVectorOp>(Op))     return Visit(cast<ToVectorOp>(Op));
     else if (isa<VectorOp>(Op))       return Visit(cast<VectorOp>(Op));
@@ -619,7 +620,7 @@ private:
 
   BlockItrTy gotoNextPattern(mlir::Operation* O) {
     // We should currently be in the scope of a PatternOp
-    assert((isa<MatchOp, MatchPairOp>(O)) &&
+    assert((isa<MatchOp, MatchPairOp, MatchIdOp>(O)) &&
         "Operation must be a pattern matcher");
     mlir::Operation* PatternOp = O->getParentOp();
     assert(isa<heavy::PatternOp>(PatternOp) &&
@@ -640,6 +641,13 @@ private:
   BlockItrTy Visit(MatchOp Op) {
     heavy::Value P = Op.getVal().getValue(Context);
     heavy::Value E = getValue(Op.getInput());
+    if (Symbol* S = dyn_cast<Symbol>(E)) {
+      // If the symbol is in the environment we can skip
+      // because it will not match a literal.
+      EnvEntry Entry = Context.Lookup(S);
+      if (Entry)
+        return gotoNextPattern(Op);
+    }
     if (equal(P, E)) {
       return next(Op);
     }
@@ -652,6 +660,15 @@ private:
       Context.setLoc(E.getSourceLocation());
       setValue(Op.getCar(), Pair->Car);
       setValue(Op.getCdr(), Pair->Cdr);
+      return next(Op);
+    }
+    return gotoNextPattern(Op);
+  }
+
+  BlockItrTy Visit(MatchIdOp Op) {
+    heavy::Value P = getValue(Op.getVal());
+    heavy::Value E = getValue(Op.getInput());
+    if (P == E) {
       return next(Op);
     }
     return gotoNextPattern(Op);
