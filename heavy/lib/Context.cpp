@@ -36,6 +36,7 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorOr.h"
@@ -570,7 +571,17 @@ private:
   void VisitOperation(Operation* Op) {
     OS << "#op{";
     Op->print(OS);
-    OS << "}";
+    OS << '}';
+  }
+
+  void VisitEnvFrame(EnvFrame* E) {
+    OS << "#<EnvFrame {";
+    // Print the name of each binding.
+    llvm::interleaveComma(E->getBindings(), OS,
+      [&](Value B) {
+        OS << cast<Binding>(B)->getName()->getStringRef();
+      });
+    OS << '}';
   }
 };
 
