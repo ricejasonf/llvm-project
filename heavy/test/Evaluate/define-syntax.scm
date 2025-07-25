@@ -5,9 +5,13 @@
 (define-syntax my-lambda
   (syntax-rules (=>)
     ((my-lambda formals => body)
-     (lambda formals body (write ok)))))
+     (lambda formals
+        body
+        (write ok)
+        (write "lambda args#:")
+        (write (length 'formals))))))
 
-; CHECK: (42 oops!)ok!
+; CHECK: (42 oops!)ok!"lambda args#:"1
 ((lambda (ok)
   ((my-lambda (x) => (write (list x ok))) 42))
  'oops!)
