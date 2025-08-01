@@ -148,6 +148,25 @@ def heavy_ContOp : HeavyOp<"cont", [ReturnLike, Terminator]> {
   let results   = (outs); // no result
 }
 
+def heavy_ExpandPacksOp : HeavyOp<"expand_packs", []> {
+  let description = [{
+    Expand a list of packs from one or more subpatterns.
+    This is equivalent to calling `map` on a list of packs
+    with an input function that emits the output syntax
+    as a list.
+  }];
+
+  let arguments = (ins HeavyValue:$cdr, Variadic<HeavyValue>:$packs);
+  let results = (outs HeavyValue:$result);
+  let regions = (region SizedRegion<1>:$body);
+
+  let builders = [
+    OpBuilder<(ins "::mlir::Value":$cdr,
+                   "::mlir::ValueRange":$packs,
+                   "std::unique_ptr<::mlir::Region>":$body)>
+  ];
+}
+
 def heavy_OpGenOp : HeavyOp<"opgen", [Terminator]> {
   let summary = "opgen";
   let description = [{
@@ -313,7 +332,7 @@ def heavy_ExportIdOp : HeavyOp<"export-id"> {
   let arguments = (ins FlatSymbolRefAttr:$symbolName, StrAttr:$id);
 }
 
-def heavy_MatchOp : HeavyOp<"match", [HasParent<"PatternOp">]> {
+def heavy_MatchOp : HeavyOp<"match", []> {
   let summary = "match";
   let description = [{
     As a component of pattern matching, this checks if a value
@@ -329,7 +348,7 @@ def heavy_MatchOp : HeavyOp<"match", [HasParent<"PatternOp">]> {
   ];
 }
 
-def heavy_MatchIdOp : HeavyOp<"match-id", [HasParent<"PatternOp">]> {
+def heavy_MatchIdOp : HeavyOp<"match-id", []> {
   let summary = "match-id";
   let description = [{
     Perform matching of a non-literal value and input value such that they
@@ -344,7 +363,7 @@ def heavy_MatchIdOp : HeavyOp<"match-id", [HasParent<"PatternOp">]> {
   ];
 }
 
-def heavy_MatchPairOp : HeavyOp<"match_pair", [HasParent<"PatternOp">]> {
+def heavy_MatchPairOp : HeavyOp<"match_pair", []> {
   let summary = "match_pair";
   let description = [{
     As a component of pattern matching, this checks if a value
@@ -357,6 +376,40 @@ def heavy_MatchPairOp : HeavyOp<"match_pair", [HasParent<"PatternOp">]> {
   let builders = [
     OpBuilder<(ins "::mlir::Value":$input)>
   ];
+}
+
+def heavy_SubpatternOp : HeavyOp<"subpattern", []> {
+  let description = [{
+    Match a list of elements over a subpattern that
+    precedes the `...` ellipsis. Each pattern variable within
+    the list is returned as a pack list that may only be expanded
+    by a subtemplate.
+
+    The element after the matched list
+    is destructured as `cdr` similar to match_pair.
+  }];
+
+  let arguments = (ins HeavyValue:$input);
+  let results   = (outs Variadic<HeavyValue>:$packs, HeavyValue:$cdr);
+  let regions   = (region SizedRegion<1>:$body);
+
+  let builders = [
+    OpBuilder<(ins "::mlir::Value":$input,
+                   "std::unique_ptr<::mlir::Region>":$body,
+                   "unsigned":$num_packs)>
+  ];
+}
+
+def heavy_ResolveOp : HeavyOp<"resolve", [Terminator]> {
+  let description = [{
+    Terminate the region of a SubpatternOp or ExpandPacksOp.
+    SubpatternOp takes the created pattern variables as $args.
+    ExpandPacksOp creates the generated list as its single
+    argument.
+  }];
+
+  let arguments = (ins Variadic<HeavyValue>:$args);
+  let results   = (outs);
 }
 
 def heavy_PatternOp : HeavyOp<"pattern", [HasParent<"SyntaxOp">]> {

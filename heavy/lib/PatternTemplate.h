@@ -79,7 +79,6 @@ public:
     return mlir::Value();
   }
 
-  // returns true if insertion was successful
   mlir::Value bindPatternVar(Symbol* S, mlir::Value E) {
     bool Inserted;
     std::tie(std::ignore, Inserted) = PatternVars.insert(S->getString());
@@ -93,7 +92,7 @@ public:
     heavy::Context& C = OpGen.getContext();
     Binding* B = C.CreateBinding(S, SynClo.getOperation());
     C.PushLocalBinding(B);
-    return OpGen.createBinding(B, SynClo);
+    return mlir::Value();
   }
 
   mlir::Value VisitValue(Value P, mlir::Value E) {
@@ -102,15 +101,52 @@ public:
     return OpGen.SetError("invalid pattern node", P);
   }
 
+  mlir::Value VisitSubPattern(heavy::SourceLocation Loc,
+                              Value P, Value Cdr, mlir::Value E) {
+    // Visit the subpattern.
+    auto Body = std::make_unique<mlir::Region>();
+    llvm::SmallVector<mlir::Value, 4> Packs;
+    mlir::Block& Block = Body->emplaceBlock();
+    {
+      mlir::OpBuilder::InsertionGuard IG(OpGen.Builder);
+      OpGen.Builder.setInsertionPointToStart(&Block);
+
+      Visit(P, E);
+
+      // Create range for pack values by finding the 
+      // SyntaxClosureOps in the Body region.
+      for (mlir::Operation& Op : Block) {
+        if (auto SC = dyn_cast<SyntaxClosureOp>(&Op))
+          Packs.push_back(SC.getResult());
+      }
+
+      // Insert the terminator.
+      OpGen.create<ResolveOp>(Loc, Packs);
+    }
+
+    // Create the SubPatternOp.
+    auto SubpatternOp = OpGen.create<heavy::SubpatternOp>(
+        Loc, E, std::move(Body), Packs.size());
+
+    if (!OpGen.CheckError())
+      Visit(Cdr, SubpatternOp.getCdr());
+
+    return mlir::Value();
+  }
+
   mlir::Value VisitPair(Pair* P, mlir::Value E) {
     // (<pattern>*)
     // (<pattern>* <pattern> <ellipsis> <pattern>*)
     heavy::SourceLocation Loc = P->getSourceLocation();
-    auto MatchPairOp = OpGen.create<heavy::MatchPairOp>(Loc, E);
-
-    Visit(P->Car, MatchPairOp.getCar());
-    if (!OpGen.CheckError()) {
-      Visit(P->Cdr, MatchPairOp.getCdr());
+    if (auto* P2 = dyn_cast<Pair>(P->Cdr);
+        P2 && isa<Symbol>(P2->Car) &&
+        cast<Symbol>(P2->Car)->equals(Ellipsis)) {
+      VisitSubPattern(Loc, P->Car, P2->Cdr, E);
+    } else {
+      auto MatchPairOp = OpGen.create<heavy::MatchPairOp>(Loc, E);
+      Visit(P->Car, MatchPairOp.getCar());
+      if (!OpGen.CheckError())
+        Visit(P->Cdr, MatchPairOp.getCdr());
     }
 
     return mlir::Value();

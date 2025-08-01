@@ -158,27 +158,6 @@ mlir::Value OpGen::GetSingleResult(heavy::Value V) {
   return Result;
 }
 
-mlir::ValueRange OpGen::ExpandResults(mlir::Value Result) {
-  if (mlir::isa<mlir::OpResult>(Result)) {
-    return Result.getDefiningOp()->getResults();
-  }
-  else {
-    auto BlockArg = mlir::cast<mlir::BlockArgument>(Result);
-    return BlockArg.getOwner()->getArguments().drop_front();
-  }
-}
-
-mlir::Value OpGen::GetPatternVar(heavy::Symbol* S) {
-  heavy::Value SC = Context.Lookup(S).Value;
-  if (Binding* B = dyn_cast<Binding>(SC)) {
-    SC = B->getValue();
-  }
-  if (auto* Op = dyn_cast<mlir::Operation>(SC)) {
-    return cast<SyntaxClosureOp>(Op);
-  }
-  llvm_unreachable("syntax closure not found in binding table");
-}
-
 // WithLibraryEnv - Call a thunk within the library environment
 //                  for <library spec>. (ie begin, import, export)
 void OpGen::WithLibraryEnv(Value Thunk) {
@@ -690,7 +669,7 @@ mlir::Value OpGen::createSyntaxRules(SourceLocation Loc,
   return SyntaxOp.getResult();
 }
 
-// processSequence creates a sequence of operations in the current block
+// Create a sequence of operations in the current block.
 mlir::Value OpGen::createSequence(SourceLocation Loc, Value Body) {
   if (!isa<Pair>(Body)) {
     return SetError(Loc, "sequence must contain an expression", Body);
@@ -704,7 +683,7 @@ mlir::Value OpGen::createSequence(SourceLocation Loc, Value Body) {
       Pair* Current = cast<Pair>(Rest);
       Rest = Current->Cdr;
       if (isa<Empty>(Rest)) {
-        Rest= Current->Car;
+        Rest = Current->Car;
         break;
       }
       Visit(Current->Car);

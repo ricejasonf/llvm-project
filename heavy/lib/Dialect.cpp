@@ -181,6 +181,28 @@ void MatchPairOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                      input);
 }
 
+void SubpatternOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                        mlir::Value Input,
+                        std::unique_ptr<mlir::Region> Body,
+                        unsigned NumPacks) {
+  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
+  // NumPacks + 1 because $cdr is also a result value.
+  llvm::SmallVector<mlir::Type, 4> ResultTypes(NumPacks + 1, HeavyValueT);
+  OpState.addOperands(Input);
+  OpState.addRegion(std::move(Body));
+  OpState.addTypes(std::move(ResultTypes));
+}
+
+void ExpandPacksOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                        mlir::Value Cdr, mlir::ValueRange Packs,
+                        std::unique_ptr<mlir::Region> Body) {
+  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
+  OpState.addOperands(Cdr);
+  OpState.addOperands(Packs);
+  OpState.addRegion(std::move(Body));
+  OpState.addTypes(HeavyValueT);
+}
+
 void RenameOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                      mlir::Value Value) {
   // How awful is this?
