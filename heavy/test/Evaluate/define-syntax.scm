@@ -18,3 +18,15 @@
 (newline)
 
 ;; TODO Local let-syntax needs to be supported.
+
+#|
+(define-syntax my-lambda
+  (syntax-rules (:)
+    ((my-lambda (arg ...) body ...)
+     (lambda (arg ...)
+       (write (string-append 'arg " has type " 'type)) ...
+       body ...))))
+((my-lambda ((x) (y))
+  (write x)
+  (write y)))
+|#

@@ -35,10 +35,14 @@ namespace mlir {
 
 namespace heavy {
 using NameSet = llvm::SmallPtrSetImpl<String*>;
+class PatternTemplate;
+class TemplateGen;
 
 class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   friend ValueVisitor;
   friend CopyCollector;
+  friend PatternTemplate;
+  friend TemplateGen;
   using BindingScopeTable = llvm::ScopedHashTable<
                                             heavy::Value,
                                             mlir::Value>;
@@ -167,10 +171,6 @@ public:
   // GetSingleResult
   //  - visits a node expecting a single result
   mlir::Value GetSingleResult(heavy::Value V);
-  mlir::ValueRange ExpandResults(mlir::Value Result);
-
-  // GetPatternVar - Get a SyntacticClosureOp by its name.
-  mlir::Value GetPatternVar(heavy::Symbol* S);
 
   llvm::StringRef getModulePrefix() {
     if (!ModulePrefix || ModulePrefix->getStringRef().empty()) {

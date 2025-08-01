@@ -12,12 +12,23 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "heavy/Context.h"
-#include "heavy/OpGen.h"
-#include "heavy/Value.h"
-#include "llvm/Support/Casting.h"
+#include <heavy/Context.h>
+#include <heavy/OpGen.h>
+#include <heavy/Value.h>
+#include <mlir/IR/Value.h>
+#include <llvm/Support/Casting.h>
+#include <variant>
 
 namespace heavy {
+
+// Literals that are not affected by transformations
+// can be returned as heavy::Value to prevent having
+// to create an operation for contructing every part of
+// every literal.
+// (ie Keep the LiteralOps as large chunks of scheme AST.)
+struct TemplateError { };
+using TemplateResult = std::variant<TemplateError, mlir::Value,
+                                    heavy::Value>;
 
 // TemplateBase
 //    - Provide a base class for quasiquote and syntax-rules
@@ -36,18 +47,20 @@ protected:
   // createValue - Create a mlir::Value from its stored
   //               representation in heavy::Value or wrap
   //               it in a LiteralOp.
-  mlir::Value createValue(heavy::Value V) {
-    mlir::Value Val = OpGen::toValue(V);
-    if (Val) return Val;
-    return createLiteral(V);
+  mlir::Value createValue(TemplateResult Input) {
+    if (mlir::Value* MV = std::get_if<mlir::Value>(&Input))
+      return *MV;
+
+    if (heavy::Value* V = std::get_if<heavy::Value>(&Input)) {
+      mlir::Value MV = OpGen::toValue(*V);
+      return MV ? MV : createLiteral(*V);
+    }
+
+    // TemplateError
+    return mlir::Value(); 
   }
 
-  heavy::Value setError(llvm::StringRef S, heavy::Value V) {
-    OpGen.SetError(S, V);
-    return Undefined();
-  }
-
-  heavy::LiteralOp createLiteral(Value V) {
+  mlir::Value createLiteral(heavy::Value V) {
     return OpGen.create<LiteralOp>(V.getSourceLocation(), V);
   }
 
@@ -60,15 +73,15 @@ protected:
         OpGen.create<ConsOp>(Loc, ValY, Empty));
   }
 
-  heavy::ConsOp createCons(SourceLocation Loc, heavy::Value X,
-                                               heavy::Value Y) {
+  mlir::Value createCons(SourceLocation Loc, TemplateResult const& X,
+                                             TemplateResult const& Y) {
     mlir::Value ValX = createValue(X);
     mlir::Value ValY = createValue(Y);
     return OpGen.create<ConsOp>(Loc, ValX, ValY);
   }
 
-  heavy::SpliceOp createSplice(SourceLocation Loc, heavy::Value X,
-                               heavy::Value Y) {
+  mlir::Value createSplice(SourceLocation Loc, TemplateResult const& X,
+                                               TemplateResult const& Y) {
     mlir::Value ValX = createValue(X);
     mlir::Value ValY = createValue(Y);
     return OpGen.create<SpliceOp>(Loc, ValX, ValY);

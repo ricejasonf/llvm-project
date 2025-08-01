@@ -206,6 +206,9 @@ private:
     else if (isa<FuncOp>(Op))         return next(Op); // skip functions
     else if (isa<SyntaxOp>(Op))       return Visit(cast<SyntaxOp>(Op));
     else if (isa<MatchPairOp>(Op))    return Visit(cast<MatchPairOp>(Op));
+    else if (isa<SubpatternOp>(Op))   return Visit(cast<SubpatternOp>(Op));
+    else if (isa<ExpandPacksOp>(Op))  return Visit(cast<ExpandPacksOp>(Op));
+    else if (isa<ResolveOp>(Op))      return Visit(cast<ResolveOp>(Op));
     else if (isa<MatchOp>(Op))        return Visit(cast<MatchOp>(Op));
     else if (isa<MatchIdOp>(Op))      return Visit(cast<MatchIdOp>(Op));
     else if (isa<RenameOp>(Op))       return Visit(cast<RenameOp>(Op));
@@ -585,12 +588,9 @@ private:
     heavy::Value LHS = getValue(Op.getA());
     heavy::Value RHS = getValue(Op.getB());
 
-    // must both be lists
+    // LHS must be list.
     if (!isa<heavy::Pair>(LHS) && !isa<heavy::Empty>(LHS)) {
       return SetError(Loc, "splicing operand expected list", LHS);
-    }
-    if (!isa<heavy::Pair>(RHS) && !isa<heavy::Empty>(RHS)) {
-      return SetError(Loc, "splicing operand expected list", RHS);
     }
 
     // A new list must be created
@@ -618,15 +618,22 @@ private:
     return next(Op);
   }
 
-  BlockItrTy gotoNextPattern(mlir::Operation* O) {
-    // We should currently be in the scope of a PatternOp
-    assert((isa<MatchOp, MatchPairOp, MatchIdOp>(O)) &&
+  // A pattern failing to match results in going to the next pattern
+  // or, in the case of a pack, it begins matching the rest of the list.
+  BlockItrTy patternFail(mlir::Operation* Op) {
+    // We should currently be in the scope of a PatternOp or SubpatternOp
+    assert((isa<MatchOp, MatchPairOp, SubpatternOp, MatchIdOp>(Op)) &&
         "Operation must be a pattern matcher");
-    mlir::Operation* PatternOp = O->getParentOp();
+
+    mlir::Operation* PatternOp = Op->getParentOp();
+    pop_scope();
+
+    if (auto SubpatternOp = dyn_cast<heavy::SubpatternOp>(PatternOp))
+      return BlockItrTy();
+
     assert(isa<heavy::PatternOp>(PatternOp) &&
         "PatternOp should be a PatternOpOp.");
     // Abort the current pattern's scope
-    pop_scope();
     mlir::Operation* NextNode = PatternOp->getNextNode();
     if (!NextNode) {
       heavy::SourceLocation Loc = Context.getLoc();
@@ -646,12 +653,12 @@ private:
       // because it will not match a literal.
       EnvEntry Entry = Context.Lookup(S);
       if (Entry)
-        return gotoNextPattern(Op);
+        return patternFail(Op);
     }
     if (equal(P, E)) {
       return next(Op);
     }
-    return gotoNextPattern(Op);
+    return patternFail(Op);
   }
 
   BlockItrTy Visit(MatchPairOp Op) {
@@ -662,7 +669,103 @@ private:
       setValue(Op.getCdr(), Pair->Cdr);
       return next(Op);
     }
-    return gotoNextPattern(Op);
+    return patternFail(Op);
+  }
+
+  BlockItrTy Visit(ExpandPacksOp Op) {
+    heavy::SourceLocation Loc = getSourceLocation(Op.getLoc());
+    setValue(Op.getResult(), getValue(Op.getCdr()));
+    llvm::SmallVector<heavy::Value, 4> Packs(Op.getPacks().size());
+    mlir::ValueRange PackInputs = Op.getPacks();
+    auto BlockArgs = Op.getBody().getArguments();
+    assert(Packs.size() >= 1 && "should have some packs");
+    for (unsigned i = 0; i < Packs.size(); i++)
+      Packs[i] = getValue(PackInputs[i]);
+
+    // Recall each pack is a list in reverse ordered
+    while (isa<heavy::Pair>(Packs.front())) {
+      // Set each block argument to the cdr of each pack.
+      push_scope();
+      for (unsigned i = 0; i < Packs.size(); i++) {
+        auto* Pair = dyn_cast<heavy::Pair>(Packs[i]);
+        if (!Pair)
+          return SetError(Loc, "expansion packs should have equal length");
+        setValue(BlockArgs[i], Pair->Car);
+        Packs[i] = Pair->Cdr;
+      }
+      BlockItrTy Itr = Op.getBody().front().begin();
+      while (Itr != BlockItrTy())
+        Itr = Visit(&*Itr);
+    }
+
+    for (unsigned i = 0; i < Packs.size(); i++) {
+      if (!isa<Empty>(Packs[i]))
+        return SetError(Loc, "expansion packs should have equal length");
+    }
+
+    return next(Op);
+  }
+
+  BlockItrTy Visit(SubpatternOp Op) {
+    heavy::Value E = getValue(Op.getInput());
+
+    // Match the empty list.
+    if (isa<heavy::Empty>(E)) {
+      for (mlir::Value Pack : Op.getPacks())
+        setValue(Pack, Empty());
+      setValue(Op.getCdr(), Empty());
+      return next(Op);
+    }
+
+    // Initialize result packs for storage as reverse ordered lists.
+    for (mlir::Value PackResult : Op.getPacks())
+      setValue(PackResult, Empty());
+
+    // Visit the subpattern body for each element in E.
+    // Each "pack" should be a list.
+    while (auto* Pair = dyn_cast<heavy::Pair>(E)) {
+      push_scope();
+      BlockItrTy Itr = Op.getBody().front().begin();
+      while (Itr != BlockItrTy())
+        Itr = Visit(&*Itr);
+      E = Pair->Cdr;
+    }
+
+    setValue(Op.getCdr(), E);
+
+    return next(Op);
+  }
+
+  BlockItrTy Visit(ResolveOp Op) {
+    if (auto ParentOp = dyn_cast<SubpatternOp>(Op->getParentOp())) {
+      // We are at the terminator of a subpattern body region.
+      assert(ParentOp.getPacks().size() ==
+             Op.getArgs().size() &&
+             "expecting value ranges of equal size");
+      // Store packs on the stack until we can pop the scope.
+      llvm::SmallVector<heavy::Value, 4> Packs(
+          ParentOp.getPacks().size(), nullptr);
+      mlir::ValueRange ResolveArgs = Op.getArgs();
+      mlir::ResultRange MResults = ParentOp.getPacks();
+      // Construct each pack as a reversed ordered list.
+      for (unsigned i = 0; i < Packs.size(); i++)
+        Packs[i] = Context.CreatePair(getValue(ResolveArgs[i]),
+                                      getValue(MResults[i]));
+      pop_scope();
+      for (unsigned i = 0; i < Packs.size(); i++)
+        setValue(MResults[i], Packs[i]);
+
+      return BlockItrTy();
+    }
+
+    auto ExpandPacksOp = cast<heavy::ExpandPacksOp>(Op->getParentOp());
+    assert(Op.getArgs().size() == 1 && "expecting single result"); 
+    heavy::Value CurrentResult = getValue(Op.getArgs().front());
+    pop_scope();
+    heavy::Value Result = Context.CreatePair(CurrentResult,
+                                      getValue(ExpandPacksOp.getResult()));
+    setValue(ExpandPacksOp.getResult(), Result);
+    return BlockItrTy();
   }
 
   BlockItrTy Visit(MatchIdOp Op) {
@@ -671,7 +774,7 @@ private:
     if (P == E) {
       return next(Op);
     }
-    return gotoNextPattern(Op);
+    return patternFail(Op);
   }
 
   BlockItrTy Visit(SyntaxOp Op) {
@@ -690,6 +793,7 @@ private:
     SyntaxClosure* SC = Context.CreateSyntaxClosure(Context.getLoc(),
                                                     Input);
     setValue(Op.getResult(), SC);
+
     return next(Op);
   }
 
