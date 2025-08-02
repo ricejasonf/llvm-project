@@ -41,6 +41,11 @@ class PatternTemplate : ValueVisitor<PatternTemplate, mlir::Value> {
     return OpGen.getContext().getLoc();
   }
 
+  mlir::Location createLoc(heavy::SourceLocation Loc) {
+    return mlir::OpaqueLoc::get(Loc.getOpaqueEncoding(),
+                                OpGen.Builder.getContext());
+  }
+
 public:
   PatternTemplate(heavy::OpGen& O,
                   heavy::Symbol* Keyword,
@@ -101,7 +106,7 @@ public:
     return OpGen.SetError("invalid pattern node", P);
   }
 
-  mlir::Value VisitSubPattern(heavy::SourceLocation Loc,
+  mlir::Value VisitSubpattern(heavy::SourceLocation Loc,
                               Value P, Value Cdr, mlir::Value E) {
     // Visit the subpattern.
     auto Body = std::make_unique<mlir::Region>();
@@ -110,8 +115,10 @@ public:
     {
       mlir::OpBuilder::InsertionGuard IG(OpGen.Builder);
       OpGen.Builder.setInsertionPointToStart(&Block);
-
-      Visit(P, E);
+      mlir::Type HeavyValueT = OpGen.Builder.getType<HeavyValueTy>();
+      mlir::Location MLoc = createLoc(Loc);
+      mlir::Value BodyArg = Block.addArgument(HeavyValueT, MLoc);
+      Visit(P, BodyArg);
 
       // Create range for pack values by finding the 
       // SyntaxClosureOps in the Body region.
@@ -124,13 +131,16 @@ public:
       OpGen.create<ResolveOp>(Loc, Packs);
     }
 
-    // Create the SubPatternOp.
+    // Create the SubpatternOp.
     auto SubpatternOp = OpGen.create<heavy::SubpatternOp>(
         Loc, E, std::move(Body), Packs.size());
 
     if (!OpGen.CheckError())
       Visit(Cdr, SubpatternOp.getCdr());
 
+    // In the template, the nested syntax closures
+    // will be looked up and check if its parent is
+    // a subpattern op finding its result.
     return mlir::Value();
   }
 
@@ -141,12 +151,14 @@ public:
     if (auto* P2 = dyn_cast<Pair>(P->Cdr);
         P2 && isa<Symbol>(P2->Car) &&
         cast<Symbol>(P2->Car)->equals(Ellipsis)) {
-      VisitSubPattern(Loc, P->Car, P2->Cdr, E);
+      // P->Car is the subpattern.
+      // P2->Cdr is the rest of the pattern after the ...
+      VisitSubpattern(Loc, P->Car, P2->Cdr, E);
     } else {
-      auto MatchPairOp = OpGen.create<heavy::MatchPairOp>(Loc, E);
-      Visit(P->Car, MatchPairOp.getCar());
+      auto M1 = OpGen.create<MatchPairOp>(Loc, E);
+      Visit(P->Car, M1.getCar());
       if (!OpGen.CheckError())
-        Visit(P->Cdr, MatchPairOp.getCdr());
+        Visit(P->Cdr, M1.getCdr());
     }
 
     return mlir::Value();
@@ -180,9 +192,8 @@ public:
     }
 
     // <ellipsis>
-    if (P->equals(Ellipsis)) {
+    if (P->equals(Ellipsis))
       return OpGen.SetError("<ellipsis> is not a valid pattern", P);
-    }
 
     // everything else is a pattern variable
     return bindPatternVar(P, E);

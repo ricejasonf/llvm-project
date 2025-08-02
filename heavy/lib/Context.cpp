@@ -583,6 +583,13 @@ private:
       });
     OS << '}';
   }
+
+  void VisitSyntaxClosure(SyntaxClosure* E) {
+    // The context of closure is lost when printing this.
+    OS << "#<SyntaxClosure {";
+    Visit(E->Node);
+    OS << '}';
+  }
 };
 
 } // end anon namespace
