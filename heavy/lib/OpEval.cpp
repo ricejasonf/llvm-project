@@ -682,7 +682,7 @@ private:
     for (unsigned i = 0; i < Packs.size(); i++)
       Packs[i] = getValue(PackInputs[i]);
 
-    // Recall each pack is a list in reverse ordered
+    // Recall that each pack is a list in reverse order.
     while (isa<heavy::Pair>(Packs.front())) {
       // Set each block argument to the cdr of each pack.
       push_scope();
@@ -713,7 +713,6 @@ private:
     if (isa<heavy::Empty>(E)) {
       for (mlir::Value Pack : Op.getPacks())
         setValue(Pack, Empty());
-      setValue(Op.getCdr(), Empty());
       return next(Op);
     }
 
@@ -721,11 +720,15 @@ private:
     for (mlir::Value PackResult : Op.getPacks())
       setValue(PackResult, Empty());
 
+    assert(Op.getBody().getNumArguments() == 1
+        && "body should have single argument");
+    mlir::Value BodyArg = Op.getBody().getArgument(0);
     // Visit the subpattern body for each element in E.
     // Each "pack" should be a list.
     while (auto* Pair = dyn_cast<heavy::Pair>(E)) {
       push_scope();
       BlockItrTy Itr = Op.getBody().front().begin();
+      setValue(BodyArg, Pair);
       while (Itr != BlockItrTy())
         Itr = Visit(&*Itr);
       E = Pair->Cdr;
