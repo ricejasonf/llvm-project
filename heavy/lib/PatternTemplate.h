@@ -61,7 +61,7 @@ public:
   // VisitPatternTemplate should be called with OpGen's insertion point in
   // the body of PatternOp
   mlir::Value VisitPatternTemplate(heavy::Value Pattern,
-                                   heavy::Value Template, 
+                                   heavy::Value Template,
                                    mlir::Value E) {
     heavy::SourceLocation Loc = Pattern.getSourceLocation();
     if (isa_and_nonnull<Symbol>(Pattern.car())) {
@@ -106,8 +106,33 @@ public:
     return OpGen.SetError("invalid pattern node", P);
   }
 
+  mlir::Value VisitTail(heavy::SourceLocation Loc,
+                        Value P, mlir::Value E) {
+    // Match the list after the `...`.
+    uint32_t Length = 1;
+
+    if (Pair* P2 = dyn_cast<Pair>(P))
+      Loc = P2->getSourceLocation();
+
+    heavy::Value Cur = P;
+    while (Pair* P2 = dyn_cast<Pair>(Cur)) {
+      ++Length;
+      Cur = P2->Cdr;
+    }
+    mlir::Value Tail = OpGen.create<MatchTailOp>(Loc, Length, E);
+
+    // Actually match the tail part.
+    Visit(P, Tail);
+
+    // The tail is passed to the SubpatternOp.
+    return Tail;
+  }
+
   mlir::Value VisitSubpattern(heavy::SourceLocation Loc,
                               Value P, Value Cdr, mlir::Value E) {
+    // The Tail will be used as a sentinel value if it is a pair.
+    mlir::Value Tail = VisitTail(Loc, Cdr, E);
+
     // Visit the subpattern.
     auto Body = std::make_unique<mlir::Region>();
     llvm::SmallVector<mlir::Value, 4> Packs;
@@ -120,7 +145,7 @@ public:
       mlir::Value BodyArg = Block.addArgument(HeavyValueT, MLoc);
       Visit(P, BodyArg);
 
-      // Create range for pack values by finding the 
+      // Create range for pack values by finding the
       // SyntaxClosureOps in the Body region.
       for (mlir::Operation& Op : Block) {
         if (auto SC = dyn_cast<SyntaxClosureOp>(&Op))
@@ -132,11 +157,8 @@ public:
     }
 
     // Create the SubpatternOp.
-    auto SubpatternOp = OpGen.create<heavy::SubpatternOp>(
-        Loc, E, std::move(Body), Packs.size());
-
-    if (!OpGen.CheckError())
-      Visit(Cdr, SubpatternOp.getCdr());
+    OpGen.create<heavy::SubpatternOp>(
+        Loc, E, Tail, std::move(Body), Packs.size());
 
     // In the template, the nested syntax closures
     // will be looked up and check if its parent is
@@ -169,7 +191,7 @@ public:
     if (P->equals("_")) {
       // Since _ always matches anything, there is
       // nothing to check.
-      return mlir::Value(); 
+      return mlir::Value();
     }
 
     // <pattern identifier> (literal identifier)

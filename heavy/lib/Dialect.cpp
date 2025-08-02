@@ -181,14 +181,20 @@ void MatchPairOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                      input);
 }
 
+void MatchTailOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                        uint32_t Length, mlir::Value Input) {
+  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
+  MatchTailOp::build(B, OpState, HeavyValueT,
+                     Length, Input);
+}
+
 void SubpatternOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
-                        mlir::Value Input,
+                        mlir::Value Input, mlir::Value Tail,
                         std::unique_ptr<mlir::Region> Body,
                         unsigned NumPacks) {
   mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
-  // NumPacks + 1 because $cdr is also a result value.
-  llvm::SmallVector<mlir::Type, 4> ResultTypes(NumPacks + 1, HeavyValueT);
-  OpState.addOperands(Input);
+  llvm::SmallVector<mlir::Type, 4> ResultTypes(NumPacks, HeavyValueT);
+  OpState.addOperands({Input, Tail});
   OpState.addRegion(std::move(Body));
   OpState.addTypes(std::move(ResultTypes));
 }

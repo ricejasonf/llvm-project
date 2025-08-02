@@ -1,6 +1,8 @@
 ; RUN: heavy-scheme %s | FileCheck %s
 (import (heavy base))
 
+;; TODO Local let-syntax needs to be tested/supported.
+
 (define ok 'ok!)
 (define-syntax my-lambda
   (syntax-rules (=>)
@@ -17,16 +19,38 @@
  'oops!)
 (newline)
 
-;; TODO Local let-syntax needs to be supported.
-
-#|
+; CHECK: 42"x has type Int""y has type Int"
+; CHECK-NEXT: 5
+; CHECK-NEXT: 6
 (define-syntax my-lambda
   (syntax-rules (:)
-    ((my-lambda (arg ...) body ...)
+    ((my-lambda ((arg : type) ...) body ...)
      (lambda (arg ...)
+       (write 42)
        (write (string-append 'arg " has type " 'type)) ...
+       (newline)
        body ...))))
-((my-lambda ((x) (y))
+((my-lambda ((x : Int) (y : Int))
   (write x)
-  (write y)))
-|#
+  (newline)
+  (write y)) 5 6)
+(newline)
+
+; CHECK: (0 1)
+; CHECK-NEXT: (0 1 2)
+(define-syntax ez
+  (syntax-rules ()
+    ((ez 0 1 i ...)
+     '(0 1 i ...))))
+(write (ez 0 1))
+(newline)
+(write (ez 0 1 2))
+(newline)
+
+; CHECK: (0 1 2 3 4 9)
+(define-syntax ez
+  (syntax-rules ()
+    ((ez 0 1 i ... 5 6)
+     '(0 1 i ... 9))))
+(write (ez 0 1 2 3 4 5 6))
+(newline)
