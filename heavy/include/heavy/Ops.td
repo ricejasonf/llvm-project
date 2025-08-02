@@ -378,6 +378,26 @@ def heavy_MatchPairOp : HeavyOp<"match_pair", []> {
   ];
 }
 
+def heavy_MatchTailOp : HeavyOp<"match_tail", []> {
+  let description = [{
+    Destructure the last N lengthed list of the tail of the input list.
+    The last cdr is counted in the length.
+    (ie () or any element for improper list.)
+    The tail will be matched against a pattern.
+    If the tail is a pair, its address we serve as a sentinel
+    for terminating the matching of elements against the subpattern.
+  }];
+
+  let arguments = (ins UI32Attr:$length,
+                       HeavyValue:$input);
+  let results   = (outs HeavyValue:$tail);
+
+  let builders = [
+    OpBuilder<(ins "uint32_t":$length,
+                   "::mlir::Value":$input)>
+  ];
+}
+
 def heavy_SubpatternOp : HeavyOp<"subpattern", []> {
   let description = [{
     Match a list of elements over a subpattern that
@@ -385,16 +405,19 @@ def heavy_SubpatternOp : HeavyOp<"subpattern", []> {
     the list is returned as a pack list that may only be expanded
     by a subtemplate.
 
-    The element after the matched list
-    is destructured as `cdr` similar to match_pair.
+    We stop at the elements that occur in the list after the
+    subpattern by passing the tail value as a sentinel.
+    It checks by the address of the pair or any cdr that is
+    not a pair.
   }];
 
-  let arguments = (ins HeavyValue:$input);
-  let results   = (outs Variadic<HeavyValue>:$packs, HeavyValue:$cdr);
+  let arguments = (ins HeavyValue:$input, HeavyValue:$tail);
+  let results   = (outs Variadic<HeavyValue>:$packs);
   let regions   = (region SizedRegion<1>:$body);
 
   let builders = [
     OpBuilder<(ins "::mlir::Value":$input,
+                   "::mlir::Value":$tail,
                    "std::unique_ptr<::mlir::Region>":$body,
                    "unsigned":$num_packs)>
   ];

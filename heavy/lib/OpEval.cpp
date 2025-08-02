@@ -206,6 +206,7 @@ private:
     else if (isa<FuncOp>(Op))         return next(Op); // skip functions
     else if (isa<SyntaxOp>(Op))       return Visit(cast<SyntaxOp>(Op));
     else if (isa<MatchPairOp>(Op))    return Visit(cast<MatchPairOp>(Op));
+    else if (isa<MatchTailOp>(Op))    return Visit(cast<MatchTailOp>(Op));
     else if (isa<SubpatternOp>(Op))   return Visit(cast<SubpatternOp>(Op));
     else if (isa<ExpandPacksOp>(Op))  return Visit(cast<ExpandPacksOp>(Op));
     else if (isa<ResolveOp>(Op))      return Visit(cast<ResolveOp>(Op));
@@ -622,7 +623,8 @@ private:
   // or, in the case of a pack, it begins matching the rest of the list.
   BlockItrTy patternFail(mlir::Operation* Op) {
     // We should currently be in the scope of a PatternOp or SubpatternOp
-    assert((isa<MatchOp, MatchPairOp, SubpatternOp, MatchIdOp>(Op)) &&
+    assert((isa<MatchOp, MatchPairOp, MatchTailOp,
+                SubpatternOp, MatchIdOp>(Op)) &&
         "Operation must be a pattern matcher");
 
     mlir::Operation* PatternOp = Op->getParentOp();
@@ -672,6 +674,27 @@ private:
     return patternFail(Op);
   }
 
+  BlockItrTy Visit(MatchTailOp Op) {
+    // Here we include the last cdr in the length
+    // of a list proper or improper.
+    heavy::Value E = getValue(Op.getInput());
+    uint32_t TargetLen = Op.getLength();
+    assert(TargetLen >= 1 && "expecting positive length");
+    uint32_t TotalLen = 1;
+    heavy::Value Cur = E;
+    while (auto* Pair = dyn_cast<heavy::Pair>(Cur)) {
+      ++TotalLen;
+      Cur = Pair->Cdr;
+    }
+    if (TotalLen < TargetLen)
+      return patternFail(Op);
+    Cur = E;
+    for (uint32_t i = 0; i < TotalLen - TargetLen; i++)
+      Cur = cast<heavy::Pair>(Cur)->Cdr;
+    setValue(Op.getTail(), Cur);
+    return next(Op);
+  }
+
   BlockItrTy Visit(ExpandPacksOp Op) {
     heavy::SourceLocation Loc = getSourceLocation(Op.getLoc());
     setValue(Op.getResult(), getValue(Op.getCdr()));
@@ -708,6 +731,7 @@ private:
 
   BlockItrTy Visit(SubpatternOp Op) {
     heavy::Value E = getValue(Op.getInput());
+    heavy::Pair* Tail = dyn_cast<heavy::Pair>(getValue(Op.getTail()));
 
     // Match the empty list.
     if (isa<heavy::Empty>(E)) {
@@ -723,18 +747,19 @@ private:
     assert(Op.getBody().getNumArguments() == 1
         && "body should have single argument");
     mlir::Value BodyArg = Op.getBody().getArgument(0);
-    // Visit the subpattern body for each element in E.
+    // Visit the subpattern body for each element in E
+    // stopping when we find tail or a non-pair object.
     // Each "pack" should be a list.
     while (auto* Pair = dyn_cast<heavy::Pair>(E)) {
+      if (Pair == Tail)
+        break;
       push_scope();
       BlockItrTy Itr = Op.getBody().front().begin();
-      setValue(BodyArg, Pair);
+      setValue(BodyArg, Pair->Car);
       while (Itr != BlockItrTy())
         Itr = Visit(&*Itr);
       E = Pair->Cdr;
     }
-
-    setValue(Op.getCdr(), E);
 
     return next(Op);
   }
@@ -762,7 +787,7 @@ private:
     }
 
     auto ExpandPacksOp = cast<heavy::ExpandPacksOp>(Op->getParentOp());
-    assert(Op.getArgs().size() == 1 && "expecting single result"); 
+    assert(Op.getArgs().size() == 1 && "expecting single result");
     heavy::Value CurrentResult = getValue(Op.getArgs().front());
     pop_scope();
     heavy::Value Result = Context.CreatePair(CurrentResult,

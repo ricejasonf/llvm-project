@@ -49,7 +49,7 @@ public:
   void VisitTemplate(heavy::Value Template) {
     heavy::SourceLocation Loc = Template.getSourceLocation();
     ResultTy Result = Visit(Template);
-    
+
     mlir::Value TransformedSyntax;
     if (mlir::Value* MVP = std::get_if<mlir::Value>(&Result))
       TransformedSyntax = *MVP;
