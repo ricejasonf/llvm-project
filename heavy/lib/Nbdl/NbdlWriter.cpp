@@ -164,7 +164,7 @@ public:
         (IA.getType().isIndex() || IA.getType().isSignlessInteger())) {
       OS << IA.getInt();
     } else if (auto SA = dyn_cast<mlir::StringAttr>(Attr)) {
-      OS << llvm::StringRef(SA);
+      OS << '"' << llvm::StringRef(SA) << '"';
     } else {
       SetError("unknown literal type", Op);
     }
@@ -302,27 +302,11 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
   }
 
   void Visit(ConstexprOp Op) {
-#if 0
-    llvm::StringRef Expr = Op.getExpr();
-    if (Expr.empty())
-      SetError("expecting expr", Op);
-    SetLocalVal(Op.getResult(), llvm::Twine(Expr));
-#endif
+    // See WriteExpr.
   }
 
   void Visit(LiteralOp Op) {
-#if 0
-    mlir::Attribute Attr = Op.getValue();
-    if (auto IA = dyn_cast<mlir::IntegerAttr>(Attr);
-        IA &&
-        (IA.getType().isIndex() || IA.getType().isSignlessInteger())) {
-      SetLocalVal(Op.getResult(), llvm::Twine(IA.getInt()));
-    } else if (auto SA = dyn_cast<mlir::StringAttr>(Attr)) {
-      SetLocalVal(Op.getResult(), llvm::Twine(llvm::StringRef(SA)));
-    } else {
-      SetError("unknown literal type", Op);
-    }
-#endif
+    // See WriteExpr.
   }
 
   void Visit(GetOp Op) {
@@ -444,7 +428,7 @@ public:
 
     // Set the arg names first.
     for (mlir::BlockArgument BlockArg : Op.getBody().getArguments())
-      SetLocalVal(BlockArg, "arg_");
+      SetLocalVarName(BlockArg, "arg_");
 
     // Delete both copy constructors to support subsumption with `auto&&`.
     OS << "class " << Op.getName() << " {\n"

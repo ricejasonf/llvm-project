@@ -20,16 +20,13 @@
 
 namespace heavy::mlir_helper {
 mlir::MLIRContext* getCurrentContext(heavy::Context& C) {
-  return getTagged<mlir::MLIRContext*>(C, kind::mlir_context,
+  return any_cast<mlir::MLIRContext*>(
       mlir_bind_var::current_context.get(C));
 }
 
 mlir::OpBuilder* getBuilder(heavy::Context& C, heavy::Value V) {
-  if (auto* Tagged = heavy::dyn_cast<heavy::Tagged>(V)) {
-    heavy::Symbol* KindSym = C.CreateSymbol(kind::mlir_builder);
-    if (Tagged->isa(KindSym))
-      return &Tagged->cast<mlir::OpBuilder>();
-  }
+  if (auto* OpBuilder = any_cast<mlir::OpBuilder>(&V))
+    return OpBuilder;
 
   C.RaiseError("current-builder is invalid");
   return nullptr;
@@ -52,8 +49,7 @@ mlir::Operation* getSingleOpArg(heavy::Context& C, heavy::ValueRefs Args) {
 void with_builder_impl(Context& C, mlir::OpBuilder const& Builder,
                        heavy::Value Thunk) {
   heavy::Value PrevBuilder = C.CreateBinding(heavy::Empty());
-  heavy::Value NewBuilder = createTagged(C, kind::mlir_builder,
-                              Builder);
+  heavy::Value NewBuilder = C.CreateAny(Builder);
 
   heavy::Value Before = C.CreateLambda(
     [](heavy::Context& C, heavy::ValueRefs Args) {

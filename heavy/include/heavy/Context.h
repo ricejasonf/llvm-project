@@ -343,14 +343,15 @@ public:
   EnvFrame*   CreateEnvFrame(llvm::ArrayRef<Symbol*> Names);
 
   template <typename T>
-  Tagged* CreateTagged(Symbol* Sym, T Obj) {
+  Any* CreateAny(T Obj) {
     static_assert(alignof(T) <= alignof(Value),
       "object storage alignment is too large");
     static_assert(std::is_trivially_copyable<T>::value,
       "F must be trivially_copyable");
     llvm::StringRef ObjData(reinterpret_cast<char const*>(&Obj), sizeof(Obj));
-    void* Mem = Tagged::allocate(getAllocator(), ObjData);
-    Tagged* New = new (Mem) Tagged(Sym, ObjData);
+    void* Mem = Any::allocate(getAllocator(), ObjData);
+    void const* TypeId = &AnyTypeId<T>::Id;
+    Any* New = new (Mem) Any(TypeId, ObjData);
 
     return New;
   }

@@ -134,7 +134,7 @@ enum class ValueKind {
   Symbol,
   Syntax,
   SyntaxClosure,
-  Tagged,
+  Any,
   Vector,
 };
 
@@ -1296,14 +1296,23 @@ public:
 
 };
 
-class Tagged final :
-        public ValueBase,
-        private llvm::TrailingObjects<Tagged, char> {
 
-  friend class llvm::TrailingObjects<Tagged, char>;
+template <typename T>
+struct AnyTypeId {
+  static constexpr int Id = 0;
+};
+template <typename T>
+constexpr int AnyTypeId<T>::Id;
+
+class Any final :
+        public ValueBase,
+        private llvm::TrailingObjects<Any, char> {
+
+  friend class llvm::TrailingObjects<Any, char>;
+  friend class CopyCollector;
   friend Context;
 
-  Symbol* Tag;
+  void const* TypeId;
   size_t StorageLen = 0;
 
   size_t numTrailingObjects(OverloadToken<char> const) const {
@@ -1315,9 +1324,9 @@ class Tagged final :
   }
 
 public:
-  Tagged(Symbol* TagSymbol, llvm::StringRef ObjData)
-    : ValueBase(ValueKind::Tagged),
-      Tag(TagSymbol),
+  Any(void const* TypeId, llvm::StringRef ObjData)
+    : ValueBase(ValueKind::Any),
+      TypeId(TypeId),
       StorageLen(ObjData.size())
   {
     // Storage
@@ -1333,17 +1342,16 @@ public:
     return llvm::StringRef(static_cast<char*>(getOpaquePtr()), getObjectSize());
   };
 
-  Symbol* getTag() const { return Tag; }
-
-  bool isa(Symbol* Sym) {
-    return Sym->getString() == Tag->getString();
+  template <typename T>
+  bool isa() {
+    return TypeId == &AnyTypeId<T>::Id;
   }
 
-  // Return a reference to the stored object.
-  // It is the users responsible to check the tag.
+  // DEPRECATED use heavy::any_cast
   template <typename T>
-  T& cast() {
-    return *reinterpret_cast<T*>(getOpaquePtr());
+  T* cast() {
+    assert(isa<T>() && "should be a T");
+    return static_cast<T*>(getOpaquePtr());
   }
 
   template <typename Allocator>
@@ -1354,10 +1362,27 @@ public:
   }
 
   static bool classof(Value V) {
-    return V.getKind() == ValueKind::Tagged;
+    return V.getKind() == ValueKind::Any;
   }
-  static ValueKind getKind() { return ValueKind::Tagged; }
+  static ValueKind getKind() { return ValueKind::Any; }
 };
+
+template <typename T>
+T any_cast(heavy::Value V) {
+  if (auto* Any = dyn_cast<heavy::Any>(V))
+    if (Any->isa<T>())
+      return *Any->cast<T>();
+  return T{};
+}
+
+template <typename T>
+T* any_cast(heavy::Value const* VP) {
+  heavy::Value V = *VP;
+  if (auto* Any = dyn_cast<heavy::Any>(V))
+    if (Any->isa<T>())
+      return Any->cast<T>();
+  return nullptr;
+}
 
 // EnvEntry - Used to store lookup results for
 struct EnvEntry {
@@ -1880,7 +1905,7 @@ inline llvm::StringRef getKindName(heavy::ValueKind Kind) {
   GET_KIND_NAME_CASE(Symbol)
   GET_KIND_NAME_CASE(Syntax)
   GET_KIND_NAME_CASE(SyntaxClosure)
-  GET_KIND_NAME_CASE(Tagged)
+  GET_KIND_NAME_CASE(Any)
   GET_KIND_NAME_CASE(Vector)
   default:
     return llvm::StringRef("?????");
@@ -1934,9 +1959,9 @@ void* Lambda::allocate(Allocator& Alloc, OpaqueFn FnData,
 }
 
 template <typename Allocator>
-void* Tagged::allocate(Allocator& Alloc, llvm::StringRef ObjData) {
-  size_t size = Tagged::sizeToAlloc(ObjData.size());
-  return heavy::allocate(Alloc, size, alignof(Tagged));
+void* Any::allocate(Allocator& Alloc, llvm::StringRef ObjData) {
+  size_t size = Any::sizeToAlloc(ObjData.size());
+  return heavy::allocate(Alloc, size, alignof(Any));
 }
 
 template <typename Allocator>

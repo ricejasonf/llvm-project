@@ -230,11 +230,11 @@ class CopyCollector : private ValueVisitor<CopyCollector, heavy::Value> {
     return new (NewHeap, Xs) heavy::Vector(Xs);
   }
 
-  heavy::Value VisitTagged(heavy::Tagged* Tagged) {
-    heavy::Symbol* Tag = cast<Symbol>(Visit(Tagged->getTag()));
-    llvm::StringRef ObjData = Tagged->getObjData();
-    void* Mem = Tagged::allocate(getAllocator(), ObjData);
-    return new (Mem) heavy::Tagged(Tag, ObjData);
+  heavy::Value VisitAny(heavy::Any* Any) {
+    void const* TypeId = Any->TypeId;
+    llvm::StringRef ObjData = Any->getObjData();
+    void* Mem = Any::allocate(getAllocator(), ObjData);
+    return new (Mem) heavy::Any(TypeId, ObjData);
   }
 
   template <typename ...Args>

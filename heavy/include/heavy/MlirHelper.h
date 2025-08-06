@@ -30,35 +30,6 @@ extern heavy::ContextLocal current_builder;
 }
 
 namespace heavy::mlir_helper {
-  namespace kind {
-    // Omit mlir.op since mlir::Operation* is already embedded in heavy::Value.
-    constexpr char const* mlir_context  = "mlir.context";
-    constexpr char const* mlir_type     = "mlir.type";
-    constexpr char const* mlir_attr     = "mlir.attr";
-    constexpr char const* mlir_region   = "mlir.region";
-    constexpr char const* mlir_block    = "mlir.block";
-    constexpr char const* mlir_value    = "mlir.value";
-    constexpr char const* mlir_builder  = "mlir.builder"; // OpBuilder
-  }
-
-// Create OpaquePtr tagged with a string for mlir objects.
-template <typename T>
-heavy::Value createTagged(heavy::Context& C, llvm::StringRef Kind, T Obj) {
-  return C.CreateTagged(C.CreateSymbol(Kind), Obj);
-}
-
-// Get mlir Type/Attribute from tagged OpaquePtr.
-template <typename T>
-T getTagged(heavy::Context& C, llvm::StringRef Kind, heavy::Value Value) {
-  if (auto* Tagged = heavy::dyn_cast<heavy::Tagged>(Value)) {
-    heavy::Symbol* KindSym = C.CreateSymbol(Kind);
-    if (Tagged->isa(KindSym))
-      return Tagged->cast<T>();
-  }
-
-  return T(nullptr);
-}
-
 mlir::MLIRContext* getCurrentContext(heavy::Context& C);
 mlir::OpBuilder* getBuilder(heavy::Context& C, heavy::Value V);
 mlir::OpBuilder* getCurrentBuilder(heavy::Context& C);

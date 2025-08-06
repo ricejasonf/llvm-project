@@ -113,7 +113,7 @@ void create_op_impl(Context& C, ValueRefs Args) {
     if (Name.empty())
       return C.RaiseError("expecting name-value pair for attribute", V);
 
-    auto Attr = getTagged<mlir::Attribute>(C, kind::mlir_attr, V);
+    auto Attr = any_cast<mlir::Attribute>(V);
 
     // If the object is not a mlir::Attribute, simply make
     // the heavy::Value into one.
@@ -131,14 +131,14 @@ void create_op_impl(Context& C, ValueRefs Args) {
     // unquote-splicing is not implemented.
     if (isa<heavy::Pair, heavy::Empty>(V)) {
       for (heavy::Value V2 : V) {
-        auto MVal = getTagged<mlir::Value>(C, kind::mlir_value, V2);
+        auto MVal = any_cast<mlir::Value>(V2);
         if (!MVal)
           return C.RaiseError("expecting mlir.value", V2);
         OpState.operands.push_back(MVal);
       }
       break;
     }
-    auto MVal = getTagged<mlir::Value>(C, kind::mlir_value, V);
+    auto MVal = any_cast<mlir::Value>(V);
     if (!MVal)
       return C.RaiseError("expecting mlir.value", V);
     OpState.operands.push_back(MVal);
@@ -150,7 +150,7 @@ void create_op_impl(Context& C, ValueRefs Args) {
 
   // result-types
   for (heavy::Value V : ResultTypes->getElements()) {
-    auto MType = getTagged<mlir::Type>(C, kind::mlir_type, V);
+    auto MType = any_cast<mlir::Type>(V);
     if (!MType)
       return C.RaiseError("expecting mlir.type", V);
     OpState.types.push_back(MType);
@@ -158,7 +158,7 @@ void create_op_impl(Context& C, ValueRefs Args) {
 
   // successors
   for (heavy::Value V : Successors->getElements()) {
-    mlir::Block* Block = getTagged<mlir::Block*>(C, kind::mlir_block, V);
+    mlir::Block* Block = any_cast<mlir::Block*>(V);
     if (Block == nullptr)
       return C.RaiseError("expecting mlir.block", V);
     OpState.successors.push_back(Block);
@@ -299,7 +299,7 @@ void region(Context& C, ValueRefs Args) {
   mlir::Region* Region = &(Op->getRegion(Index));
   if (!Region)
     return C.RaiseError("invalid mlir.region");
-  C.Cont(createTagged(C, kind::mlir_region, Region));
+  C.Cont(C.CreateAny(Region));
 }
 
 // Get entry block from region/op by index.
@@ -315,7 +315,7 @@ void entry_block(Context& C, ValueRefs Args) {
       return C.RaiseError("mlir.op has no regions");
     Region = &Op->getRegion(0);
   } else {
-    Region = getTagged<mlir::Region*>(C, kind::mlir_region, Args[0]);
+    Region = any_cast<mlir::Region*>(Args[0]);
   }
 
   if (!Region)
@@ -325,7 +325,7 @@ void entry_block(Context& C, ValueRefs Args) {
   mlir::Block* Block = &(Region->front());
   if (!Block)
     return C.RaiseError("invalid mlir.block");
-  C.Cont(createTagged(C, kind::mlir_block, Block));
+  C.Cont(C.CreateAny(Block));
 }
 
 // Get list of results of op.
@@ -359,7 +359,7 @@ void result(Context& C, ValueRefs Args) {
   mlir::Value Result = Op->getResult(Index);
   if (!Result)
     return C.RaiseError("invalid mlir.op result");
-  C.Cont(createTagged(C, kind::mlir_value, Result));
+  C.Cont(C.CreateAny(Result));
 }
 
 // Get the nth block argument from a block.
@@ -367,13 +367,13 @@ void result(Context& C, ValueRefs Args) {
 void block_arg(Context& C, ValueRefs Args) {
   if (Args.size() != 2)
     return C.RaiseError("invalid arity");
-  mlir::Block* Block = getTagged<mlir::Block*>(C, kind::mlir_block, Args[0]);
+  mlir::Block* Block = any_cast<mlir::Block*>(Args[0]);
   if (!Block || !isa<heavy::Int>(Args[1]))
     return C.RaiseError("expecting block and index");
   int Index = cast<heavy::Int>(Args[1]);
   // A mlir::BlockArgument is a mlir::Value
   mlir::Value Val = Block->getArgument(Index);
-  heavy::Value MVal = createTagged(C, kind::mlir_value, Val);
+  heavy::Value MVal = C.CreateAny(Val);
   C.Cont(MVal);
 }
 
@@ -402,7 +402,7 @@ void with_builder(Context& C, ValueRefs Args) {
 static mlir::Block* get_arg_block(Context& C, ValueRefs Args) {
   mlir::Block* Block = nullptr;
   if (Args.size() == 1)
-    Block = getTagged<mlir::Block*>(C, kind::mlir_block, Args[0]);
+    Block = any_cast<mlir::Block*>(Args[0]);
   if (Block == nullptr)
     C.RaiseError("expecting mlir.block");
   return Block;
@@ -458,8 +458,7 @@ void set_insertion_point(Context& C, ValueRefs Args) {
 
   if (auto* Op = dyn_cast<mlir::Operation>(Args[0]))
     Builder->setInsertionPoint(Op);
-  else if (mlir::Region* R = getTagged<mlir::Region*>(C, kind::mlir_region,
-                                                      Args[0])) {
+  else if (mlir::Region* R = any_cast<mlir::Region*>(Args[0])) {
     // Automatically add block if needed.
     if (R->empty())
       R->emplaceBlock();
@@ -498,7 +497,7 @@ void type(Context& C, ValueRefs Args) {
   if (!Type)
     return C.RaiseError("mlir type parse failed");
 
-  C.Cont(createTagged(C, kind::mlir_type, Type.getImpl()));
+  C.Cont(C.CreateAny(Type));
 }
 
 // Create a function type (using vector literals.
@@ -516,7 +515,7 @@ void function_type_impl(Context& C, ValueRefs Args) {
   llvm::SmallVector<mlir::Type, 8> ArgTypes;
   Args = Args.drop_front();
   for (heavy::Value Arg : ArgTypeVals->getElements()) {
-    mlir::Type ArgType = getTagged<mlir::Type>(C, kind::mlir_type, Arg);
+    mlir::Type ArgType = any_cast<mlir::Type>(Arg);
     if (!ArgType)
       return C.RaiseError("expecting mlir.type");
     ArgTypes.push_back(ArgType);
@@ -525,7 +524,7 @@ void function_type_impl(Context& C, ValueRefs Args) {
   // Result types
   llvm::SmallVector<mlir::Type, 8> ResultTypes;
   for (heavy::Value Result : ResultTypeVals->getElements()) {
-    mlir::Type ResultType = getTagged<mlir::Type>(C, kind::mlir_type, Result);
+    mlir::Type ResultType = any_cast<mlir::Type>(Result);
     if (!ResultType)
       return C.RaiseError("expecting mlir.type");
     ResultTypes.push_back(ResultType);
@@ -537,7 +536,7 @@ void function_type_impl(Context& C, ValueRefs Args) {
   if (!Type)
     return C.RaiseError("mlir build function type failed");
 
-  C.Cont(createTagged(C, kind::mlir_type, Type.getImpl()));
+  C.Cont(C.CreateAny(Type));
 }
 
 // Get an attribute by parsing a string.
@@ -563,7 +562,7 @@ void attr(Context& C, ValueRefs Args) {
         return C.RaiseError("mlir type parse failed");
     }
     else {
-      Type = getTagged<mlir::Type>(C, kind::mlir_type, TypeArg);
+      Type = any_cast<mlir::Type>(TypeArg);
       if (!Type)
         return C.RaiseError("invalid mlir type");
     }
@@ -581,18 +580,18 @@ void attr(Context& C, ValueRefs Args) {
   if (!Attr)
     return C.RaiseError("mlir attribute parse failed");
 
-  C.Cont(createTagged(C, kind::mlir_attr, Attr.getImpl()));
+  C.Cont(C.CreateAny(Attr));
 }
 
 // (type-attr (type "!type-goes-here"))
 void type_attr(Context& C, ValueRefs Args) {
   if (Args.size() != 1)
     return C.RaiseError("invalid arity");
-  mlir::Type Type = getTagged<mlir::Type>(C, kind::mlir_type, Args[0]);
+  mlir::Type Type = any_cast<mlir::Type>(Args[0]);
   if (!Type)
     return C.RaiseError("expecting a mlir.type");
   mlir::Attribute Attr = mlir::TypeAttr::get(Type);
-  C.Cont(createTagged(C, kind::mlir_attr, Attr.getImpl()));
+  C.Cont(C.CreateAny(Attr));
 }
 
 // Create a heavy scheme value attribute of type !heavy.value
@@ -601,7 +600,7 @@ void value_attr(Context& C, ValueRefs Args) {
     return C.RaiseError("invalid arity");
   mlir::MLIRContext* MLIRContext = getCurrentContext(C);
   mlir::Attribute Attr = HeavyValueAttr::get(MLIRContext, Args[0]);
-  C.Cont(createTagged(C, kind::mlir_attr, Attr.getImpl()));
+  C.Cont(C.CreateAny(Attr));
 }
 
 template <typename AttrTy>
@@ -613,7 +612,7 @@ void string_attr(Context& C, ValueRefs Args) {
   llvm::StringRef Str = Args[0].getStringRef(); 
   mlir::MLIRContext* MLIRContext = getCurrentContext(C);
   mlir::Attribute Attr = AttrTy::get(MLIRContext, Str);
-  C.Cont(createTagged(C, kind::mlir_attr, Attr.getImpl()));
+  C.Cont(C.CreateAny(Attr));
 }
 
 // (with-new-context _thunk_)
@@ -629,10 +628,8 @@ void with_new_context(heavy::Context& C, heavy::ValueRefs Args) {
     return C.RaiseError("expecting thunk");
 
   auto NewContextPtr = std::make_unique<mlir::MLIRContext>(*C.DialectRegistry);
-  heavy::Value NewMC = createTagged(C, kind::mlir_context,
-                                    NewContextPtr.get());
-  heavy::Value NewBuilder = createTagged(C, kind::mlir_builder,
-                              mlir::OpBuilder(NewContextPtr.get()));
+  heavy::Value NewMC = C.CreateAny(NewContextPtr.get());
+  heavy::Value NewBuilder = C.CreateAny(mlir::OpBuilder(NewContextPtr.get()));
 
   // The Prev values are Bindings because we can enter
   // this via escape procedure from anywhere.
@@ -698,7 +695,7 @@ void load_dialect(Context& C, heavy::ValueRefs Args) {
 void block_op(Context& C, heavy::ValueRefs Args) {
   mlir::Block* Block = nullptr;
   if (Args.size() == 1)
-    Block = getTagged<mlir::Block*>(C, kind::mlir_block, Args[0]);
+    Block = any_cast<mlir::Block*>(Args[0]);
 
   if (!Block)
     return C.RaiseError("expecting block");
@@ -767,9 +764,8 @@ extern "C" {
 // initialize the module for run-time independent of the compiler
 void HEAVY_MLIR_INIT(heavy::Context& C) {
   mlir::MLIRContext* MC = C.MLIRContext.get();
-  heavy::Value MC_Val = createTagged(C, kind::mlir_context, MC);
-  heavy::Value BuilderVal = createTagged(C, kind::mlir_builder,
-                                         mlir::OpBuilder(MC));
+  heavy::Value MC_Val = C.CreateAny(MC);
+  heavy::Value BuilderVal = C.CreateAny(mlir::OpBuilder(MC));
   HEAVY_MLIR_VAR(current_context).init(C, C.CreateBinding(MC_Val));
   HEAVY_MLIR_VAR(current_builder).init(C, C.CreateBinding(BuilderVal));
 

@@ -104,8 +104,7 @@ void build_match_params_impl(Context& C, ValueRefs Args) {
     llvm::SmallVector<heavy::Value, 8> BlockArgs;
     assert(!FuncOp.getBody().empty() && "should have entry block");
     for (mlir::Value MVal : FuncOp.getBody().getArguments()) {
-      heavy::Value V = mlir_helper::createTagged(C,
-          mlir_helper::kind::mlir_value, MVal);
+      heavy::Value V = C.CreateAny(MVal);
       BlockArgs.push_back(V);
     }
 
@@ -149,8 +148,7 @@ void build_overload_impl(Context& C, ValueRefs Args) {
       mlir::Type Type = mlir::OpBuilder(OverloadOp)
         .getType<nbdl_gen::OpaqueType>();
       mlir::BlockArgument BlockArg = Body.addArgument(Type, MLoc);
-      heavy::Value V = mlir_helper::createTagged(C,
-          mlir_helper::kind::mlir_value, mlir::Value(BlockArg));
+      heavy::Value V = C.CreateAny(mlir::Value(BlockArg));
       C.Apply(Callback, V);
     }, CaptureList{Callback});
 
@@ -169,10 +167,8 @@ void build_match_if_impl(Context& C, ValueRefs Args) {
 
   // Create the operation with an entry block with a single argument.
   heavy::SourceLocation Loc = Args[0].getSourceLocation();
-  mlir::Value Input = mlir_helper::getTagged<mlir::Value>(C,
-      mlir_helper::kind::mlir_value, Args[1]);
-  mlir::Value Pred = mlir_helper::getTagged<mlir::Value>(C,
-      mlir_helper::kind::mlir_value, Args[2]);
+  mlir::Value Input = any_cast<mlir::Value>(Args[1]);
+  mlir::Value Pred = any_cast<mlir::Value>(Args[2]);
   heavy::Value ThenThunk = Args[3];
   heavy::Value ElseThunk = Args[4];
 
@@ -207,13 +203,12 @@ void translate_cpp(Context& C, ValueRefs Args) {
 
   llvm::raw_ostream* OS = nullptr;
 
-  // Do not capture the emphemeral Tagged object.
+  // Do not capture the emphemeral Any object.
   if (Args.size() == 2) {
-    auto* Tagged = dyn_cast<heavy::Tagged>(Args[1]);
-    heavy::Symbol* KindSym = C.CreateSymbol("::llvm::raw_ostream");
-    if (!Tagged || !Tagged->isa(KindSym))
+    if (auto* Raw = any_cast<::llvm::raw_ostream>(&Args[1]))
+      OS = Raw;
+    else
       return C.RaiseError("expecting ::llvm::raw_ostream");
-    OS = &(Tagged->cast<llvm::raw_ostream>());
   } else {
     OS = &llvm::outs();
   }
@@ -271,8 +266,7 @@ void build_context_impl(Context& C, ValueRefs Args) {
     llvm::SmallVector<heavy::Value, 8> BlockArgs;
     assert(!ContextOp.getBody().empty() && "should have entry block");
     for (mlir::Value MVal : ContextOp.getBody().getArguments()) {
-      heavy::Value V = mlir_helper::createTagged(C,
-          mlir_helper::kind::mlir_value, MVal);
+      heavy::Value V = C.CreateAny(MVal);
       BlockArgs.push_back(V);
     }
 

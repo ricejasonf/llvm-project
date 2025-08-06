@@ -560,11 +560,9 @@ private:
     }
   }
 
-  void VisitTagged(Tagged* T) {
-    OS << "#tag{";
-    OS << T->getTag()->getStringRef()
-       << ' '
-       << uintptr_t(T->getOpaquePtr())
+  void VisitAny(Any* T) {
+    OS << "#any{";
+    OS << uintptr_t(T->getOpaquePtr())
        << '}';
   }
 
