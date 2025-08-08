@@ -70,20 +70,22 @@ namespace heavy::mlir_bind {
 // Provide function to support create_op syntax.
 // Require type checking as a precondition.
 // (%create-op _name_
+//             _loc_
 //             _attrs_        : vector?
 //             _operands_     : vector?
 //             _regions_      : number?
 //             _result_types_ : vector?
 //             _successors_   : vector?)
 void create_op_impl(Context& C, ValueRefs Args) {
-  if (Args.size() != 6)
+  if (Args.size() != 7)
     return C.RaiseError("invalid arity");
 
-  heavy::Vector* Attributes   = cast<heavy::Vector>(Args[1]);
-  heavy::Vector* Operands     = cast<heavy::Vector>(Args[2]);
-  int NumRegions              = cast<heavy::Int>(Args[3]);
-  heavy::Vector* ResultTypes  = cast<heavy::Vector>(Args[4]);
-  heavy::Vector* Successors   = cast<heavy::Vector>(Args[5]);
+  heavy::SourceLocation Loc   = Args[1].getSourceLocation();
+  heavy::Vector* Attributes   = cast<heavy::Vector>(Args[2]);
+  heavy::Vector* Operands     = cast<heavy::Vector>(Args[3]);
+  int NumRegions              = cast<heavy::Int>(Args[4]);
+  heavy::Vector* ResultTypes  = cast<heavy::Vector>(Args[5]);
+  heavy::Vector* Successors   = cast<heavy::Vector>(Args[6]);
 
   llvm::StringRef OpName = Args[0].getStringRef();
   if (OpName.empty())
@@ -94,7 +96,8 @@ void create_op_impl(Context& C, ValueRefs Args) {
   mlir::OpBuilder* Builder = getCurrentBuilder(C);
   if (!Builder) return;
 
-  heavy::SourceLocation Loc = C.getLoc();
+  if (!Loc.isValid())
+    Loc = C.getLoc();
   mlir::Location MLoc = mlir::OpaqueLoc::get(Loc.getOpaqueEncoding(),
                                              Builder->getContext());
   auto OpState = mlir::OperationState(MLoc, OpName);
@@ -189,6 +192,7 @@ void create_op(Context& C, ValueRefs Args) {  // Syntax
   heavy::SourceLocation CallLoc = cast<Pair>(Args[0])
       ->Car.getSourceLocation();
   heavy::OpGen& OpGen = *C.OpGen;
+  heavy::Value SpecifiedLoc = heavy::Empty();
   heavy::Value Attributes   = heavy::Empty();
   heavy::Value Operands     = heavy::Empty();
   heavy::Value NumRegions   = heavy::Int(0);
@@ -214,24 +218,31 @@ void create_op(Context& C, ValueRefs Args) {  // Syntax
       Arg = P->Cdr;
     }
 
-    if (ArgName == "attributes")
+    if (ArgName == "loc") {
+      SpecifiedLoc = Arg;
+      // Support improper list.
+      if (auto* PArg = dyn_cast<Pair>(Arg))
+        SpecifiedLoc = PArg->Car;
+      else
+        SpecifiedLoc = Arg;
+    } else if (ArgName == "attributes") {
       Attributes = Arg;
-    else if (ArgName == "operands")
+    } else if (ArgName == "operands") {
       Operands = Arg;
-    else if (ArgName == "regions") {
+    } else if (ArgName == "regions") {
       // Support improper list.
       if (auto* PArg = dyn_cast<Pair>(Arg))
         NumRegions = PArg->Car;
       else
         NumRegions = Arg;
-    }
-    else if (ArgName == "result-types")
+    } else if (ArgName == "result-types") {
       ResultTypes = Arg;
-    else if (ArgName == "successors")
+    } else if (ArgName == "successors") {
       Successors = Arg;
-    else
+    } else {
       return C.RaiseError("expecting named argument "
           "[attributes, operands, regions, result-types, successors]");
+    }
   }
 
   llvm::SmallVector<mlir::Value, 5> Vals;
@@ -256,6 +267,7 @@ void create_op(Context& C, ValueRefs Args) {  // Syntax
 
   mlir::Value AttrVals = createInputVector(Attributes);
   mlir::Value OperandVals = createInputVector(Operands);
+  mlir::Value SpecifiedLocVal = OpGen.GetSingleResult(SpecifiedLoc);
   mlir::Value NumRegionsVal = OpGen.GetSingleResult(NumRegions);
   if (OpGen.CheckError())
     return;
@@ -265,6 +277,7 @@ void create_op(Context& C, ValueRefs Args) {  // Syntax
   assert(Vals.empty());
   // Reuse Vals as arguments to %create-op
   Vals.push_back(OpName);
+  Vals.push_back(SpecifiedLocVal);
   Vals.push_back(AttrVals);
   Vals.push_back(OperandVals);
   Vals.push_back(NumRegionsVal);
