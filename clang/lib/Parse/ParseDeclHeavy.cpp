@@ -26,6 +26,7 @@
 #include "clang/Sema/Scope.h"
 #include "clang/Sema/SemaDiagnostic.h"
 #include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/STLExtras.h"  // function_ref
 
 using namespace clang;
 
@@ -33,6 +34,7 @@ bool HEAVY_CLANG_IS_LOADED = false;
 heavy::ContextLocal HEAVY_CLANG_VAR(diag_error);
 heavy::ContextLocal HEAVY_CLANG_VAR(hello_world);
 heavy::ContextLocal HEAVY_CLANG_VAR(write_lexer);
+heavy::ContextLocal HEAVY_CLANG_VAR(lexer_writer);
 heavy::ContextLocal HEAVY_CLANG_VAR(expr_eval);
 
 namespace {
@@ -50,6 +52,7 @@ clang::SourceLocation getSourceLocation(heavy::FullSourceLocation Loc) {
 // ownership via the EnterTokenStream overload.
 class LexerWriter {
   clang::Parser& Parser;
+  llvm::BumpPtrAllocator& LexerSpellings;
   std::unique_ptr<Token[]> TokenBuffer;
   unsigned Capacity = 0;
   unsigned Size = 0;
@@ -76,8 +79,10 @@ class LexerWriter {
   }
 
 public:
-  LexerWriter(clang::Parser& P)
+  LexerWriter(clang::Parser& P,
+              llvm::BumpPtrAllocator& LexerSpellings)
     : Parser(P),
+      LexerSpellings(LexerSpellings),
       TokenBuffer(nullptr)
   { }
 
@@ -88,11 +93,13 @@ public:
 
   // Lex tokens from string and push to TokenBuffer.
   // Copy to a std::string to guarantee a null terminator.
-  void Tokenize(clang::SourceLocation Loc, std::string Chars) {
+  void Tokenize(clang::SourceLocation Loc, llvm::StringRef Chars) {
     if (Chars.empty()) return;
+    // Copy to LexerSpellings to ensure null terminator.
+    Chars = Chars.copy(LexerSpellings);
     // Lex Tokens for the TokenBuffer.
     clang::Lexer Lexer(clang::SourceLocation(), Parser.getLangOpts(),
-                       Chars.data(), Chars.data(), &(*(Chars.end())));
+            Chars.data(), Chars.data(), &(*(Chars.end())));
     while (true) {
       Token Tok;
       Lexer.LexFromRawLexer(Tok);
@@ -118,11 +125,13 @@ public:
     Size = 0;
   }
 };
+
 } // end anon namespace
 
 bool Parser::ParseHeavyScheme() {
   if (!HeavyScheme) {
     HeavyScheme = std::make_unique<heavy::HeavyScheme>();
+    HeavyScheme->LexerSpellings = std::make_unique<llvm::BumpPtrAllocator>();
     // Load the static builtin module.
     Parser& P = *this;
     heavy::HeavyScheme& HS = *HeavyScheme;
@@ -172,9 +181,9 @@ bool Parser::ParseHeavyScheme() {
       TentativeParsingAction ParseReverter(P);
 
       // Lex and expand.
-      LexerWriter TheLexerWriter(P);
+      LexerWriter TheLexerWriter(P, *HS.LexerSpellings);
       TheLexerWriter.Tokenize(getSourceLocation(HS.getFullSourceLocation(Loc)),
-                              Source.str());
+                              Source);
       TheLexerWriter.FlushTokens();
       P.ConsumeAnyToken();
 
@@ -296,6 +305,7 @@ bool Parser::ParseHeavyScheme() {
     HEAVY_CLANG_VAR(expr_eval).init(Context,
                                     Context.CreateLambda(expr_eval));
     HEAVY_CLANG_VAR(write_lexer).init(Context);
+    HEAVY_CLANG_VAR(lexer_writer).init(Context);
     HeavyScheme->RegisterModule(HEAVY_CLANG_LIB_STR, HEAVY_CLANG_LOAD_MODULE);
   }
 
@@ -320,9 +330,7 @@ bool Parser::ParseHeavyScheme() {
     Diag(ErrLoc, diag::err_heavy_scheme) << Err;
   };
 
-  // Prepare to revert Parser.
-
-  LexerWriter TheLexerWriter(*this);
+  LexerWriter TheLexerWriter(*this, *HeavyScheme->LexerSpellings);
   heavy::Context& Context = HeavyScheme->getContext();
   HEAVY_CLANG_VAR(write_lexer).set(Context, 
       Context.CreateLambda([&](heavy::Context& C,
@@ -352,10 +360,20 @@ bool Parser::ParseHeavyScheme() {
     llvm::StringRef Result = Output.getStringRef();
     TheLexerWriter.Tokenize(getSourceLocation(
           this->HeavyScheme->getFullSourceLocation(Loc)),
-          Result.str());
+          Result);
     C.Cont();
   }));
 
+  // Also provide a type erased LexerWriterFnRef which is
+  // more suited to calling in c++.
+  auto LexerWriterFn = [&](heavy::SourceLocation Loc, llvm::StringRef Str) {
+    TheLexerWriter.Tokenize(getSourceLocation(
+          this->HeavyScheme->getFullSourceLocation(Loc)), Str);
+  };
+  auto LWF = heavy::LexerWriterFnRef(LexerWriterFn);
+  HEAVY_CLANG_VAR(lexer_writer).set(Context, Context.CreateAny(LWF));
+
+  // Do the thing.
   heavy::TokenKind Terminator = heavy::tok::r_brace;
   HeavyScheme->ProcessTopLevelCommands(SchemeLexer, heavy::base::eval,
                                        ErrorHandler, Terminator);
@@ -364,6 +382,7 @@ bool Parser::ParseHeavyScheme() {
   PP.FinishEmbeddedLexer(SchemeLexer.GetByteOffset());
   if (!HasError)
     TheLexerWriter.FlushTokens();
+  HEAVY_CLANG_VAR(lexer_writer).set(Context, heavy::Undefined());
   HEAVY_CLANG_VAR(write_lexer).set(Context,
         Context.CreateBuiltin([](heavy::Context& C, heavy::ValueRefs Args) {
     C.RaiseError("lexer writer is not initialized");

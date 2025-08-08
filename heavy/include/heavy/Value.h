@@ -20,6 +20,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/PointerEmbeddedInt.h"
 #include "llvm/ADT/PointerSumType.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/bit.h"
@@ -102,6 +103,10 @@ struct OpaqueFn {
 };
 template <typename F>
 static OpaqueFn createOpaqueFn(F& Fn);
+
+// Used for writing to external lexer. ie Clang integration.
+using LexerWriterFn = void(heavy::SourceLocation Loc, llvm::StringRef);
+using LexerWriterFnRef = llvm::function_ref<LexerWriterFn>;
 
 enum class ValueKind {
   Undefined = 0,

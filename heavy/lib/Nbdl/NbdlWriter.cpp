@@ -12,6 +12,8 @@
 //===----------------------------------------------------------------------===//
 
 #include <nbdl_gen/Dialect.h>
+#include <heavy/Source.h>
+#include <heavy/Value.h>
 #include <llvm/ADT/ScopedHashTable.h>
 #include <llvm/ADT/Twine.h>
 #include <llvm/Support/Casting.h>
@@ -45,15 +47,34 @@ public:
   mlir::Operation* Irritant = nullptr;
   std::string ErrMsg;
   heavy::SourceLocationEncoding* ErrLoc;
-  llvm::raw_ostream& OS;
+  heavy::SourceLocation CurLoc;
+
+  heavy::LexerWriterFnRef LexerWriter;
+  std::string OutputBuffer;
+  llvm::raw_string_ostream OS;
 
   // Track number of members of context
   // to generate anonymous identifiers if needed.
   unsigned CurrentMemberCount = 0;
   unsigned CurrentAnonVarCount = 0;
-  NbdlWriter(llvm::raw_ostream& OS)
-    : OS(OS)
+  NbdlWriter(heavy::LexerWriterFnRef LexerWriter)
+    : LexerWriter(LexerWriter),
+      OS(OutputBuffer)
   { }
+
+  void SetLoc(mlir::Location MLoc) {
+    auto Loc = heavy::SourceLocation(mlir::OpaqueLoc
+      ::getUnderlyingLocationOrNull<heavy::SourceLocationEncoding*>(MLoc));
+    assert(Loc.isValid() && "expecting valid source location");
+    CurLoc = Loc;
+  }
+
+  void Flush() {
+    if (OutputBuffer.empty())
+      return;
+    LexerWriter(CurLoc, llvm::StringRef(OutputBuffer));
+    OutputBuffer.clear();
+  }
 
   Derived& getDerived() {
     return static_cast<Derived&>(*this);
@@ -244,6 +265,9 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
   using NbdlWriter<FuncWriter>::NbdlWriter;
 
   void Visit(mlir::Operation* Op) {
+    Flush();
+    heavy::SourceLocation PrevLoc = CurLoc;
+    SetLoc(Op->getLoc());
     if (CheckError()) return;
          if (isa<ApplyOp>(Op))        return Visit(cast<ApplyOp>(Op));
     else if (isa<GetOp>(Op))          return Visit(cast<GetOp>(Op));
@@ -252,12 +276,13 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
     else if (isa<OverloadOp>(Op))     return Visit(cast<OverloadOp>(Op));
     else if (isa<MatchIfOp>(Op))      return Visit(cast<MatchIfOp>(Op));
     else if (isa<NoOp>(Op))           return Visit(cast<NoOp>(Op));
-    else if (isa<ConstexprOp>(Op))    return Visit(cast<ConstexprOp>(Op));
     else if (isa<FuncOp>(Op))         return Visit(cast<FuncOp>(Op));
-    else if (isa<LiteralOp>(Op))      return Visit(cast<LiteralOp>(Op));
     else if (isa<MemberNameOp>(Op))   return Visit(cast<MemberNameOp>(Op));
+    else if (isa<ConstexprOp, LiteralOp>(Op)) return;
     else
       SetError("unhandled operation", Op);
+    Flush();
+    CurLoc = PrevLoc;
   }
 
   void VisitRegion(mlir::Region& R) {
@@ -299,14 +324,6 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
     OS << "{\n";
     VisitRegion(Body);
     OS << '}';
-  }
-
-  void Visit(ConstexprOp Op) {
-    // See WriteExpr.
-  }
-
-  void Visit(LiteralOp Op) {
-    // See WriteExpr.
   }
 
   void Visit(GetOp Op) {
@@ -420,6 +437,7 @@ public:
   using NbdlWriter<ContextWriter>::NbdlWriter;
 
   void VisitContext(ContextOp Op) {
+    SetLoc(Op.getLoc());
     // Skip externally defined stores.
     if (Op.isExternal())
       return;
@@ -431,12 +449,14 @@ public:
       SetLocalVarName(BlockArg, "arg_");
 
     // Delete both copy constructors to support subsumption with `auto&&`.
-    OS << "class " << Op.getName() << " {\n"
+    OS << "class " << Op.getName() << " {\n";
+    WriteMemberDecls(Op);
+    OS << "public:\n"
        << Op.getName() << '(' << Op.getName() << " const&) = delete;\n"
        << Op.getName() << '(' << Op.getName() << "&) = delete;\n";
-    WriteMemberDecls(Op);
     WriteConstructor(Op);
     OS << "};\n";
+    Flush();
   }
 
   nbdl_gen::ContOp getContOp(ContextOp Op) {
@@ -454,23 +474,30 @@ public:
     if (!ContOp)
       return;
 
-    mlir::Value Prev = ContOp.getArg();
-    while (Prev) {
-      if (auto PrevOp = Prev.getDefiningOp<nbdl_gen::StoreComposeOp>()) {
-        Prev = WriteMemberDecl(PrevOp);
-      } else if (auto PrevOp = Prev.getDefiningOp<nbdl_gen::EmptyOp>();
-                 PrevOp || isa<mlir::BlockArgument>(Prev)) {
-        return;
-      } else {
-        mlir::Operation* Irr = Prev.getDefiningOp();
-        if (!Irr)
-          Irr = Op;
-        return SetError("unhandled operation", Irr);
-      }
+    WriteMemberDeclRec(ContOp.getArg());
+  }
+
+  void WriteMemberDeclRec(mlir::Value Val) {
+    if (CheckError())
+      return;
+
+    if (auto SCO = Val.getDefiningOp<nbdl_gen::StoreComposeOp>()) {
+      WriteMemberDeclRec(SCO);
+    } else if (auto EO = Val.getDefiningOp<nbdl_gen::EmptyOp>();
+               EO || isa<mlir::BlockArgument>(Val)) {
+      return;
+    } else {
+      mlir::Operation* Irr = Val.getDefiningOp();
+      SetError("unhandled operation", Irr);
     }
   }
 
-  mlir::Value WriteMemberDecl(StoreComposeOp Op) {
+  void WriteMemberDeclRec(StoreComposeOp Op) {
+    WriteMemberDeclRec(Op.getRhs());
+
+    heavy::SourceLocation PrevLoc = CurLoc;
+    SetLoc(Op.getLoc());
+
     mlir::Value Key = Op.getKey();
     mlir::Value Lhs = Op.getLhs();
     llvm::StringRef Name;
@@ -491,7 +518,8 @@ public:
     VisitType(Lhs);
     OS << ' ' << Name << ";\n";
 
-    return Op.getRhs();
+    Flush();
+    CurLoc = PrevLoc;
   }
 
   void WriteConstructor(ContextOp Op) {
@@ -535,14 +563,14 @@ public:
 
 namespace nbdl_gen {
 std::tuple<std::string, heavy::SourceLocationEncoding*, mlir::Operation*>
-translate_cpp(llvm::raw_ostream& OS, mlir::Operation* Op) {
+translate_cpp(heavy::LexerWriterFnRef LexerWriter, mlir::Operation* Op) {
   if (auto FuncOp = dyn_cast<mlir::func::FuncOp>(Op)) {
-    FuncWriter Writer(OS);
+    FuncWriter Writer(LexerWriter);
     Writer.Visit(Op);
     return std::make_tuple(std::move(Writer.ErrMsg),
                            Writer.ErrLoc, Writer.Irritant);
   } else if (auto ContextOp = dyn_cast<nbdl_gen::ContextOp>(Op)) {
-    ContextWriter Writer(OS);
+    ContextWriter Writer(LexerWriter);
     Writer.VisitContext(ContextOp);
     return std::make_tuple(std::move(Writer.ErrMsg),
                            Writer.ErrLoc, Writer.Irritant);

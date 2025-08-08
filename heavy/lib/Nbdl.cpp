@@ -23,7 +23,7 @@
 
 namespace nbdl_gen {
 std::tuple<std::string, heavy::SourceLocationEncoding*, mlir::Operation*>
-translate_cpp(llvm::raw_ostream& OS, mlir::Operation* Op);
+translate_cpp(heavy::LexerWriterFnRef FnRef, mlir::Operation* Op);
 }
 
 namespace heavy::nbdl_bind_var {
@@ -203,17 +203,33 @@ void translate_cpp(Context& C, ValueRefs Args) {
 
   llvm::raw_ostream* OS = nullptr;
 
+  using ResultTy = std::tuple<std::string,
+                              heavy::SourceLocationEncoding*,
+                              mlir::Operation*>;
+  auto Result = ResultTy();
+
+
   // Do not capture the emphemeral Any object.
   if (Args.size() == 2) {
-    if (auto* Raw = any_cast<::llvm::raw_ostream>(&Args[1]))
+    if (auto LWF = any_cast<LexerWriterFnRef>(Args[1])) {
+      Result = nbdl_gen::translate_cpp(LWF, Op);
+    } else if (auto* Raw = any_cast<::llvm::raw_ostream>(&Args[1])) {
       OS = Raw;
-    else
-      return C.RaiseError("expecting ::llvm::raw_ostream");
+    } else {
+      return C.RaiseError("expecting llvm::raw_ostream"
+                          " or heavy::LexerWriterFnRef");
+    }
   } else {
     OS = &llvm::outs();
   }
+  if (OS) {
+    auto LexerWriter = [&OS](heavy::SourceLocation, llvm::StringRef Buffer) {
+      *OS << Buffer;
+    };
+    Result = nbdl_gen::translate_cpp(LexerWriter, Op);
+  }
 
-  auto&& [ErrMsg, ErrLoc, Irritant] = nbdl_gen::translate_cpp(*OS, Op);
+  auto& [ErrMsg, ErrLoc, Irritant] = Result;
   if (!ErrMsg.empty()) {
     heavy::SourceLocation Loc(ErrLoc);
     heavy::Error* Err = C.CreateError(Loc, ErrMsg,
