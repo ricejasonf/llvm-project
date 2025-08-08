@@ -16,7 +16,7 @@
 #include "heavy/Lexer.h"
 #include "heavy/Source.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/STLExtras.h" // function_ref
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include <memory>
 
@@ -59,6 +59,10 @@ class HeavyScheme {
   }
 
   public:
+
+  // LexerSpellings is used for holding the generated
+  // code for the clang::Lexer spellings.
+  std::unique_ptr<llvm::BumpPtrAllocator> LexerSpellings;
 
   HeavyScheme(std::unique_ptr<heavy::Context>);
   HeavyScheme();
