@@ -455,6 +455,7 @@ public:
        << Op.getName() << '(' << Op.getName() << " const&) = delete;\n"
        << Op.getName() << '(' << Op.getName() << "&) = delete;\n";
     WriteConstructor(Op);
+    WriteAccessors();
     OS << "};\n";
     Flush();
   }
@@ -554,6 +555,13 @@ public:
         });
     } else {
       SetErrorV("unsupported operation arguments", Member);
+    }
+  }
+
+  void WriteAccessors() {
+    for (mlir::Value Value : Members) {
+      OS << "decltype(auto) get_" << GetLocalVal(Value)
+        << "() const {\n  return " << GetLocalVal(Value) << ";\n}\n";
     }
   }
 };
