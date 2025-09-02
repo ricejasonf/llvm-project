@@ -178,14 +178,14 @@ def Nbdl_MatchOp : Nbdl_Op<"match", [Terminator, NoTerminator]> {
 
 def Nbdl_OverloadOp : Nbdl_Op<"overload", []> {
   let description = [{
-    In the region of a MatchOp we specify a function overload of the
-    given typename using OverloadOp.
-    The body of the overload takes an argument that is the matched
-    object and the rest of the arguments are the captures.
+    Visit the body when the input matches a specific typename
+    not including any qualifiers or when the type is an empty string.
+    If the body is not empty, it takes an argument that is the matched
+    object. An empty body is a noop.
   }];
   let arguments = (ins StrAttr:$type);
   let results = (outs);
-  let regions = (region SizedRegion<1>:$body);
+  let regions = (region AnyRegion:$body);
 }
 
 def Nbdl_NoOp : Nbdl_Op<"noop", [Terminator]> {

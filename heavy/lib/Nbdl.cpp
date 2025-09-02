@@ -33,6 +33,7 @@ heavy::ExternFunction build_match_params_impl;
 heavy::ExternFunction build_overload_impl;
 heavy::ExternFunction build_match_if_impl;
 heavy::ExternFunction build_context_impl;
+heavy::ExternFunction build_match_op_impl;
 }
 
 namespace {
@@ -56,9 +57,10 @@ std::optional<mlir::OpBuilder> getModuleBuilder(heavy::Context& C) {
 namespace heavy::nbdl_bind {
 // Create a function and call the thunk with a new builder
 // to insert into the function body.
-// _num_params_ does not include the store parameter.
-// _callback_ takes _num_params_ + 1 arguments which are the block arguments.
-// (%build_match_params _name_ _num_params_ _callback_)
+// _num_store_params_ N
+// _callback_ takes _num_store_params_ + 1 arguments which are the block arguments
+//  with formals like (store1 store2 ... storeN fn)
+// (%build_match_params _name_ _num_store_params_ _callback_)
 void build_match_params_impl(Context& C, ValueRefs Args) {
   if (Args.size() != 3)
     return C.RaiseError("invalid arity");
@@ -80,7 +82,7 @@ void build_match_params_impl(Context& C, ValueRefs Args) {
       : int32_t(-1);
 
   if (NumParams < 0)
-    return C.RaiseError("expecting positive integer for num_params");
+    return C.RaiseError("expecting positive integer for num_store_params");
   if (!NameSym || Name.empty())
     return C.RaiseError("expecting function name (symbol literal)");
 
@@ -88,10 +90,13 @@ void build_match_params_impl(Context& C, ValueRefs Args) {
                                              Builder.getContext());
 
   // Create the function type.
-  llvm::SmallVector<mlir::Type, 8> InputTypes{
-    Builder.getType<nbdl_gen::StoreType>()};
+  llvm::SmallVector<mlir::Type, 8> InputTypes;
   for (unsigned i = 0; i < static_cast<uint32_t>(NumParams); i++)
-    InputTypes.push_back(Builder.getType<nbdl_gen::OpaqueType>());
+    InputTypes.push_back(Builder.getType<nbdl_gen::StoreType>());
+
+  // Push the visitor fn argument.
+  InputTypes.push_back(Builder.getType<nbdl_gen::OpaqueType>());
+
   mlir::FunctionType FT = Builder.getFunctionType(InputTypes,
                                                   /*ResultTypes*/{});
 
@@ -116,10 +121,11 @@ void build_match_params_impl(Context& C, ValueRefs Args) {
   mlir_helper::with_builder_impl(C, Builder, Thunk);
 }
 
-// _callback_ takes a single argument is the block argument.
+// _callback_ takes a single block argument if specified.
 // (%build_overload _loc_ _typename_ _callback_)
+// (%build_overload _loc_ _typename_)
 void build_overload_impl(Context& C, ValueRefs Args) {
-  if (Args.size() != 3)
+  if (Args.size() != 2 && Args.size() != 3)
     return C.RaiseError("invalid arity");
 
   mlir::OpBuilder* Builder = mlir_helper::getCurrentBuilder(C);
@@ -128,15 +134,19 @@ void build_overload_impl(Context& C, ValueRefs Args) {
 
   // Create the operation with an entry block with a single argument.
   heavy::SourceLocation Loc = Args[0].getSourceLocation();
-  llvm::StringRef Typename = Args[1].getStringRef();
-  heavy::Value Callback = Args[2];
+  heavy::Value TypenameArg = Args[1];
+  heavy::Value Callback = Args.size() == 3 ? Args[2] : nullptr;
 
-  if (Typename.empty())
-    return C.RaiseError("expecting nonempty string-like object for typename");
+  if (!isa<String>(TypenameArg) && !isa<Symbol>(TypenameArg))
+    return C.RaiseError("expecting string-like object for typename");
 
+  llvm::StringRef Typename = TypenameArg.getStringRef();
   mlir::Location MLoc = mlir::OpaqueLoc::get(Loc.getOpaqueEncoding(),
                                              Builder->getContext());
   auto OverloadOp = Builder->create<nbdl_gen::OverloadOp>(MLoc, Typename);
+  if (!Callback)
+    return C.Cont();
+
   OverloadOp.getBody().emplaceBlock();
   assert(OverloadOp.getBody().hasOneBlock() && "expecting a single block");
 
@@ -293,6 +303,12 @@ void build_context_impl(Context& C, ValueRefs Args) {
   Builder = mlir::OpBuilder(ContextOp.getBody());
   mlir_helper::with_builder_impl(C, Builder, Thunk);
 }
+
+
+// (%build-match-op name storeval keyval
+void build_match_op_impl(Context& C, ValueRefs Args) {
+  C.Cont();
+}
 } //  end namespace heavy::nbdl_bind
 
 extern "C" {
@@ -316,6 +332,8 @@ void HEAVY_NBDL_INIT(heavy::Context& C) {
     = heavy::nbdl_bind::build_match_if_impl;
   heavy::nbdl_bind_var::build_context_impl
     = heavy::nbdl_bind::build_context_impl;
+  heavy::nbdl_bind_var::build_match_op_impl
+    = heavy::nbdl_bind::build_match_op_impl;
 }
 
 void HEAVY_NBDL_LOAD_MODULE(heavy::Context& C) {
@@ -327,6 +345,7 @@ void HEAVY_NBDL_LOAD_MODULE(heavy::Context& C) {
     {"%build-overload", heavy::nbdl_bind_var::build_overload_impl},
     {"%build-match-if", heavy::nbdl_bind_var::build_match_if_impl},
     {"%build-context", heavy::nbdl_bind_var::build_context_impl},
+    {"%build-match-op", heavy::nbdl_bind_var::build_match_op_impl},
   });
 }
 }
