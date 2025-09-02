@@ -87,9 +87,7 @@
                                    (operands some-fn input)
                                    (result-types !nbdl.opaque))))
                       (create-op "nbdl.visit" (operands fn some-fn-result))))))))
-        (%build-overload 'loc "auto&&"
-          (lambda (anything)
-            (create-op "nbdl.noop")))
+        (%build-overload 'loc "")
         ))))
 
 ; CHECK: #op{module @nbdl_gen_module {

@@ -15,6 +15,7 @@
 #include <heavy/Source.h>
 #include <heavy/Value.h>
 #include <llvm/ADT/ScopedHashTable.h>
+#include <llvm/ADT/ScopeExit.h>
 #include <llvm/ADT/Twine.h>
 #include <llvm/Support/Casting.h>
 #include <mlir/IR/Value.h>
@@ -268,21 +269,24 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
     Flush();
     heavy::SourceLocation PrevLoc = CurLoc;
     SetLoc(Op->getLoc());
+
     if (CheckError()) return;
+    auto ScopeExit = llvm::make_scope_exit([this, PrevLoc] {
+        Flush();
+        CurLoc = PrevLoc;
+      });
+
          if (isa<ApplyOp>(Op))        return Visit(cast<ApplyOp>(Op));
     else if (isa<GetOp>(Op))          return Visit(cast<GetOp>(Op));
     else if (isa<VisitOp>(Op))        return Visit(cast<VisitOp>(Op));
     else if (isa<MatchOp>(Op))        return Visit(cast<MatchOp>(Op));
     else if (isa<OverloadOp>(Op))     return Visit(cast<OverloadOp>(Op));
     else if (isa<MatchIfOp>(Op))      return Visit(cast<MatchIfOp>(Op));
-    else if (isa<NoOp>(Op))           return Visit(cast<NoOp>(Op));
     else if (isa<FuncOp>(Op))         return Visit(cast<FuncOp>(Op));
     else if (isa<MemberNameOp>(Op))   return Visit(cast<MemberNameOp>(Op));
     else if (isa<ConstexprOp, LiteralOp>(Op)) return;
     else
       SetError("unhandled operation", Op);
-    Flush();
-    CurLoc = PrevLoc;
   }
 
   void VisitRegion(mlir::Region& R) {
@@ -370,6 +374,8 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
 
   void Visit(OverloadOp Op) {
     mlir::Region& Body = Op.getBody();
+    if (Body.empty())
+      return;
     OS << "[&]";
     // Write parameters.
     OS << '(';
@@ -422,10 +428,6 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
     // so we print it in GetOp.
     // We could implement in MatchOp, but it is a very
     // unlikely use case.
-  }
-
-  void Visit(NoOp Op) {
-    // Do nothing.
   }
 };
 
