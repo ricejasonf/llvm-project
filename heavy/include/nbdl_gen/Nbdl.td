@@ -158,8 +158,9 @@ def Nbdl_MatchOp : Nbdl_Op<"match", [Terminator, NoTerminator]> {
     `match` visits an element contained within that Store using a
     continuation for each of the possible specified overloads.
 
-    It is an error if there exists an alternative for which there
-    exists no matching overload.
+    Each overload is checked linearly until a matching overload
+    is found.  It is an error if there exists an alternative for
+    which there exists no matching overload.
 
     For an example, a `std::unordered_map<int, std::string>` is a store
     that can provide access to a contained element with a key `5`. If the

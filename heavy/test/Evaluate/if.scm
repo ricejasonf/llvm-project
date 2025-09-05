@@ -49,3 +49,39 @@
 ; CHECK-NEXT: bar
 (fn 42)
 (newline)
+
+; CHECK-NEXT: 0
+((lambda ()
+  (define temp 0)
+  (if (eqv? temp 42)
+    (set! temp 5))
+  (write temp)))
+(newline)
+
+; CHECK-NEXT: 5
+((lambda ()
+  (define temp 42)
+  (if (eqv? temp 42)
+    (set! temp 5))
+  (write temp)))
+(newline)
+
+; CHECK-NEXT: foo
+(write
+  (if (null? '()) 'return-foo 'return-bar))
+(newline)
+
+; CHECK-NEXT: bar
+(write
+  (if (null? 42) 'return-foo 'return-bar))
+(newline)
+
+; CHECK-NEXT: baz
+(write
+  (if (null? '()) 'return-baz))
+(newline)
+
+; CHECK-NEXT: Undefined
+(write
+  (if (null? 42) 'return-baz))
+(newline)

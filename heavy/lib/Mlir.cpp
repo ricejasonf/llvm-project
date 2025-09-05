@@ -66,6 +66,14 @@ heavy::ExternFunction module_lookup;
 
 using namespace heavy::mlir_helper;
 
+static mlir::Location getMlirLocation(heavy::Context& C,
+                                      heavy::SourceLocation Loc,
+                                      mlir::MLIRContext* MC) {
+  if (!Loc.isValid())
+    Loc = C.getLoc();
+  return mlir::OpaqueLoc::get(Loc.getOpaqueEncoding(), MC);
+}
+
 namespace heavy::mlir_bind {
 // Provide function to support create_op syntax.
 // Require type checking as a precondition.
@@ -96,10 +104,7 @@ void create_op_impl(Context& C, ValueRefs Args) {
   mlir::OpBuilder* Builder = getCurrentBuilder(C);
   if (!Builder) return;
 
-  if (!Loc.isValid())
-    Loc = C.getLoc();
-  mlir::Location MLoc = mlir::OpaqueLoc::get(Loc.getOpaqueEncoding(),
-                                             Builder->getContext());
+  mlir::Location MLoc = getMlirLocation(C, Loc, Builder->getContext());
   auto OpState = mlir::OperationState(MLoc, OpName);
 
   // attributes
@@ -341,6 +346,28 @@ void entry_block(Context& C, ValueRefs Args) {
   C.Cont(C.CreateAny(Block));
 }
 
+// (add-argument block type loc)
+void add_argument(Context& C, ValueRefs Args) {
+  if (Args.size() != 3)
+    return C.RaiseError("invalid arity");
+  mlir::Block* Block = any_cast<mlir::Block*>(Args[0]);
+  mlir::Type Type = any_cast<mlir::Type>(Args[1]);
+  heavy::SourceLocation Loc= Args[2].getSourceLocation();
+  if (!Block)
+    return C.RaiseError("expecting mlir::Block*", Args[0]);
+  if (Type)
+    return C.RaiseError("expecting mlir::Block*", Args[1]);
+
+  mlir::OpBuilder* Builder = getCurrentBuilder(C);
+  if (!Builder)
+    return;
+
+  mlir::Location MLoc = getMlirLocation(C, Loc, Builder->getContext());
+  mlir::BlockArgument BA = Block->addArgument(Type, MLoc);
+  heavy::Value Result = C.CreateAny(mlir::Value(BA));
+  C.Cont(Result);
+}
+
 // Get list of results of op.
 void results(Context& C, ValueRefs Args) {
   // This might be useful for applying to operations
@@ -459,9 +486,9 @@ void at_block_terminator(Context& C, ValueRefs Args) {
 
 // Set insertion point to prepend. (alters current-builder)
 // (set-insertion-point _op_or_region_)
-// Argument can be Operation, Region, or Block.
+// Argument can be Operation, Region
 //  Operation - Insert before operation in containing block.
-//  Region    - Insert before operation in first block.
+//  Region    - Insert before any operation in first block.
 void set_insertion_point(Context& C, ValueRefs Args) {
   if (Args.size() != 1)
     return C.RaiseError("invalid arity");
@@ -469,14 +496,17 @@ void set_insertion_point(Context& C, ValueRefs Args) {
   mlir::OpBuilder* Builder = getCurrentBuilder(C);
   if (!Builder) return;
 
-  if (auto* Op = dyn_cast<mlir::Operation>(Args[0]))
+  if (auto* Op = dyn_cast<mlir::Operation>(Args[0])) {
+    // Insert before the operation.
     Builder->setInsertionPoint(Op);
-  else if (mlir::Region* R = any_cast<mlir::Region*>(Args[0])) {
+  } else if (mlir::Region* R = any_cast<mlir::Region*>(Args[0])) {
     // Automatically add block if needed.
     if (R->empty())
       R->emplaceBlock();
     mlir::Block* Block = &R->front();
     Builder->setInsertionPointToStart(Block);
+  } else {
+    return C.RaiseError("expecting mlir.op or mlir.region", Args[0]);
   }
   C.Cont();
 }

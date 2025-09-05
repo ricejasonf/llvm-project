@@ -165,12 +165,16 @@ mlir::Value if_(OpGen& OG, Pair* P) {
   P2 = dyn_cast<Pair>(P2->Cdr);
   if (!P2) return OG.SetError("invalid if syntax", P);
   Value ThenExpr = P2->Car;
-  P2 = dyn_cast<Pair>(P2->Cdr);
-  if (!P2) return OG.SetError("invalid if syntax", P);
-  Value ElseExpr = P2->Car;
-  if (!isa<Empty>(P2->Cdr)) {
+
+  Value ElseExpr = nullptr;
+  if (isa<Empty>(P2->Cdr))
+    ElseExpr = Undefined();
+  else if (Pair* P3 = dyn_cast<Pair>(P2->Cdr);
+             P3 && isa<Empty>(P3->Cdr))
+    ElseExpr = P3->Car;
+  if (!ElseExpr)
     return OG.SetError("invalid if syntax", P);
-  }
+
   return OG.createIf(P->getSourceLocation(), CondExpr,
                      ThenExpr, ElseExpr);
 }
