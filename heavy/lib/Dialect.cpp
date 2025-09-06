@@ -27,6 +27,8 @@ Dialect::Dialect(mlir::MLIRContext* Ctx)
   addTypes<HeavyValueTy>();
   addAttributes<HeavyValueAttr>();
 
+  addTypes<HeavyContextTy>();
+  addTypes<HeavyValueRefsTy>();
   addTypes<HeavyRestTy>();
   addTypes<HeavyPairTy>();
 
@@ -58,6 +60,12 @@ mlir::Type Dialect::parseType(mlir::DialectAsmParser& P) const {
   mlir::Builder B = P.getBuilder();
   if (Name == HeavyValueTy::getMnemonic())
     return B.getType<HeavyValueTy>();
+  if (Name == HeavyContextTy::getMnemonic())
+    return B.getType<HeavyContextTy>();
+  if (Name == HeavyValueRefsTy::getMnemonic())
+    return B.getType<HeavyValueRefsTy>();
+  if (Name == HeavyRestTy::getMnemonic())
+    return B.getType<HeavyRestTy>();
   if (Name == HeavySyntaxTy::getMnemonic())
     return B.getType<HeavySyntaxTy>();
   if (Name == HeavyPairTy::getMnemonic())
@@ -81,6 +89,10 @@ void Dialect::printType(mlir::Type Type,
   char const* Name;
   if (mlir::isa<HeavyValueTy>(Type)) {
     Name = "value";
+  } else if (mlir::isa<HeavyContextTy>(Type)) {
+    Name = "context";
+  } else if (mlir::isa<HeavyValueRefsTy>(Type)) {
+    Name = "value_refs";
   } else if (mlir::isa<HeavyRestTy>(Type)) {
     Name = "rest";
   } else if (mlir::isa<HeavyPairTy>(Type)) {
@@ -147,10 +159,10 @@ void LiteralOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                    HeavyValueAttr::get(B.getContext(), V));
 }
 
-void LoadClosureOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
-                          mlir::Value Closure, uint32_t Index) {
+void LoadRefOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                          mlir::Value ValueRefs, uint32_t Index) {
   mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
-  LoadClosureOp::build(B, OpState, HeavyValueT, Closure,
+  LoadRefOp::build(B, OpState, HeavyValueT, ValueRefs,
                        B.getUI32IntegerAttr(Index));
 }
 

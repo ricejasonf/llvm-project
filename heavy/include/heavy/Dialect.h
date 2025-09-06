@@ -51,6 +51,15 @@ struct Dialect : public mlir::Dialect {
   void printType(mlir::Type, mlir::DialectAsmPrinter&) const override;
 };
 
+struct HeavyContextTy : public mlir::Type::TypeBase<
+                            HeavyContextTy,
+                            mlir::Type,
+                            mlir::TypeStorage> {
+  static constexpr llvm::StringLiteral name = "heavy.context";
+  static constexpr llvm::StringRef getMnemonic() { return "context"; }
+  using Base::Base;
+};
+
 struct HeavyValueTy : public mlir::Type::TypeBase<
                             HeavyValueTy,
                             mlir::Type,
@@ -60,6 +69,19 @@ struct HeavyValueTy : public mlir::Type::TypeBase<
   using Base::Base;
 };
 
+// Represent a variadiac array of arguments for use with
+// continuation arguments.
+struct HeavyValueRefsTy : public mlir::Type::TypeBase<
+                            HeavyValueRefsTy,
+                            mlir::Type,
+                            mlir::TypeStorage> {
+  static constexpr llvm::StringLiteral name = "heavy.value_refs";
+  static constexpr llvm::StringRef getMnemonic() { return "value_refs"; }
+  using Base::Base;
+};
+
+// Represent a variadic list of arguments which are provided
+// as a scheme linked list.
 struct HeavyRestTy : public mlir::Type::TypeBase<
                             HeavyRestTy,
                             mlir::Type,

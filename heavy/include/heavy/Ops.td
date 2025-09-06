@@ -40,7 +40,9 @@ def HeavyValueAttr : AttrDef<HeavyDialect, "HeavyValue"> {
 }
 
 // Additional Types
-def HeavyRest : HeavyValueBase<"Pair">; // For rest arguments.
+def HeavyContext : HeavyValueBase<"Context">;
+def HeavyValueRefs : HeavyValueBase<"ValueRefs">; // For arguments array.
+def HeavyRest : HeavyValueBase<"Rest">; // For rest arguments.
 def HeavyPair : HeavyValueBase<"Pair">;
 def HeavySyntax : HeavyValueBase<"Syntax">;
 
@@ -59,7 +61,8 @@ def heavy_ApplyOp : HeavyOp<"apply", [ReturnLike, Terminator]> {
     a continuation.
   }];
 
-  let arguments = (ins HeavyValue:$fn, Variadic<HeavyValue>:$args);
+  let arguments = (ins HeavyValue:$fn,
+    Variadic<AnyTypeOf<[HeavyValue, HeavyValueRefs]>>:$args);
   let results   = (outs);
 }
 
@@ -266,13 +269,16 @@ def heavy_LiteralOp : HeavyOp<"literal", [Pure]> {
   ];
 }
 
-def heavy_LoadClosureOp : HeavyOp<"load_closure"> {
-  let summary = "load_closure";
+def heavy_LoadRefOp : HeavyOp<"load_ref"> {
+  let summary = "load_ref";
   let description = [{
-    Read an element from lambda's capture list.
+    Read an element from a ValueRefs object which can be
+    the context's callee capture list or a variadic argument
+    list which is primarily used for continuations.
   }];
 
-  let arguments = (ins HeavyValue:$closure, UI32Attr:$index);
+  let arguments = (ins AnyTypeOf<[HeavyContext, HeavyValueRefs]>:$value_refs,
+                       UI32Attr:$index);
   let results   = (outs HeavyValue:$result);
 
   let builders = [
