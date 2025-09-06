@@ -135,7 +135,7 @@ private:
     DidCallContinuation = true; // debug mode only
     if (isa<Undefined>(Callee))
       return getDerived().RaiseError("callee is undefined");
-    if (Args.data() != ApplyArgs.data()) {
+    if (Args.data() != ValueRefs(ApplyArgs).drop_front().data()) {
       ApplyArgs.resize(Args.size() + 1);
       std::copy(Args.begin(), Args.end(), ApplyArgs.begin() + 1);
     }
@@ -194,7 +194,10 @@ public:
     assert(ApplyArgs[0] && "callee must not be null");
     return ApplyArgs[0];
   }
-  ValueRefs getCaptures() {
+  heavy::ValueRefs getCallArgs() {
+    return heavy::ValueRefs(ApplyArgs).drop_front();
+  }
+  heavy::ValueRefs getCaptures() {
     return cast<Lambda>(ApplyArgs[0])->getCaptures();
   }
   heavy::Value getCapture(unsigned I) {
@@ -243,7 +246,7 @@ public:
       // Debug mode only
       DidCallContinuation = false;
 
-      ValueRefs Args = ValueRefs(ApplyArgs).drop_front();
+      ValueRefs Args = getCallArgs();
       switch (Callee.getKind()) {
       case ValueKind::Lambda: {
         Lambda* L = cast<Lambda>(Callee);
@@ -302,10 +305,6 @@ public:
   void PushCont(heavy::Value Callable) {
     PushCont([](Derived& Context, ValueRefs Args) {
       heavy::Value Callable = Context.getCapture(0);
-      // FIXME Remove this drop_front when is certain
-      //       that it was vestigal
-      //       (we used to include the callee in Args)
-      //Context.Apply(Callable, Args.drop_front());
       Context.Apply(Callable, Args);
     }, Callable);
   }
@@ -381,13 +380,13 @@ public:
     C.Apply(InputProc, Proc);
   }
 
-  // SaveEscapeProc - Push Proc as current continuation for use 
+  // SaveEscapeProc - Push Proc as current continuation for use
   //                  as an escape procedure bound to Var, then
   //                  call the continuation we had before so
   //                  that Proc is only called explicitly.
   template <typename F>
   void SaveEscapeProc(Value Var, F Proc, CaptureList Captures) {
-    assert(isa<Binding>(Var) && "expecting a binding for Var"); 
+    assert(isa<Binding>(Var) && "expecting a binding for Var");
     Derived& C = getDerived();
     PushCont(Proc, Captures);
     CallCC(C.CreateLambda([](Derived& C, ValueRefs Args) {
@@ -395,7 +394,7 @@ public:
       // Remove Proc from the stack before continuing.
       C.PopCont();
       C.Cont();
-    }, CaptureList{Var})); 
+    }, CaptureList{Var}));
   }
 
   void DynamicWind(Value Before, Value Thunk, Value After) {
@@ -422,7 +421,7 @@ public:
         C.PushCont([](Derived& C, ValueRefs) {
           ValueRefs ThunkResults = C.getCaptures();
           C.Cont(ThunkResults);
-        }, /*Captures=*/ThunkResults); 
+        }, /*Captures=*/ThunkResults);
         C.CurDW = PrevDW;
         C.Apply(After, {});
       }, CaptureList{After, PrevDW});

@@ -192,7 +192,7 @@ private:
     else if (isa<ApplyOp>(Op))        return Visit(cast<ApplyOp>(Op));
     else if (isa<ContOp>(Op))         return Visit(cast<ContOp>(Op));
     else if (isa<GlobalOp>(Op))       return Visit(cast<GlobalOp>(Op));
-    else if (isa<LoadClosureOp>(Op))  return Visit(cast<LoadClosureOp>(Op));
+    else if (isa<LoadRefOp>(Op))  return Visit(cast<LoadRefOp>(Op));
     else if (isa<LoadGlobalOp>(Op))   return Visit(cast<LoadGlobalOp>(Op));
     else if (isa<LambdaOp>(Op))       return Visit(cast<LambdaOp>(Op));
     else if (isa<IfOp>(Op))           return Visit(cast<IfOp>(Op));
@@ -249,10 +249,17 @@ private:
     unsigned NumArgs = Args.size();
     mlir::FunctionType FT = mlir::cast<mlir::FunctionType>(
         F.getFunctionType());
+
     // The functions type includes the argument
     // for the context object.
     unsigned NumParams = FT.getNumInputs() - 1;
-    if (NumParams > 0 && mlir::isa<HeavyRestTy>(FT.getInputs().back())) {
+    // Use NumParamsMax to indicate variadic arguments via ValueRefs.
+    // This is supported for continuations only.
+    constexpr auto NumParamsMax = std::numeric_limits<decltype(NumParams)>::max();
+
+    if (NumParams == 1 && mlir::isa<HeavyValueRefsTy>(FT.getInputs().back())) {
+      NumParams = NumParamsMax;
+    } else if (NumParams > 0 && mlir::isa<HeavyRestTy>(FT.getInputs().back())) {
       // Handle a rest param.
       // Check that the number of explicit params
       // are less than the amount of arguments.
@@ -273,7 +280,8 @@ private:
 
     push_scope();
     mlir::Block& Body = F.getBody().front();
-    LoadArgs(Body, Args);
+    if (NumParams != NumParamsMax)
+      LoadArgs(Body, Args);
     if (RestList) {
       setValue(Body.getArguments().back(), RestList);
     }
@@ -284,21 +292,6 @@ private:
     // Something in the function should have
     // called Context.Apply() or one of those
     return BlockItrTy();
-  }
-
-  // LoadArgResults
-  //  - Loads the values input to the ApplyOp
-  //  - Note that the arguments do not map directly
-  //    to the callees function parameters
-  void LoadArgResults(ApplyOp Op,
-                      llvm::SmallVectorImpl<heavy::Value>& ArgResults) {
-    auto Args = Op.getArgs();
-    ArgResults.clear();
-    ArgResults.resize(Args.size() + 1);
-    for (unsigned i = 0; i < Args.size(); ++i) {
-      ArgResults[i + 1] = getValue(Args[i]);
-    }
-    ArgResults[0] = getValue(Op.getFn());
   }
 
   // SetContValues
@@ -321,10 +314,22 @@ private:
 
   BlockItrTy Visit(ApplyOp Op) {
     Context.setLoc(getSourceLocation(Op.getLoc()));
+
+    heavy::Value Callee = getValue(Op.getFn());
+    ValueRefs Args;
     llvm::SmallVector<heavy::Value, 8> ArgResults;
-    LoadArgResults(Op, ArgResults);
-    Value Callee = ArgResults[0];
-    ValueRefs Args = ValueRefs(ArgResults).drop_front();
+
+    auto MArgs = Op.getArgs();  // MLIR Args.
+    if (MArgs.size() == 1 &&
+        isa<HeavyValueRefsTy>(MArgs.front().getType())) {
+      // Just pass all of the continuation args.
+      Args = Context.getCallArgs();
+    } else {
+      ArgResults.resize(MArgs.size());
+      for (unsigned i = 0; i < MArgs.size(); ++i)
+        ArgResults[i] = getValue(MArgs[i]);
+      Args = ValueRefs(ArgResults);
+    }
 
     Context.Apply(Callee, Args);
     return BlockItrTy();
@@ -468,25 +473,32 @@ private:
     return next(Op);
   }
 
-  BlockItrTy Visit(LoadClosureOp Op) {
-    // get the Lambda object and get its
-    // closure value and set it to the value
+  BlockItrTy Visit(LoadRefOp Op) {
+    // Load from a ValueRefs object which is accessible
+    // through the Context object.
     uint32_t Index = Op.getIndex();
 
-    // We are assuming we will only ever get a
-    // closure element from the current callee.
-    // heavy::Value Closure = getValue(Op.getClosure());
-    heavy::Value Closure = Context.getCallee();
+    mlir::Type RefsType = Op.getValueRefs().getType();
+    heavy::ValueRefs ValueRefs;
 
-    heavy::Value V = nullptr;
-
-    if (auto* C = dyn_cast<Lambda>(Closure)) {
-      V = C->getCaptures()[Index];
+    if (isa<HeavyContextTy>(RefsType)) {
+      // Assume we always use the current context object.
+      auto* Callee = cast<Lambda>(Context.getCallee());
+      ValueRefs = Callee->getCaptures();
+    } else if (isa<HeavyValueRefsTy>(RefsType)) {
+      ValueRefs = Context.getCallArgs();
     }
 
-    assert(V && "must have a valid closure type");
+    // This is defensive for captures if the IR is ill-formed,
+    // but bad continuation arity is a run-time error.
+    if (Index >= ValueRefs.size()) {
+      heavy::SourceLocation Loc = getSourceLocation(Op.getLoc());
+      return SetError(Loc, "invalid arity for continuation");
+    }
 
-    setValue(Op.getResult(), V);
+    heavy::Value Result = ValueRefs[Index];
+
+    setValue(Op.getResult(), Result);
     return next(Op);
   }
 

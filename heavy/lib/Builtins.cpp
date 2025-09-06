@@ -67,6 +67,8 @@ heavy::ExternFunction eq;
 heavy::ExternFunction equal;
 heavy::ExternFunction eqv;
 heavy::ExternFunction call_cc;
+heavy::ExternFunction values;
+heavy::ExternFunction call_with_values;
 heavy::ExternFunction with_exception_handler;
 heavy::ExternFunction raise;
 heavy::ExternFunction error;
@@ -383,6 +385,19 @@ namespace heavy::base {
 void call_cc(Context& C, ValueRefs Args) {
   if (Args.size() != 1) return C.RaiseError("invalid arity");
   C.CallCC(Args[0]);
+}
+
+void values(Context& C, ValueRefs Args) {
+  C.Cont(Args);
+}
+
+void call_with_values(Context& C, ValueRefs Args) {
+  if (Args.size() != 2)
+    return C.RaiseError("invalid arity");
+  heavy::Value Producer = Args[0];
+  heavy::Value Consumer = Args[1];
+  C.PushCont(Consumer);
+  C.Apply(Producer, {});
 }
 
 void dump(Context& C, ValueRefs Args) {
@@ -888,6 +903,8 @@ void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(equal)   = heavy::base::equal;
   HEAVY_BASE_VAR(eqv)     = heavy::base::eqv;
   HEAVY_BASE_VAR(call_cc) = heavy::base::call_cc;
+  HEAVY_BASE_VAR(values)  = heavy::base::values;
+  HEAVY_BASE_VAR(call_with_values) = heavy::base::call_with_values;
   HEAVY_BASE_VAR(with_exception_handler)
     = heavy::base::with_exception_handler;
   HEAVY_BASE_VAR(raise)   = heavy::base::raise;
@@ -965,6 +982,8 @@ void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"equal?",  HEAVY_BASE_VAR(equal)},
     {"eqv?",    HEAVY_BASE_VAR(eqv)},
     {"call/cc", HEAVY_BASE_VAR(call_cc)},
+    {"values", HEAVY_BASE_VAR(values)},
+    {"call-with-values", HEAVY_BASE_VAR(call_with_values)},
     {"with-exception-handler", HEAVY_BASE_VAR(with_exception_handler)},
     {"raise", HEAVY_BASE_VAR(raise)},
     {"error", HEAVY_BASE_VAR(error)},

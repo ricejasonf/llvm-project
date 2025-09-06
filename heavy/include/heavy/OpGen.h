@@ -257,6 +257,7 @@ public:
       return heavy::Value(OpResult.getOwner());
     }
     if (auto BlockArg = mlir::dyn_cast<mlir::BlockArgument>(V)) {
+      // FIXME Do we even get here? Is ContArg ever needed?
       mlir::Block* B = BlockArg.getOwner();
       return heavy::Value(reinterpret_cast<heavy::ContArg*>(B));
     }
@@ -276,8 +277,14 @@ public:
                             Value Else);
   mlir::Value createContinuation(mlir::Operation* CallOp);
 
+  enum class RestParamKind {
+    None = 0,
+    List,
+    ValueRefs,
+  };
+
   mlir::FunctionType createFunctionType(unsigned Arity,
-                                        bool HasRestParam);
+                                        RestParamKind RPK);
   heavy::FuncOp createFunction(SourceLocation Loc,
                                llvm::StringRef MangledName,
                                mlir::FunctionType FT);

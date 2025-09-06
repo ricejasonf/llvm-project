@@ -141,6 +141,11 @@ mlir::Value OpGen::GetSingleResult(heavy::Value V) {
   TailPosScope TPS(*this);
   IsTailPos = false;
   mlir::Value Result = Visit(V);
+
+  // Take the first continuation arg.
+  if (isa<HeavyValueRefsTy>(Result.getType()))
+    Result = create<LoadRefOp>(heavy::SourceLocation(), Result, /*Index*/0);
+
   if (CheckError())
     return Error();
   // mlir::Value() is only returned for expressions in tail position
@@ -149,12 +154,7 @@ mlir::Value OpGen::GetSingleResult(heavy::Value V) {
   if (!Result) {
       return SetError("expecting expression", V);
   }
-  if (auto BlockArg = mlir::dyn_cast<mlir::BlockArgument>(Result)) {
-    // the size includes the closure object
-    if (BlockArg.getOwner()->getArguments().size() != 2) {
-      return SetError("invalid continuation arity", V);
-    }
-  }
+
   return Result;
 }
 
@@ -415,10 +415,9 @@ mlir::Value OpGen::createUndefined() {
 }
 
 mlir::FunctionType OpGen::createFunctionType(unsigned Arity,
-                                             bool HasRestParam) {
-  mlir::Type ClosureT   = Builder.getType<HeavyValueTy>();
+                                             RestParamKind RPK) {
+  mlir::Type ClosureT   = Builder.getType<HeavyContextTy>();
   mlir::Type ValueT     = Builder.getType<HeavyValueTy>();
-  mlir::Type RestT      = Builder.getType<HeavyRestTy>();
 
   llvm::SmallVector<mlir::Type, 16> Types{};
   // push the closure type
@@ -427,7 +426,19 @@ mlir::FunctionType OpGen::createFunctionType(unsigned Arity,
     for (unsigned i = 0; i < Arity - 1; i++) {
       Types.push_back(ValueT);
     }
-    mlir::Type LastParamT = HasRestParam ? RestT : ValueT;
+
+    mlir::Type LastParamT;
+    switch (RPK) {
+    case RestParamKind::None:
+      LastParamT = ValueT;
+      break;
+    case RestParamKind::List:
+      LastParamT = Builder.getType<HeavyRestTy>();
+      break;
+    case RestParamKind::ValueRefs:
+      LastParamT = Builder.getType<HeavyValueRefsTy>();
+      break;
+    }
     Types.push_back(LastParamT);
   }
 
@@ -463,12 +474,17 @@ mlir::Value OpGen::createLambda(Value Formals, Value Body,
                                                         HasRestParam);
   if (!EnvFrame) return Error();
   unsigned Arity = EnvFrame->getBindings().size();
-  mlir::FunctionType FT = createFunctionType(Arity, HasRestParam);
+  RestParamKind RPK = HasRestParam ? RestParamKind::List
+                                   : RestParamKind::None;
+  mlir::FunctionType FT = createFunctionType(Arity, RPK);
   auto F = createFunction(Loc, MangledName, FT);
   llvm::SmallVector<mlir::Value, 8> Captures;
 
   // Insert into the function body
   {
+    // Start new scope in tail pos
+    TailPosScope TPS(*this);
+    IsTailPos = true;
     LambdaScope LS(*this, F);
     mlir::OpBuilder::InsertionGuard IG(Builder);
     mlir::Block& Block = *F.addEntryBlock();
@@ -905,6 +921,7 @@ mlir::Value OpGen::createSet(SourceLocation Loc, Value LHS,
 // visitation of local bindings' initializers.
 mlir::Value OpGen::VisitDefineArgs(Value Args) {
   Pair* P = cast<Pair>(Args);
+  mlir::Value Result;
   if (Pair* LambdaSpec = dyn_cast<Pair>(P->Car)) {
     // We already checked the name.
     Symbol* S = cast<Symbol>(LambdaSpec->Car);
@@ -912,14 +929,19 @@ mlir::Value OpGen::VisitDefineArgs(Value Args) {
     Value Body = P->Cdr;
     llvm::StringRef Name = isTopLevel() ? S->getStringRef()
                                         : llvm::StringRef();
-    return createLambda(Formals, Body,
-                        S->getSourceLocation(),
-                        Name);
+    Result = createLambda(Formals, Body,
+                          S->getSourceLocation(),
+                          Name);
+  } else if (isa<Symbol>(P->Car) && isa<Pair>(P->Cdr)) {
+    Result = Visit(cast<Pair>(P->Cdr)->Car);
+  } else {
+    Result = SetError("invalid define syntax", P);
   }
-  if (isa<Symbol>(P->Car) && isa<Pair>(P->Cdr)) {
-    return Visit(cast<Pair>(P->Cdr)->Car);
-  }
-  return SetError("invalid define syntax", P);
+
+  if (Result && isa<HeavyValueRefsTy>(Result.getType()))
+    Result = create<LoadRefOp>(heavy::SourceLocation(), Result, /*Index*/0);
+
+  return Result;
 }
 
 // createGlobal - Create or load a global idempotently.
@@ -1062,25 +1084,24 @@ mlir::Value OpGen::createOpGen(SourceLocation Loc, mlir::Value Input) {
 // The CallOp is the terminator op that the PushContOp should precede
 // in the block.
 mlir::Value OpGen::createContinuation(mlir::Operation* CallOp) {
-  // TODO The current context should be able to tell us the arity
-  //      of the continuation defaulting to 1 (plus the closure arg)
-  //
-  // TODO Detect if the continuation should simply discard effects,
-  //      accepting any arity
   mlir::FunctionType FT = createFunctionType(/*Arity=*/1,
-                                             /*HasRestParam=*/false);
+                                             RestParamKind::ValueRefs);
   std::string MangledName = mangleFunctionName(llvm::StringRef());
   if (MangledName.empty())
     return Error();
 
+  // No source location
+  heavy::SourceLocation Loc;
+
   // Create the continuation's function
   // subsequent operations will be nested within
   // relying on previous insertion guards to pull us out.
-  auto F = createFunction(heavy::SourceLocation(), MangledName, FT);
+  auto F = createFunction(Loc, MangledName, FT);
   PushContinuationScope(F, CallOp);
   mlir::Block* FuncEntry = F.addEntryBlock();
   Builder.setInsertionPointToStart(FuncEntry);
-  // Results drops the Closure arg at the front
+
+  // Return ValueRefs object.
   return FuncEntry->getArguments()[1];
 }
 
@@ -1219,7 +1240,7 @@ mlir::Value OpGen::LocalizeRec(heavy::Value B,
   LS.Captures.push_back(ParentLocal);
   uint32_t Index = LS.Captures.size() - 1;
   mlir::Value Closure = Block.getArguments().front();
-  mlir::Value NewVal = create<LoadClosureOp>(Loc, Closure, Index);
+  mlir::Value NewVal = create<LoadRefOp>(Loc, Closure, Index);
 
   if (B) {
     BindingTable.insertIntoScope(&LS.BindingScope_, B, NewVal);
