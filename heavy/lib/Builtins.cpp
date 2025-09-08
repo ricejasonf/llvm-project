@@ -645,10 +645,11 @@ Value append_rec(Context& C, Value List, Value Cdr) {
   C.setLoc(List);
   if (isa<Empty>(List))
     return Cdr;
-  else if (Pair* P = dyn_cast<Pair>(List))
-    return C.CreatePair(P->Car, append_rec(C, P->Cdr, Cdr));
-  else
-    return Value();
+  if (Pair* P = dyn_cast<Pair>(List)) {
+    if (Value V = append_rec(C, P->Cdr, Cdr))
+      return C.CreatePair(P->Car, V);
+  }
+  return Value();
 };
 }
 void append(Context& C, ValueRefs Args) {

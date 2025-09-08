@@ -66,6 +66,24 @@
   (write temp)))
 (newline)
 
+; CHECK-NEXT: 5
+((lambda ()
+  (define temp 42)
+  (if (eqv? temp 42)
+    (set! temp (+ 5))
+    (set! temp 6))
+  (write temp)))
+(newline)
+
+; CHECK-NEXT: 6
+((lambda ()
+  (define temp 42)
+  (if (eqv? temp 43)
+    (set! temp 5)
+    (set! temp (+ 5 1)))
+  (write temp)))
+(newline)
+
 ; CHECK-NEXT: foo
 (write
   (if (null? '()) 'return-foo 'return-bar))

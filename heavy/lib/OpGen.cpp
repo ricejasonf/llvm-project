@@ -877,25 +877,18 @@ mlir::Value OpGen::createIf(SourceLocation Loc, Value Cond, Value Then,
     TailPosScope TPS(*this);
     IsTailPos = true;
 
-    // Then
-    {
+    auto handleBranch = [&](heavy::Value Value, mlir::Block* Block) {
       LambdaScope LS(*this, IfContOp);
       mlir::OpBuilder::InsertionGuard IG(Builder);
-      Builder.setInsertionPointToStart(ThenBlock);
-      mlir::Value Result = Visit(Then);
-      if (ThenBlock->empty() || !isa<ApplyOp>(ThenBlock->back()))
+      Builder.setInsertionPointToStart(Block);
+      mlir::Value Result = Visit(Value);
+      Block = Builder.getBlock();
+      if (Block->empty() || !isa<ApplyOp>(Block->back()))
         create<ContOp>(Loc, Result);
-    }
+    };
 
-    // Else
-    {
-      LambdaScope LS(*this, IfContOp);
-      mlir::OpBuilder::InsertionGuard IG(Builder);
-      Builder.setInsertionPointToStart(ElseBlock);
-      mlir::Value Result = Visit(Else);
-      if (ElseBlock->empty() || !isa<ApplyOp>(ElseBlock->back()))
-        create<ContOp>(Loc, Result);
-    }
+    handleBranch(Then, ThenBlock);
+    handleBranch(Else, ElseBlock);
   }
 
   if (TailPos) return mlir::Value();
