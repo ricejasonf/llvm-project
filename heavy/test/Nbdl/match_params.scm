@@ -39,16 +39,25 @@
       (result
         (create-op "nbdl.get"
                    (operands store key1)
-                   (result-types !nbdl.opaque))))
+                   (result-types !nbdl.store))))
     (define value
       (result
         (create-op "nbdl.get"
                    (operands store key2)
-                   (result-types !nbdl.opaque))))
+                   (result-types !nbdl.store))))
     (define the-match-op
       (create-op "nbdl.match"
                  (regions 1)
                  (operands value key3)))
+    (if (value? "!nbdl.opaque" key3)
+      'ok
+      (error "key should be a an opaque type"))
+    (if (value? !nbdl.store foo)
+      'ok
+      (error "foo should be a nbdl store"))
+    (if (value? value)
+      'ok
+      (error "value should be a value"))
     (with-builder
       (lambda ()
         (at-block-begin (entry-block the-match-op))

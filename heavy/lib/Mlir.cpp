@@ -62,6 +62,7 @@ heavy::ExternFunction parent_op;
 heavy::ExternFunction op_next;
 heavy::ExternFunction verify;
 heavy::ExternFunction module_lookup;
+heavy::ExternFunction is_value;
 }
 
 using namespace heavy::mlir_helper;
@@ -533,7 +534,7 @@ void type(Context& C, ValueRefs Args) {
   mlir::MLIRContext* MLIRContext = getCurrentContext(C);
   llvm::StringRef TypeStr = Args[0].getStringRef();
   if (TypeStr.empty())
-    return C.RaiseError("expecting string");
+    return C.RaiseError("expecting string with type");
 
   mlir::Type Type = mlir::parseType(TypeStr, MLIRContext,
                                     nullptr, heavy::String::IsNullTerminated);
@@ -652,7 +653,7 @@ void string_attr(Context& C, ValueRefs Args) {
     return C.RaiseError("invalid arity");
   if (!isa<heavy::String, heavy::Symbol>(Args[0]))
     return C.RaiseError("expecting string-like object");
-  llvm::StringRef Str = Args[0].getStringRef(); 
+  llvm::StringRef Str = Args[0].getStringRef();
   mlir::MLIRContext* MLIRContext = getCurrentContext(C);
   mlir::Attribute Attr = AttrTy::get(MLIRContext, Str);
   C.Cont(C.CreateAny(Attr));
@@ -801,6 +802,35 @@ void module_lookup(Context& C, heavy::ValueRefs Args) {
   C.Cont(Result);
 }
 
+// (value? obj)
+// (value? _typestr_ obj)
+// (value? mlir.type obj)
+void is_value(Context& C, ValueRefs Args) {
+  if (Args.size() < 1 || Args.size() > 2)
+    return C.RaiseError("invalid arity");
+
+  mlir::MLIRContext* MLIRContext = getCurrentContext(C);
+  mlir::Type Type;
+
+  if (Args.size() == 2) {
+    if (isa<String, Symbol>(Args[0])) {
+      llvm::StringRef TypeStr = Args[0].getStringRef();
+      Type = mlir::parseType(TypeStr, MLIRContext,
+                             nullptr, heavy::String::IsNullTerminated);
+    } else {
+      Type = any_cast<mlir::Type>(Args[0]);
+    }
+
+    if (!Type)
+      return C.RaiseError("expecting a mlir.type");
+    Args = Args.drop_front();
+  }
+
+  mlir::Value Value = any_cast<mlir::Value>(Args[0]);
+  bool Result = Value && (!Type || Value.getType() == Type);
+  C.Cont(heavy::Bool(Result));
+}
+
 }  // namespace heavy::mlir_bind
 
 extern "C" {
@@ -839,6 +869,7 @@ void HEAVY_MLIR_INIT(heavy::Context& C) {
   HEAVY_MLIR_VAR(with_new_context) = heavy::mlir_bind::with_new_context;
   HEAVY_MLIR_VAR(verify) = heavy::mlir_bind::verify;
   HEAVY_MLIR_VAR(module_lookup) = heavy::mlir_bind::module_lookup;
+  HEAVY_MLIR_VAR(is_value) = heavy::mlir_bind::is_value;
 }
 
 void HEAVY_MLIR_LOAD_MODULE(heavy::Context& C) {
@@ -871,6 +902,7 @@ void HEAVY_MLIR_LOAD_MODULE(heavy::Context& C) {
     {"load-dialect", HEAVY_MLIR_VAR(load_dialect)},
     {"verify", HEAVY_MLIR_VAR(verify)},
     {"module-lookup", HEAVY_MLIR_VAR(module_lookup)},
+    {"value?", HEAVY_MLIR_VAR(is_value)},
   });
 }
 }
