@@ -3,7 +3,27 @@
 
 ;; TODO Local let-syntax needs to be tested/supported.
 
+(define-syntax capture-late-bind
+  (syntax-rules ()
+    ((capture-late-bind x)
+     ((lambda ()
+       (define storage 0)
+       (lambda ()
+         (set! storage
+           (if (symbol? ok)
+               ok 'oknotyet))
+         (write storage)))))))
+
+; CHECK: oknotyet
+((capture-late-bind 5))
+(newline)
+
 (define ok 'ok!)
+
+; CHECK-NEXT: ok
+((capture-late-bind 5))
+
+(newline)
 (define-syntax my-lambda
   (syntax-rules (=>)
     ((my-lambda formals => body)

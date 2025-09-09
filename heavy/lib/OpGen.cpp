@@ -143,7 +143,7 @@ mlir::Value OpGen::GetSingleResult(heavy::Value V) {
   mlir::Value Result = Visit(V);
 
   // Take the first continuation arg.
-  if (isa<HeavyValueRefsTy>(Result.getType()))
+  if (Result && isa<HeavyValueRefsTy>(Result.getType()))
     Result = create<LoadRefOp>(heavy::SourceLocation(), Result, /*Index*/0);
 
   if (CheckError())
@@ -533,12 +533,6 @@ void OpGen::PopContinuationScope() {
 
 bool OpGen::isLocalDefineAllowed() {
   return IsLocalDefineAllowed;
-#if 0
-  mlir::Block* Block = Builder.getInsertionBlock();
-  if (!Block) return false;
-  return (Block->empty() ||
-          isa<BindingOp>(Block->back()));
-#endif
 }
 
 // createSyntaxSpec
