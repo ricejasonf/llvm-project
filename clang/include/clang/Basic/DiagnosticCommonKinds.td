@@ -471,7 +471,9 @@ def warn_try_not_valid_on_target : Warning<
 
 // HeavyScheme
 def err_heavy_scheme : Error<
-    "(HeavyScheme) %0">;
+    "(heavy_scheme) %0">;
 def warn_heavy_scheme : Warning<
-    "(HeavyScheme) %0">;
+    "(heavy_scheme) %0">;
+def note_heavy_scheme : Note<
+    "(heavy_scheme) %0">;
 }

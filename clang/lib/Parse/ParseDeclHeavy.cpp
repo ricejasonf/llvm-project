@@ -32,6 +32,8 @@ using namespace clang;
 
 bool HEAVY_CLANG_IS_LOADED = false;
 heavy::ContextLocal HEAVY_CLANG_VAR(diag_error);
+heavy::ContextLocal HEAVY_CLANG_VAR(diag_warning);
+heavy::ContextLocal HEAVY_CLANG_VAR(diag_note);
 heavy::ContextLocal HEAVY_CLANG_VAR(hello_world);
 heavy::ContextLocal HEAVY_CLANG_VAR(write_lexer);
 heavy::ContextLocal HEAVY_CLANG_VAR(lexer_writer);
@@ -45,6 +47,12 @@ clang::SourceLocation getSourceLocation(heavy::FullSourceLocation Loc) {
   return clang::SourceLocation
     ::getFromRawEncoding(Loc.getExternalRawEncoding())
      .getLocWithOffset(Loc.getOffset());
+}
+
+clang::SourceLocation getSourceLocation(heavy::HeavyScheme& HS,
+                                        heavy::SourceLocation Loc) {
+  heavy::FullSourceLocation FullLoc = HS.getFullSourceLocation(Loc);
+  return getSourceLocation(FullLoc);
 }
 
 // It is complicated to keep the TokenBuffer alive
@@ -135,20 +143,31 @@ bool Parser::ParseHeavyScheme() {
     // Load the static builtin module.
     Parser& P = *this;
     heavy::HeavyScheme& HS = *HeavyScheme;
-    auto diag_error = [&](heavy::Context& C, heavy::ValueRefs Args) {
-      if (Args.size() != 1) {
-        C.RaiseError("invalid arity to function", C.getCallee());
-        return;
-      }
-      if (!isa<heavy::String, heavy::Symbol>(Args[0])) {
-        C.RaiseError("expecting string or identifier", C.getCallee());
-        return;
-      }
-      llvm::StringRef Err = Args[0].getStringRef();
+    auto diag_gen = [&](auto DiagKind) {
+      return [&, DiagKind](heavy::Context& C, heavy::ValueRefs Args) {
+        if (Args.size() < 1 || Args.size() > 2) {
+          C.RaiseError("invalid arity to function", C.getCallee());
+          return;
+        }
 
-      P.Diag(clang::SourceLocation{}, diag::err_heavy_scheme) << Err;
-      C.Cont();
+        if (!isa<heavy::String, heavy::Symbol>(Args[0])) {
+          C.RaiseError("expecting string or identifier", C.getCallee());
+          return;
+        }
+
+        llvm::StringRef Err = Args[0].getStringRef();
+        heavy::SourceLocation Loc;
+        if (Args.size() > 1)
+          Loc = Args[1].getSourceLocation();
+
+        clang::SourceLocation CLoc = getSourceLocation(HS, Loc);
+        P.Diag(CLoc, DiagKind) << Err;
+        C.Cont();
+      };
     };
+    auto diag_error = diag_gen(diag::err_heavy_scheme);
+    auto diag_warning = diag_gen(diag::warn_heavy_scheme);
+    auto diag_note = diag_gen(diag::note_heavy_scheme);
 
     auto hello_world = [](heavy::Context& C, heavy::ValueRefs Args) {
       llvm::errs() << "hello world (from clang)\n";
@@ -300,6 +319,10 @@ bool Parser::ParseHeavyScheme() {
     heavy::base::InitParseSourceFile(Context, ParseSourceFileFn);
     HEAVY_CLANG_VAR(diag_error).init(Context,
                                      Context.CreateLambda(diag_error));
+    HEAVY_CLANG_VAR(diag_warning).init(Context,
+                                       Context.CreateLambda(diag_warning));
+    HEAVY_CLANG_VAR(diag_note).init(Context,
+                                    Context.CreateLambda(diag_note));
     HEAVY_CLANG_VAR(hello_world).init(Context,
                                       Context.CreateLambda(hello_world));
     HEAVY_CLANG_VAR(expr_eval).init(Context,
