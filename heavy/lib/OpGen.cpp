@@ -877,8 +877,11 @@ mlir::Value OpGen::createIf(SourceLocation Loc, Value Cond, Value Then,
       Builder.setInsertionPointToStart(Block);
       mlir::Value Result = Visit(Value);
       Block = Builder.getBlock();
-      if (Block->empty() || !isa<ApplyOp>(Block->back()))
+      if (Result) {
+        assert(Block->empty() ||
+          !Block->back().hasTrait<mlir::OpTrait::IsTerminator>());
         create<ContOp>(Loc, Result);
+      }
     };
 
     handleBranch(Then, ThenBlock);
