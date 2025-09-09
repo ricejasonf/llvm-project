@@ -103,3 +103,19 @@
 (write
   (if (null? 42) 'return-baz))
 (newline)
+
+; Should compile
+(define (maybe-literal-op* Arg)
+  (define AttrVal
+    (if (number? Arg)
+      (write (number->string Arg))
+      (if (symbol? Arg)
+        (error "oof")
+        (if (string? Arg)
+          (error "woof")
+          #f))))
+  (if AttrVal
+    'ok
+    Arg))
+; CHECK-NEXT: "5"
+(maybe-literal-op* 5)
