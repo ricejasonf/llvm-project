@@ -78,3 +78,16 @@
     msg)))
 (write global)
 (newline)
+
+; Test capture of lazy global binding.
+(define (fnzzz)
+  (define temp lazy-binding-fn)
+  (lambda (x)
+    (temp x)))
+
+(define (lazy-binding-fn x)
+  (write x)
+  (newline))
+
+; CHECK: just-lazy
+((fnzzz) 'just-lazy)
