@@ -25,13 +25,19 @@
 #define HEAVY_CLANG_INIT              HEAVY_CLANG_LIB##_init
 #define HEAVY_CLANG_VAR(NAME)         HEAVY_CLANG_VAR__##NAME
 #define HEAVY_CLANG_VAR__diag_error   HEAVY_CLANG_LIB_(VS4diagmi5Serror)
+#define HEAVY_CLANG_VAR__diag_warning HEAVY_CLANG_LIB_(VS4diagmi7Swarning)
+#define HEAVY_CLANG_VAR__diag_note    HEAVY_CLANG_LIB_(VS4diagmi4Snote)
 #define HEAVY_CLANG_VAR__hello_world  HEAVY_CLANG_LIB_(V5Shellomi5Sworld)
 #define HEAVY_CLANG_VAR__write_lexer  HEAVY_CLANG_LIB_(V5Swritemi5Slexer)
 #define HEAVY_CLANG_VAR__lexer_writer HEAVY_CLANG_LIB_(V5Slexermi6Swriter)
 #define HEAVY_CLANG_VAR__expr_eval    HEAVY_CLANG_LIB_(V4Sexprmi4Seval)
 
 // diag-error
+// diag-warning
+// diag-note
 extern heavy::ContextLocal HEAVY_CLANG_VAR(diag_error);
+extern heavy::ContextLocal HEAVY_CLANG_VAR(diag_warning);
+extern heavy::ContextLocal HEAVY_CLANG_VAR(diag_note);
 
 // hello-world
 extern heavy::ContextLocal HEAVY_CLANG_VAR(hello_world);
@@ -50,6 +56,10 @@ extern "C" {
 inline void HEAVY_CLANG_INIT(heavy::Context& Context) {
   assert(HEAVY_CLANG_VAR(diag_error).get(Context) &&
       "external module must be preloaded");
+  assert(HEAVY_CLANG_VAR(diag_warning).get(Context) &&
+      "external module must be preloaded");
+  assert(HEAVY_CLANG_VAR(diag_note).get(Context) &&
+      "external module must be preloaded");
   assert(HEAVY_CLANG_VAR(hello_world).get(Context) &&
       "external module must be preloaded");
   assert(HEAVY_CLANG_VAR(write_lexer).get(Context) &&
@@ -66,6 +76,8 @@ inline void HEAVY_CLANG_LOAD_MODULE(heavy::Context& Context) {
   HEAVY_CLANG_INIT(Context);
   heavy::initModuleNames(Context, HEAVY_CLANG_LIB_STR, {
     {"diag-error",  HEAVY_CLANG_VAR(diag_error).init(Context)},
+    {"diag-warning",  HEAVY_CLANG_VAR(diag_warning).init(Context)},
+    {"diag-note",  HEAVY_CLANG_VAR(diag_note).init(Context)},
     {"hello-world", HEAVY_CLANG_VAR(hello_world).init(Context)},
     {"write-lexer", HEAVY_CLANG_VAR(write_lexer).init(Context)},
     {"lexer-writer",HEAVY_CLANG_VAR(lexer_writer).init(Context)},

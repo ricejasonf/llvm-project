@@ -331,9 +331,14 @@ void parse_source_file(Context& C, ValueRefs Args) {
 }
 
 void source_loc(Context& C, ValueRefs Args) {
-  if (Args.size() != 1)
-    return C.RaiseError("expecting single argument");
-  C.Cont(C.CreateSourceValue(Args[0].getSourceLocation()));
+  heavy::SourceLocation Loc;
+  // Take the first valid source location.
+  for (heavy::Value Arg : Args) {
+    Loc = Arg.getSourceLocation();
+    if (Loc.isValid())
+      break;
+  }
+  C.Cont(C.CreateSourceValue(Loc));
 }
 
 } // end of namespace heavy::base
