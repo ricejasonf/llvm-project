@@ -114,13 +114,16 @@ void op_eval(Context& C, ValueRefs Args);
 mlir::Value define(OpGen& OG, Pair* P) {
   Pair*   P2    = dyn_cast<Pair>(P->Cdr);
   Symbol* S     = nullptr;
-  if (!P2) return OG.SetError("invalid define syntax", P);
-  if (Pair* LambdaSpec = dyn_cast<Pair>(P2->Car)) {
+
+  if (!P2)
+    return OG.SetError("invalid syntax for define", P);
+  if (Pair* LambdaSpec = dyn_cast<Pair>(P2->Car))
     S = dyn_cast<Symbol>(LambdaSpec->Car);
-  } else {
+  else
     S = dyn_cast<Symbol>(P2->Car);
-  }
-  if (!S) return OG.SetError("invalid define syntax", P);
+
+  if (!S)
+    return OG.SetError("invalid syntax for define", P);
   return OG.createDefine(S, P2, P);
 }
 

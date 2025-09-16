@@ -55,7 +55,6 @@ protected:
   VISIT_FN(Char)
   VISIT_FN(ContArg)
   VISIT_FN(Empty)
-  VISIT_FN(EnvFrame)
   VISIT_FN(Environment)
   VISIT_FN(Error)
   VISIT_FN(Exception)
@@ -97,7 +96,6 @@ public:
     case ValueKind::Char:           DISPATCH(Char);
     case ValueKind::ContArg:        DISPATCH(ContArg);
     case ValueKind::Empty:          DISPATCH(Empty);
-    case ValueKind::EnvFrame:       DISPATCH(EnvFrame);
     case ValueKind::Environment:    DISPATCH(Environment);
     case ValueKind::Error:          DISPATCH(Error);
     case ValueKind::Exception:      DISPATCH(Exception);

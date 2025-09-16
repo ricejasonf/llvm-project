@@ -163,7 +163,7 @@ void Context::Import(heavy::ImportSet* ImportSet) {
   Cont();
 }
 
-EnvFrame* Context::PushLambdaFormals(Value Formals,
+Vector* Context::PushLambdaFormals(Value Formals,
                                      bool& HasRestParam) {
   llvm::SmallVector<Symbol*, 8> Names;
   HasRestParam = false;
@@ -182,8 +182,8 @@ EnvFrame* Context::PushLambdaFormals(Value Formals,
   return PushEnvFrame(Names);
 }
 
-EnvFrame* Context::PushEnvFrame(llvm::ArrayRef<Symbol*> Names) {
-  EnvFrame* E = CreateEnvFrame(Names);
+Vector* Context::PushEnvFrame(llvm::ArrayRef<Symbol*> Names) {
+  Vector* E = CreateEnvFrame(Names);
   EnvStack = CreatePair(E, EnvStack);
   return E;
 }
@@ -198,8 +198,8 @@ void Context::PopEnvFrame() {
     if (!isa<Binding>(EnvPair->Car)) break;
     Env = EnvPair->Cdr;
   }
-  assert(isa<EnvFrame>(EnvPair->Car) &&
-      "Scope must be in an EnvFrame");
+  assert(isa<Vector>(EnvPair->Car) &&
+      "Scope must exist to pop");
   EnvStack = EnvPair->Cdr;
 }
 
@@ -233,45 +233,35 @@ bool Context::CheckLambdaFormals(Value Formals,
   return CheckLambdaFormals(P->Cdr, Names, HasRestParam);
 }
 
-// The Stack is an improper list ending with an Environment
-EnvEntry Context::Lookup(Symbol* Name, Value Stack) {
-  if (auto* E = dyn_cast<Environment>(Stack)) {
-    EnvEntry Result = E->Lookup(*this, Name);
-    if (!Result && Name->equals("import")) {
-      return EnvEntry{_HEAVY_import, NameForImportVar};
-    }
-    else if (!Result && Name->equals("load_module")) {
-      return EnvEntry{_HEAVY_load_module, NameForLoadModuleVar};
-    }
-    return Result;
-  }
+EnvEntry Context::Lookup(Value Id, Value Stack) {
   EnvEntry Result = {};
-  Value V    = cast<Pair>(Stack)->Car;
-  Value Next = cast<Pair>(Stack)->Cdr;
-  switch (V.getKind()) {
+  for (Value V : Stack) {
+    switch (V.getKind()) {
     case ValueKind::Binding:
-      Result = cast<Binding>(V)->Lookup(Name);
+      Result = cast<Binding>(V)->Lookup(Id);
       break;
-    case ValueKind::EnvFrame:
-      Result = cast<EnvFrame>(V)->Lookup(Name);
-      break;
-    case ValueKind::Module:
-      // FIXME Pretty sure we dont have these for lookup.
-      llvm_unreachable("Invalid Lookup Type");
-      //Result = cast<Module>(V)->Lookup(*this, Name);
+    case ValueKind::Vector:
+      Result = cast<Vector>(V)->Lookup(Id);
       break;
     case ValueKind::ImportSet:
-      Result = cast<ImportSet>(V)->Lookup(*this, Name);
+      if (auto* Name = dyn_cast<Symbol>(Id))
+        Result = cast<ImportSet>(V)->Lookup(*this, Name);
       break;
-    case ValueKind::Environment: {
-      Result = cast<Environment>(V)->Lookup(*this, Name);
+    case ValueKind::Environment:
+      if (auto* Name = dyn_cast<Symbol>(Id)) {
+        Result = cast<Environment>(V)->Lookup(*this, Name);
+        if (!Result && Name->Equiv("import"))
+          return EnvEntry{_HEAVY_import, NameForImportVar};
+        else if (!Result && Name->Equiv("load_module"))
+          return EnvEntry{_HEAVY_load_module, NameForLoadModuleVar};
+      }
       break;
-    }
     default:
       llvm_unreachable("Invalid Lookup Type");
+    }
   }
-  if (Result) return Result;
-  return Lookup(Name, Next);
+
+  return Result;
 }
 
 mlir::Operation* Context::getModuleOp() {
@@ -572,21 +562,11 @@ private:
     OS << '}';
   }
 
-  void VisitEnvFrame(EnvFrame* E) {
-    OS << "#<EnvFrame {";
-    // Print the name of each binding.
-    llvm::interleaveComma(E->getBindings(), OS,
-      [&](Value B) {
-        OS << cast<Binding>(B)->getName()->getStringRef();
-      });
-    OS << '}';
-  }
-
   void VisitSyntaxClosure(SyntaxClosure* E) {
     // The context of closure is lost when printing this.
     OS << "#<SyntaxClosure {";
     Visit(E->Node);
-    OS << '}';
+    OS << "}>";
   }
 };
 
@@ -616,7 +596,7 @@ bool equal_slow(Value V1, Value V2) {
 
   switch (V1.getKind()) {
   case ValueKind::String:
-    return cast<String>(V1)->equals(cast<String>(V2));
+    return cast<String>(V1)->Equiv(cast<String>(V2));
   case ValueKind::Pair:
   case ValueKind::PairWithSource: {
     Pair* P1 = cast<Pair>(V1);
@@ -640,8 +620,11 @@ bool eqv_slow(Value V1, Value V2) {
       "inputs are expected to have same kind");
   switch (V1.getKind()) {
   case ValueKind::Symbol:
-    return cast<Symbol>(V1)->equals(
+    return cast<Symbol>(V1)->Equiv(
               cast<Symbol>(V2));
+  case ValueKind::String:
+    return cast<String>(V1)->Equiv(
+              cast<String>(V2));
   case ValueKind::Float:
     return cast<Float>(V1)->getVal() ==
               cast<Float>(V2)->getVal();
@@ -711,7 +694,7 @@ EnvEntry ImportSet::LookupFromPairs(heavy::Context& C, Symbol* S) {
     Pair* Row = cast<Pair>(P->Car);
     Symbol* Key   = cast<Symbol>(Row->Car);
     Symbol* Value = cast<Symbol>(cast<Pair>(Row->Cdr)->Car);
-    if (S->equals(Value)) return Parent->Lookup(C, Key);
+    if (S->Equiv(Value)) return Parent->Lookup(C, Key);
     CurrentRow = P->Cdr;
   }
   return {};
@@ -753,7 +736,7 @@ String* ImportSet::FilterFromPairs(heavy::Context& C, String* S) {
     Pair* Row = cast<Pair>(P->Car);
     String* Key   = cast<Symbol>(Row->Car)->getString();
     String* Value = cast<Symbol>(cast<Pair>(Row->Cdr)->Car)->getString();
-    if (S->equals(Key)) return Value;
+    if (S->Equiv(Key)) return Value;
     CurrentRow = P->Cdr;
   }
   return S;
@@ -771,13 +754,13 @@ void Context::CreateImportSet(Value Spec) {
     return;
   }
   // TODO perhaps we could intern these keywords in the IdTable
-  if (Keyword->equals("only")) {
+  if (Keyword->Equiv("only")) {
     Kind = ImportSet::ImportKind::Only;
-  } else if (Keyword->equals("except")) {
+  } else if (Keyword->Equiv("except")) {
     Kind = ImportSet::ImportKind::Except;
-  } else if (Keyword->equals("rename")) {
+  } else if (Keyword->Equiv("rename")) {
     Kind = ImportSet::ImportKind::Rename;
-  } else if (Keyword->equals("prefix")) {
+  } else if (Keyword->Equiv("prefix")) {
     Kind = ImportSet::ImportKind::Prefix;
   } else {
     // ImportSet::ImportKind::Library;
@@ -1584,16 +1567,11 @@ ByteVector* Context::CreateByteVector(ArrayRef<Value> Xs) {
   return BV;
 }
 
-EnvFrame* Context::CreateEnvFrame(llvm::ArrayRef<Symbol*> Names) {
-  unsigned MemSize = EnvFrame::sizeToAlloc(Names.size());
-
-  void* Mem = Allocate(MemSize, alignof(EnvFrame));
-
-  EnvFrame* E = new (Mem) EnvFrame(Names.size());
-  auto Bindings = E->getBindings();
-  for (unsigned i = 0; i < Bindings.size(); i++) {
-    Bindings[i] = CreateBinding(Names[i], CreateUndefined());
-  }
+Vector* Context::CreateEnvFrame(llvm::ArrayRef<Symbol*> Names) {
+  Vector* E = CreateVector(Names.size());
+  auto Bindings = E->getElements();
+  for (unsigned i = 0; i < Bindings.size(); i++)
+    Bindings[i] = CreateBinding(Names[i], Undefined());
   return E;
 }
 

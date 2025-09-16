@@ -90,7 +90,6 @@ class Symbol;
 class Environment;
 class Module;
 class ImportSet;
-class EnvFrame;
 using ValueRefs   = llvm::MutableArrayRef<heavy::Value>;
 using ValueFnTy   = void (Context&, ValueRefs);
 using ValueFn     = ValueFnTy*;
@@ -119,7 +118,6 @@ enum class ValueKind {
   Char,
   ContArg,
   Empty,
-  EnvFrame,
   Environment,
   Error,
   Exception,
@@ -878,7 +876,7 @@ public:
     return llvm::MutableArrayRef(getTrailingObjects<char>(), Len);
   }
 
-  bool equals(String* S) const {
+  bool Equiv(String* S) const {
     return getView() == S->getView();
   }
 
@@ -887,6 +885,16 @@ public:
   }
   static ValueKind getKind() { return ValueKind::String; }
 };
+
+// EnvEntry - Used to store lookup results from an Environment list.
+struct EnvEntry {
+  heavy::Value Value;
+  String* MangledName = nullptr;
+
+  operator bool() const { return bool(Value); }
+};
+// Map Identifier to MangledName.
+using EnvBucket = std::pair<String*, String*>;
 
 class ByteVector : public ValueBase {
   String* Val;
@@ -927,9 +935,9 @@ public:
   llvm::StringRef getView() const { return Val->getView(); }
   String* getString() const { return Val; }
 
-  bool equals(llvm::StringRef Str) const { return getVal() == Str; }
-  bool equals(Symbol* S) const {
-    // compare the String* since they are uniqued
+  bool Equiv(llvm::StringRef Str) const { return getVal() == Str; }
+  bool Equiv(Symbol* S) const {
+    // Compare the String* since they are uniqued.
     return Val == S->Val;
   }
 
@@ -1221,6 +1229,11 @@ public:
       Node(Node)
   { }
 
+  // We store one on the stack for lookup.
+  SyntaxClosure()
+    : SyntaxClosure(SourceLocation(), Value(), Value())
+  { }
+
   using ValueWithSource::getSourceLocation;
 
   static bool classof(Value V) {
@@ -1290,6 +1303,9 @@ public:
     return llvm::MutableArrayRef<Value>(
         getTrailingObjects<Value>(), Len);
   }
+
+  inline EnvEntry Lookup(Value Id) const;
+
   static bool classof(Value V) {
     return V.getKind() == ValueKind::Vector;
   }
@@ -1389,31 +1405,31 @@ T* any_cast(heavy::Value const* VP) {
   return nullptr;
 }
 
-// EnvEntry - Used to store lookup results for
-struct EnvEntry {
-  heavy::Value Value;
-  String* MangledName = nullptr;
-
-  operator bool() const { return bool(Value); }
-};
-// Map Identifier to MangledName.
-using EnvBucket = std::pair<String*, String*>;
-
 class Binding : public ValueBase {
   friend class Context;
-  Symbol* Name;
+  Value Identifier;
   Value Val;
 
 public:
 
-  Binding(Symbol* N, Value V)
+  Binding(Value Id, Value V)
     : ValueBase(ValueKind::Binding)
-    , Name(N)
+    , Identifier(Id)
     , Val(V)
   { }
 
-  Symbol* getName() {
-    return Name;
+  Value getIdentifier() {
+    return Identifier;
+  }
+
+  SourceLocation getSourceLocation() {
+    heavy::Symbol* S = dyn_cast<Symbol>(Identifier);
+    if (!S) {
+      if (auto* SC = dyn_cast<SyntaxClosure>(Identifier))
+        S = dyn_cast<Symbol>(SC->Node);
+    }
+    assert(S && "expecting valid symbol for binding");
+    return S ? S->getSourceLocation() : SourceLocation();
   }
 
   bool isNull() { return bool(Val); }
@@ -1430,23 +1446,47 @@ public:
     Val = V;
   }
 
-  EnvEntry Lookup(Symbol* S) {
+  // Compare the binding to an equivalent symbol or syntax closure.
+  EnvEntry Lookup(Value LookupId) {
     assert(Val && "null binding should not be a part of lookup");
-    if (Name->equals(S)) return EnvEntry{Value(this)};
-    return {};
-  }
 
-  bool isSyntactic() {
-    return Val.getKind() == ValueKind::Syntax ||
-           Val.getKind() == ValueKind::BuiltinSyntax;
-  }
+    Symbol* Name1 = nullptr;
+    Symbol* Name2 = nullptr;
+    Value Env;
+    if (auto* SC1 = dyn_cast<SyntaxClosure>(Identifier)) {
+      if (auto* SC2 = dyn_cast<SyntaxClosure>(LookupId)) {
+        if (SC1->Env == SC2->Env) {
+          Name1 = dyn_cast<Symbol>(SC1->Node);
+          Name2 = dyn_cast<Symbol>(SC2->Node);
+        }
+      }
+    } else {
+      Name1 = dyn_cast<Symbol>(Identifier);
+      Name2 = dyn_cast<Symbol>(LookupId);
+    }
 
+    if (Name1 && Name2 && Name1->Equiv(Name2))
+      return EnvEntry{Value(this)};
+    else
+      return EnvEntry{};
+  }
 
   static bool classof(Value V) {
     return V.getKind() == ValueKind::Binding;
   }
   static ValueKind getKind() { return ValueKind::Binding; }
 };
+
+inline EnvEntry Vector::Lookup(Value Id) const {
+  // Use Vector to represent an "EnvFrame" for lambda scopes.
+  for (Value V : getElements()) {
+    // Ignore invalid stuff.
+    Binding* B = dyn_cast<Binding>(V);
+    if (B->Lookup(Id))
+      return EnvEntry{B};
+  }
+  return {};
+}
 
 // ForwardRef - used for garbage collection
 class ForwardRef : public ValueBase {
@@ -1742,65 +1782,10 @@ public:
   static ValueKind getKind() { return ValueKind::Environment; }
 };
 
-// EnvFrame - Represents a local scope that introduces variables
-//          - This should be used exclusively at compile time
-//            (unless we go the route of capturing entire scopes
-//             to keep values alive)
-class EnvFrame final
-  : public ValueBase,
-    private llvm::TrailingObjects<EnvFrame, Binding*> {
-
-  friend class llvm::TrailingObjects<EnvFrame, Binding*>;
-  friend class Context;
-  friend class CopyCollector;
-
-  unsigned NumBindings;
-  size_t numTrailingObjects(OverloadToken<Binding*> const) const {
-    return NumBindings;
-  }
-
-public:
-  EnvFrame(unsigned NumBindings)
-    : ValueBase(ValueKind::EnvFrame),
-      NumBindings(NumBindings)
-  { }
-
-  llvm::ArrayRef<Binding*> getBindings() const {
-    return llvm::ArrayRef<Binding*>(
-        getTrailingObjects<Binding*>(), NumBindings);
-  }
-
-  llvm::MutableArrayRef<Binding*> getBindings() {
-    return llvm::MutableArrayRef<Binding*>(
-        getTrailingObjects<Binding*>(), NumBindings);
-  }
-
-  static size_t sizeToAlloc(unsigned NumBindings) {
-    return totalSizeToAlloc<Binding*>(NumBindings);
-  }
-
-  // Returns nullptr if not found
-  EnvEntry Lookup(Symbol* Name) const;
-
-  static bool classof(Value V) {
-    return V.getKind() == ValueKind::EnvFrame;
-  }
-  static ValueKind getKind() { return ValueKind::EnvFrame; }
-};
-
-inline EnvEntry EnvFrame::Lookup(Symbol* Name) const {
-  // linear search
-  for (Binding* B : getBindings()) {
-    if (Name->equals(B->getName())) return EnvEntry{B};
-  }
-  return {};
-}
-
-
 // isSymbol - For matching symbols in syntax builtins
 inline bool isSymbol(Value V , llvm::StringRef Str) {
   if (Symbol* S = dyn_cast<Symbol>(V)) {
-    return S->equals(Str);
+    return S->Equiv(Str);
   }
   return false;
 }
@@ -1890,7 +1875,6 @@ inline llvm::StringRef getKindName(heavy::ValueKind Kind) {
   GET_KIND_NAME_CASE(ByteVector)
   GET_KIND_NAME_CASE(Char)
   GET_KIND_NAME_CASE(Empty)
-  GET_KIND_NAME_CASE(EnvFrame)
   GET_KIND_NAME_CASE(Environment)
   GET_KIND_NAME_CASE(Error)
   GET_KIND_NAME_CASE(Exception)

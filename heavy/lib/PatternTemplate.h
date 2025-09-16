@@ -32,6 +32,7 @@ class PatternTemplate : ValueVisitor<PatternTemplate, mlir::Value> {
   Symbol* Keyword;
   Symbol* Ellipsis;
   NameSet& Literals;
+  mlir::Value EnvArg;  // For syntax closures.
   llvm::SmallPtrSet<String*, 4> PatternVars;
 
   // P - the pattern node
@@ -50,11 +51,13 @@ public:
   PatternTemplate(heavy::OpGen& O,
                   heavy::Symbol* Keyword,
                   heavy::Symbol* Ellipsis,
+                  mlir::Value EnvArg,
                   NameSet& Literals)
     : OpGen(O),
       Keyword(Keyword),
       Ellipsis(Ellipsis),
       Literals(Literals),
+      EnvArg(EnvArg),
       PatternVars()
   { }
 
@@ -93,7 +96,7 @@ public:
     }
     // Create a local variable with a SyntaxClosure of E as the initializer.
     heavy::SourceLocation Loc = S->getSourceLocation();
-    auto SynClo = OpGen.create<SyntaxClosureOp>(Loc, E);
+    auto SynClo = OpGen.create<SyntaxClosureOp>(Loc, E, EnvArg);
     heavy::Context& C = OpGen.getContext();
     Binding* B = C.CreateBinding(S, SynClo.getOperation());
     C.PushLocalBinding(B);
@@ -172,7 +175,7 @@ public:
     heavy::SourceLocation Loc = P->getSourceLocation();
     if (auto* P2 = dyn_cast<Pair>(P->Cdr);
         P2 && isa<Symbol>(P2->Car) &&
-        cast<Symbol>(P2->Car)->equals(Ellipsis)) {
+        cast<Symbol>(P2->Car)->Equiv(Ellipsis)) {
       // P->Car is the subpattern.
       // P2->Cdr is the rest of the pattern after the ...
       VisitSubpattern(Loc, P->Car, P2->Cdr, E);
@@ -188,7 +191,7 @@ public:
 
   mlir::Value VisitSymbol(Symbol* P, mlir::Value E) {
     // <underscore>
-    if (P->equals("_")) {
+    if (P->Equiv("_")) {
       // Since _ always matches anything, there is
       // nothing to check.
       return mlir::Value();
@@ -214,7 +217,7 @@ public:
     }
 
     // <ellipsis>
-    if (P->equals(Ellipsis))
+    if (P->Equiv(Ellipsis))
       return OpGen.SetError("<ellipsis> is not a valid pattern", P);
 
     // everything else is a pattern variable

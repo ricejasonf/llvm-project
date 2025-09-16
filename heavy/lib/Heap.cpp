@@ -81,7 +81,7 @@ class CopyCollector : private ValueVisitor<CopyCollector, heavy::Value> {
   // Binding
   heavy::Binding* VisitBinding(heavy::Binding* Binding) {
     return new (NewHeap) heavy::Binding(
-      cast<heavy::Symbol>(Visit(Binding->getName())),
+      Visit(Binding->getIdentifier()),
       Visit(Binding->getValue()));
   }
 
@@ -94,21 +94,6 @@ class CopyCollector : private ValueVisitor<CopyCollector, heavy::Value> {
   heavy::Value VisitByteVector(heavy::ByteVector* ByteVector) {
     heavy::String* NewString = VisitString(ByteVector->getString());
     return new (NewHeap) heavy::ByteVector(NewString);
-  }
-
-  // EnvFrame
-  heavy::Value VisitEnvFrame(heavy::EnvFrame* EnvFrame) {
-    llvm::ArrayRef<heavy::Binding*> Bindings = EnvFrame->getBindings();
-    unsigned MemSize = EnvFrame::sizeToAlloc(Bindings.size());
-
-    void* Mem = NewHeap.Allocate(MemSize, alignof(heavy::EnvFrame));
-
-    heavy::EnvFrame* NewE = new (Mem) heavy::EnvFrame(Bindings.size());
-    auto NewBindings = NewE->getBindings();
-    for (unsigned i = 0; i < Bindings.size(); i++) {
-      NewBindings[i] = cast<heavy::Binding>(Visit(Bindings[i]));
-    }
-    return NewE;
   }
 
   // Error

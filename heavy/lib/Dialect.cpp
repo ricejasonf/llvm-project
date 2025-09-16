@@ -222,16 +222,15 @@ void ExpandPacksOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
 }
 
 void RenameOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
-                     mlir::Value Value) {
-  // How awful is this?
-  void* OpaquePtr = Value.getAsOpaquePointer();
-  uint64_t OpaqueValue = reinterpret_cast<uint64_t>(OpaquePtr);
-  bool IsSigned = false;
-  mlir::IntegerType UI64 = B.getIntegerType(64, IsSigned);
-  auto APVal = llvm::APInt(64, OpaqueValue, IsSigned);
-  auto Attr = mlir::IntegerAttr::get(UI64, APVal);
+                     llvm::StringRef Id, mlir::Value Capture) {
   mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
-  RenameOp::build(B, OpState, HeavyValueT, Attr);
+  RenameOp::build(B, OpState, HeavyValueT, Id, Capture);
+}
+
+void RenameGlobalOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                     llvm::StringRef Id, llvm::StringRef Sym) {
+  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
+  RenameGlobalOp::build(B, OpState, HeavyValueT, Id, Sym);
 }
 
 void SetOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
@@ -246,9 +245,9 @@ void SpliceOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
 }
 
 void SyntaxClosureOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
-                            mlir::Value input) {
+                            mlir::Value Input, mlir::Value Env) {
   mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
-  SyntaxClosureOp::build(B, OpState, HeavyValueT, input);
+  SyntaxClosureOp::build(B, OpState, HeavyValueT, Input, Env);
 }
 
 void SyntaxOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState) {

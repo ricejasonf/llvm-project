@@ -177,7 +177,7 @@ def heavy_OpGenOp : HeavyOp<"opgen", [Terminator]> {
     This operation is used for syntax code generation.
   }];
 
-  let arguments = (ins HeavyValue:$input);
+  let arguments = (ins HeavyValue:$input, HeavyValue:$env);
   let results   = (outs);
 }
 
@@ -471,16 +471,38 @@ def heavy_PushContOp : HeavyOp<"push_cont", []> {
 def heavy_RenameOp : HeavyOp<"rename", [HasParent<"PatternOp">]> {
   let summary = "rename";
   let description = [{
-    "Rename" a local variable by storing an opaque representation
-    of its mlir::Value. The lifetime of this value expires with the
-    MLIR Context so compilation of these operations should only be JIT.
-    (Local syntax can never be exported)
+    Capture a value and "rename" it using an identifier to use in the
+    scope of a syntax object. These lookups can be shadowed by the
+    environment created during template expansion (as I understand it.)
+
+    The $capture mlir::Value which may belong to a parent scope is
+    used to generate a localized value in the context of the template
+    expansion.
   }];
 
-  let arguments = (ins UI64Attr:$opaqueValue);
+  let arguments = (ins StrAttr:$id, HeavyValue:$capture);
   let results   = (outs HeavyValue:$result);
-  let builders  = [
-    OpBuilder<(ins "::mlir::Value":$opaqueValue)>
+  let builders = [
+    OpBuilder<(ins "::llvm::StringRef":$id, "::mlir::Value":$capture)>
+  ];
+}
+
+def heavy_RenameGlobalOp : HeavyOp<"rename_global", [HasParent<"PatternOp">]> {
+  let summary = "rename_global";
+  let description = [{
+    Similar to RenameOp, this RenameGlobalOp represents the possibility of
+    expanding the use of a global by generating a LoadGlobalOp in the context
+    of the template expansion.
+
+    Because globals can be defined lazily within the module, it is possible
+    that this operation could be generated when no global of the corresponding
+    name was defined. In this case the RenameOp can be removed.
+  }];
+
+  let arguments = (ins StrAttr:$id, StrAttr:$sym);
+  let results   = (outs HeavyValue:$result);
+  let builders = [
+    OpBuilder<(ins "::llvm::StringRef":$id, "::llvm::StringRef":$sym)>
   ];
 }
 
@@ -531,15 +553,15 @@ def heavy_SpliceOp : HeavyOp<"splice"> {
 def heavy_SyntaxClosureOp : HeavyOp<"syntax_closure"> {
   let summary = "syntax_closure";
   let description = [{
-    SyntaxClosureOp captures a syntax node with the current
+    SyntaxClosureOp captures a syntax node with the given
     environment. This supports generating code during hygienic
     macro expansion.
   }];
 
-  let arguments = (ins HeavyValue:$input);
+  let arguments = (ins HeavyValue:$input, HeavyValue:$env);
   let results   = (outs HeavyValue:$result);
   let builders  = [
-    OpBuilder<(ins "::mlir::Value":$input)>
+    OpBuilder<(ins "::mlir::Value":$input, "::mlir::Value":$env)>
   ];
 }
 
