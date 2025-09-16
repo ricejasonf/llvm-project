@@ -32,6 +32,7 @@ class TemplateGen : TemplateBase<TemplateGen>,
   Symbol* Ellipsis;
   NameSet& PatternVarNames;
   llvm::SmallVectorImpl<mlir::Value>* CurrentPacks = nullptr;
+  llvm::SmallVector<mlir::Value, 8> RenameOps;
 
 public:
   using ResultTy = TemplateResult;
@@ -55,7 +56,19 @@ public:
       TransformedSyntax = *MVP;
     else
       TransformedSyntax = createLiteral(std::get<heavy::Value>(Result));
-    OpGen.createOpGen(Loc, TransformedSyntax);
+
+    {
+      // Move the RenameOps to the end of the PatternOp.
+      mlir::Block* Block = OpGen.Builder.getBlock();
+      auto InsertionPoint = OpGen.Builder.getInsertionPoint();
+      for (mlir::Value RV : RenameOps)
+        RV.getDefiningOp()->moveBefore(Block, InsertionPoint);
+    }
+      
+    // Add the RenameOps to an EnvFrame
+    // to serve as the base of the environment.
+    mlir::Value TemplateEnv = OpGen.create<EnvFrameOp>(Loc, RenameOps);
+    OpGen.createOpGen(Loc, TransformedSyntax, TemplateEnv);
   }
 
 private:
@@ -97,7 +110,7 @@ private:
     heavy::SourceLocation Loc = P->getSourceLocation();
     if (auto* P2 = dyn_cast<Pair>(P->Cdr);
         P2 && isa<Symbol>(P2->Car) &&
-        cast<Symbol>(P2->Car)->equals(Ellipsis)) {
+        cast<Symbol>(P2->Car)->Equiv(Ellipsis)) {
       return ExpandPack(Loc, P->Car, P2->Cdr);
     }
 
@@ -155,33 +168,50 @@ private:
   }
 
   ResultTy VisitSymbol(Symbol* P) {
-    if (PatternVarNames.contains(P->getString())) {
+    if (PatternVarNames.contains(P->getString()))
       return CurrentPacks ? CaptureExpandArg(P) : GetPatternVar(P);
-    }
+
+    if (P->Equiv(Ellipsis))
+      return OpGen.SetError("unexpected ellipsis", P);
+
+    // The result will be a symbol literal.
+    // The built RenameOps simply inject into the environment.
+    mlir::Value LiteralResult = createLiteral(P);
 
     heavy::Context& Context = OpGen.getContext();
     EnvEntry Entry = Context.Lookup(P);
     SourceLocation Loc = P->getSourceLocation();
+    llvm::StringRef Id = P->getStringRef();
 
-    if (!Entry) {
-      // Insert as literal identifier.
-      return P;
+    // Insert RenameOps at the beginning of the pattern block.
+    mlir::OpBuilder::InsertionGuard IG(OpGen.Builder);
+    OpGen.Builder.setInsertionPointToStart(OpGen.Builder.getBlock());
+
+    std::string MangledNameStr;
+    llvm::StringRef MangledName;
+    if (Entry && !Entry.MangledName) {
+      // "Capture" the object and "rename" it
+      // We do not localize (aka capture) it until instantiation.
+      mlir::Value Capture = OpGen.Lookup(Entry.Value);
+      assert(Capture && "expecting value in lookup");
+      mlir::Value R = OpGen.create<heavy::RenameOp>(Loc, Id, Capture);
+      RenameOps.push_back(R);
+      return LiteralResult;
+    } else if (Entry.MangledName) {
+      MangledName = Entry.MangledName->getStringRef();
+    } else {
+      // Default to the name of a global
+      heavy::Mangler Mangler(Context);
+      MangledNameStr = Mangler.mangleVariable(OpGen.getModulePrefix(), P);
+      if (MangledNameStr.empty())
+        return mlir::Value();  // Error
+      MangledName = llvm::StringRef(MangledNameStr);
     }
 
-    if (Entry.MangledName) {
-      // Globals are "effectively renamed" to their
-      // linkage names for the sake of template hygiene.
-      return Context.CreateExternName(Loc, Entry.MangledName);
-    }
-
-    // Locals can be referred to by their stack value
-    // since local syntax cannot be exported.
-    // These are encoded as opaque constants in
-    // the generated code.
-    mlir::Value V = OpGen.Lookup(Entry.Value);
-    assert(V && "Value must exist in binding table.");
-    auto RenameOp = OpGen.create<heavy::RenameOp>(Loc, V);
-    return RenameOp.getResult();
+    assert(!MangledName.empty() && "should have mangled name");
+    mlir::Value R = OpGen.create<RenameGlobalOp>(Loc, Id, MangledName);
+    RenameOps.push_back(R);
+    return LiteralResult;
   }
 };
 

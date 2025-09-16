@@ -81,7 +81,7 @@ class CopyCollector : private ValueVisitor<CopyCollector, heavy::Value> {
   // Binding
   heavy::Binding* VisitBinding(heavy::Binding* Binding) {
     return new (NewHeap) heavy::Binding(
-      cast<heavy::Symbol>(Visit(Binding->getName())),
+      Visit(Binding->getIdentifier()),
       Visit(Binding->getValue()));
   }
 

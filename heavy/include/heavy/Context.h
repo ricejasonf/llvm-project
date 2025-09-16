@@ -108,6 +108,7 @@ class Context : public ContinuationStack<Context>,
   //  - an improper list ending with an Environment
   //  - Calls to procedures or eval will set the EnvStack
   //    and swap it back upon completion (via RAII)
+  //  - TODO EnvStack et al. could probably be moved to OpGen.
   Value EnvStack;
 
 public: // Provide access in lib/Mlir bindings.
@@ -173,7 +174,7 @@ public:
     return EnvStack;
   }
   void setEnvironment(Value E) {
-    assert((isa<Environment, Pair, Empty>(E)) &&
+    assert((isa<Environment, Pair, EnvFrame, Empty>(E)) &&
         "invalid environment specifier");
     EnvStack = E;
   }
@@ -213,25 +214,26 @@ public:
   // Lookup
   //  - Takes a Symbol
   //  - Returns a matching Binder or nullptr
-  EnvEntry Lookup(Symbol* Name, Value Stack);
-  EnvEntry Lookup(Symbol* Name) {
-    return Lookup(Name, EnvStack);
+  EnvEntry Lookup(Value Id) {
+    return Lookup(Id, EnvStack);
   }
+  EnvEntry Lookup(Value Id, Value Stack);
 
   // PushEnvFrame - Creates and pushes an EnvFrame to the
   //                current environment (EnvStack)
-  EnvFrame* PushEnvFrame(llvm::ArrayRef<Symbol*> Names);
+  EnvFrame* PushEnvFrame(llvm::ArrayRef<Value> Names);
   void PopEnvFrame();
   void PushLocalBinding(Binding* B);
 
-  // PushLambdaFormals - Checks formals, creates an EnvFrame,
-  //                     and pushes it onto the EnvStack
-  //                     Returns the pushed EnvFrame or nullptr
-  EnvFrame* PushLambdaFormals(Value Formals, bool& HasRestParam);
+  // PushLambdaFormals - Check formals, create an EnvFrame,
+  //                     and push it onto the EnvStack
+  //                     Return the pushed EnvFrame or nullptr.
+  EnvFrame* PushLambdaFormals(Value Formals, bool& HasRestParam,
+                              SyntaxClosure* SC);
 private:
   bool CheckLambdaFormals(Value Formals,
-                          llvm::SmallVectorImpl<Symbol*>& Names,
-                          bool& HasRestParam);
+                          llvm::SmallVectorImpl<Value>& Names,
+                          bool& HasRestParam, SyntaxClosure* SC);
 public:
 
   void EmitStackSpaceError();
@@ -340,7 +342,8 @@ public:
   Vector*     CreateVector(ArrayRef<Value> Xs);
   Vector*     CreateVector(unsigned N);
   ByteVector* CreateByteVector(llvm::ArrayRef<Value> Xs);
-  EnvFrame*   CreateEnvFrame(llvm::ArrayRef<Symbol*> Names);
+  EnvFrame*   CreateEnvFrame(llvm::ArrayRef<Value> Names);
+  EnvFrame*   CreateEnvFrame(unsigned N);
 
   template <typename T>
   Any* CreateAny(T Obj) {
@@ -387,8 +390,9 @@ public:
     return new (*this) BuiltinSyntax(Fn);
   }
 
-  SyntaxClosure* CreateSyntaxClosure(SourceLocation Loc, Value Node) {
-    return new (*this) SyntaxClosure(Loc, EnvStack, Node);
+  SyntaxClosure* CreateSyntaxClosure(SourceLocation Loc, Value Node,
+                                     Value Env) {
+    return new (*this) SyntaxClosure(Loc, Env, Node);
   }
 
   SourceValue* CreateSourceValue(SourceLocation Loc) {
@@ -415,8 +419,8 @@ public:
     return new (*this) Exception(V);
   }
 
-  Binding* CreateBinding(Symbol* S, Value V) {
-    return new (*this) Binding(S, V);
+  Binding* CreateBinding(Value Id, Value V) {
+    return new (*this) Binding(Id, V);
   }
 
   // CreateImportSet - Call CC with created ImportSet.

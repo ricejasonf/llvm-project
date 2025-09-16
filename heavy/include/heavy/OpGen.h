@@ -34,6 +34,7 @@ namespace mlir {
 }
 
 namespace heavy {
+using IdSet = std::set<std::pair<uintptr_t, uintptr_t>>;
 using NameSet = llvm::SmallPtrSetImpl<String*>;
 class PatternTemplate;
 class TemplateGen;
@@ -118,6 +119,10 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   //                  be inserted if this is set.
   Binding* LibraryEnvProc = nullptr;
 
+  // The current syntax closure will affect how we perform lookup
+  // in LookupEnv.
+  SyntaxClosure* CurSyntaxClosure = nullptr;
+
   // Err - The stored error to indicate that the compiler is in an error state.
   //       (Use CheckError())
   Value Err = nullptr;
@@ -146,7 +151,7 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   };
 
   void InsertTopLevelCommandOp(SourceLocation Loc);
-  bool WalkDefineInits(Value Env, NameSet& LocalNames);
+  bool WalkDefineInits(Value Env, IdSet& LocalNames);
   bool FinishLocalDefines();
 
 public:
@@ -266,7 +271,8 @@ public:
 
   mlir::Value createCall(heavy::SourceLocation Loc, mlir::Value Fn,
                          llvm::MutableArrayRef<mlir::Value> Args);
-  mlir::Value createOpGen(SourceLocation Loc, mlir::Value Input);
+  mlir::Value createOpGen(SourceLocation Loc, mlir::Value Input,
+                          mlir::Value Env);
   mlir::Value createBody(SourceLocation Loc, Value Body);
   mlir::Value createSequence(SourceLocation Loc, Value Body);
   mlir::Value createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall);
@@ -377,10 +383,13 @@ public:
   }
 
   mlir::Operation* LookupSymbol(llvm::StringRef MangledName);
+
+  heavy::EnvEntry LookupEnv(heavy::Value Id);
 private:
-  mlir::Value MaybeCallSyntax(Pair* P, bool& DidCallSyntax);
+  mlir::Value MaybeCallSyntax(Pair* P, bool& DidCallSyntax,
+                              heavy::EnvEntry& FnEnvEntry);
   mlir::Value MaybeCallSyntax(Value Operator, Pair* P, bool& DidCallSyntax);
-  mlir::Value HandleCall(Pair* P);
+  mlir::Value HandleCall(Pair* P, heavy::EnvEntry FnEnvEntry);
 };
 
 }

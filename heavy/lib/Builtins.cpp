@@ -114,13 +114,16 @@ void op_eval(Context& C, ValueRefs Args);
 mlir::Value define(OpGen& OG, Pair* P) {
   Pair*   P2    = dyn_cast<Pair>(P->Cdr);
   Symbol* S     = nullptr;
-  if (!P2) return OG.SetError("invalid define syntax", P);
-  if (Pair* LambdaSpec = dyn_cast<Pair>(P2->Car)) {
+
+  if (!P2)
+    return OG.SetError("invalid syntax for define", P);
+  if (Pair* LambdaSpec = dyn_cast<Pair>(P2->Car))
     S = dyn_cast<Symbol>(LambdaSpec->Car);
-  } else {
+  else
     S = dyn_cast<Symbol>(P2->Car);
-  }
-  if (!S) return OG.SetError("invalid define syntax", P);
+
+  if (!S)
+    return OG.SetError("invalid syntax for define", P);
   return OG.createDefine(S, P2, P);
 }
 
@@ -186,15 +189,9 @@ mlir::Value set(OpGen& OG, Pair* P) {
   if (!P2) return OG.SetError("invalid set syntax", P);
 
   Value S = P2->Car;
-  // Unwrap to check that we are looking at a symbol or binding.
-  if (heavy::SyntaxClosure* SC = llvm::dyn_cast<SyntaxClosure>(S))
-    S = SC->Node;
 
-  if (!isa<Binding, Symbol, ExternName, SyntaxClosure>(S))
-    return OG.SetError("expecting symbol", P2);
-
-  // Go with the original unwrapped expression.
-  S = P2->Car;
+  if (!isa<Binding>(S) && !isIdentifier(S))
+    return OG.SetError("expecting identifier", P2);
 
   P2 = dyn_cast<Pair>(P2->Cdr);
   if (!P2) return OG.SetError("invalid set syntax", P2);

@@ -134,6 +134,7 @@ public:
     Context.setLoc(Input.getSourceLocation());
     // Bind the Input to the block argument
     setValue(Op.getRegion().getArgument(0), Input);
+    setValue(Op.getRegion().getArgument(1), Context.EnvStack);
     mlir::Block& Body = Op.getRegion().front();
     BlockItrTy Itr = Body.begin();
     // Enter the first pattern.
@@ -213,6 +214,8 @@ private:
     else if (isa<MatchOp>(Op))        return Visit(cast<MatchOp>(Op));
     else if (isa<MatchIdOp>(Op))      return Visit(cast<MatchIdOp>(Op));
     else if (isa<RenameOp>(Op))       return Visit(cast<RenameOp>(Op));
+    else if (isa<RenameGlobalOp>(Op)) return Visit(cast<RenameGlobalOp>(Op));
+    else if (isa<EnvFrameOp>(Op))     return Visit(cast<EnvFrameOp>(Op));
     else if (isa<ToVectorOp>(Op))     return Visit(cast<ToVectorOp>(Op));
     else if (isa<VectorOp>(Op))       return Visit(cast<VectorOp>(Op));
     else if (isa<LoadModuleOp>(Op))   return Visit(cast<LoadModuleOp>(Op));
@@ -596,6 +599,18 @@ private:
     return next(Op);
   }
 
+  BlockItrTy Visit(EnvFrameOp Op) {
+    unsigned Size = Op.getArgs().size();
+    heavy::EnvFrame* EnvFrame = Context.CreateEnvFrame(Size);
+    llvm::MutableArrayRef<Binding*> Bindings = EnvFrame->getBindings();
+    auto Vals = Op.getArgs();
+    for (unsigned I = 0; I < Size; ++I)
+      Bindings[I] = cast<Binding>(getBindingOrValue(Vals[I]));
+
+    setValue(Op, EnvFrame);
+    return next(Op);
+  }
+
   BlockItrTy Visit(SpliceOp Op) {
     heavy::SourceLocation Loc = getSourceLocation(Op.getLoc());
     heavy::Value LHS = getValue(Op.getA());
@@ -827,29 +842,43 @@ private:
   }
 
   BlockItrTy Visit(SyntaxClosureOp Op) {
-    // Create a SyntaxClosure with the current
-    // EnvStack.
+    // Create a SyntaxClosure with the current EnvStack.
     heavy::Value Input = getValue(Op.getInput());
+    heavy::Value Env = getValue(Op.getEnv());
     SyntaxClosure* SC = Context.CreateSyntaxClosure(Context.getLoc(),
-                                                    Input);
+                                                    Input, Env);
     setValue(Op.getResult(), SC);
 
     return next(Op);
   }
 
   BlockItrTy Visit(RenameOp Op) {
-    // :O
-    void* OV = reinterpret_cast<void*>(Op.getOpaqueValue());
-    mlir::Value MV = mlir::Value::getFromOpaquePointer(OV);
-    heavy::Value HV = heavy::OpGen::fromValue(MV);
-    setValue(Op.getResult(), HV);
+    heavy::Value Capture = getValue(Op.getCapture());
+    heavy::Symbol* Id = Context.CreateSymbol(Op.getId());
+    heavy::Binding* B = Context.CreateBinding(Id, Capture);
+    setValue(Op.getResult(), B);
+
+    return next(Op);
+  }
+
+  BlockItrTy Visit(RenameGlobalOp Op) {
+    heavy::SourceLocation Loc = Context.getLoc();
+    heavy::Value ExtName = Context.CreateExternName(Loc, Op.getSym());
+    heavy::Symbol* Id = Context.CreateSymbol(Op.getId());
+    heavy::Binding* B = Context.CreateBinding(Id, ExtName);
+    setValue(Op.getResult(), B);
+
     return next(Op);
   }
 
   BlockItrTy Visit(OpGenOp Op) {
     heavy::OpGen* OpGen = Context.OpGen;  // For debug only.
+    heavy::Value PrevEnv = Context.getEnvironment();
     heavy::Value Input = getValue(Op.getInput());
+    heavy::Value Env = getValue(Op.getEnv());
+    Context.setEnvironment(Env);
     mlir::Value Result = Context.OpGen->Visit(Input);
+    Context.setEnvironment(PrevEnv);
     heavy::Value Output = heavy::OpGen::fromValue(Result);
     assert(OpGen == Context.OpGen && "OpGen visit should not unwind itself");
     if (!Context.OpGen || !Context.OpGen->CheckError())
@@ -866,10 +895,10 @@ private:
 };
 
 void invokeSyntaxOp(heavy::Context& C, mlir::Operation* Op,
-                    heavy::Value Value) {
+                    heavy::Value Expr) {
   OpEvalImpl E(C);
   auto SyntaxOp = cast<heavy::SyntaxOp>(Op);
-  E.InvokeSyntax(SyntaxOp, Value);
+  E.InvokeSyntax(SyntaxOp, Expr);
 }
 
 namespace base {
