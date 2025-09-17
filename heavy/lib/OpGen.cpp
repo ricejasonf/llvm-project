@@ -771,15 +771,15 @@ mlir::Value OpGen::createBinding(Binding *B, mlir::Value Init) {
   return BVal;
 }
 
-mlir::Value OpGen::createDefine(Symbol* S, Value DefineArgs,
+mlir::Value OpGen::createDefine(Value Id, Value DefineArgs,
                                            Value OrigCall) {
-  if (isTopLevel()) return createTopLevelDefine(S, DefineArgs, OrigCall);
+  if (isTopLevel()) return createTopLevelDefine(Id, DefineArgs, OrigCall);
   if (!IsLocalDefineAllowed) return SetError("unexpected define", OrigCall);
   // Create the binding with a lazy init.
   // (Include everything after the define
   //  keyword to visit it later because it could
   //  be a terse lambda syntax.)
-  Binding* B = Context.CreateBinding(S, DefineArgs);
+  Binding* B = Context.CreateBinding(Id, DefineArgs);
   // Push to the local environment.
   Context.PushLocalBinding(B);
   mlir::Value BVal = createBinding(B, mlir::Value());
@@ -787,16 +787,28 @@ mlir::Value OpGen::createDefine(Symbol* S, Value DefineArgs,
   return BVal;
 }
 
-mlir::Value OpGen::createTopLevelDefine(Symbol* S, Value DefineArgs,
+mlir::Value OpGen::createTopLevelDefine(Value Id, Value DefineArgs,
                                         Value OrigCall) {
   SourceLocation DefineLoc = OrigCall.getSourceLocation();
   if (LibraryEnvProc) {
     return SetError("unexpected define", OrigCall);
   }
 
+  assert(isTopLevel() && "expecting top level");
+  Environment* Env = nullptr;
+  if (auto* SC = dyn_cast<SyntaxClosure>(Id))
+    Env = cast<Environment>(SC->Env);
+  else if (CurSyntaxClosure)
+    Env = cast<Environment>(CurSyntaxClosure->Env);
+  else
+    Env = cast<Environment>(Context.EnvStack);
+
+  // Unwrap SyntaxClosures.
+  assert(isIdentifier(Id) && "expecting identifier");
+  Symbol* S = cast<Symbol>(Context.RebuildLiteral(Id));
+
   // If EnvStack isn't an Environment then there is local
   // scope information on top of it
-  Environment* Env = cast<Environment>(Context.EnvStack);
 
   EnvEntry Entry = Env->Lookup(Context, S);
   if (Entry.Value && Entry.MangledName) {
@@ -1336,32 +1348,30 @@ void OpGen::Export(Value NameList) {
   return Context.Cont();
 }
 
-// Expect a Symbol or SyntaxClosure wrapping a Symbol.
 heavy::EnvEntry OpGen::LookupEnv(heavy::Value Id) {
+  assert(isIdentifier(Id) && "expecting an identifier");
+  // For any given SyntaxClosure, use the object as the lookup
+  // in the current environment, and then use the raw Symbol
+  // in the closed environment.
   heavy::EnvEntry Result;
-  if (CurSyntaxClosure) {
+  heavy::Value ClosedEnv;
+  if (auto* SC = dyn_cast<SyntaxClosure>(Id)) {
+    ClosedEnv = SC->Env;
+    Id = SC->Node;
+  } else if (CurSyntaxClosure) {
+    ClosedEnv = CurSyntaxClosure->Env;
+  }
+
+  assert(isa<Symbol>(Id) && "syntax closure should be unwrapped");
+
+  if (ClosedEnv) {
     SyntaxClosure StackSC;
-    SyntaxClosure* SC = nullptr;
-    // Id could be a Symbol or a closed (wrapped) Symbol.
-    Symbol* S = dyn_cast<Symbol>(Id);
-    if (S) {
-      StackSC.Env = CurSyntaxClosure->Env;
-      StackSC.Node = S;
-      SC = &StackSC;
-    } else {
-      SC = cast<SyntaxClosure>(Id);
-      S = cast<Symbol>(SC->Node);
-    }
-
-    // Invalid input
-    assert((SC && S) && "expecting identifier");
-
-    // Perform lookup using the SyntaxClosure object in the
-    // primary EnvStack. Then use the raw symbol and look
-    // in the closed environment.
-    Result = Context.Lookup(SC);
+    Symbol* S = cast<Symbol>(Id);
+    StackSC.Env = ClosedEnv;
+    StackSC.Node = S;
+    Result = Context.Lookup(&StackSC);
     if (!Result)
-      Result = Context.Lookup(S, SC->Env);
+      Result = Context.Lookup(S, ClosedEnv);
   } else {
     Symbol* S = cast<Symbol>(Id);
     Result = Context.Lookup(S);

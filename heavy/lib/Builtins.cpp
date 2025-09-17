@@ -113,30 +113,33 @@ void op_eval(Context& C, ValueRefs Args);
 
 mlir::Value define(OpGen& OG, Pair* P) {
   Pair*   P2    = dyn_cast<Pair>(P->Cdr);
-  Symbol* S     = nullptr;
+  Value Id     = nullptr;
 
   if (!P2)
     return OG.SetError("invalid syntax for define", P);
   if (Pair* LambdaSpec = dyn_cast<Pair>(P2->Car))
-    S = dyn_cast<Symbol>(LambdaSpec->Car);
+    Id = LambdaSpec->Car;
   else
-    S = dyn_cast<Symbol>(P2->Car);
+    Id = P2->Car;
 
-  if (!S)
+  if (!isIdentifier(Id))
     return OG.SetError("invalid syntax for define", P);
-  return OG.createDefine(S, P2, P);
+  return OG.createDefine(Id, P2, P);
 }
 
 mlir::Value define_syntax(OpGen& OG, Pair* P) {
   Pair* P2 = dyn_cast<Pair>(P->Cdr);
   if (!P2) return OG.SetError("invalid define-syntax syntax", P);
-  Symbol* S = dyn_cast<Symbol>(P2->Car);
-  if (!S) return OG.SetError("expecting name for define-syntax", P);
+  Value Id = P2->Car;
+  if (!isIdentifier(Id))
+    return OG.SetError("expecting name for define-syntax", P);
 
   return OG.createSyntaxSpec(P2, P);
 }
 
 mlir::Value syntax_rules(OpGen& OG, Pair* P) {
+  // TODO Support SyntaxClosures.
+
   // The input is the <Syntax Spec> (Keyword (syntax-rules ...))
   // <Syntax Spec> has its own checks in createSyntaxSpec
   Symbol* Keyword = dyn_cast<Symbol>(P->Car);

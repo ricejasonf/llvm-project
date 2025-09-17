@@ -391,9 +391,7 @@ public:
   }
 
   SyntaxClosure* CreateSyntaxClosure(SourceLocation Loc, Value Node,
-                                     Value Env) {
-    return new (*this) SyntaxClosure(Loc, Env, Node);
-  }
+                                     Value Env);
 
   SourceValue* CreateSourceValue(SourceLocation Loc) {
     return new (*this) SourceValue(Loc);

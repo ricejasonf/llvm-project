@@ -74,3 +74,19 @@
      '(0 1 i ... 9))))
 (write (ez 0 1 2 3 4 5 6))
 (newline)
+
+(define-syntax my-define
+  (syntax-rules ()
+    ((my-define name x)
+     (define name '(my name x)))))
+
+; CHECK: (my my-tl 42)
+(my-define my-tl 42)
+(write my-tl)
+(newline)
+
+; CHECK: Undefined
+((lambda ()
+  (my-define not-my-local 12)
+  (write not-my-local)
+  (newline)))

@@ -300,8 +300,8 @@ public:
 
   mlir::Value createGlobal(SourceLocation Loc, llvm::StringRef MangledName);
   mlir::Value createBinding(Binding *B, mlir::Value Init);
-  mlir::Value createDefine(Symbol* S, Value Args, Value OrigCall);
-  mlir::Value createTopLevelDefine(Symbol* S, Value Args, Value OrigCall);
+  mlir::Value createDefine(Value Id, Value Args, Value OrigCall);
+  mlir::Value createTopLevelDefine(Value Id, Value Args, Value OrigCall);
   mlir::Value createUndefined();
   mlir::Value createSet(SourceLocation Loc, Value LHS, Value RHS);
 

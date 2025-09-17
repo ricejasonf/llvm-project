@@ -1628,6 +1628,14 @@ EnvFrame* Context::CreateEnvFrame(llvm::ArrayRef<Value> Ids) {
   return E;
 }
 
+SyntaxClosure* Context::CreateSyntaxClosure(SourceLocation Loc, Value Node,
+                                            Value Env) {
+  // Prevent direct nesting of SyntaxClosures.
+  if (auto* SC = dyn_cast<SyntaxClosure>(Node))
+    return SC;
+  return new (*this) SyntaxClosure(Loc, Env, Node);
+}
+
 bool Context::OutputModule(llvm::StringRef MangledName,
                            llvm::StringRef ModulePath) {
 #if 0
