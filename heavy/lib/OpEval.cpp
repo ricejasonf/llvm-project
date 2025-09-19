@@ -17,6 +17,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/Support/Casting.h"
+#include <memory>
 #include <stack>
 
 namespace heavy {
@@ -28,12 +29,21 @@ class OpEvalImpl {
 
   heavy::Context& Context;
   ValueMapTy ValueMap;
-  std::stack<ValueMapScope> ValueMapScopes;
 
   void setValue(mlir::Value M, heavy::Value H) {
     assert(M && "must be set to a valid value");
     assert(H && "must be set to a valid value");
     ValueMap.insert(M, H);
+  }
+
+  void setValueParentScope(mlir::Value M, heavy::Value H) {
+    assert(M && "must be set to a valid value");
+    assert(H && "must be set to a valid value");
+    ValueMapScope* CurScope = ValueMap.getCurScope();
+    assert(CurScope && "expecting a scope");
+    ValueMapScope* ParentScope = CurScope->getParentScope();
+    assert(ParentScope && "expecting parent scope");
+    ValueMap.insertIntoScope(ParentScope, M, H);
   }
 
   heavy::Value getBindingOrValue(mlir::Value M) {
@@ -76,21 +86,11 @@ class OpEvalImpl {
 public:
   OpEvalImpl(heavy::Context& C)
     : Context(C),
-      ValueMap(),
-      ValueMapScopes()
-  {
-    // there has to be at least one scope on the stack
-    ValueMapScopes.emplace(ValueMap);
-  }
+      ValueMap()
+  { }
 
   // Prevent copy/move since we capture this in a few lambdas.
   OpEvalImpl(OpEvalImpl const&) = delete;
-
-  ~OpEvalImpl() {
-    // Pop the scopes in order.
-    while (!ValueMapScopes.empty())
-      ValueMapScopes.pop();
-  }
 
   void Eval(mlir::Operation* Op) {
     if (isa<GlobalOp, CommandOp, LoadModuleOp>(Op)) {
@@ -119,16 +119,6 @@ public:
   }
 
 private:
-  void push_scope() {
-    ValueMapScopes.emplace(ValueMap);
-  }
-
-  void pop_scope() {
-    ValueMapScopes.pop();
-    assert(ValueMapScopes.size() > 0 &&
-        "scope stack must be balanced");
-  }
-
   BlockItrTy next(mlir::Operation* Op) {
     return ++BlockItrTy(Op);
   }
@@ -243,7 +233,7 @@ private:
       }
     }
 
-    push_scope();
+    auto Scope = ValueMapScope(ValueMap);
     mlir::Block& Body = F.getBody().front();
     if (NumParams != NumParamsMax)
       LoadArgs(Body, Args);
@@ -253,7 +243,6 @@ private:
     BlockItrTy Itr = Body.begin();
     while (Itr != BlockItrTy())
       Itr = Visit(&*Itr);
-    pop_scope();
 
     // The terminator operation should have
     // called Context.Apply() or one of those
@@ -483,20 +472,20 @@ private:
       C.Cont(Undefined());
     }, ValueRefs());
 
-    push_scope();
+    auto Scope = ValueMapScope(ValueMap);
     BlockItrTy Itr = Op.getInitializer().front().begin();
     while (Itr != BlockItrTy())
       Itr = Visit(&*Itr);
-    pop_scope();
+
     return BlockItrTy();
   }
 
   BlockItrTy Visit(CommandOp Op) {
-    push_scope();
+    auto Scope = ValueMapScope(ValueMap);
     BlockItrTy Itr = Op.getBody().front().begin();
     while (Itr != BlockItrTy())
       Itr = Visit(&*Itr);
-    pop_scope();
+
     return BlockItrTy();
   }
 
@@ -672,7 +661,7 @@ private:
     // Recall that each pack is a list in reverse order.
     while (isa<heavy::Pair>(Packs.front())) {
       // Set each block argument to the cdr of each pack.
-      push_scope();
+      auto Scope = ValueMapScope(ValueMap);
       for (unsigned i = 0; i < Packs.size(); i++) {
         auto* Pair = dyn_cast<heavy::Pair>(Packs[i]);
         if (!Pair)
@@ -683,7 +672,6 @@ private:
       BlockItrTy Itr = Op.getBody().front().begin();
       while (Itr != BlockItrTy())
         Itr = Visit(&*Itr);
-      // ResolveOp calls pop_scope.
     }
 
     for (unsigned i = 0; i < Packs.size(); i++) {
@@ -718,13 +706,12 @@ private:
     while (auto* Pair = dyn_cast<heavy::Pair>(E)) {
       if (Pair == Tail)
         break;
-      push_scope();
+      auto Scope = ValueMapScope(ValueMap);
       BlockItrTy Itr = Op.getBody().front().begin();
       setValue(BodyArg, Pair->Car);
       while (Itr != BlockItrTy())
         Itr = Visit(&*Itr);
       E = Pair->Cdr;
-      // ResolveOp calls pop_scope.
     }
 
     return next(Op);
@@ -736,21 +723,14 @@ private:
       assert(ParentOp.getPacks().size() ==
              Op.getArgs().size() &&
              "expecting value ranges of equal size");
-      // Store packs on the stack until we can pop the scope.
-      llvm::SmallVector<heavy::Value, 4> Packs(
-          ParentOp.getPacks().size(), nullptr);
       mlir::ValueRange ResolveArgs = Op.getArgs();
       mlir::ResultRange MResults = ParentOp.getPacks();
       // Construct each pack as a reversed ordered list.
-      for (unsigned i = 0; i < Packs.size(); i++)
-        Packs[i] = Context.CreatePair(getValue(ResolveArgs[i]),
-                                      getValue(MResults[i]));
-
-      // Set the results in the parent scope.
-      pop_scope();
-      for (unsigned i = 0; i < Packs.size(); i++)
-        setValue(MResults[i], Packs[i]);
-
+      for (unsigned i = 0; i < ResolveArgs.size(); i++) {
+        Value Pack = Context.CreatePair(getValue(ResolveArgs[i]),
+                                        getValue(MResults[i]));
+        setValueParentScope(MResults[i], Pack);
+      }
       return BlockItrTy();
     }
 
@@ -759,11 +739,7 @@ private:
     heavy::Value CurrentResult = getValue(Op.getArgs().front());
     heavy::Value Result = Context.CreatePair(CurrentResult,
                                       getValue(ExpandPacksOp.getResult()));
-
-    // Set the result in the parent scope.
-    pop_scope();
-    setValue(ExpandPacksOp.getResult(), Result);
-
+    setValueParentScope(ExpandPacksOp.getResult(), Result);
     return BlockItrTy();
   }
 
@@ -829,6 +805,10 @@ private:
   }
 };
 
+void OpEvalDeleter::operator()(OpEvalImpl* Ptr) const {
+  delete Ptr;
+}
+
 namespace base {
 void op_eval(Context& C, ValueRefs Args) {
   if (Args.size() != 1) {
@@ -839,16 +819,9 @@ void op_eval(Context& C, ValueRefs Args) {
     return C.RaiseError("expecting operation");
   }
 
-  // TODO Make the module own the OpEval instance. (maybe?)
   if (!C.OpEval) {
-    C.OpEval = new OpEvalImpl(C);
-    C.PushModuleCleanup(HEAVY_BASE_LIB_STR,
-      C.CreateLambda([](Context& C, ValueRefs) {
-        llvm_unreachable("FIXME find out why we do not get here");
-        assert(C.OpEval && "OpEval should be set.");
-        // Cleanup the OpEval object.
-        delete C.OpEval;
-      }, CaptureList{}));
+    // Still easier than extern template specialization of std::default_delete
+    C.OpEval = OpEvalPtr(new OpEvalImpl(C), OpEvalDeleter());
   }
 
   C.OpEval->Eval(Op);

@@ -54,9 +54,13 @@ class Context;
 void compile(Context&, Value V, Value Env, Value Handler);
 void eval(Context&, Value V, Value Env);
 void write(llvm::raw_ostream&, Value);
+void opEval(mlir::Operation*);
 
 class OpEvalImpl;
-void opEval(mlir::Operation*);
+struct OpEvalDeleter {
+  void operator()(OpEvalImpl*) const;
+};
+using OpEvalPtr = std::unique_ptr<OpEvalImpl, OpEvalDeleter>;
 
 class ContextLocalLookup {
   friend struct ContextLocal;
@@ -120,8 +124,7 @@ private:
 
 public:
   heavy::OpGen* OpGen = nullptr;
-  // FIXME OpEval is not cleaned up or owned by anything.
-  heavy::OpEvalImpl* OpEval = nullptr;
+  heavy::OpEvalPtr OpEval;
 
   // Work around DidCallContinuation being set with compiler errors.
   bool CheckError();

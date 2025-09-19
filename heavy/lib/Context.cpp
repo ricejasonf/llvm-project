@@ -47,6 +47,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
 #include <cstring>
+#include <memory>
 #include <string>
 
 using namespace heavy;
@@ -901,7 +902,7 @@ namespace {
 
   // Append to Output the path to a module sans any file extension.
   void getModulePath(heavy::Context& C, llvm::StringRef MangledName,
-                     llvm::SmallVectorImpl<char>& Output) { 
+                     llvm::SmallVectorImpl<char>& Output) {
     llvm::StringRef ModulePath =
         HEAVY_BASE_VAR(module_path).get(C).getStringRef();
     if (!ModulePath.empty())
@@ -1280,7 +1281,7 @@ void Context::RaiseError(String* Msg, llvm::ArrayRef<Value> IrrArgs) {
 }
 
 // ManagedObjectWind - Manage the lifetime of a C++ object within a dynamic
-// extent via a provided type-erased desctructor. 
+// extent via a provided type-erased desctructor.
 void Context::ManagedObjectWind(void* Ptr, DestructorTy Destructor,
                        Value Before, Value Thunk, Value After) {
   // Sentinel is referenced by each lambda
