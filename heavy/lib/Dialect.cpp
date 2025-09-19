@@ -115,27 +115,11 @@ void BindingOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
   BindingOp::build(B, OpState, B.getType<HeavyValueTy>(), Input);
 }
 
-#if 0
-void BuiltinOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
-                      heavy::Builtin* Builtin) {
-  // TODO eventually we need to have a "symbol" to the externally
-  //      linked function
-  BuiltinOp::build(B, OpState, B.getType<HeavyValueTy>(),
-      HeavyValueAttr::get(B.getContext(), Builtin));
-}
-#endif
-
 void ConsOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                    mlir::Value X, mlir::Value Y) {
   mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
   // TODO return type should be Pair
   ConsOp::build(B, OpState, HeavyValueT, X, Y);
-}
-
-void GlobalOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
-                     llvm::StringRef SymName) {
-  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
-  GlobalOp::build(B, OpState, HeavyValueT, SymName);
 }
 
 void IfOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
@@ -251,9 +235,10 @@ void SyntaxClosureOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
   SyntaxClosureOp::build(B, OpState, HeavyValueT, Input, Env);
 }
 
-void SyntaxOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState) {
+void SyntaxOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                    llvm::StringRef MangledName) {
   mlir::Type HeavySyntaxT = B.getType<HeavySyntaxTy>();
-  SyntaxOp::build(B, OpState, HeavySyntaxT);
+  SyntaxOp::build(B, OpState, HeavySyntaxT, MangledName);
 }
 
 void ToVectorOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,

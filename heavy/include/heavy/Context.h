@@ -57,8 +57,6 @@ void write(llvm::raw_ostream&, Value);
 
 class OpEvalImpl;
 void opEval(mlir::Operation*);
-void invokeSyntaxOp(heavy::Context& C, mlir::Operation* Op,
-                    heavy::Value Value);
 
 class ContextLocalLookup {
   friend struct ContextLocal;
@@ -122,6 +120,7 @@ private:
 
 public:
   heavy::OpGen* OpGen = nullptr;
+  // FIXME OpEval is not cleaned up or owned by anything.
   heavy::OpEvalImpl* OpEval = nullptr;
 
   // Work around DidCallContinuation being set with compiler errors.
@@ -153,7 +152,7 @@ public:
   //           when the callee finishes or on
   //           exception so the parent loop can
   //           finish execution such as clean up.
-  Value RunSync(Value Callee, Value Arg);
+  Value RunSync(Value Callee, ValueRefs Args);
 
   void InitModule(Symbol* MangledName);
   mlir::Operation* getModuleOp();
@@ -298,8 +297,6 @@ public:
       return "Unknown error (invalid error type)";
     }
   }
-
-  Syntax* CreateSyntaxWithOp(mlir::Operation* SyntaxOp);
 
   Value RebuildLiteral(Value V);
 

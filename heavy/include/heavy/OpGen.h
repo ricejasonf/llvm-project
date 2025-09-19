@@ -39,11 +39,16 @@ using NameSet = llvm::SmallPtrSetImpl<String*>;
 class PatternTemplate;
 class TemplateGen;
 
+template <typename Derived>
+class TemplateBase;
+
 class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   friend ValueVisitor;
   friend CopyCollector;
   friend PatternTemplate;
   friend TemplateGen;
+  template <typename Derived>
+  friend class TemplateBase;
   using BindingScopeTable = llvm::ScopedHashTable<
                                             heavy::Value,
                                             mlir::Value>;
@@ -271,6 +276,8 @@ public:
 
   mlir::Value createCall(heavy::SourceLocation Loc, mlir::Value Fn,
                          llvm::MutableArrayRef<mlir::Value> Args);
+  mlir::Value createSyntaxError(heavy::SourceLocation Loc,
+                         llvm::MutableArrayRef<mlir::Value> Args);
   mlir::Value createOpGen(SourceLocation Loc, mlir::Value Input,
                           mlir::Value Env);
   mlir::Value createBody(SourceLocation Loc, Value Body);
@@ -306,8 +313,12 @@ public:
   mlir::Value createSet(SourceLocation Loc, Value LHS, Value RHS);
 
   mlir::Value createEqual(Value V1, Value V2); // equal? for pattern matching
+
+  heavy::LiteralOp createLiteral(heavy::SourceLocation Loc, Value V) {
+    return create<LiteralOp>(Loc, V);
+  }
   heavy::LiteralOp createLiteral(Value V) {
-    return create<LiteralOp>(V.getSourceLocation(), V);
+    return createLiteral(V.getSourceLocation(), V);
   }
 
   void createLoadModule(SourceLocation Loc, Symbol* MangledName);

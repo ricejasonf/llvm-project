@@ -200,10 +200,6 @@ def heavy_GlobalOp : HeavyOp<"global", [Symbol, IsolatedFromAbove]> {
   }];
 
   let arguments = (ins StrAttr:$sym_name);
-  let results   = (outs HeavyValue:$result);
-  let builders = [
-    OpBuilder<(ins "::llvm::StringRef":$sym_name)>
-  ];
 }
 
 def heavy_IfOp : HeavyOp<"if", []> {
@@ -441,13 +437,18 @@ def heavy_ResolveOp : HeavyOp<"resolve", [Terminator]> {
   let results   = (outs);
 }
 
-def heavy_PatternOp : HeavyOp<"pattern", [HasParent<"SyntaxOp">]> {
+def heavy_PatternOp : HeavyOp<"pattern", []> {
   let description = [{
-    PatternOp represents the pattern in a pattern/template
-    pair as part of the syntax-rules transform specifier. The
-    region should contain matching operations on the input syntax,
-    as well as ConsOps for the template, terminating with an OpGenOp
-    on the constructed AST.
+    PatternOp represents a pattern/template pair as part of the
+    syntax-rules transform specifier. Operations in its region are
+    evaluated in order. When a match operation fails within its region,
+    evaluation will jump to the successor operation of the containing
+    PatternOp (which is likely another pattern or error.)
+
+    Successfully matched patterns will likely generate and compile a
+    new scheme form via ConsOps and terminating with an OpGenOp.
+    Alternatively they may terminate with an ErrorOp in the case
+    of `syntax-error`.
   }];
 
   let arguments = (ins);
@@ -565,22 +566,22 @@ def heavy_SyntaxClosureOp : HeavyOp<"syntax_closure"> {
   ];
 }
 
-def heavy_SyntaxOp: HeavyOp<"syntax", [IsolatedFromAbove, NoTerminator]> {
+def heavy_SyntaxOp: HeavyOp<"syntax", []> {
   let summary = "syntax";
   let description = [{
-    SyntaxOp contains a linearly overloaded sequence of PatternOps that
-    operate on the input AST.
-    Any PatternOp that guarantees it cannot match can be removed.
-    Any PatternOp that guarantees a match statically can have subsequent
-    matches removed.
-    A SyntaxOp must contain at least one PatternOp.
-    Semantics are implied for chaining and failure to find a match.
+    SyntaxOp creates a syntax function object that is callable like
+    a lambda but has the specific purpose of generating new
+    operations in the current builder context.
+
+    The argument $name refers to the function name.
   }];
 
-  let regions   = (region SizedRegion<1>:$region);
-  let arguments = (ins);
-  let results   = (outs HeavySyntax:$result);
-  let builders  = [OpBuilder<(ins)>];
+  let arguments = (ins StrAttr:$name);
+  let results = (outs HeavySyntax:$result);
+
+  let builders = [
+    OpBuilder<(ins "::llvm::StringRef":$name)>
+  ];
 }
 
 def heavy_ToVectorOp : HeavyOp<"to_vector"> {

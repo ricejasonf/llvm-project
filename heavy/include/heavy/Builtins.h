@@ -27,6 +27,8 @@
 #define HEAVY_LOAD_MODULE_VAR         "_HEAVY_load_module"
 
 #define HEAVY_BASE_VAR(NAME)          ::heavy::base_var::NAME
+#define HEAVY_BASE_VAR_STR(NAME)      HEAVY_BASE_VAR_STR__##NAME
+#define HEAVY_BASE_VAR_STR__error     HEAVY_BASE_LIB_STR "5Serror"
 
 // Forward declare vars that are used in the C++ codebase.
 namespace heavy::base_var {

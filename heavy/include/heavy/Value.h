@@ -1809,23 +1809,9 @@ public:
     return X.second == MangledName;
   }
 
-  // Insert - Add a named mutable location. Overwriting
-  //          with a new object is okay here if it is mutable
+  // Add a named location or syntax keyword.
   void Insert(Symbol* S, String* MangledName) {
-    String* Name = S->getString();
-    String*& MangleNameEntry = EnvMap[Name];
-    // FIXME This should not be an assert.
-    assert(!MangleNameEntry && "insert may not modify immutable locations");
-    MangleNameEntry = MangledName;
-  }
-
-  // SetSyntax - Extend the syntactic environment.
-  void SetSyntax(Symbol* Name, Syntax* S, String* MangledName) {
-    String*& MangledNameEntry = EnvMap[Name->getString()];
-    assert(MangledNameEntry != MangledName &&
-        "global syntax must have unique mangling");
-    // We need to associate the syntax name at compile time.
-    MangledNameEntry = MangledName;
+    EnvMap[S->getString()] = MangledName;
   }
 
   static bool classof(Value V) {

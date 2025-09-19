@@ -87,23 +87,14 @@ public:
   OpEvalImpl(OpEvalImpl const&) = delete;
 
   ~OpEvalImpl() {
-    // pop the scopes in order
+    // Pop the scopes in order.
     while (!ValueMapScopes.empty())
       ValueMapScopes.pop();
   }
 
   void Eval(mlir::Operation* Op) {
     if (isa<GlobalOp, CommandOp, LoadModuleOp>(Op)) {
-      BlockItrTy Itr = Visit(Op);
-
-      if (Itr == BlockItrTy())
-        return Context.Cont();
-
-      // When a call to Visit returns a null we defer
-      // execution to the continuation stack.
-      while (Itr != BlockItrTy()) {
-        Itr = Visit(&*Itr);
-      }
+      Visit(Op);
       // "Calling the continuation" is handled during visitation.
     } else if (auto ModuleOp = dyn_cast<mlir::ModuleOp>(Op)) {
       auto& Ops = ModuleOp.getBody()->getOperations();
@@ -127,25 +118,6 @@ public:
     }
   }
 
-  // InvokeSyntax - There is no operation to invoke syntax
-  //                so provide an interface to functions
-  //                to wrap non-compiled SyntaxOps.
-  void InvokeSyntax(SyntaxOp Op, Value Input) {
-    Context.setLoc(Input.getSourceLocation());
-    // Bind the Input to the block argument
-    setValue(Op.getRegion().getArgument(0), Input);
-    setValue(Op.getRegion().getArgument(1), Context.EnvStack);
-    mlir::Block& Body = Op.getRegion().front();
-    BlockItrTy Itr = Body.begin();
-    // Enter the first pattern.
-    auto PatternOp = cast<heavy::PatternOp>(*Itr);
-    push_scope();
-    Itr = PatternOp.getRegion().front().begin();
-    while (Itr != BlockItrTy()) {
-      Itr = Visit(&*Itr);
-    }
-  }
-
 private:
   void push_scope() {
     ValueMapScopes.emplace(ValueMap);
@@ -165,11 +137,6 @@ private:
   BlockItrTy RaiseError(Message M, Irritants Irrs) {
     Context.RaiseError(M, Irrs);
 
-    // TODO use DynamicWind to create/destroy ValueMapScopes
-    while (!ValueMapScopes.empty()) {
-      ValueMapScopes.pop();
-    }
-
     return BlockItrTy();
   }
 
@@ -178,11 +145,6 @@ private:
                       heavy::Value Irr = heavy::Undefined()) {
     Context.setLoc(Loc);
     Context.RaiseError(Str, Irr);
-
-    // TODO use DynamicWind to create/destroy ValueMapScopes
-    while (!ValueMapScopes.empty()) {
-      ValueMapScopes.pop();
-    }
 
     return BlockItrTy();
   }
@@ -193,10 +155,9 @@ private:
     else if (isa<ApplyOp>(Op))        return Visit(cast<ApplyOp>(Op));
     else if (isa<ContOp>(Op))         return Visit(cast<ContOp>(Op));
     else if (isa<GlobalOp>(Op))       return Visit(cast<GlobalOp>(Op));
-    else if (isa<LoadRefOp>(Op))  return Visit(cast<LoadRefOp>(Op));
+    else if (isa<LoadRefOp>(Op))      return Visit(cast<LoadRefOp>(Op));
     else if (isa<LoadGlobalOp>(Op))   return Visit(cast<LoadGlobalOp>(Op));
     else if (isa<LambdaOp>(Op))       return Visit(cast<LambdaOp>(Op));
-    else if (isa<IfOp>(Op))           return Visit(cast<IfOp>(Op));
     else if (isa<IfContOp>(Op))       return Visit(cast<IfContOp>(Op));
     else if (isa<ConsOp>(Op))         return Visit(cast<ConsOp>(Op));
     else if (isa<SpliceOp>(Op))       return Visit(cast<SpliceOp>(Op));
@@ -206,6 +167,7 @@ private:
     else if (isa<OpGenOp>(Op))        return Visit(cast<OpGenOp>(Op));
     else if (isa<FuncOp>(Op))         return next(Op); // skip functions
     else if (isa<SyntaxOp>(Op))       return Visit(cast<SyntaxOp>(Op));
+    else if (isa<PatternOp>(Op))      return Visit(cast<PatternOp>(Op));
     else if (isa<MatchPairOp>(Op))    return Visit(cast<MatchPairOp>(Op));
     else if (isa<MatchTailOp>(Op))    return Visit(cast<MatchTailOp>(Op));
     else if (isa<SubpatternOp>(Op))   return Visit(cast<SubpatternOp>(Op));
@@ -285,14 +247,15 @@ private:
     mlir::Block& Body = F.getBody().front();
     if (NumParams != NumParamsMax)
       LoadArgs(Body, Args);
-    if (RestList) {
+    if (RestList)
       setValue(Body.getArguments().back(), RestList);
-    }
+
     BlockItrTy Itr = Body.begin();
-    while (Itr != BlockItrTy()) {
+    while (Itr != BlockItrTy())
       Itr = Visit(&*Itr);
-    }
-    // Something in the function should have
+    pop_scope();
+
+    // The terminator operation should have
     // called Context.Apply() or one of those
     return BlockItrTy();
   }
@@ -301,18 +264,14 @@ private:
   //  - Loads the values for the results of an Op
   //  - Used by ContOp and ApplyOp (since ApplyOp is dynamic)
   //  - Checks arity
-  //
-  // TODO I think this should be replaced with a ResultOp and
-  //      ContOp always call the current continuation
   void SetContValues(mlir::Operation* Op, ValueRefs ContValues) {
     auto Results = Op->getResults();
     assert((Results.empty() ||
            Results.size() == ContValues.size()) &&
         "continuation arity must match");
 
-    for (unsigned i = 0; i < Results.size(); ++i) {
+    for (unsigned i = 0; i < Results.size(); ++i)
       setValue(Results[i], ContValues[i]);
-    }
   }
 
   BlockItrTy Visit(ApplyOp Op) {
@@ -347,14 +306,6 @@ private:
     return next(Op);
   }
 
-#if 0
-  BlockItrTy Visit(BuiltinOp Op) {
-    heavy::Value V = Op.getBuiltinFn();
-    setValue(Op.getResult(), V);
-    return next(Op);
-  }
-#endif
-
   BlockItrTy Visit(ConsOp Op) {
     // TODO Use PairWithSource to retain source location information.
     heavy::Value A = getValue(Op.getA());
@@ -365,48 +316,19 @@ private:
   }
 
   BlockItrTy Visit(ContOp Op) {
-    // This is the end of the road for the current block.
-    // For functions the continuation is dynamic and we
-    // must use the current stack frame to find the next
-    // operation. For all others the continuation is fixed.
     auto ContArgs = Op.getArgs();
     llvm::SmallVector<heavy::Value, 1> ContValues(ContArgs.size(),
                                                   nullptr);
-    for (unsigned i = 0; i < ContArgs.size(); ++i) {
+    for (unsigned i = 0; i < ContArgs.size(); ++i)
       ContValues[i] = getValue(ContArgs[i]);
-    }
 
-    pop_scope();
 
-    mlir::Operation* Parent = Op->getParentOp();
-
-    if (isa<FuncOp, GlobalOp, IfContOp>(Parent)) {
-      // The continuation is handled by the run-time
-      Context.Cont(ContValues);
-      return {};
-    }
-
-    SetContValues(Parent, ContValues);
-
-    if (isa<mlir::ModuleOp>(Parent->getParentOp())) {
-      // stop after top level op
-      Context.Cont(heavy::Undefined());
-      return {};
-    }
-
-    return next(Parent);
-  }
-
-  BlockItrTy Visit(IfOp Op) {
-    Value Input = getValue(Op.getInput());
-    push_scope();
-    return Input.isTrue() ? Op.getThenRegion().front().begin() :
-                            Op.getElseRegion().front().begin();
+    Context.Cont(ContValues);
+    return BlockItrTy();
   }
 
   BlockItrTy Visit(IfContOp Op) {
     Value Input = getValue(Op.getInput());
-    push_scope();
     return Input.isTrue() ? Op.getThenRegion().front().begin() :
                             Op.getElseRegion().front().begin();
   }
@@ -434,6 +356,14 @@ private:
   }
 
   auto createClosure(mlir::Operation* Op,
+                     heavy::FuncOp FuncOp) {
+    return [FuncOp](heavy::Context& C, ValueRefs Args) {
+      C.OpEval->CallFuncOp(FuncOp, Args);
+      return heavy::Undefined();
+    };
+  }
+
+  auto createClosure(mlir::Operation* Op,
                      heavy::FuncOp FuncOp,
                      mlir::ValueRange CaptureVals,
                      llvm::SmallVectorImpl<heavy::Value>& Captures) {
@@ -441,11 +371,7 @@ private:
       Captures.push_back(getBindingOrValue(Val));
     }
 
-    return [this, FuncOp](heavy::Context& C, ValueRefs Args) {
-      // FIXME EvalOp instance can be destroyed before this.
-      this->CallFuncOp(FuncOp, Args);
-      return heavy::Undefined();
-    };
+    return createClosure(Op, FuncOp);
   }
 
   BlockItrTy Visit(LambdaOp Op) {
@@ -467,6 +393,20 @@ private:
     Context.PushCont(CallFn, Captures);
 
     return next(Op);
+  }
+
+  BlockItrTy Visit(SyntaxOp Op) {
+    heavy::FuncOp F = lookupFunction(Op.getName());
+    if (!F) return {};
+    auto CallFn = createClosure(Op, F);
+    Syntax* S = Context.CreateSyntax(CallFn);
+
+    setValue(Op.getResult(), S);
+    return next(Op);
+  }
+
+  BlockItrTy Visit(PatternOp Op) {
+    return Op.getRegion().front().begin();
   }
 
   BlockItrTy Visit(LiteralOp Op) {
@@ -515,6 +455,7 @@ private:
       }, CaptureList{ModuleName});
       C.LoadModule(ModuleName);
     }, CaptureList{ModuleName});
+    Context.Cont();
     return BlockItrTy();
   }
 
@@ -528,31 +469,35 @@ private:
   }
 
   BlockItrTy Visit(GlobalOp Op) {
-    // Note we return BlockItrTy() because ModuleOp has not terminator.
     // Skip external global ops.
-    if (Op.isExternal()) return BlockItrTy();
+    if (Op.isExternal())
+      return BlockItrTy();
 
-    // The global may already be initialized in the case
-    // of syntax objects.
-    if (Value Val = Context.GetKnownValue(Op.getSymName()))
-      if (!isa<heavy::Undefined>(Val))
-        return BlockItrTy();
-
-    push_scope();
     Context.PushCont([Op](heavy::Context& C, ValueRefs Args) mutable {
       assert(Args.size() == 1 && "invalid continuation arity");
+      heavy::Value Result = Args[0];
       // Mutable globals must be wrapped with a binding
-      Value Binding = C.CreateBinding(Args[0]);
-      C.AddKnownAddress(Op.getSymName(), Binding);
+      if (!isa<Syntax>(Result))
+        Result = C.CreateBinding(Args[0]);
+      C.AddKnownAddress(Op.getSymName(), Result);
       C.Cont(Undefined());
     }, ValueRefs());
 
-    return Op.getInitializer().front().begin();
+    push_scope();
+    BlockItrTy Itr = Op.getInitializer().front().begin();
+    while (Itr != BlockItrTy())
+      Itr = Visit(&*Itr);
+    pop_scope();
+    return BlockItrTy();
   }
 
   BlockItrTy Visit(CommandOp Op) {
     push_scope();
-    return Op.getBody().front().begin();
+    BlockItrTy Itr = Op.getBody().front().begin();
+    while (Itr != BlockItrTy())
+      Itr = Visit(&*Itr);
+    pop_scope();
+    return BlockItrTy();
   }
 
   BlockItrTy Visit(SetOp Op) {
@@ -655,23 +600,15 @@ private:
         "Operation must be a pattern matcher");
 
     mlir::Operation* PatternOp = Op->getParentOp();
-    pop_scope();
 
     if (auto SubpatternOp = dyn_cast<heavy::SubpatternOp>(PatternOp))
       return BlockItrTy();
 
     assert(isa<heavy::PatternOp>(PatternOp) &&
-        "PatternOp should be a PatternOpOp.");
-    // Abort the current pattern's scope
-    mlir::Operation* NextNode = PatternOp->getNextNode();
-    if (!NextNode) {
-      heavy::SourceLocation Loc = Context.getLoc();
-      SetError(Loc, "no matching pattern for syntax");
-      return BlockItrTy();
-    }
-    // Enter the next pattern
-    push_scope();
-    return cast<heavy::PatternOp>(*NextNode).getRegion().front().begin();
+        "expecting a PatternOp.");
+
+    // Abort the current pattern's scope and move to the next operation.
+    return next(Op);
   }
 
   BlockItrTy Visit(MatchOp Op) {
@@ -746,6 +683,7 @@ private:
       BlockItrTy Itr = Op.getBody().front().begin();
       while (Itr != BlockItrTy())
         Itr = Visit(&*Itr);
+      // ResolveOp calls pop_scope.
     }
 
     for (unsigned i = 0; i < Packs.size(); i++) {
@@ -786,6 +724,7 @@ private:
       while (Itr != BlockItrTy())
         Itr = Visit(&*Itr);
       E = Pair->Cdr;
+      // ResolveOp calls pop_scope.
     }
 
     return next(Op);
@@ -806,6 +745,8 @@ private:
       for (unsigned i = 0; i < Packs.size(); i++)
         Packs[i] = Context.CreatePair(getValue(ResolveArgs[i]),
                                       getValue(MResults[i]));
+
+      // Set the results in the parent scope.
       pop_scope();
       for (unsigned i = 0; i < Packs.size(); i++)
         setValue(MResults[i], Packs[i]);
@@ -816,10 +757,13 @@ private:
     auto ExpandPacksOp = cast<heavy::ExpandPacksOp>(Op->getParentOp());
     assert(Op.getArgs().size() == 1 && "expecting single result");
     heavy::Value CurrentResult = getValue(Op.getArgs().front());
-    pop_scope();
     heavy::Value Result = Context.CreatePair(CurrentResult,
                                       getValue(ExpandPacksOp.getResult()));
+
+    // Set the result in the parent scope.
+    pop_scope();
     setValue(ExpandPacksOp.getResult(), Result);
+
     return BlockItrTy();
   }
 
@@ -832,17 +776,8 @@ private:
     return patternFail(Op);
   }
 
-  BlockItrTy Visit(SyntaxOp Op) {
-    // Evaluate iff this is a global.
-    if (isa<GlobalOp>(Op->getParentOp())) {
-      heavy::Syntax* Syntax = Context.CreateSyntaxWithOp(Op);
-      setValue(Op.getResult(), Syntax);
-    }
-    return next(Op);
-  }
-
   BlockItrTy Visit(SyntaxClosureOp Op) {
-    // Create a SyntaxClosure with the current EnvStack.
+    // Create a SyntaxClosure with the provided env argument.
     heavy::Value Input = getValue(Op.getInput());
     heavy::Value Env = getValue(Op.getEnv());
     SyntaxClosure* SC = Context.CreateSyntaxClosure(Context.getLoc(),
@@ -893,13 +828,6 @@ private:
     return next(Op);
   }
 };
-
-void invokeSyntaxOp(heavy::Context& C, mlir::Operation* Op,
-                    heavy::Value Expr) {
-  OpEvalImpl E(C);
-  auto SyntaxOp = cast<heavy::SyntaxOp>(Op);
-  E.InvokeSyntax(SyntaxOp, Expr);
-}
 
 namespace base {
 void op_eval(Context& C, ValueRefs Args) {

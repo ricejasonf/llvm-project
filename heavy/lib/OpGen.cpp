@@ -155,7 +155,7 @@ mlir::Value OpGen::GetSingleResult(heavy::Value V) {
       return SetError("expecting expression", V);
   }
 
-  return Result;
+  return LocalizeValue(Result);
 }
 
 // WithLibraryEnv - Call a thunk within the library environment
@@ -534,7 +534,6 @@ bool OpGen::isLocalDefineAllowed() {
   return IsLocalDefineAllowed;
 }
 
-// createSyntaxSpec
 //  - SyntaxSpec is the full <Keyword> <TransformerSpec> pair
 //    that is passed to the syntax function.
 //  - OrigCall is likely (define-syntax ...) or (let-syntax ...)
@@ -583,21 +582,16 @@ mlir::Value OpGen::createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall) {
   if (!DidCallSyntax || !SyntaxOp)
     return SetError("expecting syntax transformer", SyntaxSpec);
 
-  heavy::Syntax* Syntax = Context.CreateSyntaxWithOp(
-      SyntaxOp.getOperation());
-
   if (TopLevelEnv) {
     assert(!MangledName.empty() && "global syntax must have mangled name");
-    TopLevelEnv->SetSyntax(Keyword, Syntax,
+    TopLevelEnv->Insert(Keyword,
         Context.CreateIdTableEntry(MangledName));
-    // Syntax should be available at compile-time.
-    Context.AddKnownAddress(MangledName, Syntax);
-    // Insert a ContOp for the global that was created.
     Builder.create<ContOp>(Result.getLoc(), Result);
     Builder.restoreInsertionPoint(PrevIp);
   } else {
-    Binding* B = Context.CreateBinding(Keyword, Syntax);
-    Context.PushLocalBinding(B);
+    return SetError("TODO support local syntax");
+    //Binding* B = Context.CreateBinding(Keyword, Syntax);
+    //Context.PushLocalBinding(B);
   }
 
   return mlir::Value();
@@ -608,6 +602,13 @@ mlir::Value OpGen::createSyntaxRules(SourceLocation Loc,
                                      Symbol* Ellipsis,
                                      heavy::Value LiteralList,
                                      heavy::Value PatternDefs) {
+  // Create (anonymous) syntax function.
+  std::string MangledName = mangleFunctionName(llvm::StringRef());
+  if (MangledName.empty())
+    return Error();
+  mlir::FunctionType FT = createFunctionType(/*Arity=*/2, RestParamKind::None);
+  auto FuncOp = createFunction(Loc, MangledName, FT);
+
   // Expect list of unique literal identifiers.
   llvm::SmallPtrSet<String*, 4> Literals;
   auto insertLiteral = [&](Value V) -> bool {
@@ -639,21 +640,14 @@ mlir::Value OpGen::createSyntaxRules(SourceLocation Loc,
     return SetError("expecting keyword list", LiteralList);
   }
 
-  // TODO create anonymous function name for SyntaxOp symbol
-
   // Create the SyntaxOp
-  auto SyntaxOp = create<heavy::SyntaxOp>(Loc);
-  mlir::Block& Block = SyntaxOp.getRegion().emplaceBlock();
-
-
-  mlir::Type Type = Builder.getType<HeavyValueTy>();
-  mlir::Location MLoc =
-      mlir::OpaqueLoc::get(Loc.getOpaqueEncoding(), Builder.getContext());
-  mlir::BlockArgument ExprArg = Block.addArgument(Type, MLoc);
-  mlir::BlockArgument EnvArg = Block.addArgument(Type, MLoc);
+  auto SyntaxOp = create<heavy::SyntaxOp>(Loc, FuncOp.getSymName());
+  mlir::Block& Body = *FuncOp.addEntryBlock();
+  mlir::BlockArgument ExprArg = Body.getArgument(1);
+  mlir::BlockArgument EnvArg = Body.getArgument(2);
 
   mlir::OpBuilder::InsertionGuard IG(Builder);
-  Builder.setInsertionPointToStart(&Block);
+  Builder.setInsertionPointToStart(&Body);
 
   // Iterate through each pattern/template pair.
   assert(!CheckError() && "should not have errors here");
@@ -679,7 +673,14 @@ mlir::Value OpGen::createSyntaxRules(SourceLocation Loc,
     // Restore the environment.
     Context.EnvStack = PrevEnvStack;
   }
-  if (!isa<Empty>(PatternDefs) || Block.empty()) {
+
+  // Terminate with error call for when no patterns match.
+  mlir::Value ErrorMsg = createLiteral(Loc,
+      Context.CreateString("no matching pattern for syntax"));
+  std::array<mlir::Value, 3> ErrorArgs{ErrorMsg, ExprArg, SyntaxOp.getResult()};
+  createSyntaxError(Loc, ErrorArgs);
+
+  if (!isa<Empty>(PatternDefs) || Body.empty()) {
     return SetError("expecting list of pattern templates pairs", PatternDefs);
   }
   return SyntaxOp.getResult();
@@ -864,6 +865,8 @@ mlir::Value OpGen::createTopLevelDefine(Value Id, Value DefineArgs,
 
 mlir::Value OpGen::createIf(SourceLocation Loc, Value Cond, Value Then,
                             Value Else) {
+  if (IsLocalDefineAllowed)
+    FinishLocalDefines();
   // Cond
   mlir::Value CondResult;
   {
@@ -912,6 +915,8 @@ mlir::Value OpGen::createIf(SourceLocation Loc, Value Cond, Value Then,
 // LHS can be a symbol or a binding
 mlir::Value OpGen::createSet(SourceLocation Loc, Value LHS,
                                                  Value RHS) {
+  if (IsLocalDefineAllowed)
+    FinishLocalDefines();
   TailPosScope TPS(*this);
   IsTailPos = false;
   assert((isa<Binding, Symbol, ExternName, SyntaxClosure>(LHS)) &&
@@ -1087,6 +1092,14 @@ mlir::Value OpGen::createCall(heavy::SourceLocation Loc, mlir::Value Fn,
   return createContinuation(Op);
 }
 
+mlir::Value OpGen::createSyntaxError(heavy::SourceLocation Loc,
+                               llvm::MutableArrayRef<mlir::Value> Args) {
+  // We defer localizing values until instantiation.
+  mlir::Value ErrorFn = create<LoadGlobalOp>(Loc, HEAVY_BASE_VAR_STR(error));
+  create<ApplyOp>(Loc, ErrorFn, Args);
+  return mlir::Value();
+}
+
 mlir::Value OpGen::createOpGen(SourceLocation Loc, mlir::Value Input,
                                mlir::Value Env) {
   // OpGenOp should always be considered tail position.
@@ -1164,10 +1177,12 @@ mlir::Value OpGen::MaybeCallSyntax(Value Operator, Pair* P,
       Context.setLoc(P->getSourceLocation());
       DidCallSyntax = true;
       Value Input = P;
+      Value Env = Context.EnvStack;
       heavy::OpGen* OpGen = Context.OpGen;
       assert(OpGen == this && "sanity check");
       ++RunSyncDepth;
-      Value Result = Context.RunSync(Operator, Input);
+      std::array<heavy::Value, 2> Args{Input, Env};
+      Value Result = Context.RunSync(Operator, Args);
       --RunSyncDepth;
       assert(OpGen == Context.OpGen && "OpGen should not unwind itself");
       if (auto ResultErr = dyn_cast_or_null<heavy::Error>(Result))

@@ -37,11 +37,13 @@ heavy::ExternBuiltinSyntax cond_expand;
 heavy::ExternBuiltinSyntax define;
 heavy::ExternBuiltinSyntax define_syntax;
 heavy::ExternBuiltinSyntax syntax_rules;
+heavy::ExternBuiltinSyntax ir_macro_transformer;
 heavy::ExternBuiltinSyntax if_;
 heavy::ExternBuiltinSyntax lambda;
 heavy::ExternBuiltinSyntax quasiquote;
 heavy::ExternBuiltinSyntax quote;
 heavy::ExternBuiltinSyntax set;
+heavy::ExternBuiltinSyntax syntax_error;
 
 
 heavy::ExternFunction add;
@@ -158,6 +160,10 @@ mlir::Value syntax_rules(OpGen& OG, Pair* P) {
                               SpecInput->Car, SpecInput->Cdr);
 }
 
+mlir::Value ir_macro_transformer(OpGen& OG, Pair* P) {
+  llvm_unreachable("TODO");
+}
+
 mlir::Value lambda(OpGen& OG, Pair* P) {
   Pair* P2 = dyn_cast<Pair>(P->Cdr);
   Value Formals = P2->Car;
@@ -201,6 +207,17 @@ mlir::Value set(OpGen& OG, Pair* P) {
   heavy::Value Expr = P2->Car;
   if (!isa<Empty>(P2->Cdr)) return OG.SetError("invalid set syntax", P2);
   return OG.createSet(P->getSourceLocation(), S, Expr);
+}
+
+mlir::Value syntax_error(OpGen& OG, Pair* P) {
+  heavy::SourceLocation Loc = P->getSourceLocation();
+  Pair* P2 = dyn_cast<Pair>(P->Cdr);
+  if (!P2)
+    return OG.SetError("invalid syntax-error... syntax", P);
+  llvm::SmallVector<mlir::Value, 8> Args;
+  for (auto [Loc, V] : WithSource(P2))
+    Args.push_back(OG.createLiteral(Loc, V));
+  return OG.createSyntaxError(Loc, Args);
 }
 
 namespace {
@@ -869,6 +886,8 @@ void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(define)          = heavy::base::define;
   HEAVY_BASE_VAR(define_syntax)   = heavy::base::define_syntax;
   HEAVY_BASE_VAR(syntax_rules)    = heavy::base::syntax_rules;
+  HEAVY_BASE_VAR(ir_macro_transformer)
+                                  = heavy::base::ir_macro_transformer;
   HEAVY_BASE_VAR(if_)             = heavy::base::if_;
   HEAVY_BASE_VAR(lambda)          = heavy::base::lambda;
   HEAVY_BASE_VAR(quasiquote)      = heavy::base::quasiquote;
@@ -952,6 +971,8 @@ void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"quote",         HEAVY_BASE_VAR(quote)},
     {"set!",          HEAVY_BASE_VAR(set)},
     {"syntax-rules",  HEAVY_BASE_VAR(syntax_rules)},
+    {"ir-macro-transformer",
+                      HEAVY_BASE_VAR(ir_macro_transformer)},
     {"begin",         HEAVY_BASE_VAR(begin)},
     {"cond-expand",   HEAVY_BASE_VAR(cond_expand)},
     {"define-library",HEAVY_BASE_VAR(define_library)},

@@ -32,7 +32,6 @@ class TemplateGen : TemplateBase<TemplateGen>,
   Symbol* Ellipsis;
   NameSet& PatternVarNames;
   llvm::SmallVectorImpl<mlir::Value>* CurrentPacks = nullptr;
-  llvm::SmallVector<mlir::Value, 8> RenameOps;
 
 public:
   using ResultTy = TemplateResult;
@@ -72,11 +71,6 @@ public:
   }
 
 private:
-  mlir::Location createLoc(heavy::SourceLocation Loc) {
-    return mlir::OpaqueLoc::get(Loc.getOpaqueEncoding(),
-                                OpGen.Builder.getContext());
-  }
-
   ResultTy VisitValue(Value P) {
     return P;
   }
@@ -174,44 +168,7 @@ private:
     if (P->Equiv(Ellipsis))
       return OpGen.SetError("unexpected ellipsis", P);
 
-    // The result will be a symbol literal.
-    // The built RenameOps simply inject into the environment.
-    mlir::Value LiteralResult = createLiteral(P);
-
-    heavy::Context& Context = OpGen.getContext();
-    EnvEntry Entry = Context.Lookup(P);
-    SourceLocation Loc = P->getSourceLocation();
-    llvm::StringRef Id = P->getStringRef();
-
-    // Insert RenameOps at the beginning of the pattern block.
-    mlir::OpBuilder::InsertionGuard IG(OpGen.Builder);
-    OpGen.Builder.setInsertionPointToStart(OpGen.Builder.getBlock());
-
-    std::string MangledNameStr;
-    llvm::StringRef MangledName;
-    if (Entry && !Entry.MangledName) {
-      // "Capture" the object and "rename" it
-      // We do not localize (aka capture) it until instantiation.
-      mlir::Value Capture = OpGen.Lookup(Entry.Value);
-      assert(Capture && "expecting value in lookup");
-      mlir::Value R = OpGen.create<heavy::RenameOp>(Loc, Id, Capture);
-      RenameOps.push_back(R);
-      return LiteralResult;
-    } else if (Entry.MangledName) {
-      MangledName = Entry.MangledName->getStringRef();
-    } else {
-      // Default to the name of a global
-      heavy::Mangler Mangler(Context);
-      MangledNameStr = Mangler.mangleVariable(OpGen.getModulePrefix(), P);
-      if (MangledNameStr.empty())
-        return mlir::Value();  // Error
-      MangledName = llvm::StringRef(MangledNameStr);
-    }
-
-    assert(!MangledName.empty() && "should have mangled name");
-    mlir::Value R = OpGen.create<RenameGlobalOp>(Loc, Id, MangledName);
-    RenameOps.push_back(R);
-    return LiteralResult;
+    return createRename(P);
   }
 };
 

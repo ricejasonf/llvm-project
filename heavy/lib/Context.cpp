@@ -118,16 +118,6 @@ Environment* Context::getTopLevelEnvironment() {
   llvm_unreachable("EnvStack should have an Environment.");
 }
 
-Syntax* Context::CreateSyntaxWithOp(mlir::Operation* Op) {
-  auto SyntaxOp = cast<heavy::SyntaxOp>(Op);
-  auto Fn = [SyntaxOp](heavy::Context& C, ValueRefs Args) -> void {
-    heavy::Value Input = Args[0];
-    invokeSyntaxOp(C, SyntaxOp, Input);
-    // The contained OpGenOp will call C.Apply(...).
-  };
-  return CreateSyntax(Fn);
-}
-
 Module* Context::RegisterModule(llvm::StringRef MangledName,
                                 heavy::ModuleLoadNamesFn* LoadNames) {
   auto Result = Modules.try_emplace(MangledName,
@@ -1054,7 +1044,6 @@ void Context::LoadExports(heavy::Module* M, mlir::Operation* ModuleOp) {
 }
 
 // Allow the user to add cleanup routines to unload a module/library.
-// It is currently used for destroying the instance of OpEval.
 // TODO expose this via run-time function accessible in scheme land.
 void Context::PushModuleCleanup(llvm::StringRef MangledName, Value Fn) {
   std::unique_ptr<Module>& M = Modules[MangledName];
@@ -1408,7 +1397,7 @@ void Context::WithEnv(std::unique_ptr<heavy::Environment> EnvPtr,
 //           called escape procedure is complete.
 //           This is used for *nested* calls in C++ when finishing
 //           the operation on the current C++ call stack is needed.
-Value Context::RunSync(Value Callee, Value SingleArg) {
+Value Context::RunSync(Value Callee, ValueRefs Args) {
   Value CatchHandler = CreateLambda(
     [](heavy::Context& C, ValueRefs Args) {
       C.Yield(Args);
@@ -1416,7 +1405,7 @@ Value Context::RunSync(Value Callee, Value SingleArg) {
   Value PrevHandlers = ExceptionHandlers;
   ExceptionHandlers = CatchHandler;
   PushBreak();
-  Apply(Callee, ValueRefs{SingleArg});
+  Apply(Callee, Args);
   Resume();
   ExceptionHandlers = PrevHandlers;
   return getCurrentResult();
