@@ -677,7 +677,7 @@ mlir::Value OpGen::createSyntaxRules(SourceLocation Loc,
   // Terminate with error call for when no patterns match.
   mlir::Value ErrorMsg = createLiteral(Loc,
       Context.CreateString("no matching pattern for syntax"));
-  std::array<mlir::Value, 3> ErrorArgs{ErrorMsg, ExprArg, SyntaxOp.getResult()};
+  std::array<mlir::Value, 2> ErrorArgs{ErrorMsg, ExprArg};
   createSyntaxError(Loc, ErrorArgs);
 
   if (!isa<Empty>(PatternDefs) || Body.empty()) {

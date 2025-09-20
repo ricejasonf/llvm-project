@@ -81,7 +81,7 @@ public:
 
     if (!OpGen.CheckError()) {
       TemplateGen TG(OpGen, PatternVars, Ellipsis);
-      TG.VisitTemplate(Template);
+      TG.BuildTemplate(Template);
     }
 
     return mlir::Value();

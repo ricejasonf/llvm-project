@@ -24,17 +24,16 @@ namespace heavy {
 // TemplateGen
 //    - Substitute a template using the syntactic environment
 //      created by a pattern as part of the syntax-rules syntax.
-class TemplateGen : TemplateBase<TemplateGen>,
-                    ValueVisitor<TemplateGen, TemplateResult> {
+class TemplateGen : TemplateBase<TemplateGen> {
   friend TemplateBase<TemplateGen>;
   friend ValueVisitor<TemplateGen, TemplateResult>;
+  using Base = TemplateBase<TemplateGen>;
 
   Symbol* Ellipsis;
   NameSet& PatternVarNames;
   llvm::SmallVectorImpl<mlir::Value>* CurrentPacks = nullptr;
 
 public:
-  using ResultTy = TemplateResult;
   using ErrorTy = TemplateError;
 
   TemplateGen(heavy::OpGen& O, NameSet& PVNames,
@@ -44,40 +43,18 @@ public:
       PatternVarNames(PVNames)
   { }
 
-  // VisitTemplate - Create operations to transform syntax and
-  //                 evaluate it.
-  void VisitTemplate(heavy::Value Template) {
+  // Create operations to transform syntax and compile the result.
+  void BuildTemplate(heavy::Value Template) {
     heavy::SourceLocation Loc = Template.getSourceLocation();
-    ResultTy Result = Visit(Template);
-
-    mlir::Value TransformedSyntax;
-    if (mlir::Value* MVP = std::get_if<mlir::Value>(&Result))
-      TransformedSyntax = *MVP;
-    else
-      TransformedSyntax = createLiteral(std::get<heavy::Value>(Result));
-
-    {
-      // Move the RenameOps to the end of the PatternOp.
-      mlir::Block* Block = OpGen.Builder.getBlock();
-      auto InsertionPoint = OpGen.Builder.getInsertionPoint();
-      for (mlir::Value RV : RenameOps)
-        RV.getDefiningOp()->moveBefore(Block, InsertionPoint);
-    }
-      
-    // Add the RenameOps to an EnvFrame
-    // to serve as the base of the environment.
-    mlir::Value TemplateEnv = OpGen.create<EnvFrameOp>(Loc, RenameOps);
-    OpGen.createOpGen(Loc, TransformedSyntax, TemplateEnv);
+    mlir::Value TransformedSyntax = VisitTemplate(Template);
+    mlir::Value RenameEnv = createRenameEnv();
+    OpGen.createOpGen(Loc, TransformedSyntax, RenameEnv);
   }
 
 private:
-  ResultTy VisitValue(Value P) {
-    return P;
-  }
-
   mlir::Value ExpandPack(heavy::SourceLocation Loc,
                          heavy::Value Car, heavy::Value Cdr) {
-    ResultTy CdrResult = Visit(Cdr);
+    TemplateResult CdrResult = Visit(Cdr);
     auto Body = std::make_unique<mlir::Region>();
     llvm::SmallVector<mlir::Value, 4> Packs;
     llvm::SmallVectorImpl<mlir::Value>* PrevPacks = CurrentPacks;
@@ -86,7 +63,7 @@ private:
     {
       mlir::OpBuilder::InsertionGuard IG(OpGen.Builder);
       OpGen.Builder.setInsertionPointToStart(&Block);
-      ResultTy Last = Visit(Car);
+      TemplateResult Last = Visit(Car);
       if (OpGen.CheckError())
         return mlir::Value();
       if (std::holds_alternative<heavy::Value>(Last))
@@ -100,7 +77,7 @@ private:
     return EPO.getResult();
   }
 
-  ResultTy VisitPair(Pair* P) {
+  TemplateResult VisitPair(Pair* P) {
     heavy::SourceLocation Loc = P->getSourceLocation();
     if (auto* P2 = dyn_cast<Pair>(P->Cdr);
         P2 && isa<Symbol>(P2->Car) &&
@@ -108,19 +85,7 @@ private:
       return ExpandPack(Loc, P->Car, P2->Cdr);
     }
 
-    ResultTy CarResult = Visit(P->Car);
-    ResultTy CdrResult = Visit(P->Cdr);
-
-    // If nothing changed
-    auto* HCar = std::get_if<heavy::Value>(&CarResult);
-    auto* HCdr = std::get_if<heavy::Value>(&CdrResult);
-    if (HCar && HCdr && *HCar == P->Car && *HCdr == P->Cdr)
-      return P;
-
-    if (OpGen.CheckError())
-      return mlir::Value();
-
-    return createCons(Loc, CarResult, CdrResult);
+    return Base::VisitPair(P);
   }
 
   mlir::Value GetPatternVar(heavy::Symbol* S) {
@@ -161,7 +126,7 @@ private:
     return Block->addArgument(HeavyValueT, MLoc);
   }
 
-  ResultTy VisitSymbol(Symbol* P) {
+  TemplateResult VisitSymbol(Symbol* P) {
     if (PatternVarNames.contains(P->getString()))
       return CurrentPacks ? CaptureExpandArg(P) : GetPatternVar(P);
 

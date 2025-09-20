@@ -15,6 +15,7 @@
 #include <heavy/Context.h>
 #include <heavy/OpGen.h>
 #include <heavy/Value.h>
+#include <heavy/ValueVisitor.h>
 #include <mlir/IR/Value.h>
 #include <llvm/Support/Casting.h>
 #include <variant>
@@ -36,14 +37,29 @@ using TemplateResult = std::variant<TemplateError, mlir::Value,
 //      utility functions for creating operations that build
 //      literals interspersed with values.
 template <typename Derived>
-class TemplateBase {
+class TemplateBase : protected ValueVisitor<Derived, TemplateResult> {
 protected:
+  friend ValueVisitor<Derived, TemplateResult>;
+  using ValueVisitor<Derived, TemplateResult>::getDerived;
+
   heavy::OpGen& OpGen;
   llvm::SmallVector<mlir::Value, 8> RenameOps;
 
   TemplateBase(heavy::OpGen& O)
     : OpGen(O)
   { }
+
+  // Template is the input "form" with syntax closures.
+  mlir::Value VisitTemplate(heavy::Value Template) {
+    TemplateResult Result = getDerived().Visit(Template);
+
+    mlir::Value TransformedSyntax;
+    if (mlir::Value* MVP = std::get_if<mlir::Value>(&Result))
+      TransformedSyntax = *MVP;
+    else
+      TransformedSyntax = createLiteral(std::get<heavy::Value>(Result));
+    return TransformedSyntax;
+  }
 
   mlir::Location createLoc(heavy::SourceLocation Loc) {
     return mlir::OpaqueLoc::get(Loc.getOpaqueEncoding(),
@@ -133,6 +149,58 @@ protected:
     RenameOps.push_back(R);
     return LiteralResult;
   }
+
+  mlir::Value createRenameEnv() {
+    heavy::SourceLocation Loc;
+    // Move the RenameOps to the end of the current block.
+    mlir::Block* Block = OpGen.Builder.getBlock();
+    auto InsertionPoint = OpGen.Builder.getInsertionPoint();
+    for (mlir::Value RV : RenameOps)
+      RV.getDefiningOp()->moveBefore(Block, InsertionPoint);
+
+    // Add the RenameOps to an EnvFrame
+    // to serve as the base of the environment.
+    return OpGen.create<EnvFrameOp>(Loc, RenameOps);
+  }
+
+  // ValueVisitor functions
+
+  TemplateResult VisitValue(heavy::Value P) {
+    return P;
+  }
+
+  TemplateResult VisitSyntaxClosure(SyntaxClosure* SC) {
+    mlir::Value EnvVal = any_cast<mlir::Value>(SC->Env);
+    if (!EnvVal)
+      return OpGen.SetError("expecting env mlir.value");
+
+    if (!isa<Symbol>(SC->Node))
+      return OpGen.SetError("expecting a symbol");
+
+    heavy::SourceLocation Loc = SC->Node.getSourceLocation();
+    mlir::Value Node = createLiteral(SC->Node);
+    return OpGen.create<SyntaxClosureOp>(Loc, Node, EnvVal);
+  }
+
+  TemplateResult VisitPair(Pair* P) {
+    heavy::SourceLocation Loc = P->getSourceLocation();
+
+    TemplateResult CarResult = getDerived().Visit(P->Car);
+    TemplateResult CdrResult = getDerived().Visit(P->Cdr);
+
+    // If nothing changed
+    auto* HCar = std::get_if<heavy::Value>(&CarResult);
+    auto* HCdr = std::get_if<heavy::Value>(&CdrResult);
+    if (HCar && HCdr && *HCar == P->Car && *HCdr == P->Cdr)
+      return P;
+
+    if (OpGen.CheckError())
+      return mlir::Value();
+
+    return createCons(Loc, CarResult, CdrResult);
+  }
+
+  TemplateResult VisitSymbol(Symbol* P) = delete;
 };
 
 }

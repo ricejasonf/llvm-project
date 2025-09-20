@@ -31,10 +31,10 @@ class ValueVisitor {
   RetTy Visit ## NAME(cast_ty<NAME> V, Args&& ...args) { \
     return getDerived().VisitValue(V, std::forward<Args>(args)...); }
 
+protected:
   Derived& getDerived() { return static_cast<Derived&>(*this); }
   Derived const& getDerived() const { return static_cast<Derived>(*this); }
 
-protected:
   // Derived must implement VisitValue OR all of the
   // concrete visitors
   template <typename T>
