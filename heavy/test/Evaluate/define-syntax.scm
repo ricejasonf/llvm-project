@@ -1,5 +1,5 @@
 ; RUN: heavy-scheme %s | FileCheck %s
-(import (heavy base))
+(import (heavy builtins))
 
 ;; TODO Local let-syntax needs to be tested/supported.
 

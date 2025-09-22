@@ -1,5 +1,5 @@
 ; RUN: heavy-scheme %s | FileCheck %s
-(import (heavy base))
+(import (heavy builtins))
 
 ; CHECK: foo
 (write (if #t 'foo 'bar))

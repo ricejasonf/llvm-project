@@ -1,5 +1,5 @@
 ; RUN: heavy-scheme %s 2>&1 | FileCheck  %s --strict-whitespace --match-full-lines
-(import (heavy base))
+(import (heavy builtins))
 
 (define empty-list ())
 (define foo-list '(foo bar baz 5))

@@ -1,6 +1,6 @@
 ; RUN: heavy-scheme %s | FileCheck %s
 
-(import (heavy base))
+(import (heavy builtins))
 
 ; CHECK: 17
 (write (+ (+ (+ 2 3) (+ 5 7))))

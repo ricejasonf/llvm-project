@@ -1,5 +1,5 @@
 ; RUN: heavy-scheme %s | FileCheck %s
-(import (heavy base))
+(import (heavy builtins))
 
 ; CHECK: (#t #t #f #f #f)
 (write (list (string? "")

@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//  This file declares values and functions for the (heavy base) scheme library
+//  This file declares values and functions for the (heavy builtins) scheme library
 //
 //===----------------------------------------------------------------------===//
 
@@ -17,21 +17,21 @@
 #include "heavy/Value.h"
 #include "llvm/ADT/SmallVector.h"
 
-#define HEAVY_BASE_LIB                _HEAVYL5SheavyL4Sbase
-#define HEAVY_BASE_LIB_(NAME)         _HEAVYL5SheavyL4Sbase ## NAME
-#define HEAVY_BASE_LIB_STR            "_HEAVYL5SheavyL4Sbase"
+#define HEAVY_BASE_LIB                _HEAVYL5SheavyL8Sbuiltins
+#define HEAVY_BASE_LIB_(NAME)         _HEAVYL5SheavyL8Sbuiltins ## NAME
+#define HEAVY_BASE_LIB_STR            "_HEAVYL5SheavyL8Sbuiltins"
 #define HEAVY_BASE_LOAD_MODULE        HEAVY_BASE_LIB_(_load_module)
 #define HEAVY_BASE_INIT               HEAVY_BASE_LIB_(_init)
 
 #define HEAVY_IMPORT_VAR              "_HEAVY_import"
 #define HEAVY_LOAD_MODULE_VAR         "_HEAVY_load_module"
 
-#define HEAVY_BASE_VAR(NAME)          ::heavy::base_var::NAME
+#define HEAVY_BASE_VAR(NAME)          ::heavy::builtins_var::NAME
 #define HEAVY_BASE_VAR_STR(NAME)      HEAVY_BASE_VAR_STR__##NAME
 #define HEAVY_BASE_VAR_STR__error     HEAVY_BASE_LIB_STR "5Serror"
 
 // Forward declare vars that are used in the C++ codebase.
-namespace heavy::base_var {
+namespace heavy::builtins_var {
 extern heavy::ContextLocal module_path;
 extern heavy::ContextLocal parse_source_file;
 extern heavy::ExternFunction compile;
@@ -39,7 +39,7 @@ extern heavy::ExternFunction eval;
 extern heavy::ExternFunction op_eval;
 }
 
-namespace heavy::base {
+namespace heavy::builtins {
 void eval(Context& C, ValueRefs Args);
 void import_(Context& C, ValueRefs Args);
 void load_module(Context& C, ValueRefs Args);
@@ -54,7 +54,7 @@ void HEAVY_BASE_INIT(heavy::Context& Context);
 void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context);
 }
 
-namespace heavy::base {
+namespace heavy::builtins {
 /* InitParseSourceFile
  *  - Provide a hook for including source files by
  *    setting parse-source-file.

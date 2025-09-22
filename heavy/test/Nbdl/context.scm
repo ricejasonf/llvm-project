@@ -1,5 +1,5 @@
 ; RUN: heavy-scheme %s 2>&1 | FileCheck %s
-(import (heavy base)
+(import (heavy builtins)
         (heavy mlir)
         (nbdl comp))
 

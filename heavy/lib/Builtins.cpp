@@ -24,7 +24,7 @@ namespace mlir {
 class Value;
 }
 
-namespace heavy::base_var {
+namespace heavy::builtins_var {
 heavy::ExternSyntax<>      define_library;
 heavy::ExternSyntax<>      begin;
 heavy::ExternSyntax<>      export_;
@@ -105,7 +105,7 @@ heavy::ExternFunction is_source_value;
 
 bool HEAVY_BASE_IS_LOADED = false;
 
-namespace heavy::base {
+namespace heavy::builtins {
 // See Quasiquote.cpp
 mlir::Value quote(OpGen& OG, Pair* P);
 mlir::Value quasiquote(OpGen& OG, Pair* P);
@@ -358,7 +358,7 @@ void source_loc(Context& C, ValueRefs Args) {
   C.Cont(C.CreateSourceValue(Loc));
 }
 
-} // end of namespace heavy::base
+} // end of namespace heavy::builtins
 
 namespace heavy {
 struct NumberOp {
@@ -403,7 +403,7 @@ struct NumberOp {
 
 } // end namespace heavy
 
-namespace heavy::base {
+namespace heavy::builtins {
 void call_cc(Context& C, ValueRefs Args) {
   if (Args.size() != 1) return C.RaiseError("invalid arity");
   C.CallCC(Args[0]);
@@ -877,84 +877,84 @@ void is_source_value(Context& C, ValueRefs Args) {
     return C.RaiseError("invalid arity");
   C.Cont(Bool(isa<heavy::SourceValue>(Args[0])));
 }
-} // end of namespace heavy::base
+} // end of namespace heavy::builtins
 
 // initialize the module for run-time independent of the compiler
 void HEAVY_BASE_INIT(heavy::Context& Context) {
   Context.DialectRegistry->insert<heavy::Dialect>();
   // syntax
-  HEAVY_BASE_VAR(define)          = heavy::base::define;
-  HEAVY_BASE_VAR(define_syntax)   = heavy::base::define_syntax;
-  HEAVY_BASE_VAR(syntax_rules)    = heavy::base::syntax_rules;
+  HEAVY_BASE_VAR(define)          = heavy::builtins::define;
+  HEAVY_BASE_VAR(define_syntax)   = heavy::builtins::define_syntax;
+  HEAVY_BASE_VAR(syntax_rules)    = heavy::builtins::syntax_rules;
   HEAVY_BASE_VAR(ir_macro_transformer)
-                                  = heavy::base::ir_macro_transformer;
-  HEAVY_BASE_VAR(if_)             = heavy::base::if_;
-  HEAVY_BASE_VAR(lambda)          = heavy::base::lambda;
-  HEAVY_BASE_VAR(quasiquote)      = heavy::base::quasiquote;
-  HEAVY_BASE_VAR(quote)           = heavy::base::quote;
-  HEAVY_BASE_VAR(set)             = heavy::base::set;
-  HEAVY_BASE_VAR(begin)           = heavy::base::begin;
-  HEAVY_BASE_VAR(cond_expand)     = heavy::base::cond_expand;
-  HEAVY_BASE_VAR(define_library)  = heavy::base::define_library;
-  HEAVY_BASE_VAR(export_)         = heavy::base::export_;
-  HEAVY_BASE_VAR(include)         = heavy::base::include_;
-  HEAVY_BASE_VAR(include_ci)      = heavy::base::include_ci;
+                                  = heavy::builtins::ir_macro_transformer;
+  HEAVY_BASE_VAR(if_)             = heavy::builtins::if_;
+  HEAVY_BASE_VAR(lambda)          = heavy::builtins::lambda;
+  HEAVY_BASE_VAR(quasiquote)      = heavy::builtins::quasiquote;
+  HEAVY_BASE_VAR(quote)           = heavy::builtins::quote;
+  HEAVY_BASE_VAR(set)             = heavy::builtins::set;
+  HEAVY_BASE_VAR(begin)           = heavy::builtins::begin;
+  HEAVY_BASE_VAR(cond_expand)     = heavy::builtins::cond_expand;
+  HEAVY_BASE_VAR(define_library)  = heavy::builtins::define_library;
+  HEAVY_BASE_VAR(export_)         = heavy::builtins::export_;
+  HEAVY_BASE_VAR(include)         = heavy::builtins::include_;
+  HEAVY_BASE_VAR(include_ci)      = heavy::builtins::include_ci;
   HEAVY_BASE_VAR(include_library_declarations)
-    = heavy::base::include_library_declarations;
-  HEAVY_BASE_VAR(source_loc)      = heavy::base::source_loc;
+    = heavy::builtins::include_library_declarations;
+  HEAVY_BASE_VAR(source_loc)      = heavy::builtins::source_loc;
   HEAVY_BASE_VAR(parse_source_file).init(Context);
 
   // functions
-  HEAVY_BASE_VAR(add)     = heavy::base::add;
-  HEAVY_BASE_VAR(sub)     = heavy::base::sub;
-  HEAVY_BASE_VAR(div)     = heavy::base::div;
-  HEAVY_BASE_VAR(mul)     = heavy::base::mul;
-  HEAVY_BASE_VAR(gt)      = heavy::base::gt;
-  HEAVY_BASE_VAR(lt)      = heavy::base::lt;
-  HEAVY_BASE_VAR(list)    = heavy::base::list;
-  HEAVY_BASE_VAR(length)  = heavy::base::length;
-  HEAVY_BASE_VAR(cons)    = heavy::base::cons;
-  HEAVY_BASE_VAR(car)     = heavy::base::car;
-  HEAVY_BASE_VAR(cdr)     = heavy::base::cdr;
-  HEAVY_BASE_VAR(append)  = heavy::base::append;
-  HEAVY_BASE_VAR(dump)    = heavy::base::dump;
-  HEAVY_BASE_VAR(write)   = heavy::base::write;
-  HEAVY_BASE_VAR(newline) = heavy::base::newline;
-  HEAVY_BASE_VAR(string_append) = heavy::base::string_append;
-  HEAVY_BASE_VAR(string_copy) = heavy::base::string_copy;
-  HEAVY_BASE_VAR(string_length) = heavy::base::string_length;
-  HEAVY_BASE_VAR(number_to_string) = heavy::base::number_to_string;
-  HEAVY_BASE_VAR(eq)      = heavy::base::eqv;
-  HEAVY_BASE_VAR(equal)   = heavy::base::equal;
-  HEAVY_BASE_VAR(eqv)     = heavy::base::eqv;
-  HEAVY_BASE_VAR(call_cc) = heavy::base::call_cc;
-  HEAVY_BASE_VAR(values)  = heavy::base::values;
-  HEAVY_BASE_VAR(call_with_values) = heavy::base::call_with_values;
+  HEAVY_BASE_VAR(add)     = heavy::builtins::add;
+  HEAVY_BASE_VAR(sub)     = heavy::builtins::sub;
+  HEAVY_BASE_VAR(div)     = heavy::builtins::div;
+  HEAVY_BASE_VAR(mul)     = heavy::builtins::mul;
+  HEAVY_BASE_VAR(gt)      = heavy::builtins::gt;
+  HEAVY_BASE_VAR(lt)      = heavy::builtins::lt;
+  HEAVY_BASE_VAR(list)    = heavy::builtins::list;
+  HEAVY_BASE_VAR(length)  = heavy::builtins::length;
+  HEAVY_BASE_VAR(cons)    = heavy::builtins::cons;
+  HEAVY_BASE_VAR(car)     = heavy::builtins::car;
+  HEAVY_BASE_VAR(cdr)     = heavy::builtins::cdr;
+  HEAVY_BASE_VAR(append)  = heavy::builtins::append;
+  HEAVY_BASE_VAR(dump)    = heavy::builtins::dump;
+  HEAVY_BASE_VAR(write)   = heavy::builtins::write;
+  HEAVY_BASE_VAR(newline) = heavy::builtins::newline;
+  HEAVY_BASE_VAR(string_append) = heavy::builtins::string_append;
+  HEAVY_BASE_VAR(string_copy) = heavy::builtins::string_copy;
+  HEAVY_BASE_VAR(string_length) = heavy::builtins::string_length;
+  HEAVY_BASE_VAR(number_to_string) = heavy::builtins::number_to_string;
+  HEAVY_BASE_VAR(eq)      = heavy::builtins::eqv;
+  HEAVY_BASE_VAR(equal)   = heavy::builtins::equal;
+  HEAVY_BASE_VAR(eqv)     = heavy::builtins::eqv;
+  HEAVY_BASE_VAR(call_cc) = heavy::builtins::call_cc;
+  HEAVY_BASE_VAR(values)  = heavy::builtins::values;
+  HEAVY_BASE_VAR(call_with_values) = heavy::builtins::call_with_values;
   HEAVY_BASE_VAR(with_exception_handler)
-    = heavy::base::with_exception_handler;
-  HEAVY_BASE_VAR(raise)   = heavy::base::raise;
-  HEAVY_BASE_VAR(error)   = heavy::base::error;
-  HEAVY_BASE_VAR(dynamic_wind) = heavy::base::dynamic_wind;
+    = heavy::builtins::with_exception_handler;
+  HEAVY_BASE_VAR(raise)   = heavy::builtins::raise;
+  HEAVY_BASE_VAR(error)   = heavy::builtins::error;
+  HEAVY_BASE_VAR(dynamic_wind) = heavy::builtins::dynamic_wind;
 
-  HEAVY_BASE_VAR(eval)    = heavy::base::eval;
-  HEAVY_BASE_VAR(op_eval) = heavy::base::op_eval;
-  HEAVY_BASE_VAR(compile) = heavy::base::compile;
+  HEAVY_BASE_VAR(eval)    = heavy::builtins::eval;
+  HEAVY_BASE_VAR(op_eval) = heavy::builtins::op_eval;
+  HEAVY_BASE_VAR(compile) = heavy::builtins::compile;
   HEAVY_BASE_VAR(module_path).init(Context);
 
-  HEAVY_BASE_VAR(is_boolean) = heavy::base::is_boolean;
-  HEAVY_BASE_VAR(is_bytevector) = heavy::base::is_bytevector;
-  HEAVY_BASE_VAR(is_char) = heavy::base::is_char;
-  HEAVY_BASE_VAR(is_eof_object) = heavy::base::is_eof_object;
-  HEAVY_BASE_VAR(is_null) = heavy::base::is_null;
-  HEAVY_BASE_VAR(is_number) = heavy::base::is_number;
-  HEAVY_BASE_VAR(is_pair) = heavy::base::is_pair;
-  HEAVY_BASE_VAR(is_port) = heavy::base::is_port;
-  HEAVY_BASE_VAR(is_procedure) = heavy::base::is_procedure;
-  HEAVY_BASE_VAR(is_string) = heavy::base::is_string;
-  HEAVY_BASE_VAR(is_symbol) = heavy::base::is_symbol;
-  HEAVY_BASE_VAR(is_vector) = heavy::base::is_vector;
-  HEAVY_BASE_VAR(is_mlir_operation) = heavy::base::is_mlir_operation;
-  HEAVY_BASE_VAR(is_source_value) = heavy::base::is_source_value;
+  HEAVY_BASE_VAR(is_boolean) = heavy::builtins::is_boolean;
+  HEAVY_BASE_VAR(is_bytevector) = heavy::builtins::is_bytevector;
+  HEAVY_BASE_VAR(is_char) = heavy::builtins::is_char;
+  HEAVY_BASE_VAR(is_eof_object) = heavy::builtins::is_eof_object;
+  HEAVY_BASE_VAR(is_null) = heavy::builtins::is_null;
+  HEAVY_BASE_VAR(is_number) = heavy::builtins::is_number;
+  HEAVY_BASE_VAR(is_pair) = heavy::builtins::is_pair;
+  HEAVY_BASE_VAR(is_port) = heavy::builtins::is_port;
+  HEAVY_BASE_VAR(is_procedure) = heavy::builtins::is_procedure;
+  HEAVY_BASE_VAR(is_string) = heavy::builtins::is_string;
+  HEAVY_BASE_VAR(is_symbol) = heavy::builtins::is_symbol;
+  HEAVY_BASE_VAR(is_vector) = heavy::builtins::is_vector;
+  HEAVY_BASE_VAR(is_mlir_operation) = heavy::builtins::is_mlir_operation;
+  HEAVY_BASE_VAR(is_source_value) = heavy::builtins::is_source_value;
 }
 
 // initializes the module and loads lookup information

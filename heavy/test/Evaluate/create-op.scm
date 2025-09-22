@@ -1,5 +1,5 @@
 ; RUN: heavy-scheme %s | FileCheck %s
-(import (heavy base))
+(import (heavy builtins))
 (import (heavy mlir))
 
 (define !heavy.value (type "!heavy.value"))

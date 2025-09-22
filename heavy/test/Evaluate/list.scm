@@ -1,5 +1,5 @@
 ; RUN: heavy-scheme %s | FileCheck %s
-(import (heavy base))
+(import (heavy builtins))
 
 ; CHECK: (1 2 "yo")
 (write (list 1 2 "yo"))(newline)

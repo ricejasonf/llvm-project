@@ -809,7 +809,7 @@ void OpEvalDeleter::operator()(OpEvalImpl* Ptr) const {
   delete Ptr;
 }
 
-namespace base {
+namespace builtins {
 void op_eval(Context& C, ValueRefs Args) {
   if (Args.size() != 1) {
     return C.RaiseError("invalid arity");

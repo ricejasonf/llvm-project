@@ -27,7 +27,7 @@ void HeavyScheme::InitSourceFileStorage() {
   using PtrTy = decltype(SourceFileStoragePtr);
   SourceFileStoragePtr = PtrTy(new SourceFileStorage(),
                     [](SourceFileStorage* S) { delete S; });
-  heavy::base::InitParseSourceFile(getContext(), 
+  heavy::builtins::InitParseSourceFile(getContext(), 
                                    [this](heavy::Context& C,
                                           heavy::SourceLocation Loc,
                                           heavy::String* Filename) {

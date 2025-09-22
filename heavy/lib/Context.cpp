@@ -81,9 +81,9 @@ Context::Context()
     OpGen(nullptr)
 {
   NameForImportVar = HEAVY_IMPORT_VAR;
-  _HEAVY_import = heavy::base::import_;
+  _HEAVY_import = heavy::builtins::import_;
   NameForLoadModuleVar = HEAVY_LOAD_MODULE_VAR;
-  _HEAVY_load_module = heavy::base::load_module;
+  _HEAVY_load_module = heavy::builtins::load_module;
   AddKnownAddress(NameForLoadModuleVar.Value.getStringRef(),
                   _HEAVY_load_module);
   RegisterModule(HEAVY_BASE_LIB_STR, HEAVY_BASE_LOAD_MODULE);
