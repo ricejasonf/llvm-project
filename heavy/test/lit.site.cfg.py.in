@@ -1,7 +1,9 @@
 @LIT_SITE_CFG_IN_HEADER@
+# In case you forgot, these are substituted by cmake_configure_file
 
 from lit import llvm
 
+config.heavy_module_path = "@HEAVY_MODULE_PATH@"
 config.llvm_tools_dir = "@LLVM_TOOLS_DIR@"
 config.test_exec_root = "@CMAKE_CURRENT_BINARY_DIR@"
 

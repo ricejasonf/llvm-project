@@ -27,7 +27,6 @@ namespace heavy {
 class TemplateGen : TemplateBase<TemplateGen> {
   friend TemplateBase<TemplateGen>;
   friend ValueVisitor<TemplateGen, TemplateResult>;
-  using Base = TemplateBase<TemplateGen>;
 
   Symbol* Ellipsis;
   NameSet& PatternVarNames;
@@ -46,9 +45,9 @@ public:
   // Create operations to transform syntax and compile the result.
   void BuildTemplate(heavy::Value Template) {
     heavy::SourceLocation Loc = Template.getSourceLocation();
-    mlir::Value TransformedSyntax = VisitTemplate(Template);
+    mlir::Value TransformedSyntax = transformSyntax(Template);
     mlir::Value RenameEnv = createRenameEnv();
-    OpGen.createOpGen(Loc, TransformedSyntax, RenameEnv);
+    createOpGen(Loc, TransformedSyntax, RenameEnv);
   }
 
 private:
@@ -85,7 +84,7 @@ private:
       return ExpandPack(Loc, P->Car, P2->Cdr);
     }
 
-    return Base::VisitPair(P);
+    return TemplateBase::VisitPair(P);
   }
 
   mlir::Value GetPatternVar(heavy::Symbol* S) {
@@ -135,6 +134,27 @@ private:
 
     return createRename(P);
   }
+};
+
+// Class for more general macro transfomers.
+class Transformer : TemplateBase<Transformer> {
+  friend TemplateBase<Transformer>;
+  friend ValueVisitor<Transformer, TemplateResult>;
+
+  bool IsImplicitRename = true;
+
+  TemplateResult VisitSymbol(Symbol* P) {
+    if (IsImplicitRename)
+      return createRename(P);
+    else
+      return P;
+  }
+
+public:
+  Transformer(heavy::OpGen& O, bool IsIr)
+    : TemplateBase(O),
+      IsImplicitRename(IsIr)
+  { }
 };
 
 }

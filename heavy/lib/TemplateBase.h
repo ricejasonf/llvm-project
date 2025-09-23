@@ -38,6 +38,20 @@ using TemplateResult = std::variant<TemplateError, mlir::Value,
 //      literals interspersed with values.
 template <typename Derived>
 class TemplateBase : protected ValueVisitor<Derived, TemplateResult> {
+
+public:
+  // Template is the input "form" with syntax closures.
+  mlir::Value transformSyntax(heavy::Value Template) {
+    TemplateResult Result = getDerived().Visit(Template);
+
+    mlir::Value TransformedSyntax;
+    if (mlir::Value* MVP = std::get_if<mlir::Value>(&Result))
+      TransformedSyntax = *MVP;
+    else
+      TransformedSyntax = createLiteral(std::get<heavy::Value>(Result));
+    return TransformedSyntax;
+  }
+
 protected:
   friend ValueVisitor<Derived, TemplateResult>;
   using ValueVisitor<Derived, TemplateResult>::getDerived;
@@ -48,18 +62,6 @@ protected:
   TemplateBase(heavy::OpGen& O)
     : OpGen(O)
   { }
-
-  // Template is the input "form" with syntax closures.
-  mlir::Value VisitTemplate(heavy::Value Template) {
-    TemplateResult Result = getDerived().Visit(Template);
-
-    mlir::Value TransformedSyntax;
-    if (mlir::Value* MVP = std::get_if<mlir::Value>(&Result))
-      TransformedSyntax = *MVP;
-    else
-      TransformedSyntax = createLiteral(std::get<heavy::Value>(Result));
-    return TransformedSyntax;
-  }
 
   mlir::Location createLoc(heavy::SourceLocation Loc) {
     return mlir::OpaqueLoc::get(Loc.getOpaqueEncoding(),
@@ -79,7 +81,7 @@ protected:
     }
 
     // TemplateError
-    return mlir::Value(); 
+    return mlir::Value();
   }
 
   mlir::Value createLiteral(heavy::Value V) {
@@ -150,6 +152,8 @@ protected:
     return LiteralResult;
   }
 
+  // Create a new environment with the renamed name/values in it.
+  // (They will have their original names in the "renamed environment".)
   mlir::Value createRenameEnv() {
     heavy::SourceLocation Loc;
     // Move the RenameOps to the end of the current block.
@@ -161,6 +165,12 @@ protected:
     // Add the RenameOps to an EnvFrame
     // to serve as the base of the environment.
     return OpGen.create<EnvFrameOp>(Loc, RenameOps);
+  }
+
+  // Compile the result (at the "comile-time"'s "run-time").
+  void createOpGen(heavy::SourceLocation Loc, mlir::Value Expr,
+                   mlir::Value Env) {
+    OpGen.createOpGen(Loc, Expr, Env);
   }
 
   // ValueVisitor functions

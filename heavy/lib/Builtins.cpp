@@ -46,6 +46,7 @@ heavy::ExternBuiltinSyntax set;
 heavy::ExternBuiltinSyntax syntax_error;
 
 
+heavy::ExternFunction apply;
 heavy::ExternFunction add;
 heavy::ExternFunction sub;
 heavy::ExternFunction div;
@@ -77,6 +78,7 @@ heavy::ExternFunction error;
 heavy::ExternFunction dynamic_wind;
 heavy::ExternFunction load_module;
 heavy::ExternFunction source_loc;
+heavy::ExternFunction make_syntactic_closure;
 
 heavy::ExternFunction eval;
 heavy::ExternFunction op_eval;
@@ -140,7 +142,7 @@ mlir::Value define_syntax(OpGen& OG, Pair* P) {
 }
 
 mlir::Value syntax_rules(OpGen& OG, Pair* P) {
-  // TODO Support SyntaxClosures.
+  // TODO Support SyntaxClosures. (ie do not use Symbol directly)
 
   // The input is the <Syntax Spec> (Keyword (syntax-rules ...))
   // <Syntax Spec> has its own checks in createSyntaxSpec
@@ -161,7 +163,27 @@ mlir::Value syntax_rules(OpGen& OG, Pair* P) {
 }
 
 mlir::Value ir_macro_transformer(OpGen& OG, Pair* P) {
-  llvm_unreachable("TODO");
+#if 0
+  heavy::FuncOp FuncOp = createSyntaxFunction(Loc);
+  mlir::Block& Body = *FuncOp.addEntryBlock();
+  mlir::BlockArgument ExprArg = Body.getArgument(1);
+  mlir::BlockArgument EnvArg = Body.getArgument(2);
+  mlir::OpBuilder::InsertionGuard IG(Builder);
+  Builder.setInsertionPointToStart(&Body);
+
+  // Compile the input which should be a lambda with:
+  //  expr, inject, compare
+  heavy::Value ProvidedLambdaExpr = P->Cdr.car();
+  if (!ProvidedLambdaExpr && isa<Empty>(P->Cdr.cdr()))
+    return OG.SetError("invalid syntax for ir-macro-transformer");
+  mlir::Value ProvidedLambda = OpGen.GetSingleResult(ProvidedLambdaExpr);
+  if (OpGen.CheckError())
+    return;
+  mlir::Value Compare = create<LoadGlobalOp>(Loc, HEAVY_BASE_VAR_STR(equal));
+
+  //heavy::Transformer Transformer(OG, /*IsImplicitRename=*/true);
+#endif
+  return mlir::Value();
 }
 
 mlir::Value lambda(OpGen& OG, Pair* P) {
@@ -877,6 +899,24 @@ void is_source_value(Context& C, ValueRefs Args) {
     return C.RaiseError("invalid arity");
   C.Cont(Bool(isa<heavy::SourceValue>(Args[0])));
 }
+
+void apply(Context& C, ValueRefs Args) {
+  if (Args.size() < 1)
+    return C.RaiseError("invalid arity");
+  Value Fn = Args[0];
+  Args = Args.drop_front();
+  C.Apply(Fn, Args);
+}
+
+void make_syntactic_closure(Context& C, ValueRefs Args) {
+  if (Args.size() != 2)
+    return C.RaiseError("invalid arity");
+  Value Expr = Args[0];
+  Value Env = Args[1];
+  heavy::SourceLocation Loc = Expr.getSourceLocation();
+  Value Result = C.CreateSyntaxClosure(Loc, Expr, Env);
+  C.Cont(Result);
+}
 } // end of namespace heavy::builtins
 
 // initialize the module for run-time independent of the compiler
@@ -955,6 +995,9 @@ void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(is_vector) = heavy::builtins::is_vector;
   HEAVY_BASE_VAR(is_mlir_operation) = heavy::builtins::is_mlir_operation;
   HEAVY_BASE_VAR(is_source_value) = heavy::builtins::is_source_value;
+  HEAVY_BASE_VAR(apply) = heavy::builtins::apply;
+  HEAVY_BASE_VAR(make_syntactic_closure)
+                        = heavy::builtins::make_syntactic_closure;
 }
 
 // initializes the module and loads lookup information
@@ -1037,6 +1080,8 @@ void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     // Extended types.
     {"mlir-operation?", HEAVY_BASE_VAR(is_mlir_operation)},
     {"source-value?", HEAVY_BASE_VAR(is_source_value)},
+    {"apply", HEAVY_BASE_VAR(apply)},
+    {"make-syntactic-closure", HEAVY_BASE_VAR(make_syntactic_closure)},
   });
 }
 

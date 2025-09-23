@@ -597,17 +597,24 @@ mlir::Value OpGen::createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall) {
   return mlir::Value();
 }
 
+// Does not add the entry block (use addEntryBlock)
+heavy::FuncOp OpGen::createSyntaxFunction(SourceLocation Loc,
+                                               llvm::StringRef Name) {
+  assert(Name.empty() && "TODO support named syntax functions");
+  std::string MangledName = mangleFunctionName(Name);
+  if (MangledName.empty())
+    return heavy::FuncOp();
+  mlir::FunctionType FT = createFunctionType(/*Arity=*/2, RestParamKind::None);
+  return createFunction(Loc, MangledName, FT);
+}
+
 mlir::Value OpGen::createSyntaxRules(SourceLocation Loc,
                                      Symbol* Keyword,
                                      Symbol* Ellipsis,
                                      heavy::Value LiteralList,
                                      heavy::Value PatternDefs) {
   // Create (anonymous) syntax function.
-  std::string MangledName = mangleFunctionName(llvm::StringRef());
-  if (MangledName.empty())
-    return Error();
-  mlir::FunctionType FT = createFunctionType(/*Arity=*/2, RestParamKind::None);
-  auto FuncOp = createFunction(Loc, MangledName, FT);
+  heavy::FuncOp FuncOp = createSyntaxFunction(Loc);
 
   // Expect list of unique literal identifiers.
   llvm::SmallPtrSet<String*, 4> Literals;

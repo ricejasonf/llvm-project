@@ -13,6 +13,8 @@ config.excludes = [
     "README.txt",
     "LICENSE.txt",
 ]
+config.substitutions.append(('%heavy_module_path', config.heavy_module_path))
 
-# Tweak the PATH to include the tools dir.
+
+# Tweak the PATH to include the tools dir
 llvm_config.with_environment('PATH', config.llvm_tools_dir, append_path=True)

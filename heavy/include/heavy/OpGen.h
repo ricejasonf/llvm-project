@@ -301,6 +301,8 @@ public:
   heavy::FuncOp createFunction(SourceLocation Loc,
                                llvm::StringRef MangledName,
                                mlir::FunctionType FT);
+  heavy::FuncOp createSyntaxFunction(SourceLocation Loc,
+                                     llvm::StringRef Name = {});
   mlir::Value createLambda(Value Formals, Value Body,
                                SourceLocation Loc,
                                llvm::StringRef Name = {});
