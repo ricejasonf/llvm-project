@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.4.3)
+cmake_minimum_required(VERSION 3.13.4)
 
 add_llvm_executable(heavy-scheme heavy_main.cpp)
 llvm_map_components_to_libnames(LLVM_LIBS core support)

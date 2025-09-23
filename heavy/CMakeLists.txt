@@ -19,6 +19,34 @@ include_directories(BEFORE
                     ${HEAVY_GEN_INC}
                     ../clang/include)
 
+# FIXME Copy tablegen headers for dialects
+install(DIRECTORY include/heavy
+  DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+  COMPONENT heavy-headers
+  FILES_MATCHING
+  PATTERN "*.h")
+
+add_custom_target(heavy-headers)
+      # DEPENDS heavy-headers-tablegen)
+
+add_llvm_install_targets(install-heavy-headers
+                         DEPENDS heavy-headers
+                         COMPONENT heavy-headers)
+
+# The scheme source files are found in installation
+# include directories for the clang integration.
+install(DIRECTORY include/heavy
+  DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+  COMPONENT heavy-scheme-libs
+  FILES_MATCHING
+  PATTERN "*.sld")
+
+add_llvm_install_targets(install-heavy-scheme-libs
+                         DEPENDS heavy-scheme-libs
+                         COMPONENT heavy-scheme-libs)
+
+add_custom_target(heavy-scheme-libs)
+
 add_subdirectory(include/heavy)
 add_subdirectory(lib)
 add_subdirectory(tools/heavy-scheme)
