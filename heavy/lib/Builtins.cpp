@@ -906,11 +906,23 @@ void is_source_value(Context& C, ValueRefs Args) {
 }
 
 void apply(Context& C, ValueRefs Args) {
-  if (Args.size() < 1)
+  llvm::SmallVector<heavy::Value, 8> NewArgs;
+
+  if (Args.size() == 1)
+    return C.Apply(Args[0], NewArgs);
+  if (Args.size() < 2)
     return C.RaiseError("invalid arity");
-  Value Fn = Args[0];
-  Args = Args.drop_front();
-  C.Apply(Fn, Args);
+
+  Value Fn = Args.front();
+  Value LastArg = Args.back();
+  Args = Args.drop_front().drop_back();
+
+  for (heavy::Value Arg : Args)
+    NewArgs.push_back(Arg);
+  for (heavy::Value Arg : LastArg)
+    NewArgs.push_back(Arg);
+
+  C.Apply(Fn, NewArgs);
 }
 
 void make_syntactic_closure(Context& C, ValueRefs Args) {

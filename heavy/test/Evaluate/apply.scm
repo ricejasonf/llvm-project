@@ -15,3 +15,7 @@
 (apply check-list 1 2 3)
 ; CHECK: (1 2 3 4 5)
 (apply check-list 1 2 3 4 5)
+; CHECK: (1 2 3 4 5)
+(apply check-list 1 2 3 '(4 5))
+; CHECK: (1 2 3 4 5)
+(apply check-list 1 2 3 '(4 . 5))
