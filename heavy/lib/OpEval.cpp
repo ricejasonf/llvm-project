@@ -264,7 +264,8 @@ private:
   }
 
   BlockItrTy Visit(ApplyOp Op) {
-    Context.setLoc(getSourceLocation(Op.getLoc()));
+    heavy::SourceLocation Loc = getSourceLocation(Op.getLoc());
+    Context.setLoc(Loc);
 
     heavy::Value Callee = getValue(Op.getFn());
     ValueRefs Args;
@@ -296,10 +297,10 @@ private:
   }
 
   BlockItrTy Visit(ConsOp Op) {
-    // TODO Use PairWithSource to retain source location information.
     heavy::Value A = getValue(Op.getA());
     heavy::Value B = getValue(Op.getB());
-    heavy::Pair* V = Context.CreatePair(A, B);
+    heavy::SourceLocation Loc = getSourceLocation(Op.getLoc());
+    heavy::Pair* V = Context.CreatePairWithSource(A, B, Loc);
     setValue(Op.getResult(), V);
     return next(Op);
   }

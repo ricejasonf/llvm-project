@@ -1116,6 +1116,7 @@ mlir::Value OpGen::createCall(heavy::SourceLocation Loc, mlir::Value Fn,
   for (mlir::Value& Arg : Args)
     Arg = LocalizeValue(Arg);
 
+  assert(Loc.isValid() && "expecting a valid location for call");
   auto Op = create<ApplyOp>(Loc, Fn, Args);
 
   if (IsTailPos) return mlir::Value();
