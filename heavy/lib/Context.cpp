@@ -646,6 +646,12 @@ bool equal_slow(Value V1, Value V2) {
   case ValueKind::Vector:
     llvm_unreachable("TODO");
     return false;
+  case ValueKind::SyntaxClosure: {
+    auto* SC1 = cast<SyntaxClosure>(V1);
+    auto* SC2 = cast<SyntaxClosure>(V2);
+    return equal(SC1->Node, SC2->Node) &&
+           equal(SC1->Env, SC2->Env);
+  }
   default:
       return eqv(V1, V2);
   }
@@ -1624,6 +1630,21 @@ SyntaxClosure* Context::CreateSyntaxClosure(SourceLocation Loc, Value Node,
   if (auto* SC = dyn_cast<SyntaxClosure>(Node))
     return SC;
   return new (*this) SyntaxClosure(Loc, Env, Node);
+}
+
+EnvEntry Context::GetSyntax(EnvEntry Entry) {
+  heavy::Value V = Entry.Value;
+  if (auto* B = dyn_cast<Binding>(V)) {
+    V = B->getValue();
+    // Unwrap any ExternName to see if it is a syntax.
+    if (auto* ExternName = dyn_cast<heavy::ExternName>(V))
+      V = GetKnownValue(ExternName->getView());
+  }
+
+  if (isa<Syntax, BuiltinSyntax>(V))
+    return heavy::EnvEntry{V, Entry.MangledName};
+  else
+    return heavy::EnvEntry();
 }
 
 bool Context::OutputModule(llvm::StringRef MangledName,

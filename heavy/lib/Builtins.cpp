@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "TemplateGen.h"
 #include "heavy/Builtins.h"
 #include "heavy/Context.h"
 #include "heavy/Dialect.h"
@@ -37,7 +38,7 @@ heavy::ExternBuiltinSyntax cond_expand;
 heavy::ExternBuiltinSyntax define;
 heavy::ExternBuiltinSyntax define_syntax;
 heavy::ExternBuiltinSyntax syntax_rules;
-heavy::ExternBuiltinSyntax ir_macro_transformer;
+heavy::ExternBuiltinSyntax syntax_fn;
 heavy::ExternBuiltinSyntax if_;
 heavy::ExternBuiltinSyntax lambda;
 heavy::ExternBuiltinSyntax quasiquote;
@@ -141,19 +142,35 @@ mlir::Value define_syntax(OpGen& OG, Pair* P) {
   return OG.createSyntaxSpec(P2, P);
 }
 
-mlir::Value syntax_rules(OpGen& OG, Pair* P) {
-  // TODO Support SyntaxClosures. (ie do not use Symbol directly)
+namespace {
+std::pair<heavy::Value, heavy::Pair*> DestructureSyntaxSpec(OpGen& OG, Pair* P) {
+  heavy::Value Keyword = P->Car;
+  heavy::Pair* P2 = dyn_cast<Pair>(P->Cdr);
+  if (P2) {
+    heavy::Pair* Spec = dyn_cast<Pair>(P2->Car);
+    if (Spec) {
+      if (heavy::Pair* SpecInput = dyn_cast<Pair>(Spec->Cdr))
+        return {Keyword, SpecInput};
+    }
+  }
+  return {};
+}
+}  // end anon namespace
 
-  // The input is the <Syntax Spec> (Keyword (syntax-rules ...))
-  // <Syntax Spec> has its own checks in createSyntaxSpec
-  Symbol* Keyword = dyn_cast<Symbol>(P->Car);
-  Pair* SpecInput = dyn_cast_or_null<Pair>(P->Cdr.car().cdr());
-  if (!SpecInput) return OG.SetError("invalid syntax-rules syntax", P);
+mlir::Value syntax_rules(OpGen& OG, Pair* P) {
+  auto [Keyword, SpecInput] = DestructureSyntaxSpec(OG, P);
+
+  if (!Keyword || !SpecInput)
+    return OG.SetError("invalid syntax-rules syntax", P);
+
   // Check for optional ellipsis identifier.
-  Symbol* Ellipsis = dyn_cast<Symbol>(SpecInput->Car);
+  Value Ellipsis;
+  if (isIdentifier(SpecInput->Car))
+    Ellipsis = SpecInput->Car;
   if (Ellipsis) {
     Pair* Temp = dyn_cast<Pair>(SpecInput->Cdr);
-    if (!Temp) return OG.SetError("invalid syntax-rules syntax.", SpecInput);
+    if (!Temp)
+      return OG.SetError("invalid syntax-rules syntax.", SpecInput);
     SpecInput = Temp;
   } else {
     Ellipsis = OG.getContext().CreateSymbol("...");
@@ -162,28 +179,16 @@ mlir::Value syntax_rules(OpGen& OG, Pair* P) {
                               SpecInput->Car, SpecInput->Cdr);
 }
 
-mlir::Value ir_macro_transformer(OpGen& OG, Pair* P) {
-#if 0
-  heavy::FuncOp FuncOp = createSyntaxFunction(Loc);
-  mlir::Block& Body = *FuncOp.addEntryBlock();
-  mlir::BlockArgument ExprArg = Body.getArgument(1);
-  mlir::BlockArgument EnvArg = Body.getArgument(2);
-  mlir::OpBuilder::InsertionGuard IG(Builder);
-  Builder.setInsertionPointToStart(&Body);
-
-  // Compile the input which should be a lambda with:
-  //  expr, inject, compare
-  heavy::Value ProvidedLambdaExpr = P->Cdr.car();
-  if (!ProvidedLambdaExpr && isa<Empty>(P->Cdr.cdr()))
-    return OG.SetError("invalid syntax for ir-macro-transformer");
-  mlir::Value ProvidedLambda = OpGen.GetSingleResult(ProvidedLambdaExpr);
-  if (OpGen.CheckError())
-    return;
-  mlir::Value Compare = create<LoadGlobalOp>(Loc, HEAVY_BASE_VAR_STR(equal));
-
-  //heavy::Transformer Transformer(OG, /*IsImplicitRename=*/true);
-#endif
-  return mlir::Value();
+// Convert lambda syntax into heavy::Syntax function 
+// (for use with define-syntax.)
+mlir::Value syntax_fn(OpGen& OG, Pair* P) {
+  auto [Keyword, SpecInput] = DestructureSyntaxSpec(OG, P);
+  if (!Keyword || !SpecInput || !isa<Empty>(SpecInput->Cdr))
+    return OG.SetError("invalid syntax for syntax-fn", P);
+  heavy::SourceLocation Loc = P->getSourceLocation();
+  heavy::Value ProcExpr = SpecInput->Car;
+  heavy::FuncOp FuncOp = OG.createSyntaxFunction(Loc, ProcExpr);
+  return OG.create<heavy::SyntaxOp>(Loc, FuncOp.getSymName());
 }
 
 mlir::Value lambda(OpGen& OG, Pair* P) {
@@ -909,6 +914,7 @@ void apply(Context& C, ValueRefs Args) {
 }
 
 void make_syntactic_closure(Context& C, ValueRefs Args) {
+  llvm_unreachable("make-syntactic-closure is not supported");
   if (Args.size() != 2)
     return C.RaiseError("invalid arity");
   Value Expr = Args[0];
@@ -926,8 +932,7 @@ void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(define)          = heavy::builtins::define;
   HEAVY_BASE_VAR(define_syntax)   = heavy::builtins::define_syntax;
   HEAVY_BASE_VAR(syntax_rules)    = heavy::builtins::syntax_rules;
-  HEAVY_BASE_VAR(ir_macro_transformer)
-                                  = heavy::builtins::ir_macro_transformer;
+  HEAVY_BASE_VAR(syntax_fn)       = heavy::builtins::syntax_fn;
   HEAVY_BASE_VAR(if_)             = heavy::builtins::if_;
   HEAVY_BASE_VAR(lambda)          = heavy::builtins::lambda;
   HEAVY_BASE_VAR(quasiquote)      = heavy::builtins::quasiquote;
@@ -1014,8 +1019,7 @@ void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"quote",         HEAVY_BASE_VAR(quote)},
     {"set!",          HEAVY_BASE_VAR(set)},
     {"syntax-rules",  HEAVY_BASE_VAR(syntax_rules)},
-    {"ir-macro-transformer",
-                      HEAVY_BASE_VAR(ir_macro_transformer)},
+    {"syntax-fn",     HEAVY_BASE_VAR(syntax_fn)},
     {"begin",         HEAVY_BASE_VAR(begin)},
     {"cond-expand",   HEAVY_BASE_VAR(cond_expand)},
     {"define-library",HEAVY_BASE_VAR(define_library)},

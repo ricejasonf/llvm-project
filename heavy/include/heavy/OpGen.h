@@ -283,8 +283,8 @@ public:
   mlir::Value createBody(SourceLocation Loc, Value Body);
   mlir::Value createSequence(SourceLocation Loc, Value Body);
   mlir::Value createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall);
-  mlir::Value createSyntaxRules(SourceLocation Loc, Symbol* Keyword,
-                                Symbol* Ellipsis, Value KeywordList,
+  mlir::Value createSyntaxRules(SourceLocation Loc, Value Keyword,
+                                Value Ellipsis, Value KeywordList,
                                 Value SyntaxDef);
   mlir::Value createIf(SourceLocation Loc, Value Cond, Value Then,
                             Value Else);
@@ -301,8 +301,8 @@ public:
   heavy::FuncOp createFunction(SourceLocation Loc,
                                llvm::StringRef MangledName,
                                mlir::FunctionType FT);
-  heavy::FuncOp createSyntaxFunction(SourceLocation Loc,
-                                     llvm::StringRef Name = {});
+  heavy::FuncOp createSyntaxFunction(SourceLocation Loc);
+  heavy::FuncOp createSyntaxFunction(SourceLocation Loc, heavy::Value Proc);
   mlir::Value createLambda(Value Formals, Value Body,
                                SourceLocation Loc,
                                llvm::StringRef Name = {});
@@ -399,9 +399,7 @@ public:
 
   heavy::EnvEntry LookupEnv(heavy::Value Id);
 private:
-  mlir::Value MaybeCallSyntax(Pair* P, bool& DidCallSyntax,
-                              heavy::EnvEntry& FnEnvEntry);
-  mlir::Value MaybeCallSyntax(Value Operator, Pair* P, bool& DidCallSyntax);
+  mlir::Value CallSyntax(Value Operator, Pair* P);
   mlir::Value HandleCall(Pair* P, heavy::EnvEntry FnEnvEntry);
 };
 

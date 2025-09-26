@@ -28,15 +28,19 @@ class TemplateGen : TemplateBase<TemplateGen> {
   friend TemplateBase<TemplateGen>;
   friend ValueVisitor<TemplateGen, TemplateResult>;
 
-  Symbol* Ellipsis;
+  Value Ellipsis;
   NameSet& PatternVarNames;
   llvm::SmallVectorImpl<mlir::Value>* CurrentPacks = nullptr;
+
+  bool isEllipsis(heavy::Value Id) {
+    return equal(Id, Ellipsis);
+  }
 
 public:
   using ErrorTy = TemplateError;
 
   TemplateGen(heavy::OpGen& O, NameSet& PVNames,
-              Symbol* Ellipsis)
+              Value Ellipsis)
     : TemplateBase(O),
       Ellipsis(Ellipsis),
       PatternVarNames(PVNames)
@@ -79,8 +83,7 @@ private:
   TemplateResult VisitPair(Pair* P) {
     heavy::SourceLocation Loc = P->getSourceLocation();
     if (auto* P2 = dyn_cast<Pair>(P->Cdr);
-        P2 && isa<Symbol>(P2->Car) &&
-        cast<Symbol>(P2->Car)->Equiv(Ellipsis)) {
+        P2 && isEllipsis(P2->Car)) {
       return ExpandPack(Loc, P->Car, P2->Cdr);
     }
 
@@ -129,7 +132,7 @@ private:
     if (PatternVarNames.contains(P->getString()))
       return CurrentPacks ? CaptureExpandArg(P) : GetPatternVar(P);
 
-    if (P->Equiv(Ellipsis))
+    if (isEllipsis(P))
       return OpGen.SetError("unexpected ellipsis", P);
 
     return createRename(P);
@@ -137,7 +140,7 @@ private:
 };
 
 // Class for more general macro transfomers.
-class Transformer : TemplateBase<Transformer> {
+class Transformer : public TemplateBase<Transformer> {
   friend TemplateBase<Transformer>;
   friend ValueVisitor<Transformer, TemplateResult>;
 

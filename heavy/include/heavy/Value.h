@@ -1315,8 +1315,6 @@ public:
         getTrailingObjects<Value>(), Len);
   }
 
-  inline EnvEntry Lookup(Value Id) const;
-
   static bool classof(Value V) {
     return V.getKind() == ValueKind::Vector;
   }

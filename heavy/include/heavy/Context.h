@@ -221,6 +221,8 @@ public:
   }
   EnvEntry Lookup(Value Id, Value Stack);
 
+  EnvEntry GetSyntax(EnvEntry Entry);
+
   // PushEnvFrame - Creates and pushes an EnvFrame to the
   //                current environment (EnvStack)
   EnvFrame* PushEnvFrame(llvm::ArrayRef<Value> Names);

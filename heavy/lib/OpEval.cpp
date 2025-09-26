@@ -462,6 +462,15 @@ private:
     if (Op.isExternal())
       return BlockItrTy();
 
+    // The global may already be initialized in the case
+    // of syntax objects.
+    if (Value Val = Context.GetKnownValue(Op.getSymName())) {
+      if (!isa<heavy::Undefined>(Val)) {
+        Context.Cont(Undefined());
+        return BlockItrTy();
+      }
+    }
+
     Context.PushCont([Op](heavy::Context& C, ValueRefs Args) mutable {
       assert(Args.size() == 1 && "invalid continuation arity");
       heavy::Value Result = Args[0];
@@ -826,6 +835,6 @@ void op_eval(Context& C, ValueRefs Args) {
 
   C.OpEval->Eval(Op);
 }
-}
 
-}
+}  // end namespace builtins
+}  // end namespace heavy

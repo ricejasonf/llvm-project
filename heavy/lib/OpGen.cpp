@@ -282,18 +282,20 @@ void OpGen::VisitLibrarySpec(Value LibSpec) {
   // Use PushCont to avoid destruction of this.
   Context.PushCont([](heavy::Context& C, ValueRefs) {
     Value LibSpec = C.getCapture(0);
-    bool DidCallSyntax = false;
     if (Pair* P = dyn_cast<Pair>(LibSpec)) {
-      heavy::EnvEntry EnvEntry;  // Unused here
-      C.OpGen->MaybeCallSyntax(P, DidCallSyntax, EnvEntry);
+      heavy::Value SyntaxOperator;
+      if (isIdentifier(P->Car))
+        SyntaxOperator = C.GetSyntax(C.OpGen->LookupEnv(P->Car)).Value;
+      if (SyntaxOperator) {
+        C.OpGen->CallSyntax(SyntaxOperator, P);
+      } else {
+        C.OpGen->SetError("expecting library spec", LibSpec);
+        return;
+      }
       if (C.OpGen->CheckError())
         return;
     }
 
-    if (!DidCallSyntax) {
-      C.OpGen->SetError("expecting library spec", LibSpec);
-      return;
-    }
     C.Cont();
   }, CaptureList{LibSpec});
   Context.Cont();
@@ -534,6 +536,31 @@ bool OpGen::isLocalDefineAllowed() {
   return IsLocalDefineAllowed;
 }
 
+// Does not add the entry block (use addEntryBlock)
+heavy::FuncOp OpGen::createSyntaxFunction(SourceLocation Loc) {
+  std::string MangledName = mangleFunctionName("");
+  if (MangledName.empty())
+    return heavy::FuncOp();
+  mlir::FunctionType FT = createFunctionType(/*Arity=*/2, RestParamKind::None);
+  return createFunction(Loc, MangledName, FT);
+}
+
+heavy::FuncOp OpGen::createSyntaxFunction(SourceLocation Loc,
+                                          heavy::Value Proc) {
+  llvm_unreachable("not used");
+  heavy::FuncOp SyntaxFn = createSyntaxFunction(Loc);
+  mlir::Block& Body = *SyntaxFn.addEntryBlock();
+  mlir::OpBuilder::InsertionGuard IG(Builder);
+  Builder.setInsertionPointToStart(&Body);
+  TailPosScope TPS(*this);
+  IsTailPos = true;
+  LambdaScope LS(*this, SyntaxFn);
+  mlir::Value Fn = GetSingleResult(Proc);
+  auto Args = Body.getArguments().drop_front();
+  create<ApplyOp>(Loc, Fn, Args);
+  return SyntaxFn;
+}
+
 //  - SyntaxSpec is the full <Keyword> <TransformerSpec> pair
 //    that is passed to the syntax function.
 //  - OrigCall is likely (define-syntax ...) or (let-syntax ...)
@@ -565,29 +592,30 @@ mlir::Value OpGen::createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall) {
   Pair* TransformerSpec = dyn_cast<Pair>(SyntaxSpec->Cdr.car());
   Value SyntaxOperator;
 
-  if (auto* TS = dyn_cast_or_null<Symbol>(TransformerSpec->Car))
-    SyntaxOperator = LookupEnv(TS).Value;
-  else if (isa_and_nonnull<SyntaxClosure>(TransformerSpec->Car))
-    return SetError("TODO support syntax closure for syntax names");
+  if (isIdentifier(TransformerSpec->Car))
+    SyntaxOperator = Context.GetSyntax(LookupEnv(TransformerSpec->Car)).Value;
 
   if (!SyntaxOperator)
     return SetError("invalid syntax spec", SyntaxSpec);
 
-  bool DidCallSyntax = false;
-  Result = MaybeCallSyntax(SyntaxOperator, SyntaxSpec, DidCallSyntax);
+  Result = CallSyntax(SyntaxOperator, SyntaxSpec);
   auto SyntaxOp = Result ? Result.getDefiningOp<heavy::SyntaxOp>()
                          : heavy::SyntaxOp();
   if (CheckError())
     return Error();
-  if (!DidCallSyntax || !SyntaxOp)
+  if (!SyntaxOp)
     return SetError("expecting syntax transformer", SyntaxSpec);
 
   if (TopLevelEnv) {
     assert(!MangledName.empty() && "global syntax must have mangled name");
+    // Insert a ContOp for the global that was created.
     TopLevelEnv->Insert(Keyword,
         Context.CreateIdTableEntry(MangledName));
     Builder.create<ContOp>(Result.getLoc(), Result);
     Builder.restoreInsertionPoint(PrevIp);
+    // Syntax should be available at compile-time.
+    Value GlobalOpVal = SyntaxOp->getParentOp();
+    Context.RunSync(HEAVY_BASE_VAR(op_eval), GlobalOpVal);
   } else {
     return SetError("TODO support local syntax");
     //Binding* B = Context.CreateBinding(Keyword, Syntax);
@@ -597,20 +625,9 @@ mlir::Value OpGen::createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall) {
   return mlir::Value();
 }
 
-// Does not add the entry block (use addEntryBlock)
-heavy::FuncOp OpGen::createSyntaxFunction(SourceLocation Loc,
-                                               llvm::StringRef Name) {
-  assert(Name.empty() && "TODO support named syntax functions");
-  std::string MangledName = mangleFunctionName(Name);
-  if (MangledName.empty())
-    return heavy::FuncOp();
-  mlir::FunctionType FT = createFunctionType(/*Arity=*/2, RestParamKind::None);
-  return createFunction(Loc, MangledName, FT);
-}
-
 mlir::Value OpGen::createSyntaxRules(SourceLocation Loc,
-                                     Symbol* Keyword,
-                                     Symbol* Ellipsis,
+                                     Value Keyword,
+                                     Value Ellipsis,
                                      heavy::Value LiteralList,
                                      heavy::Value PatternDefs) {
   // Create (anonymous) syntax function.
@@ -619,12 +636,13 @@ mlir::Value OpGen::createSyntaxRules(SourceLocation Loc,
   // Expect list of unique literal identifiers.
   llvm::SmallPtrSet<String*, 4> Literals;
   auto insertLiteral = [&](Value V) -> bool {
+    // TODO Support bound identifiers for literal list (I think).
     Symbol* S = dyn_cast<Symbol>(V);
     if (!S) {
       SetError("expecting keyword literal", V);
       return true;
     }
-    if (S->Equiv(Ellipsis)) {
+    if (equal(V, (Ellipsis))) {
       SetError("keyword literal cannot be same as ellipsis", S);
       return true;
     }
@@ -1024,6 +1042,7 @@ mlir::Value OpGen::VisitSymbol(Symbol* S) {
       return Error();
     return createGlobal(Loc, MangledName);
   }
+
   return VisitEnvEntry(Loc, Entry);
 }
 
@@ -1138,51 +1157,16 @@ mlir::Value OpGen::createContinuation(mlir::Operation* CallOp) {
   return FuncEntry->getArguments()[1];
 }
 
-// LookupCallee - Return the lookup result of callee from a
-//                call expression or Undefined if the callee
-//                is not a name or no entry exists.
-//
-//                TODO We could potentially cache here
-//                     the lookup result to prevent
-//                     multiple lookups.
-// TODO We could possibly hoist the LookupEnv call into VisitPair
-//      or a CallSyntaxorFunction function.
-mlir::Value OpGen::MaybeCallSyntax(Pair* P, bool& DidCallSyntax,
-                                   heavy::EnvEntry& FnEnvEntry) {
-  Value Operator = P->Car;
-  if (isIdentifier(P->Car)) {
-    FnEnvEntry = LookupEnv(P->Car);
-    if (!FnEnvEntry) {
-      Operator = Undefined();
-    } else if (Binding* B = dyn_cast<Binding>(FnEnvEntry.Value)) {
-      Operator = B->getValue();
-      if (auto* ExternName = dyn_cast<heavy::ExternName>(Operator)) {
-        // Unwrap the ExternName to see if it is a syntax.
-        Operator = Context.GetKnownValue(ExternName->getView());
-      }
-    } else {
-      Operator = FnEnvEntry.Value;
-    }
-  }
-
-  if (!Operator)
-    return mlir::Value();
-  return MaybeCallSyntax(Operator, P, DidCallSyntax);
-}
-
-mlir::Value OpGen::MaybeCallSyntax(Value Operator, Pair* P,
-                                   bool& DidCallSyntax) {
+mlir::Value OpGen::CallSyntax(Value Operator, Pair* P) {
   switch (Operator.getKind()) {
     case ValueKind::BuiltinSyntax: {
       Context.setLoc(P->getSourceLocation());
-      DidCallSyntax = true;
       BuiltinSyntax* BS = cast<BuiltinSyntax>(Operator);
       return BS->Fn(*this, P);
     }
     case ValueKind::Syntax: {
       heavy::Context& Context = this->Context;
       Context.setLoc(P->getSourceLocation());
-      DidCallSyntax = true;
       Value Input = P;
       Value Env = Context.EnvStack;
       heavy::OpGen* OpGen = Context.OpGen;
@@ -1197,19 +1181,25 @@ mlir::Value OpGen::MaybeCallSyntax(Value Operator, Pair* P,
       return toValue(Result);
     }
     default: {
-      DidCallSyntax = false;
+      llvm_unreachable("expecting syntax");
       return mlir::Value();
     }
   }
 }
 
 mlir::Value OpGen::VisitPair(Pair* P) {
-  bool DidCallSyntax = false;
   heavy::EnvEntry FnEnvEntry;
-  mlir::Value Result = MaybeCallSyntax(P, DidCallSyntax, FnEnvEntry);
-  if (DidCallSyntax)
-    return Result;
-  return HandleCall(P, FnEnvEntry);
+  heavy::Value SyntaxOperator;
+
+  if (isIdentifier(P->Car)) {
+    FnEnvEntry = LookupEnv(P->Car);
+    SyntaxOperator = Context.GetSyntax(FnEnvEntry).Value;
+  }
+
+  if (SyntaxOperator)
+    return CallSyntax(SyntaxOperator, P);
+  else
+    return HandleCall(P, FnEnvEntry);
 }
 
 mlir::Value OpGen::VisitVector(Vector* V) {

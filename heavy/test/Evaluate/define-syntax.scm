@@ -90,3 +90,16 @@
   (my-define not-my-local 12)
   (write not-my-local)
   (newline)))
+
+; FIXME
+; COM:CHECK: 5 6
+#;(define-syntax blah
+  (syntax-rules ()
+    ((blah x y)
+     ((begin
+        (write x)
+        (write " ")
+        (write y)
+        (newline))))))
+;(blah 5 6)
+        

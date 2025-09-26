@@ -2,7 +2,37 @@
 
 (define-library (heavy base)
   (import (heavy builtins))
-  #;(begin
+  (begin
+    (define (caar x) (car (car x)))
+    (define (cadr x) (car (cdr x)))
+    (define (cdar x) (cdr (car x)))
+    (define (cddr x) (cdr (cdr x)))
+
+    ; FIXME Procedural macros because we do not keep Env alive.
+    #;(define-syntax ir-macro-transformer
+      (syntax-fn
+        (lambda (Syntax Env)
+          (define ProcSyntax (cadr (cadr Syntax)))
+          ; Eval ProcSyntax to create Proc
+          ; FIXME This requires keeping Env alive which
+          ;       we don't do to support incremental compiling
+          ;       of self contained functions.
+          ;       This is why static templates such as with
+          ;       syntax-rules are needed.
+          ;       ie Procedural macros are right out.
+          (define Proc (make-syntactic-closure Env '() ProcSyntax))
+          (dump Proc)
+          (dump Proc)
+          (make-syntax-fn
+            (lambda (syntax env)
+              (define expr (cadr (inject syntax)))
+              (define (inject x)
+                (make-syntactic-closure env '() x))
+              (define compare equal?)
+              (define TemplateInst (Proc expr inject compare))
+              (opgen TemplateInst env)))
+        )))
+
     ) ; end of begin
   (export
     ; syntax
@@ -14,7 +44,7 @@
     quote
     set!
     syntax-rules
-    ;ir-macro-transformer
+    ir-macro-transformer
     begin
     cond-expand
     define-library
@@ -77,6 +107,5 @@
     ; Extended types.
     mlir-operation?
     source-value?
-    make-syntactic-closure
     )
 )

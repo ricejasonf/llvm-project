@@ -29,8 +29,8 @@ namespace heavy {
 class PatternTemplate : ValueVisitor<PatternTemplate, mlir::Value> {
   friend ValueVisitor<PatternTemplate, mlir::Value>;
   heavy::OpGen& OpGen;
-  Symbol* Keyword;
-  Symbol* Ellipsis;
+  Value Keyword;
+  Value Ellipsis;
   NameSet& Literals;
   mlir::Value EnvArg;  // For syntax closures.
   llvm::SmallPtrSet<String*, 4> PatternVars;
@@ -47,10 +47,14 @@ class PatternTemplate : ValueVisitor<PatternTemplate, mlir::Value> {
                                 OpGen.Builder.getContext());
   }
 
+  bool isEllipsis(heavy::Value Id) {
+    return equal(Id, Ellipsis);
+  }
+
 public:
   PatternTemplate(heavy::OpGen& O,
-                  heavy::Symbol* Keyword,
-                  heavy::Symbol* Ellipsis,
+                  heavy::Value Keyword,
+                  heavy::Value Ellipsis,
                   mlir::Value EnvArg,
                   NameSet& Literals)
     : OpGen(O),
@@ -59,7 +63,10 @@ public:
       Literals(Literals),
       EnvArg(EnvArg),
       PatternVars()
-  { }
+  {
+    assert(isIdentifier(Keyword) && "expecting identifier");
+    assert(isIdentifier(Ellipsis) && "expecting identifier");
+  }
 
   // VisitPatternTemplate should be called with OpGen's insertion point in
   // the body of PatternOp
@@ -174,8 +181,7 @@ public:
     // (<pattern>* <pattern> <ellipsis> <pattern>*)
     heavy::SourceLocation Loc = P->getSourceLocation();
     if (auto* P2 = dyn_cast<Pair>(P->Cdr);
-        P2 && isa<Symbol>(P2->Car) &&
-        cast<Symbol>(P2->Car)->Equiv(Ellipsis)) {
+        P2 && isEllipsis(P2->Car)) {
       // P->Car is the subpattern.
       // P2->Cdr is the rest of the pattern after the ...
       VisitSubpattern(Loc, P->Car, P2->Cdr, E);
@@ -217,7 +223,7 @@ public:
     }
 
     // <ellipsis>
-    if (P->Equiv(Ellipsis))
+    if (isEllipsis(P))
       return OpGen.SetError("<ellipsis> is not a valid pattern", P);
 
     // everything else is a pattern variable

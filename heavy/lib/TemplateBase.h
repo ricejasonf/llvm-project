@@ -52,6 +52,28 @@ public:
     return TransformedSyntax;
   }
 
+  // Create a new environment with the renamed name/values in it.
+  // (They will have their original names in the "renamed environment".)
+  mlir::Value createRenameEnv() {
+    heavy::SourceLocation Loc;
+    // Move the RenameOps to the end of the current block.
+    mlir::Block* Block = OpGen.Builder.getBlock();
+    auto InsertionPoint = OpGen.Builder.getInsertionPoint();
+    for (mlir::Value RV : RenameOps)
+      RV.getDefiningOp()->moveBefore(Block, InsertionPoint);
+
+    // Add the RenameOps to an EnvFrame
+    // to serve as the base of the environment.
+    return OpGen.create<EnvFrameOp>(Loc, RenameOps);
+  }
+
+  // Compile the result (at the "comile-time"'s "run-time").
+  void createOpGen(heavy::SourceLocation Loc, mlir::Value Expr,
+                   mlir::Value Env) {
+    OpGen.createOpGen(Loc, Expr, Env);
+  }
+
+
 protected:
   friend ValueVisitor<Derived, TemplateResult>;
   using ValueVisitor<Derived, TemplateResult>::getDerived;
@@ -150,27 +172,6 @@ protected:
     mlir::Value R = OpGen.create<RenameGlobalOp>(Loc, Id, MangledName);
     RenameOps.push_back(R);
     return LiteralResult;
-  }
-
-  // Create a new environment with the renamed name/values in it.
-  // (They will have their original names in the "renamed environment".)
-  mlir::Value createRenameEnv() {
-    heavy::SourceLocation Loc;
-    // Move the RenameOps to the end of the current block.
-    mlir::Block* Block = OpGen.Builder.getBlock();
-    auto InsertionPoint = OpGen.Builder.getInsertionPoint();
-    for (mlir::Value RV : RenameOps)
-      RV.getDefiningOp()->moveBefore(Block, InsertionPoint);
-
-    // Add the RenameOps to an EnvFrame
-    // to serve as the base of the environment.
-    return OpGen.create<EnvFrameOp>(Loc, RenameOps);
-  }
-
-  // Compile the result (at the "comile-time"'s "run-time").
-  void createOpGen(heavy::SourceLocation Loc, mlir::Value Expr,
-                   mlir::Value Env) {
-    OpGen.createOpGen(Loc, Expr, Env);
   }
 
   // ValueVisitor functions
