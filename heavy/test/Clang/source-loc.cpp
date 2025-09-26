@@ -8,7 +8,7 @@
 // expected-note@14{{this is a bar in a list}}
 namespace foo {
 heavy_scheme {
-(import (heavy base) (heavy clang))
+(import (heavy builtins) (heavy clang))
 (define foo 'foo)
 (define bar "bar")
 (define baz '(foo bar))

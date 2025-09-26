@@ -26,7 +26,7 @@ namespace moo {
 }
 
 heavy_scheme {
-(import (heavy base)
+(import (heavy builtins)
         (heavy clang)
         (heavy mlir)
         (nbdl comp))

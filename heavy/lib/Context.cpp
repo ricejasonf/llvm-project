@@ -1634,6 +1634,8 @@ SyntaxClosure* Context::CreateSyntaxClosure(SourceLocation Loc, Value Node,
 
 EnvEntry Context::GetSyntax(EnvEntry Entry) {
   heavy::Value V = Entry.Value;
+  if (!V)
+    return EnvEntry();
   if (auto* B = dyn_cast<Binding>(V)) {
     V = B->getValue();
     // Unwrap any ExternName to see if it is a syntax.

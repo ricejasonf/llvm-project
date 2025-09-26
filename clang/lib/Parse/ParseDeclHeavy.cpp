@@ -316,7 +316,7 @@ bool Parser::ParseHeavyScheme() {
     };
 
     heavy::Context& Context = HeavyScheme->getContext();
-    heavy::base::InitParseSourceFile(Context, ParseSourceFileFn);
+    heavy::builtins::InitParseSourceFile(Context, ParseSourceFileFn);
     HEAVY_CLANG_VAR(diag_error).init(Context,
                                      Context.CreateLambda(diag_error));
     HEAVY_CLANG_VAR(diag_warning).init(Context,
@@ -398,7 +398,7 @@ bool Parser::ParseHeavyScheme() {
 
   // Do the thing.
   heavy::TokenKind Terminator = heavy::tok::r_brace;
-  HeavyScheme->ProcessTopLevelCommands(SchemeLexer, heavy::base::eval,
+  HeavyScheme->ProcessTopLevelCommands(SchemeLexer, heavy::builtins::eval,
                                        ErrorHandler, Terminator);
 
   // Return control to C++ Lexer

@@ -1,7 +1,7 @@
 // RUN: clang++ --std=c++23 -I %S/Inputs -fsyntax-only -Xclang -fheavy -Xclang -verify %s
 
 heavy_scheme {
-(import (heavy base)
+(import (heavy builtins)
         (heavy clang)
         (heavy mlir)
         (nbdl comp))

@@ -1,4 +1,4 @@
-// RUN: clang++ -I %S/Inputs -fsyntax-only -Xclang -fheavy -Xclang -verify %s
+// RUN: clang++ -I %S/Inputs -I %heavy_module_path -fsyntax-only -Xclang -fheavy -Xclang -verify %s
 
 #include <type_traits>
 
