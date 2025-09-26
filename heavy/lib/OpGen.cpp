@@ -138,6 +138,10 @@ void OpGen::createLoadModule(heavy::SourceLocation Loc,
 }
 
 mlir::Value OpGen::GetSingleResult(heavy::Value V) {
+  // Ensure we are no longer top level.
+  if (!TopLevelOp)
+    InsertTopLevelCommandOp(Context.getLoc());
+
   TailPosScope TPS(*this);
   IsTailPos = false;
   mlir::Value Result = Visit(V);
