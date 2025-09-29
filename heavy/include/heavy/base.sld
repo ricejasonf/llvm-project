@@ -2,36 +2,30 @@
 
 (define-library (heavy base)
   (import (heavy builtins))
+  (import (heavy base r7rs-syntax))
   (begin
     (define (caar x) (car (car x)))
     (define (cadr x) (car (cdr x)))
     (define (cdar x) (cdr (car x)))
     (define (cddr x) (cdr (cdr x)))
 
-    ; FIXME Procedural macros because we do not keep Env alive.
-    #;(define-syntax ir-macro-transformer
-      (syntax-fn
-        (lambda (Syntax Env)
-          (define ProcSyntax (cadr (cadr Syntax)))
-          ; Eval ProcSyntax to create Proc
-          ; FIXME This requires keeping Env alive which
-          ;       we don't do to support incremental compiling
-          ;       of self contained functions.
-          ;       This is why static templates such as with
-          ;       syntax-rules are needed.
-          ;       ie Procedural macros are right out.
-          (define Proc (make-syntactic-closure Env '() ProcSyntax))
-          (dump Proc)
-          (dump Proc)
-          (make-syntax-fn
-            (lambda (syntax env)
-              (define expr (cadr (inject syntax)))
-              (define (inject x)
-                (make-syntactic-closure env '() x))
-              (define compare equal?)
-              (define TemplateInst (Proc expr inject compare))
-              (opgen TemplateInst env)))
-        )))
+    (define (member-fast obj list compare)
+      (if (pair? list)
+        (if (compare obj (car list))
+          list
+          (member-fast obj (cdr list) compare))
+        #f))
+
+    ; TODO Use builtins.case-lambda.
+    (define (member obj list . optional-compare)
+      (define compare
+        (if (pair? optional-compare)
+          (car optional-compare)
+          equal?))
+      (member-fast obj list compare))
+
+
+
 
     ) ; end of begin
   (export
