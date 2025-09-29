@@ -681,12 +681,14 @@ mlir::Value OpGen::createSyntaxRules(SourceLocation Loc,
   // Iterate through each pattern/template pair.
   assert(!CheckError() && "should not have errors here");
   while (Pair* I = dyn_cast<Pair>(PatternDefs)) {
-    heavy::Pair* X        = dyn_cast<Pair>(I->Car);
-    heavy::Value Pattern  = X->Car;
-    heavy::Value Template = X->Cdr.car();
-    bool IsProperPT = isa_and_nonnull<Empty>(X->Cdr.cdr());
-    if (!IsProperPT) {
-      return SetError("expecting pattern template pair", X);
+    heavy::Value Pattern;
+    heavy::Value Template;
+    if (heavy::Pair* X = dyn_cast<Pair>(I->Car);
+        X && isa_and_nonnull<Empty>(X->Cdr.cdr())) {
+      Pattern  = X->Car;
+      Template = X->Cdr.car();
+    } else {
+      return SetError("expecting pattern template pair", I->Car);
     }
 
     auto PatternOp = create<heavy::PatternOp>(Pattern.getSourceLocation());
@@ -844,7 +846,7 @@ mlir::Value OpGen::createTopLevelDefine(Value Id, Value DefineArgs,
   if (Entry.Value && Entry.MangledName) {
     if (Mangler::isExternalVariable(getModulePrefix(),
                                     Entry.MangledName->getView()))
-      return SetError("define overwrites extern global", S);
+      return SetError("define overwrites imported global", S);
   }
 
   // If the name already exists in the current module

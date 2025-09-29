@@ -197,7 +197,7 @@ std::string Mangler::mangleCharHexCode(Continuation Cont, Twine Prefix,
 bool Mangler::isExternalVariable(llvm::StringRef ModulePrefix,
                                  llvm::StringRef VarName) {
   if (!VarName.starts_with(ModulePrefix))
-    return false;
+    return true;
   llvm::StringRef Result = parseModulePrefix(VarName);
   // VarName is external if it does NOT have the same prefix.
   return Result != ModulePrefix;
