@@ -1,5 +1,7 @@
 ; RUN: heavy-scheme --module-path=%heavy_module_path %s | FileCheck %s
-(import (heavy base))
+(import (heavy base)
+        (heavy builtins))
+;       ^ Test importing symbols twice.
 
 (define (check-list . xs)
   (write xs)

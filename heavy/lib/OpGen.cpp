@@ -146,6 +146,8 @@ mlir::Value OpGen::GetSingleResult(heavy::Value V) {
   IsTailPos = false;
   mlir::Value Result = Visit(V);
 
+  // TODO Use MatchArgsOp to destructure ValueRefs to a single
+  //      argument (or raise an error.)
   // Take the first continuation arg.
   if (Result && isa<HeavyValueRefsTy>(Result.getType()))
     Result = create<LoadRefOp>(heavy::SourceLocation(), Result, /*Index*/0);
@@ -453,8 +455,14 @@ mlir::FunctionType OpGen::createFunctionType(unsigned Arity,
 }
 
 heavy::FuncOp OpGen::createFunction(SourceLocation Loc,
-                                    llvm::StringRef MangledName,
-                                    mlir::FunctionType FT) {
+                                    mlir::FunctionType FT,
+                                    llvm::StringRef MangledName) {
+  std::string MangledNameStr;
+  if (MangledName.empty()) {
+    MangledNameStr = mangleFunctionName(llvm::StringRef());
+    MangledName = MangledNameStr;
+  }
+  assert(!MangledName.empty() && "mangling should never fail");
   // Insert the FuncOp such that it precedes the current top level op.
   return createHelper<heavy::FuncOp>(ModuleBuilder, Loc, MangledName, FT);
 }
@@ -462,6 +470,40 @@ heavy::FuncOp OpGen::createFunction(SourceLocation Loc,
 mlir::Value OpGen::createLambda(Value Formals, Value Body,
                                 SourceLocation Loc,
                                 llvm::StringRef Name) {
+  auto [FuncOp, EnvFrame] = createLambdaFunction(Formals, Loc, Name);
+  if (!FuncOp)
+    return Error();
+  mlir::FunctionType FT = FuncOp.getFunctionType();
+
+  if (isa<HeavyRestTy>(FT.getInputs().back())) {
+    // Create a wrapper function that binds the arguments from ValueRefs.
+    mlir::FunctionType WFT = createFunctionType(/*Arity=*/1,
+                                                RestParamKind::ValueRefs);
+    heavy::FuncOp WFuncOp = createFunction(Loc, WFT);
+    llvm::SmallVector<mlir::Value, 8> Captures;
+    {
+      // Start new scope in tail pos
+      TailPosScope TPS(*this);
+      IsTailPos = true;
+      LambdaScope LS(*this, WFuncOp);
+      mlir::OpBuilder::InsertionGuard IG(Builder);
+      mlir::Block& Block = *WFuncOp.addEntryBlock();
+      Builder.setInsertionPointToStart(&Block);
+      auto MA = create<MatchArgsOp>(Loc, FT, Block.getArgument(1));
+      mlir::Value InnerLambda = createLambdaBody(Loc, Body, FuncOp, EnvFrame);
+      // Call the inner lambda with the results of the destructured args.
+      create<ApplyOp>(Loc, InnerLambda, MA.getResults());
+      Captures = std::move(LS.Node.Captures);
+    }
+    return create<LambdaOp>(Loc, WFuncOp.getSymName(), Captures);
+  } else {
+    return createLambdaBody(Loc, Body, FuncOp, EnvFrame);
+  }
+}
+
+std::pair<heavy::FuncOp, heavy::EnvFrame*>
+OpGen::createLambdaFunction(Value Formals, SourceLocation Loc,
+                            llvm::StringRef Name) {
   // Flush any internal definitions from containing body if any.
   if (IsLocalDefineAllowed)
     FinishLocalDefines();
@@ -472,18 +514,26 @@ mlir::Value OpGen::createLambda(Value Formals, Value Body,
 
   std::string MangledName = mangleFunctionName(Name);
   if (MangledName.empty())
-    return Error();
+    return {nullptr, nullptr};
 
   bool HasRestParam = false;
   heavy::EnvFrame* EnvFrame = Context.PushLambdaFormals(Formals, HasRestParam,
                                                         CurSyntaxClosure);
   if (!EnvFrame)
-    return Error();
+    return {nullptr, nullptr};
   unsigned Arity = EnvFrame->getBindings().size();
   RestParamKind RPK = HasRestParam ? RestParamKind::List
                                    : RestParamKind::None;
   mlir::FunctionType FT = createFunctionType(Arity, RPK);
-  auto F = createFunction(Loc, MangledName, FT);
+  heavy::FuncOp FuncOp = createFunction(Loc, FT, MangledName);
+  return {FuncOp, EnvFrame};
+}
+
+// Compile the body of the lambda and return the result of the LambdaOp.
+mlir::Value OpGen::createLambdaBody(SourceLocation Loc,
+                                    heavy::Value Body,
+                                    heavy::FuncOp FuncOp,
+                                    heavy::EnvFrame* EnvFrame) {
   llvm::SmallVector<mlir::Value, 8> Captures;
 
   // Insert into the function body
@@ -491,9 +541,9 @@ mlir::Value OpGen::createLambda(Value Formals, Value Body,
     // Start new scope in tail pos
     TailPosScope TPS(*this);
     IsTailPos = true;
-    LambdaScope LS(*this, F);
+    LambdaScope LS(*this, FuncOp);
     mlir::OpBuilder::InsertionGuard IG(Builder);
-    mlir::Block& Block = *F.addEntryBlock();
+    mlir::Block& Block = *FuncOp.addEntryBlock();
     Builder.setInsertionPointToStart(&Block);
 
     // ValueArgs drops the Closure arg at the front
@@ -519,7 +569,73 @@ mlir::Value OpGen::createLambda(Value Formals, Value Body,
     Captures = std::move(LS.Node.Captures);
   }
 
-  return create<LambdaOp>(Loc, MangledName, Captures);
+  return create<LambdaOp>(Loc, FuncOp.getSymName(), Captures);
+}
+
+mlir::Value OpGen::createCaseLambda(Pair* FullExpr) {
+  heavy::SourceLocation Loc = FullExpr->getSourceLocation();
+  Value Cases = FullExpr->Cdr;
+
+  mlir::FunctionType FT = createFunctionType(/*Arity=*/1,
+                                             RestParamKind::ValueRefs);
+
+  // Create the containing function.
+  heavy::FuncOp WFuncOp = createFunction(Loc, FT);
+  llvm::SmallVector<mlir::Value, 8> Captures;
+
+  {
+    // Start new scope in tail pos
+    TailPosScope TPS(*this);
+    IsTailPos = true;
+    LambdaScope LS(*this, WFuncOp);
+    mlir::OpBuilder::InsertionGuard IG(Builder);
+    mlir::Block& Block = *WFuncOp.addEntryBlock();
+    Builder.setInsertionPointToStart(&Block);
+    // The first argument is the Context object.
+    mlir::Value InputValueRefs = Block.getArgument(1);
+
+    for (Value Case : Value(Cases)) {
+      heavy::SourceLocation CaseLoc = Case.getSourceLocation();
+      // Create PatternOp for each case
+      auto PatternOp = create<heavy::PatternOp>(CaseLoc);
+      mlir::Block& B = PatternOp.getRegion().emplaceBlock();
+      mlir::OpBuilder::InsertionGuard IG(Builder);
+      Builder.setInsertionPointToStart(&B);
+
+      mlir::Value Lambda;
+      mlir::FunctionType FT;
+      if (Pair* LambdaDef = dyn_cast<Pair>(Case)) {
+        Value Formals = LambdaDef->Car;
+        Value Body = LambdaDef->Cdr;
+        auto [FuncOp, EnvFrame] = createLambdaFunction(Formals, CaseLoc);
+        if (!FuncOp)
+          return Error();
+        // We need the function type to match against its args.
+        FT = FuncOp.getFunctionType();
+        Lambda = createLambdaBody(CaseLoc, Body, FuncOp, EnvFrame);
+      }
+
+      if (CheckError())
+        return mlir::Value();
+      if (!Lambda || !FT)
+        return SetError("invalid case-lambda syntax");
+
+      // Match the arguments of the function.
+      auto MA = create<MatchArgsOp>(CaseLoc, FT, InputValueRefs);
+
+      // Call the lambda.
+      create<ApplyOp>(CaseLoc, Lambda, MA.getResults());
+    }
+
+    // Terminate with error call for when no patterns match.
+    mlir::Value ErrorMsg = createLiteral(Loc,
+        Context.CreateString("no matching case for case-lambda"));
+    createError(Loc, ErrorMsg);
+
+    Captures = std::move(LS.Node.Captures);
+  }
+
+  return create<LambdaOp>(Loc, WFuncOp.getSymName(), Captures);
 }
 
 void OpGen::PopContinuationScope() {
@@ -542,11 +658,8 @@ bool OpGen::isLocalDefineAllowed() {
 
 // Does not add the entry block (use addEntryBlock)
 heavy::FuncOp OpGen::createSyntaxFunction(SourceLocation Loc) {
-  std::string MangledName = mangleFunctionName("");
-  if (MangledName.empty())
-    return heavy::FuncOp();
   mlir::FunctionType FT = createFunctionType(/*Arity=*/2, RestParamKind::None);
-  return createFunction(Loc, MangledName, FT);
+  return createFunction(Loc, FT);
 }
 
 heavy::FuncOp OpGen::createSyntaxFunction(SourceLocation Loc,
@@ -709,7 +822,7 @@ mlir::Value OpGen::createSyntaxRules(SourceLocation Loc,
   mlir::Value ErrorMsg = createLiteral(Loc,
       Context.CreateString("no matching pattern for syntax"));
   std::array<mlir::Value, 2> ErrorArgs{ErrorMsg, ExprArg};
-  createSyntaxError(Loc, ErrorArgs);
+  createError(Loc, ErrorArgs);
 
   if (!isa<Empty>(PatternDefs) || Body.empty()) {
     return SetError("expecting list of pattern templates pairs", PatternDefs);
@@ -982,6 +1095,8 @@ mlir::Value OpGen::VisitDefineArgs(Value Args) {
     Result = SetError("invalid define syntax", P);
   }
 
+  // TODO Use MatchArgsOp to destructure ValueRefs to a single
+  //      argument (or raise an error.)
   if (Result && isa<HeavyValueRefsTy>(Result.getType()))
     Result = create<LoadRefOp>(heavy::SourceLocation(), Result, /*Index*/0);
 
@@ -1125,7 +1240,7 @@ mlir::Value OpGen::createCall(heavy::SourceLocation Loc, mlir::Value Fn,
   return createContinuation(Op);
 }
 
-mlir::Value OpGen::createSyntaxError(heavy::SourceLocation Loc,
+mlir::Value OpGen::createError(heavy::SourceLocation Loc,
                                llvm::MutableArrayRef<mlir::Value> Args) {
   // We defer localizing values until instantiation.
   mlir::Value ErrorFn = create<LoadGlobalOp>(Loc, HEAVY_BASE_VAR_STR(error));
@@ -1145,17 +1260,13 @@ mlir::Value OpGen::createOpGen(SourceLocation Loc, mlir::Value Input,
 mlir::Value OpGen::createContinuation(mlir::Operation* CallOp) {
   mlir::FunctionType FT = createFunctionType(/*Arity=*/1,
                                              RestParamKind::ValueRefs);
-  std::string MangledName = mangleFunctionName(llvm::StringRef());
-  if (MangledName.empty())
-    return Error();
-
   // No source location
   heavy::SourceLocation Loc;
 
   // Create the continuation's function
   // subsequent operations will be nested within
   // relying on previous insertion guards to pull us out.
-  auto F = createFunction(Loc, MangledName, FT);
+  auto F = createFunction(Loc, FT);
   PushContinuationScope(F, CallOp);
   mlir::Block* FuncEntry = F.addEntryBlock();
   Builder.setInsertionPointToStart(FuncEntry);

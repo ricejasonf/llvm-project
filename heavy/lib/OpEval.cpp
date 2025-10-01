@@ -160,6 +160,7 @@ private:
     else if (isa<PatternOp>(Op))      return Visit(cast<PatternOp>(Op));
     else if (isa<MatchPairOp>(Op))    return Visit(cast<MatchPairOp>(Op));
     else if (isa<MatchTailOp>(Op))    return Visit(cast<MatchTailOp>(Op));
+    else if (isa<MatchArgsOp>(Op))    return Visit(cast<MatchArgsOp>(Op));
     else if (isa<SubpatternOp>(Op))   return Visit(cast<SubpatternOp>(Op));
     else if (isa<ExpandPacksOp>(Op))  return Visit(cast<ExpandPacksOp>(Op));
     else if (isa<ResolveOp>(Op))      return Visit(cast<ResolveOp>(Op));
@@ -186,59 +187,40 @@ private:
   }
 
   void LoadArgs(mlir::Block& Body, ValueRefs Args) {
-    // This associates values with BlockArguments
-    // which later gets assigned to BingingOps (in code)
+    // Associate values with BlockArguments
+    // which will later get assigned to BindingOps (in code)
 
-    auto OpArgs = Body.getArguments();
-    assert(OpArgs.size() >= Args.size() + 1
+    // Drop the context argument.
+    auto OpArgs = Body.getArguments().drop_front();
+
+    assert(OpArgs.size() == Args.size()
         && "arity should be checked already");
     // OpArg[0] is always the context object
-    for (unsigned i = 0; i < Args.size(); ++i) {
-      setValue(OpArgs[i + 1], Args[i]);
-    }
   }
 
   BlockItrTy CallFuncOp(heavy::FuncOp F, ValueRefs Args) {
-    heavy::Value RestList;
-    // check arguments
-    unsigned NumArgs = Args.size();
-    mlir::FunctionType FT = mlir::cast<mlir::FunctionType>(
-        F.getFunctionType());
+    auto Scope = ValueMapScope(ValueMap);
+    mlir::Block& Body = F.getBody().front();
 
-    // The functions type includes the argument
-    // for the context object.
-    unsigned NumParams = FT.getNumInputs() - 1;
-    // Use NumParamsMax to indicate variadic arguments via ValueRefs.
-    // This is supported for continuations only.
-    constexpr auto NumParamsMax = std::numeric_limits<decltype(NumParams)>::max();
-
-    if (NumParams == 1 && mlir::isa<HeavyValueRefsTy>(FT.getInputs().back())) {
-      NumParams = NumParamsMax;
-    } else if (NumParams > 0 && mlir::isa<HeavyRestTy>(FT.getInputs().back())) {
-      // Handle a rest param.
-      // Check that the number of explicit params
-      // are less than the amount of arguments.
-      //int NumExplicitArgsMatched = NumParams - 1 - NumArgs;
-      if (NumArgs < NumParams - 1) {
-        return RaiseError("invalid arity", Value(Undefined()));
-      }
-
-      ValueRefs RestArgs = Args.slice(NumParams - 1, NumArgs - (NumParams - 1));
-      Args = Args.drop_back(RestArgs.size());
-      RestList = Context.CreateList(RestArgs);
-    } else {
-      // The function type includes the Context as a parameter
-      if (NumParams != NumArgs) {
-        return RaiseError("invalid arity", Value(Undefined()));
+    // Drop the context argument.
+    auto OpArgs = Body.getArguments().drop_front();
+    bool IsValidArity = true;
+    if (OpArgs.empty() && !Args.empty())
+      IsValidArity = false;
+    if (!OpArgs.empty() && !isa<HeavyValueRefsTy>(OpArgs.front().getType())) {
+      if (OpArgs.size() != Args.size()) {
+        IsValidArity = false;
+      } else {
+        // Load the arguments.
+        for (unsigned i = 0; i < Args.size(); ++i)
+          setValue(OpArgs[i], Args[i]);
       }
     }
 
-    auto Scope = ValueMapScope(ValueMap);
-    mlir::Block& Body = F.getBody().front();
-    if (NumParams != NumParamsMax)
-      LoadArgs(Body, Args);
-    if (RestList)
-      setValue(Body.getArguments().back(), RestList);
+    if (!IsValidArity) {
+      heavy::SourceLocation Loc = getSourceLocation(F.getLoc());
+      return SetError(Loc, "invalid arity");
+    }
 
     BlockItrTy Itr = Body.begin();
     while (Itr != BlockItrTy())
@@ -268,22 +250,15 @@ private:
     Context.setLoc(Loc);
 
     heavy::Value Callee = getValue(Op.getFn());
-    ValueRefs Args;
     llvm::SmallVector<heavy::Value, 8> ArgResults;
 
     auto MArgs = Op.getArgs();  // MLIR Args.
-    if (MArgs.size() == 1 &&
-        isa<HeavyValueRefsTy>(MArgs.front().getType())) {
-      // Just pass all of the continuation args.
-      Args = Context.getCallArgs();
-    } else {
-      ArgResults.resize(MArgs.size());
-      for (unsigned i = 0; i < MArgs.size(); ++i)
-        ArgResults[i] = getValue(MArgs[i]);
-      Args = ValueRefs(ArgResults);
+
+    for (mlir::Value Arg : MArgs) {
+      ArgResults.push_back(getValue(Arg));
     }
 
-    Context.Apply(Callee, Args);
+    Context.Apply(Callee, ArgResults);
     return BlockItrTy();
   }
 
@@ -592,38 +567,46 @@ private:
 
   // A pattern failing to match results in going to the next pattern
   // or, in the case of a pack, it begins matching the rest of the list.
-  BlockItrTy patternFail(mlir::Operation* Op) {
-    // We should currently be in the scope of a PatternOp or SubpatternOp
-    assert((isa<MatchOp, MatchPairOp, MatchTailOp,
-                SubpatternOp, MatchIdOp>(Op)) &&
+  BlockItrTy patternFail(mlir::Operation* Op, llvm::StringRef ErrMsg,
+                         llvm::ArrayRef<heavy::Value> Irr) {
+    assert((isa<MatchOp, MatchPairOp, MatchTailOp, MatchArgsOp,
+                MatchIdOp>(Op)) &&
         "Operation must be a pattern matcher");
 
-    mlir::Operation* PatternOp = Op->getParentOp();
+    mlir::Operation* ParentOp = Op->getParentOp();
 
-    if (auto SubpatternOp = dyn_cast<heavy::SubpatternOp>(PatternOp))
+    // If we are not pattern matching then treat the operation as an error.
+    if (!isa<PatternOp, SubpatternOp>(ParentOp)) {
+      if (ErrMsg.empty())
+        ErrMsg = "pattern failed to match";
+      Context.RaiseError(ErrMsg, Irr);
+      return BlockItrTy();
+    }
+
+    if (auto SubpatternOp = dyn_cast<heavy::SubpatternOp>(ParentOp))
       return BlockItrTy();
 
-    assert(isa<heavy::PatternOp>(PatternOp) &&
-        "expecting a PatternOp.");
+    assert(isa<heavy::PatternOp>(ParentOp) && "expecting a PatternOp.");
 
     // Abort the current pattern's scope and move to the next operation.
-    return next(Op);
+    return next(ParentOp);
   }
 
   BlockItrTy Visit(MatchOp Op) {
     heavy::Value P = Op.getVal().getValue(Context);
     heavy::Value E = getValue(Op.getInput());
+    heavy::EnvEntry Entry;
     if (Symbol* S = dyn_cast<Symbol>(E)) {
       // If the symbol is in the environment we can skip
       // because it will not match a literal.
-      EnvEntry Entry = Context.Lookup(S);
+      Entry = Context.Lookup(S);
       if (Entry)
-        return patternFail(Op);
+        E = Entry.Value;
     }
-    if (equal(P, E)) {
+    if (equal(P, E))
       return next(Op);
-    }
-    return patternFail(Op);
+    else
+      return patternFail(Op, "expecting literal", {P, E});
   }
 
   BlockItrTy Visit(MatchPairOp Op) {
@@ -634,7 +617,7 @@ private:
       setValue(Op.getCdr(), Pair->Cdr);
       return next(Op);
     }
-    return patternFail(Op);
+    return patternFail(Op, "expecting pair", E);
   }
 
   BlockItrTy Visit(MatchTailOp Op) {
@@ -650,12 +633,50 @@ private:
       Cur = Pair->Cdr;
     }
     if (TotalLen < TargetLen)
-      return patternFail(Op);
+      return patternFail(Op, "list length for subpattern does not match",
+                             {E, Int(TargetLen), Int(TotalLen)});
     Cur = E;
     for (uint32_t i = 0; i < TotalLen - TargetLen; i++)
       Cur = cast<heavy::Pair>(Cur)->Cdr;
     setValue(Op.getTail(), Cur);
     return next(Op);
+  }
+
+  BlockItrTy Visit(MatchArgsOp Op) {
+    ValueRefs CallArgs = Context.getCallArgs();
+
+    // Match the results against the call arguments.
+    mlir::ValueRange Results = Op.getResults();
+
+    if (Results.empty() && CallArgs.empty())
+      return next(Op);
+
+    bool IsValidArity = true;
+    for (mlir::Value Result : Results) {
+      if (isa<HeavyRestTy>(Result.getType())) {
+        // HeavyRestTy matches any remaining amount of CallArgs.
+        // The value should only be used as an argument to ApplyOp.
+        Value RestList = Context.CreateList(CallArgs);
+        setValue(Result, RestList);
+        return next(Op);
+      }
+      if (CallArgs.empty()) {
+        IsValidArity = false;
+        break;
+      }
+
+      // Type check would go here.
+      setValue(Result, CallArgs.front());
+      CallArgs = CallArgs.drop_front();
+    }
+
+    if (!CallArgs.empty())
+      IsValidArity = false;
+
+    if (!IsValidArity)
+      return patternFail(Op, "invalid arity", {Context.getCallee()});
+    else
+      return next(Op);
   }
 
   BlockItrTy Visit(ExpandPacksOp Op) {
@@ -759,7 +780,7 @@ private:
     if (P == E) {
       return next(Op);
     }
-    return patternFail(Op);
+    return patternFail(Op, "identifier does not match", {P, E});
   }
 
   BlockItrTy Visit(SyntaxClosureOp Op) {

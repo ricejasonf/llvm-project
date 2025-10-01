@@ -45,7 +45,7 @@ heavy::ExternBuiltinSyntax quasiquote;
 heavy::ExternBuiltinSyntax quote;
 heavy::ExternBuiltinSyntax set;
 heavy::ExternBuiltinSyntax syntax_error;
-
+heavy::ExternBuiltinSyntax case_lambda;
 
 heavy::ExternFunction apply;
 heavy::ExternFunction add;
@@ -179,7 +179,7 @@ mlir::Value syntax_rules(OpGen& OG, Pair* P) {
                               SpecInput->Car, SpecInput->Cdr);
 }
 
-// Convert lambda syntax into heavy::Syntax function 
+// Convert lambda syntax into heavy::Syntax function
 // (for use with define-syntax.)
 mlir::Value syntax_fn(OpGen& OG, Pair* P) {
   auto [Keyword, SpecInput] = DestructureSyntaxSpec(OG, P);
@@ -244,7 +244,11 @@ mlir::Value syntax_error(OpGen& OG, Pair* P) {
   llvm::SmallVector<mlir::Value, 8> Args;
   for (auto [Loc, V] : WithSource(P2))
     Args.push_back(OG.createLiteral(Loc, V));
-  return OG.createSyntaxError(Loc, Args);
+  return OG.createError(Loc, Args);
+}
+
+mlir::Value case_lambda(OpGen& OG, Pair* P) {
+  return OG.createCaseLambda(P);
 }
 
 namespace {
@@ -945,8 +949,10 @@ void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(define_syntax)   = heavy::builtins::define_syntax;
   HEAVY_BASE_VAR(syntax_rules)    = heavy::builtins::syntax_rules;
   HEAVY_BASE_VAR(syntax_fn)       = heavy::builtins::syntax_fn;
+  HEAVY_BASE_VAR(syntax_error)    = heavy::builtins::syntax_error;
   HEAVY_BASE_VAR(if_)             = heavy::builtins::if_;
   HEAVY_BASE_VAR(lambda)          = heavy::builtins::lambda;
+  HEAVY_BASE_VAR(case_lambda)     = heavy::builtins::case_lambda;
   HEAVY_BASE_VAR(quasiquote)      = heavy::builtins::quasiquote;
   HEAVY_BASE_VAR(quote)           = heavy::builtins::quote;
   HEAVY_BASE_VAR(set)             = heavy::builtins::set;
@@ -958,6 +964,8 @@ void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(include_ci)      = heavy::builtins::include_ci;
   HEAVY_BASE_VAR(include_library_declarations)
     = heavy::builtins::include_library_declarations;
+
+
   HEAVY_BASE_VAR(source_loc)      = heavy::builtins::source_loc;
   HEAVY_BASE_VAR(parse_source_file).init(Context);
 
@@ -1032,6 +1040,8 @@ void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"set!",          HEAVY_BASE_VAR(set)},
     {"syntax-rules",  HEAVY_BASE_VAR(syntax_rules)},
     {"syntax-fn",     HEAVY_BASE_VAR(syntax_fn)},
+    {"syntax-error",  HEAVY_BASE_VAR(syntax_error)},
+    {"case-lambda",   HEAVY_BASE_VAR(case_lambda)},
     {"begin",         HEAVY_BASE_VAR(begin)},
     {"cond-expand",   HEAVY_BASE_VAR(cond_expand)},
     {"define-library",HEAVY_BASE_VAR(define_library)},
@@ -1040,6 +1050,7 @@ void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"include-ci",    HEAVY_BASE_VAR(include_ci)},
     {"include-library-declarations",
       HEAVY_BASE_VAR(include_library_declarations)},
+
     {"source-loc",    HEAVY_BASE_VAR(source_loc)},
     {"parse-source-file",
                       HEAVY_BASE_VAR(parse_source_file).get(Context)},

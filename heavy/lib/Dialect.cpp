@@ -185,6 +185,16 @@ void MatchTailOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                      Length, Input);
 }
 
+void MatchArgsOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                        mlir::FunctionType FT, mlir::Value Input) {
+  assert((!FT.getInputs().empty() &&
+          isa<HeavyContextTy>(FT.getInputs().front())) &&
+    "expecting heavy-scheme function type");
+  // Drop the context argument.
+  auto ResultTypes = FT.getInputs().drop_front();
+  MatchArgsOp::build(B, OpState, ResultTypes, Input);
+}
+
 void SubpatternOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                         mlir::Value Input, mlir::Value Tail,
                         std::unique_ptr<mlir::Region> Body,

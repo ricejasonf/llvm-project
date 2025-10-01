@@ -46,6 +46,9 @@ def HeavyRest : HeavyValueBase<"Rest">; // For rest arguments.
 def HeavyPair : HeavyValueBase<"Pair">;
 def HeavySyntax : HeavyValueBase<"Syntax">;
 
+// If !heavy.value_refs is a function argument, the arguments should
+// only be (!heavy.context, !heavy.value_refs).
+
 def HeavyOpGen : Type<CPred<"mlir::isa<::heavy::HeavyOpGenTy>($_self)">,
                   "OpGen", "::heavy::OpGen&">;
 def HeavyMlirValue : Type<CPred<"mlir::isa<::heavy::HeavyMlirValueTy>($_self)">,
@@ -54,15 +57,18 @@ def HeavyMlirValue : Type<CPred<"mlir::isa<::heavy::HeavyMlirValueTy>($_self)">,
 class HeavyOp<string mnemonic, list<Trait> traits = []> :
     Op<HeavyDialect, mnemonic, traits>;
 
-def heavy_ApplyOp : HeavyOp<"apply", [ReturnLike, Terminator]> {
+def heavy_ApplyOp : HeavyOp<"apply", [Terminator]> {
   let summary = "apply";
   let description = [{
     ApplyOp represents a function call whose results are passed to
     a continuation.
+
+    An argument of type !heavy.value_refs represents splicing all
+    of the current call arguments with arguments in that position.
   }];
 
   let arguments = (ins HeavyValue:$fn,
-    Variadic<AnyTypeOf<[HeavyValue, HeavyValueRefs]>>:$args);
+    Variadic<AnyTypeOf<[HeavyValue, HeavyRest, HeavyValueRefs]>>:$args);
   let results   = (outs);
 }
 
@@ -80,27 +86,6 @@ def heavy_BindingOp : HeavyOp<"binding"> {
   let results   = (outs HeavyValue:$result);
   let builders  = [OpBuilder<(ins "::mlir::Value":$input)>];
 }
-
-/*
-def heavy_BuiltinOp : HeavyOp<"builtin"> {
-  let summary = "builtin";
-  let description = [{
-    This is a heavy::Value wrapper for a function
-    of type heavy::ValueFn implemented in C++.
-    This takes the callee name as a string as well
-    as a constructed heavy::BuiltinFn for the tree
-    evaluator.
-  }];
-
-  //let arguments = (ins FlatSymbolRefAttr:$calleeName,
-                   //HeavyValueAttr:$builtinFn);
-  let arguments = (ins HeavyValueAttr:$builtinFn);
-  let results   = (outs HeavyValue:$result);
-  let builders  = [
-    OpBuilder<(ins "::heavy::Builtin*":$builtinFn)>
-  ];
-}
-*/
 
 def heavy_CommandOp : HeavyOp<"command", [IsolatedFromAbove]> {
   let summary = "command";
@@ -355,6 +340,7 @@ def heavy_MatchIdOp : HeavyOp<"match-id", []> {
   let description = [{
     Perform matching of a non-literal value and input value such that they
     have the same binding or pointer address.
+    (Id means identifier.)
   }];
 
   let arguments = (ins HeavyValue:$val, HeavyValue:$input);
@@ -386,7 +372,7 @@ def heavy_MatchTailOp : HeavyOp<"match_tail", []> {
     The last cdr is counted in the length.
     (ie () or any element for improper list.)
     The tail will be matched against a pattern.
-    If the tail is a pair, its address we serve as a sentinel
+    If the tail is a pair, its address will serve as a sentinel
     for terminating the matching of elements against the subpattern.
   }];
 
@@ -397,6 +383,25 @@ def heavy_MatchTailOp : HeavyOp<"match_tail", []> {
   let builders = [
     OpBuilder<(ins "uint32_t":$length,
                    "::mlir::Value":$input)>
+  ];
+}
+
+def heavy_MatchArgsOp : HeavyOp<"match_args"> {
+  let description = [{
+    Destructure a dynamically lengthed array (ValueRefs) using the type
+    of a function. This matches arity and types of its arguments
+    and should support rest arguments.
+
+    (Use for implementing case-lambda.)
+  }];
+
+  let arguments = (ins HeavyValueRefs:$valueRefs);
+  let results   = (outs Variadic<AnyTypeOf<[HeavyValue,
+                                            HeavyRest]>>:$results);
+
+  let builders = [
+    OpBuilder<(ins "::mlir::FunctionType":$functionType,
+                   "::mlir::Value":$valueRefs)>
   ];
 }
 
@@ -469,7 +474,7 @@ def heavy_PushContOp : HeavyOp<"push_cont", []> {
   let results   = (outs);
 }
 
-def heavy_RenameOp : HeavyOp<"rename", [HasParent<"PatternOp">]> {
+def heavy_RenameOp : HeavyOp<"rename"> {
   let summary = "rename";
   let description = [{
     Capture a value and "rename" it using an identifier to use in the
@@ -488,7 +493,7 @@ def heavy_RenameOp : HeavyOp<"rename", [HasParent<"PatternOp">]> {
   ];
 }
 
-def heavy_RenameGlobalOp : HeavyOp<"rename_global", [HasParent<"PatternOp">]> {
+def heavy_RenameGlobalOp : HeavyOp<"rename_global"> {
   let summary = "rename_global";
   let description = [{
     Similar to RenameOp, this RenameGlobalOp represents the possibility of

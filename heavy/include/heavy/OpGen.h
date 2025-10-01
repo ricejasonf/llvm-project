@@ -276,8 +276,8 @@ public:
 
   mlir::Value createCall(heavy::SourceLocation Loc, mlir::Value Fn,
                          llvm::MutableArrayRef<mlir::Value> Args);
-  mlir::Value createSyntaxError(heavy::SourceLocation Loc,
-                         llvm::MutableArrayRef<mlir::Value> Args);
+  mlir::Value createError(heavy::SourceLocation Loc,
+                          llvm::MutableArrayRef<mlir::Value> Args);
   mlir::Value createOpGen(SourceLocation Loc, mlir::Value Input,
                           mlir::Value Env);
   mlir::Value createBody(SourceLocation Loc, Value Body);
@@ -299,13 +299,20 @@ public:
   mlir::FunctionType createFunctionType(unsigned Arity,
                                         RestParamKind RPK);
   heavy::FuncOp createFunction(SourceLocation Loc,
-                               llvm::StringRef MangledName,
-                               mlir::FunctionType FT);
+                               mlir::FunctionType FT,
+                               llvm::StringRef MangledName = {});
   heavy::FuncOp createSyntaxFunction(SourceLocation Loc);
   heavy::FuncOp createSyntaxFunction(SourceLocation Loc, heavy::Value Proc);
   mlir::Value createLambda(Value Formals, Value Body,
-                               SourceLocation Loc,
-                               llvm::StringRef Name = {});
+                           SourceLocation Loc,
+                           llvm::StringRef Name = {});
+  std::pair<heavy::FuncOp, EnvFrame*>
+  createLambdaFunction(Value Formals, SourceLocation Loc,
+                       llvm::StringRef Name = {});
+  mlir::Value createLambdaBody(heavy::SourceLocation Loc,
+                               heavy::Value Body,
+                               heavy::FuncOp, EnvFrame* EF);
+  mlir::Value createCaseLambda(Pair* FullExpr);
 
   mlir::Value createGlobal(SourceLocation Loc, llvm::StringRef MangledName);
   mlir::Value createBinding(Binding *B, mlir::Value Init);
