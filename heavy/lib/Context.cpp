@@ -138,6 +138,9 @@ void Context::Import(heavy::ImportSet* ImportSet) {
     return;
   }
 
+  // FIXME This whole ImportSet::Iterator junk prevents
+  //       multiple renames of the same name.
+
   // This should probably be recursive scheme calls.
   for (EnvBucket ImportVal : *ImportSet) {
     String* Name = ImportVal.first;
@@ -775,13 +778,11 @@ String* ImportSet::FilterName(heavy::Context& C, String* S) {
 
 String* ImportSet::FilterFromPairs(heavy::Context& C, String* S) {
   assert(Kind == ImportKind::Rename && "expecting import rename");
-  Value CurrentRow = Specifier;
-  while (Pair* P = dyn_cast<Pair>(CurrentRow)) {
-    Pair* Row = cast<Pair>(P->Car);
+  for (Value El : Specifier) {
+    Pair* Row = cast<Pair>(El);
     String* Key   = cast<Symbol>(Row->Car)->getString();
     String* Value = cast<Symbol>(cast<Pair>(Row->Cdr)->Car)->getString();
     if (S->Equiv(Key)) return Value;
-    CurrentRow = P->Cdr;
   }
   return S;
 }
@@ -826,7 +827,7 @@ void Context::CreateImportSet(Value Spec) {
   }
 
   Value ParentSpec = cadr(Spec);
-  Spec = Spec.cdr().cdr();
+  Spec = cddr(Spec);
 
   PushCont([this, Kind](Context& C, ValueRefs Args) {
     ImportSet* Parent = cast<ImportSet>(Args[0]);
@@ -853,40 +854,40 @@ void Context::CreateImportSet(Value Spec) {
       C.RaiseError("expecting list");
       return;
     }
-    // Spec is now the list of ids to be used by ImportSet
 
-    Value Current = Spec;
-    Symbol* Name = nullptr;
-    while (Pair* P = dyn_cast<Pair>(Current)) {
+    // Spec is now the list of ids to be used by ImportSet
+    Value Name;
+    for (auto [Loc, El] : WithSource(Spec)) {
+      C.setLoc(Loc);
       switch (Kind) {
       case ImportSet::ImportKind::Only:
       case ImportSet::ImportKind::Except:
-        Name = dyn_cast<Symbol>(P->Car);
+        Name = El;
         break;
       case ImportSet::ImportKind::Rename: {
-        Pair* P2 = dyn_cast<Pair>(P->Car);
-        if (!P2) {
-         C.RaiseError("expected pair", heavy::Value(P));
-         return;
-        }
-        Name = dyn_cast<Symbol>(P2->Car);
-        Symbol* Rename = dyn_cast_or_null<Symbol>(Value(P2).cadr());
-        if (Name || Rename) {
-          C.RaiseError("expected pair of identifiers", heavy::Value(P2));
-          return;
-        }
+        Pair* P2 = dyn_cast<Pair>(El);
+        if (!P2)
+         return C.RaiseError("expected pair", El);
+        Name = P2->Car;
+        Value Rename = Value(P2).cadr();
+        if (!Rename || !isIdentifier(Name) || !isIdentifier(Rename))
+          return C.RaiseError("expected pair of identifiers",
+                              heavy::Value(P2));
         break;
       }
       default:
         llvm_unreachable("invalid import set kind");
       }
 
-      EnvEntry LookupResult = Parent->Lookup(C, Name);
-      if (!LookupResult) {
-        C.RaiseError("name does not exist in import set");
-        return;
-      }
-      Current = P->Cdr;
+      if (!isIdentifier(Name))
+        return C.RaiseError("expected identifier", Name);
+
+      // TODO Support syntactic closures.
+      EnvEntry LookupResult;
+      if (auto* S = dyn_cast<Symbol>(Name))
+        LookupResult = Parent->Lookup(C, S);
+      if (!LookupResult)
+        return C.RaiseError("name does not exist in import set");
     }
     C.Cont(new (*this) ImportSet(Kind, Parent, Spec));
   }, CaptureList{Spec});
