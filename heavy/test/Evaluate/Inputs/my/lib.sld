@@ -1,7 +1,8 @@
 (import (heavy builtins))
+
 (define-library (my lib)
-  (import (heavy builtins))
-  (import (heavy mlir))
+  (import (heavy builtins)
+          (heavy mlir))
   (begin
     (define (hello-module x)
       (write "hello module!")
@@ -9,6 +10,7 @@
       (write x)
       (newline)
       )
+
     (define-syntax hello-module-syntax
       (syntax-rules ()
         ((hello-module-syntax x)
@@ -16,10 +18,21 @@
             (write "syntax: ")
             (hello-module x))
           )))
+
+    (define-syntax create-op-literal
+      (syntax-rules ()
+        ((create-op-literal X)
+          (create-op "heavy.literal"
+            (attributes
+              `("info", (value-attr X)))))))
+
     (write "end of init")
-    (newline))
+    (newline)
+    ) ; end begin
+
   (export hello-module
-          hello-module-syntax)
+          hello-module-syntax
+          create-op-literal)
 )
 (write "end of module")
 (newline)

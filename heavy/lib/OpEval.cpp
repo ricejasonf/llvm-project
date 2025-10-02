@@ -55,7 +55,14 @@ class OpEvalImpl {
     }
 
     if (!V) {
-      if (GlobalOp G = M.getDefiningOp<GlobalOp>()) {
+      if (auto G = M.getDefiningOp<GlobalOp>()) {
+        if (G.isExternal()) {
+          heavy::Value Val = Context.GetKnownValue(G.getSymName());
+          setValue(M, Val);
+          return Val;
+        }
+      }
+      if (auto G = M.getDefiningOp<GlobalSyntaxOp>()) {
         if (G.isExternal()) {
           heavy::Value Val = Context.GetKnownValue(G.getSymName());
           setValue(M, Val);
@@ -93,7 +100,7 @@ public:
   OpEvalImpl(OpEvalImpl const&) = delete;
 
   void Eval(mlir::Operation* Op) {
-    if (isa<GlobalOp, CommandOp, LoadModuleOp>(Op)) {
+    if (isa<GlobalOp, GlobalSyntaxOp, CommandOp, LoadModuleOp>(Op)) {
       Visit(Op);
       // "Calling the continuation" is handled during visitation.
     } else if (auto ModuleOp = dyn_cast<mlir::ModuleOp>(Op)) {
@@ -145,6 +152,7 @@ private:
     else if (isa<ApplyOp>(Op))        return Visit(cast<ApplyOp>(Op));
     else if (isa<ContOp>(Op))         return Visit(cast<ContOp>(Op));
     else if (isa<GlobalOp>(Op))       return Visit(cast<GlobalOp>(Op));
+    else if (isa<GlobalSyntaxOp>(Op)) return Visit(cast<GlobalSyntaxOp>(Op));
     else if (isa<LoadRefOp>(Op))      return Visit(cast<LoadRefOp>(Op));
     else if (isa<LoadGlobalOp>(Op))   return Visit(cast<LoadGlobalOp>(Op));
     else if (isa<LambdaOp>(Op))       return Visit(cast<LambdaOp>(Op));
@@ -438,8 +446,29 @@ private:
     if (Op.isExternal())
       return BlockItrTy();
 
-    // The global may already be initialized in the case
-    // of syntax objects.
+    Context.PushCont([Op](heavy::Context& C, ValueRefs Args) mutable {
+      assert(Args.size() == 1 && "invalid continuation arity");
+      assert(!isa<Syntax>(Args[0]) && "not expecting syntax in GlobalOp");
+      // Mutable globals must be wrapped with a binding
+      Value Result = C.CreateBinding(Args[0]);
+      C.AddKnownAddress(Op.getSymName(), Result);
+      C.Cont(Undefined());
+    }, ValueRefs());
+
+    auto Scope = ValueMapScope(ValueMap);
+    BlockItrTy Itr = Op.getInitializer().front().begin();
+    while (Itr != BlockItrTy())
+      Itr = Visit(&*Itr);
+
+    return BlockItrTy();
+  }
+
+  BlockItrTy Visit(GlobalSyntaxOp Op) {
+    // Skip external global ops.
+    if (Op.isExternal())
+      return BlockItrTy();
+
+    // The syntax may already be initialized.
     if (Value Val = Context.GetKnownValue(Op.getSymName())) {
       if (!isa<heavy::Undefined>(Val)) {
         Context.Cont(Undefined());
@@ -450,9 +479,6 @@ private:
     Context.PushCont([Op](heavy::Context& C, ValueRefs Args) mutable {
       assert(Args.size() == 1 && "invalid continuation arity");
       heavy::Value Result = Args[0];
-      // Mutable globals must be wrapped with a binding
-      if (!isa<Syntax>(Result))
-        Result = C.CreateBinding(Args[0]);
       C.AddKnownAddress(Op.getSymName(), Result);
       C.Cont(Undefined());
     }, ValueRefs());

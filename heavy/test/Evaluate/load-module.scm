@@ -4,6 +4,8 @@
 ; CHECK: "end of module"
 ; CHECK-NEXT: "end of init"
 (import (my lib))
+(import (only (heavy builtins)
+              write newline))
 
 ; CHECK: "hello module!"
 ; CHECK-NEXT: 5
@@ -12,3 +14,7 @@
 ; CHECK: "syntax: ""hello module!"
 ; CHECK-NEXT: woof
 (hello-module-syntax "woof!")
+
+; COM-CHECK: ???
+(write (create-op-literal 42))
+(newline)

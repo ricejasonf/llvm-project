@@ -349,8 +349,8 @@ void OpGen::VisitTopLevel(Value V) {
 
 void OpGen::FinishTopLevelOp() {
   assert((TopLevelOp == nullptr ||
-          isa<CommandOp, GlobalOp, LoadModuleOp>(TopLevelOp)) &&
-      "Top level operation must be CommandOp or GlobalOp");
+          isa<CommandOp, GlobalOp, GlobalSyntaxOp, LoadModuleOp>(TopLevelOp)) &&
+      "expecting top level operation");
 
   if (heavy::CommandOp CommandOp =
         dyn_cast_or_null<heavy::CommandOp>(TopLevelOp)) {
@@ -699,9 +699,9 @@ mlir::Value OpGen::createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall) {
       return Error();
     SourceLocation DefineLoc = OrigCall.getSourceLocation();
     // FIXME This code is very similar to stuff in createTopLevelDefine
-    auto GlobalOp = createTopLevel<heavy::GlobalOp>(DefineLoc, MangledName);
-    setTopLevelOp(GlobalOp.getOperation());
-    mlir::Block& Block = *GlobalOp.addEntryBlock();
+    auto GS = createTopLevel<heavy::GlobalSyntaxOp>(DefineLoc, MangledName);
+    setTopLevelOp(GS.getOperation());
+    mlir::Block& Block = *GS.addEntryBlock();
     // Set insertion point.
     Builder.setInsertionPointToStart(&Block);
   }

@@ -1014,21 +1014,8 @@ void Context::LoadModule(Symbol* MangledName, bool IsFileLoaded) {
   IncludeModuleFile(Loc, Filename, MangledName);
 }
 
-void Context::LoadExports(heavy::Module* M, mlir::Operation* ModuleOp) {
-  auto getGlobalSyntax = [ModuleOp](llvm::StringRef MangledName)
-      -> heavy::GlobalOp {
-    // TODO Using a type system would be ideal.
-    auto M = cast<mlir::ModuleOp>(ModuleOp);
-    auto GlobalOp = dyn_cast_or_null<heavy::GlobalOp>(
-                        M.lookupSymbol(MangledName));
-    if (!GlobalOp || GlobalOp.isExternal() ||
-        GlobalOp.getInitializer().empty())
-      return heavy::GlobalOp();
-    mlir::Block& InitBlock = GlobalOp.getInitializer().front();
-    if (InitBlock.empty() || !isa<heavy::SyntaxOp>(InitBlock.front()))
-      return heavy::GlobalOp();
-    return GlobalOp;
-  };
+void Context::LoadExports(heavy::Module* M, mlir::Operation* ModuleOp_) {
+  auto ModuleOp = cast<mlir::ModuleOp>(ModuleOp_);
 
   PushCont([](Context& C, ValueRefs) {
     // Pass the Module along to the import stuff that called this.
@@ -1036,16 +1023,19 @@ void Context::LoadExports(heavy::Module* M, mlir::Operation* ModuleOp) {
     C.Cont(M);
   }, CaptureList{M});
 
-  auto& Ops = cast<mlir::ModuleOp>(ModuleOp).getBody()->getOperations();
+  auto& Ops = ModuleOp.getBody()->getOperations();
   for (mlir::Operation& TL : Ops) {
     if (auto IdOp = dyn_cast<ExportIdOp>(TL)) {
-      registerModuleVar(*this, M, IdOp.getSymbolName(), IdOp.getId());
+      llvm::StringRef MangledName = IdOp.getSymbolName();
+      registerModuleVar(*this, M, MangledName, IdOp.getId());
       // Load syntax objects.
-      if (heavy::GlobalOp GlobalOp = getGlobalSyntax(IdOp.getSymbolName()))
-        PushCont([GlobalOp](Context& C, ValueRefs) {
-          Value Args[] = {Value(&(*GlobalOp))};
+      if (auto GS = dyn_cast_or_null<heavy::GlobalSyntaxOp>(
+            ModuleOp.lookupSymbol(MangledName))) {
+        PushCont([GS](Context& C, ValueRefs) {
+          Value Args[] = {Value(&(*GS))};
           C.Apply(HEAVY_BASE_VAR(op_eval), Args);
         });
+      }
     }
   }
   Cont();
@@ -1640,8 +1630,11 @@ EnvEntry Context::GetSyntax(EnvEntry Entry) {
   if (auto* B = dyn_cast<Binding>(V)) {
     V = B->getValue();
     // Unwrap any ExternName to see if it is a syntax.
-    if (auto* ExternName = dyn_cast<heavy::ExternName>(V))
+    if (auto* ExternName = dyn_cast<heavy::ExternName>(V)) {
       V = GetKnownValue(ExternName->getView());
+      if (!V)
+        return EnvEntry();
+    }
   }
 
   if (isa<Syntax, BuiltinSyntax>(V))

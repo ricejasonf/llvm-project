@@ -187,6 +187,28 @@ def heavy_GlobalOp : HeavyOp<"global", [Symbol, IsolatedFromAbove]> {
   let arguments = (ins StrAttr:$sym_name);
 }
 
+def heav_GlobalSyntaxOp : HeavyOp<"global_syntax",
+                                  [Symbol, IsolatedFromAbove]> {
+  let description = [{
+    GlobalSyntaxOp denotes a module top level syntax object
+    that is initialized at compile time.
+    If there is not initializer then it is external.
+  }];
+
+  let regions = (region AnyRegion:$initializer);
+  let extraClassDeclaration = [{
+    bool isExternal() { return getInitializer().empty(); }
+    mlir::Block* addEntryBlock() {
+      assert(getInitializer().empty() && "GlobalOp already has an entry block");
+      mlir::Block* entry = new mlir::Block();
+      getInitializer().push_back(entry);
+      return entry;
+    }
+  }];
+
+  let arguments = (ins StrAttr:$sym_name);
+}
+
 def heavy_IfOp : HeavyOp<"if", []> {
   let summary = "if";
   let description = [{
