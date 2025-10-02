@@ -1901,7 +1901,7 @@ inline llvm::StringRef Error::getErrorMessage() {
 }
 
 #define GET_KIND_NAME_CASE(KIND) \
-  case ValueKind::KIND: return llvm::StringRef(#KIND, sizeof(#KIND));
+  case ValueKind::KIND: return llvm::StringRef(#KIND);
 inline llvm::StringRef getKindName(heavy::ValueKind Kind) {
   switch (Kind) {
   GET_KIND_NAME_CASE(Undefined)

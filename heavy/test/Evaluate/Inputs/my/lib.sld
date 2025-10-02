@@ -21,10 +21,11 @@
 
     (define-syntax create-op-literal
       (syntax-rules ()
-        ((create-op-literal X)
-          (create-op "heavy.literal"
-            (attributes
-              `("info", (value-attr X)))))))
+        ((create-op-literal (Arg) X)
+          ((lambda (Arg)
+            (create-op "heavy.literal"
+              (attributes
+                `("info", (value-attr Arg))))) X))))
 
     (write "end of init")
     (newline)

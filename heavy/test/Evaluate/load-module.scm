@@ -15,6 +15,6 @@
 ; CHECK-NEXT: woof
 (hello-module-syntax "woof!")
 
-; COM-CHECK: ???
-(write (create-op-literal 42))
+; CHECK: #op{"heavy.literal"() {info = #heavy<"42">}
+(write (create-op-literal (SomeArg) 42))
 (newline)
