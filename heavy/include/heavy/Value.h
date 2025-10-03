@@ -25,6 +25,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/bit.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/FormatAdapters.h"
 #include "llvm/Support/PointerLikeTypeTraits.h"
 #include "llvm/Support/TrailingObjects.h"
 #include <array>
@@ -161,7 +162,24 @@ public:
 };
 
 // Value types that will be members of Value
-struct Undefined {
+class Undefined {
+  friend class Value;
+  // Allow tracking where the undefined value came
+  // from for better error messages.
+  ValueBase* Tracer = nullptr;
+
+  public:
+
+  Undefined() = default;
+
+  Undefined(ValueBase* VB)
+    : Tracer(VB)
+  { }
+
+  Undefined(Value const& V);
+
+  Value getTracer() const;
+
   static bool classof(Value);
   static ValueKind getKind() { return ValueKind::Undefined; }
 };
@@ -226,10 +244,12 @@ struct PointerLikeTypeTraits<heavy::Empty>
   : heavy::detail::StatelessPointerTraitBase<heavy::Empty>
 { };
 
+#if 0
 template <>
 struct PointerLikeTypeTraits<heavy::Undefined>
   : heavy::detail::StatelessPointerTraitBase<heavy::Undefined>
 { };
+#endif
 
 template <>
 struct PointerLikeTypeTraits<heavy::Int>
@@ -293,7 +313,7 @@ struct ValueSumType {
     llvm::PointerSumTypeMember<Bool,       heavy::Bool>,
     llvm::PointerSumTypeMember<Char,       heavy::Char>,
     llvm::PointerSumTypeMember<Empty,      heavy::Empty>,
-    llvm::PointerSumTypeMember<Undefined,  heavy::Undefined>,
+    llvm::PointerSumTypeMember<Undefined,  heavy::ValueBase*>,
     llvm::PointerSumTypeMember<Operation,  mlir::Operation*, OperationTraits>,
     llvm::PointerSumTypeMember<ContArg,    heavy::ContArg*, ContArgTraits>>;
 };
@@ -316,8 +336,8 @@ public:
     : ValuePtrBase(create<ValueSumType::ValueBase>(nullptr))
   { }
 
-  Value(Undefined)
-    : ValuePtrBase(create<ValueSumType::Undefined>({}))
+  Value(Undefined U)
+    : ValuePtrBase(create<ValueSumType::Undefined>(U.Tracer))
   {
     assert(*this);
   }
@@ -473,6 +493,16 @@ inline bool Char::classof(Value V) {
   return V.getTag() == ValueSumType::Char;
 }
 
+inline Undefined::Undefined(Value const& V)
+  : Tracer(V.is<ValueSumType::ValueBase>()
+              ? V.get<ValueSumType::ValueBase>()
+              : nullptr)
+{ }
+
+inline Value Undefined::getTracer() const {
+  return Tracer;
+}
+
 }
 
 namespace llvm {
@@ -568,9 +598,10 @@ template <>
 struct cast_convert_val<::heavy::Undefined, ::heavy::Value,
                                             ::heavy::Value> {
   static auto doit(::heavy::Value V) {
-    return ::heavy::Undefined{};
+    return ::heavy::Undefined{V.get<heavy::ValueSumType::Undefined>()};
   }
 };
+
 template <>
 struct cast_convert_val<::heavy::Empty, ::heavy::Value,
                                         ::heavy::Value> {
@@ -2213,6 +2244,17 @@ struct WithSource {
     return WithSourceIterator();
   }
 };
+
+struct ValueFormatter : llvm::FormatAdapter<Value> {
+  explicit ValueFormatter(Value V)
+    : llvm::FormatAdapter<Value>(std::move(V)) // uhh... ok
+  { }
+
+  void format(llvm::raw_ostream& OS, llvm::StringRef Style) override;
+};
+
+void format(llvm::raw_ostream &OS, llvm::StringRef Fmt,
+            llvm::ArrayRef<Value> Values, bool Validate = false);
 
 } // end namespace heavy
 

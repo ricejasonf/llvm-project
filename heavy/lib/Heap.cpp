@@ -50,9 +50,13 @@ class CopyCollector : private ValueVisitor<CopyCollector, heavy::Value> {
   heavy::Value VisitBool(heavy::Bool V)             { return V; }
   heavy::Value VisitChar(heavy::Char V)             { return V; }
   heavy::Value VisitEmpty(heavy::Empty V)           { return V; }
-  heavy::Value VisitUndefined(heavy::Undefined V)   { return V; }
   heavy::Value VisitOperation(heavy::Operation* V)  { return V; }
   heavy::Value VisitContArg(heavy::ContArg* V)      { return V; }
+
+  heavy::Value VisitUndefined(heavy::Undefined V)   {
+    heavy::Value NewTracer = Visit(V.getTracer());
+    return Value(heavy::Undefined(NewTracer));
+  }
 
   // String
   heavy::String* VisitString(heavy::String* String) {

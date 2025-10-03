@@ -755,7 +755,7 @@ void eval(Context& C, ValueRefs Args) {
     return C.RaiseError("invalid arity");
 
   Value ExprOrDef       = Args[0];
-  Value EnvSpec         = Args.size() > 1 ? Args[1] : Undefined();
+  Value EnvSpec         = Args.size() > 1 ? Args[1] : Value(Undefined());
   Value EvalRaw = Args.size() == 3 ? Args[2] : HEAVY_BASE_VAR(op_eval);
 
   Value NewArgs[] = {ExprOrDef, EnvSpec, EvalRaw};
@@ -767,8 +767,8 @@ void compile(Context& C, ValueRefs Args) {
     return C.RaiseError("invalid arity");
   }
   Value ExprOrDef       = Args[0];
-  Value EnvSpec         = Args.size() > 1 ? Args[1] : Undefined();
-  Value TopLevelHandler = Args.size() > 2 ? Args[2] : Undefined();
+  Value EnvSpec         = Args.size() > 1 ? Args[1] : Value(Undefined());
+  Value TopLevelHandler = Args.size() > 2 ? Args[2] : Value(Undefined());
 
   // EnvPtr - Manage ownership of the Environment
   //          if we have to create it on the fly.

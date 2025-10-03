@@ -341,6 +341,9 @@ public:
   String*     CreateString(StringRef S1, StringRef S2);
   String*     CreateString(StringRef, StringRef, StringRef);
   String*     CreateString(StringRef, StringRef, StringRef, StringRef);
+  String*     CreateFormatted(llvm::StringRef Fmt,
+                              llvm::ArrayRef<Value> Values);
+  String*     CreateFormatted(Error* Err);
   Vector*     CreateVector(ArrayRef<Value> Xs);
   Vector*     CreateVector(unsigned N);
   ByteVector* CreateByteVector(llvm::ArrayRef<Value> Xs);

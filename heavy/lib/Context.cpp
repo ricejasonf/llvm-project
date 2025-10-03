@@ -39,6 +39,8 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/FormatAdapters.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/ErrorOr.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
@@ -341,6 +343,16 @@ private:
     OS << "#<Value of Kind:"
        << getKindName(V.getKind())
        << ">";
+  }
+
+  void VisitUndefined(Undefined U) {
+    OS << "#<Undefined";
+    if (Value Tracer = U.getTracer()) {
+      OS << " {";
+      Visit(Tracer);
+      OS << '}';
+    }
+    OS << ">";
   }
 
   void VisitBool(Bool V) {
@@ -693,8 +705,10 @@ EnvEntry Environment::Lookup(heavy::Context& C, Symbol* S) {
   if (!MangledName)
     return EnvEntry();
   Value Val = C.GetKnownValue(MangledName->getStringRef());
-  if (!Val)
-    Val = Undefined();
+  if (!Val) {
+    auto* EN = C.CreateExternName(S->getSourceLocation(), MangledName);
+    Val = Undefined(EN);
+  }
   return EnvEntry{Val, MangledName};
 }
 
@@ -703,8 +717,10 @@ EnvEntry Module::Lookup(heavy::Context& C, String* S) {
   if (!MangledName)
     return EnvEntry();
   Value Val = C.GetKnownValue(MangledName->getStringRef());
-  if (!Val)
-    Val = Undefined();
+  if (!Val) {
+    auto* EN = C.CreateExternName(S->getSourceLocation(), MangledName);
+    Val = Undefined(EN);
+  }
   return EnvEntry{Val, MangledName};
 }
 
@@ -1213,12 +1229,12 @@ void Context::WithExceptionHandlers(Value NewHandlers, Value Thunk) {
   Value Before = CreateLambda([this](Context& C, ValueRefs) {
     Value NewHandlers = C.getCapture(0);
     this->ExceptionHandlers = NewHandlers;
-    C.Cont(Undefined());
+    C.Cont();
   }, {NewHandlers});
   Value After = CreateLambda([this](Context& C, ValueRefs) {
     Value PrevHandlers = C.getCapture(0);
     this->ExceptionHandlers = PrevHandlers;
-    C.Cont(Undefined());
+    C.Cont();
   }, {PrevHandlers});
   DynamicWind(Before, Thunk, After);
 }
@@ -1670,5 +1686,47 @@ heavy::Value Context::ParseLiteral(llvm::StringRef Expr) {
   Parser.PrimeToken();
   heavy::ValueResult ValueResult = Parser.ParseTopLevelExpr();
   return ValueResult.isUsable() ? ValueResult.get() :
-                                  heavy::Undefined();
+                                  Value(Undefined());
+}
+
+void ValueFormatter::format(llvm::raw_ostream& OS, llvm::StringRef Style) {
+  write(OS, Item);
+}
+
+void heavy::format(llvm::raw_ostream &OS, llvm::StringRef Fmt,
+                   llvm::ArrayRef<Value> Values, bool Validate) {
+  auto const Replacements
+    = llvm::formatv_object_base::parseFormatString(Fmt, Values.size(),
+                                                   Validate);
+  for (llvm::ReplacementItem const& R : Replacements) {
+    if (R.Type == llvm::ReplacementType::Literal) {
+      OS << R.Spec;
+      continue;
+    }
+    if (R.Index >= Values.size()) {
+      OS << R.Spec;
+      continue;
+    }
+
+    auto W = ValueFormatter{Values[R.Index]};
+
+    llvm::FmtAlign Align(W, R.Where, R.Width, R.Pad);
+    Align.format(OS, R.Options);
+  }
+}
+
+String* Context::CreateFormatted(llvm::StringRef Fmt,
+                                 llvm::ArrayRef<Value> Values) {
+  std::string WorkingStr;
+  llvm::raw_string_ostream OS(WorkingStr);
+  heavy::format(OS, Fmt, Values);
+  return CreateString(llvm::StringRef(WorkingStr));
+}
+
+String* Context::CreateFormatted(Error* Err) {
+  llvm::SmallVector<Value, 4> Irrs;
+  for (Value Irr : Err->getIrritants())
+    Irrs.push_back(Irr);
+
+  return CreateFormatted(Err->getErrorMessage(), Irrs);
 }

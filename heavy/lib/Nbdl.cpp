@@ -243,7 +243,7 @@ void translate_cpp(Context& C, ValueRefs Args) {
   if (!ErrMsg.empty()) {
     heavy::SourceLocation Loc(ErrLoc);
     heavy::Error* Err = C.CreateError(Loc, ErrMsg,
-        Irritant ? heavy::Value(Irritant) : Undefined());
+        Irritant ? heavy::Value(Irritant) : Value(Undefined()));
     return C.Raise(Err);
   }
   C.Cont();

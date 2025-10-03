@@ -272,8 +272,8 @@ private:
 
   BlockItrTy Visit(BindingOp Op) {
     // create a Binding
-    heavy::Value V = Op.getInput() ? getValue(Op.getInput()) :
-                                  heavy::Undefined();
+    heavy::Value V = Op.getInput() ? getValue(Op.getInput())
+                                   : Value(Undefined());
     heavy::Binding* B = Context.CreateBinding(V);
     setValue(Op.getResult(), B);
     return next(Op);
@@ -322,7 +322,8 @@ private:
     if (!F) {
       String* ErrMsg = Context.CreateString(
           "undefined reference to function ", MangledName);
-      SetError(heavy::SourceLocation(), ErrMsg, Undefined());
+      ExternName* EN = Context.CreateExternName({}, MangledName);
+      SetError(heavy::SourceLocation(), ErrMsg, Undefined(EN));
       return {};
     }
     return F;
@@ -332,7 +333,6 @@ private:
                      heavy::FuncOp FuncOp) {
     return [FuncOp](heavy::Context& C, ValueRefs Args) {
       C.OpEval->CallFuncOp(FuncOp, Args);
-      return heavy::Undefined();
     };
   }
 
@@ -435,7 +435,9 @@ private:
   BlockItrTy Visit(LoadGlobalOp Op) {
     Value Val = Context.GetKnownValue(Op.getName());
     if (!Val) {
-      Val = Undefined();
+      heavy::SourceLocation Loc = getSourceLocation(Op.getLoc());
+      ExternName* EN = Context.CreateExternName(Loc, Op.getName());
+      Val = Undefined(EN);
     }
     setValue(Op, Val);
     return next(Op);
@@ -452,7 +454,7 @@ private:
       // Mutable globals must be wrapped with a binding
       Value Result = C.CreateBinding(Args[0]);
       C.AddKnownAddress(Op.getSymName(), Result);
-      C.Cont(Undefined());
+      C.Cont();
     }, ValueRefs());
 
     auto Scope = ValueMapScope(ValueMap);
@@ -471,7 +473,7 @@ private:
     // The syntax may already be initialized.
     if (Value Val = Context.GetKnownValue(Op.getSymName())) {
       if (!isa<heavy::Undefined>(Val)) {
-        Context.Cont(Undefined());
+        Context.Cont();
         return BlockItrTy();
       }
     }
@@ -480,7 +482,7 @@ private:
       assert(Args.size() == 1 && "invalid continuation arity");
       heavy::Value Result = Args[0];
       C.AddKnownAddress(Op.getSymName(), Result);
-      C.Cont(Undefined());
+      C.Cont();
     }, ValueRefs());
 
     auto Scope = ValueMapScope(ValueMap);

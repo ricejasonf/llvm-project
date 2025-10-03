@@ -134,7 +134,7 @@ private:
     assert(Callee && "Callee must not be null");
     DidCallContinuation = true; // debug mode only
     if (isa<Undefined>(Callee))
-      return getDerived().RaiseError("callee is undefined");
+      return getDerived().RaiseError("callee is undefined: {}", Callee);
     if (Args.data() != ValueRefs(ApplyArgs).drop_front().data()) {
       ApplyArgs.resize(Args.size() + 1);
       std::copy(Args.begin(), Args.end(), ApplyArgs.begin() + 1);

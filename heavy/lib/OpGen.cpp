@@ -882,9 +882,11 @@ bool OpGen::WalkDefineInits(Value Env, IdSet& LocalIds) {
   }
 
   // Insert the binding initializer.
-  mlir::Value Init = VisitDefineArgs(B->getValue());
+  auto Undef = cast<heavy::Undefined>(B->getValue());
+  Value DefineArgs = Undef.getTracer();
+  mlir::Value Init = VisitDefineArgs(DefineArgs);
   mlir::Value BVal = LocalizeValue(BindingTable.lookup(B), B);
-  SourceLocation Loc = B->getValue().getSourceLocation();
+  SourceLocation Loc = DefineArgs.getSourceLocation();
   assert(BVal && "BindingTable should have an entry for local define");
   create<SetOp>(Loc, BVal, Init);
   return false;
@@ -924,7 +926,7 @@ mlir::Value OpGen::createDefine(Value Id, Value DefineArgs,
   // (Include everything after the define
   //  keyword to visit it later because it could
   //  be a terse lambda syntax.)
-  Binding* B = Context.CreateBinding(Id, DefineArgs);
+  Binding* B = Context.CreateBinding(Id, Undefined(DefineArgs));
   // Push to the local environment.
   Context.PushLocalBinding(B);
   mlir::Value BVal = createBinding(B, mlir::Value());

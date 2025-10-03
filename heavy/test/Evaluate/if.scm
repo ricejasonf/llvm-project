@@ -99,7 +99,7 @@
   (if (null? '()) 'return-baz))
 (newline)
 
-; CHECK-NEXT: Undefined
+; CHECK-NEXT: #<Undefined
 (write
   (if (null? 42) 'return-baz))
 (newline)

@@ -85,7 +85,7 @@
 (write my-tl)
 (newline)
 
-; CHECK: Undefined
+; CHECK: #<Undefined {#__HEAVYV3Snotmi2Smymi5Slocal}>
 ((lambda ()
   (my-define not-my-local 12)
   (write not-my-local)

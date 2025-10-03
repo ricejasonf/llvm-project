@@ -68,7 +68,8 @@ void HeavyScheme::ProcessTopLevelCommands(
     heavy::FullSourceLocation FullLoc = SM.getFullSourceLocation(
         Args[0].getSourceLocation());
     if (heavy::Error* Err = dyn_cast<heavy::Error>(Args[0])) {
-      ErrorHandler(Err->getErrorMessage(), FullLoc);
+      String* FmtMessage = Context.CreateFormatted(Err);
+      ErrorHandler(FmtMessage->getStringRef(), FullLoc);
     } else {
       ErrorHandler("errorhandler received a non-error", FullLoc);
     }
