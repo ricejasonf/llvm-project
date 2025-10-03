@@ -30,6 +30,23 @@
 #include <memory>
 
 using namespace heavy;
+
+struct OpGen::SyntaxClosureScope {
+  OpGen& O;
+  SyntaxClosure* PrevSC;
+
+  SyntaxClosureScope(OpGen& O, SyntaxClosure* SC)
+    : O(O),
+      PrevSC(O.CurSyntaxClosure)
+  {
+    O.CurSyntaxClosure = SC;
+  }
+
+  ~SyntaxClosureScope() {
+    O.CurSyntaxClosure = PrevSC;
+  }
+};
+
 // LambdaScope - RAII object that pushes an operation that is
 //               FunctionLike to the scope stack along with a
 //               BindingScope where we can insert stack local
@@ -884,6 +901,11 @@ bool OpGen::WalkDefineInits(Value Env, IdSet& LocalIds) {
   // Insert the binding initializer.
   auto Undef = cast<heavy::Undefined>(B->getValue());
   Value DefineArgs = Undef.getTracer();
+  // SC may be nullptr.
+  auto* SC = dyn_cast<SyntaxClosure>(Undef.getTracer());
+  SyntaxClosureScope SCScope(*this, SC);
+  if (SC)
+    DefineArgs = SC->Node;
   mlir::Value Init = VisitDefineArgs(DefineArgs);
   mlir::Value BVal = LocalizeValue(BindingTable.lookup(B), B);
   SourceLocation Loc = DefineArgs.getSourceLocation();
@@ -918,14 +940,17 @@ mlir::Value OpGen::createBinding(Binding *B, mlir::Value Init) {
   return BVal;
 }
 
-mlir::Value OpGen::createDefine(Value Id, Value DefineArgs,
-                                           Value OrigCall) {
+mlir::Value OpGen::createDefine(Value Id, Value DefineArgs, Value OrigCall) {
   if (isTopLevel()) return createTopLevelDefine(Id, DefineArgs, OrigCall);
   if (!IsLocalDefineAllowed) return SetError("unexpected define", OrigCall);
-  // Create the binding with a lazy init.
-  // (Include everything after the define
-  //  keyword to visit it later because it could
-  //  be a terse lambda syntax.)
+  // Create the binding with an undefined object that secretly holds
+  // its syntax in the current environment.
+  Value Env;
+
+  if (CurSyntaxClosure)
+    DefineArgs = Context.CreateSyntaxClosure(DefineArgs.getSourceLocation(),
+                                             DefineArgs,
+                                             CurSyntaxClosure->Env);
   Binding* B = Context.CreateBinding(Id, Undefined(DefineArgs));
   // Push to the local environment.
   Context.PushLocalBinding(B);
@@ -1145,11 +1170,8 @@ mlir::Value OpGen::VisitExternName(ExternName* EN) {
 }
 
 mlir::Value OpGen::VisitSyntaxClosure(SyntaxClosure* SC) {
-  SyntaxClosure* PrevSC = CurSyntaxClosure;
-  CurSyntaxClosure = SC;
+  SyntaxClosureScope SCScope(*this, SC);
   mlir::Value Result = Visit(SC->Node);
-  CurSyntaxClosure = PrevSC;
-
   return Result;
 }
 

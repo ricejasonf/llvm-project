@@ -193,8 +193,13 @@ mlir::Value syntax_fn(OpGen& OG, Pair* P) {
 
 mlir::Value lambda(OpGen& OG, Pair* P) {
   Pair* P2 = dyn_cast<Pair>(P->Cdr);
+  if (!P2)
+    return OG.SetError("invalid lambda syntax", P);
   Value Formals = P2->Car;
   Pair* Body = dyn_cast<Pair>(P2->Cdr);
+
+  if (!Body)
+    return OG.SetError("lambda syntax requires body");
 
   return OG.createLambda(Formals, Body, P->getSourceLocation());
 }

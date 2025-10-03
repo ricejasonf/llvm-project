@@ -503,7 +503,13 @@ private:
   }
 
   BlockItrTy Visit(SetOp Op) {
-    heavy::Binding* B = cast<heavy::Binding>(getBindingOrValue(Op.getBinding()));
+    Value RawValue = getBindingOrValue(Op.getBinding());
+    heavy::Binding* B = dyn_cast<heavy::Binding>(RawValue);
+    if (!B) {
+      Context.RaiseError("invalid set operand: {}", RawValue);
+      return BlockItrTy();
+    }
+
     heavy::Value RHS = getValue(Op.getInput());
     B->setValue(RHS);
     return next(Op);

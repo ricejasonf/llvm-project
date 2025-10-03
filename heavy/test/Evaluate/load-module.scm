@@ -5,7 +5,7 @@
 ; CHECK-NEXT: "end of init"
 (import (my lib))
 (import (only (heavy builtins)
-              write newline))
+              write newline lambda))
 
 ; CHECK: "hello module!"
 ; CHECK-NEXT: 5
@@ -16,5 +16,5 @@
 (hello-module-syntax "woof!")
 
 ; CHECK: #op{"heavy.literal"() {info = #heavy<"42">}
-(write (create-op-literal (SomeArg) 42))
+(write (create-op-literal ((lambda () #f)) 42))
 (newline)

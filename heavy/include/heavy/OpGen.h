@@ -128,6 +128,8 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   // in LookupEnv.
   SyntaxClosure* CurSyntaxClosure = nullptr;
 
+  struct SyntaxClosureScope;
+
   // Err - The stored error to indicate that the compiler is in an error state.
   //       (Use CheckError())
   Value Err = nullptr;

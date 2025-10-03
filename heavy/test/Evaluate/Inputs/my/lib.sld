@@ -21,11 +21,16 @@
 
     (define-syntax create-op-literal
       (syntax-rules ()
-        ((create-op-literal (Arg) X)
+        ((create-op-literal (EmptyThunk) X)
           ((lambda (Arg)
+            ; Test hygiene of define initializer.
+            (define (MakeAttr Z)
+              (value-attr Z))
+            ; Trigger compiling define initializers with a syntactic closure.
+            (EmptyThunk)
             (create-op "heavy.literal"
               (attributes
-                `("info", (value-attr Arg))))) X))))
+                `("info", (MakeAttr Arg))))) X))))
 
     (write "end of init")
     (newline)

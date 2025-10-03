@@ -34,6 +34,7 @@
     define-syntax
     if
     lambda
+    case-lambda
     quasiquote
     quote
     set!
