@@ -947,10 +947,17 @@ mlir::Value OpGen::createDefine(Value Id, Value DefineArgs, Value OrigCall) {
   // its syntax in the current environment.
   Value Env;
 
-  if (CurSyntaxClosure)
-    DefineArgs = Context.CreateSyntaxClosure(DefineArgs.getSourceLocation(),
-                                             DefineArgs,
-                                             CurSyntaxClosure->Env);
+  if (CurSyntaxClosure) {
+    // Save syntactic closure information for Id.
+    if (auto* S = dyn_cast<Symbol>(Id))
+      Id = Context.CreateSyntaxClosure(S->getSourceLocation(),
+                                       S, CurSyntaxClosure->Env);
+    // Save syntactic closure information for DefineArgs.
+    DefineArgs = DefineArgs == CurSyntaxClosure->Node
+      ? CurSyntaxClosure
+      : Context.CreateSyntaxClosure(DefineArgs.getSourceLocation(),
+                                    DefineArgs, CurSyntaxClosure->Env);
+  }
   Binding* B = Context.CreateBinding(Id, Undefined(DefineArgs));
   // Push to the local environment.
   Context.PushLocalBinding(B);

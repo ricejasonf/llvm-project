@@ -5,7 +5,9 @@
 ; CHECK-NEXT: "end of init"
 (import (my lib))
 (import (only (heavy builtins)
-              write newline lambda))
+              write newline lambda
+              + define
+              ))
 
 ; CHECK: "hello module!"
 ; CHECK-NEXT: 5
@@ -17,4 +19,16 @@
 
 ; CHECK: #op{"heavy.literal"() {info = #heavy<"42">}
 (write (create-op-literal ((lambda () #f)) 42))
+(newline)
+
+; CHECK: 42
+; CHECK-NEXT: 43
+; CHECK-NEXT: 44
+((my-lambda ((x : Int) (y : Int))
+  (define X (+ x 1)) ; define in syntax closure
+  (write x)
+  (newline)
+  (write X)
+  (newline)
+  (write y)) 42 44)
 (newline)
