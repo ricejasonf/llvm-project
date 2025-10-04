@@ -455,10 +455,10 @@ public:
 
     // Delete both copy constructors to support subsumption with `auto&&`.
     OS << "class " << Op.getName() << " {\n";
+    OS << "public:\n";
     WriteMemberDecls(Op);
-    OS << "public:\n"
-       << Op.getName() << '(' << Op.getName() << " const&) = delete;\n"
-       << Op.getName() << '(' << Op.getName() << "&) = delete;\n";
+    OS << Op.getName() << '(' << Op.getName() << " const&) = delete;\n";
+    OS << Op.getName() << '(' << Op.getName() << "&) = delete;\n";
     WriteConstructor(Op);
     WriteAccessors();
     OS << "};\n";
