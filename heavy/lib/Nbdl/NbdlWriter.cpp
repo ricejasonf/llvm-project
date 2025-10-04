@@ -351,7 +351,10 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
   void Visit(VisitOp Op) {
     WriteForwardedExpr(Op.getFn());
     OS << '(';
-    WriteForwardedExpr(Op.getArg());
+    llvm::interleave(Op.getArgs(), OS,
+        [&](mlir::Value V) {
+          WriteForwardedExpr(V);
+        }, ",\n");
     OS << ");\n";
   }
 

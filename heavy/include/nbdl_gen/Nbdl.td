@@ -141,13 +141,12 @@ def Nbdl_GetOp : Nbdl_Op<"get", []> {
   let results   = (outs Nbdl_Type:$result);
 }
 
-def VisitOp : Nbdl_Op<"visit", [Terminator]> {
+def Nbdl_VisitOp : Nbdl_Op<"visit", [Terminator]> {
   let description = [{
-    Visit a single result with a function object.
-    VisitOp is a simplification of MatchOp for leaf nodes.
+    Visit matched results with a function object.
   }];
 
-  let arguments = (ins Nbdl_Type:$fn, Nbdl_Type:$arg);
+  let arguments = (ins Nbdl_Type:$fn, Variadic<Nbdl_Type>:$args);
   let results   = (outs);
 }
 
