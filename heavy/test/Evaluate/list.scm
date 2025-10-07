@@ -1,5 +1,5 @@
-; RUN: heavy-scheme %s | FileCheck %s
-(import (heavy builtins))
+; RUN: heavy-scheme --module-path=%heavy_module_path %s | FileCheck %s
+(import (heavy base))
 
 ; CHECK: (1 2 "yo")
 (write (list 1 2 "yo"))(newline)
@@ -95,3 +95,46 @@
         (length '(9 42))
         (length '(9 (foo bar) 42))
         (length '((foo bar) 42 9 moo))))
+(newline)
+
+; CHECK-NEXT: ()
+(write
+  (make-list 0))
+(newline)
+
+; CHECK-NEXT: (0)
+(write
+  (make-list 1 0))
+(newline)
+
+; CHECK-NEXT: (0 0 0 0 0)
+(write
+  (make-list 5 0))
+(newline)
+
+; CHECK-NEXT: (foo bar baz)
+(write
+  (let ((List (make-list 3)))
+    (list-set! List 0 'foo)
+    (list-set! List 1 'bar)
+    (list-set! List 2 'baz)
+    List
+    ))
+(newline)
+
+; CHECK-NEXT: (foo bar 0)
+(write
+  (let ((List (make-list 3 0)))
+    (list-set! List 0 'foo)
+    (list-set! List 1 'bar)
+    List
+    ))
+(newline)
+
+;CHECK-NEXT: (baz bar foo)
+(write
+  (let ((List (list 'foo 'bar 'baz)))
+    (list (list-ref List 2)
+          (list-ref List 1)
+          (list-ref List 0))))
+(newline)

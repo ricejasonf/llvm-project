@@ -69,8 +69,8 @@
     eqv?
     error
     length
-    list
-    newline
+    list make-list list-set! list-ref
+    vector make-vector vector-length vector-set!  vector-ref
     number->string
     raise
     string-append
@@ -79,7 +79,14 @@
     values
     with-exception-handler
     write
+    newline
 
+    ; r7rs-syntax
+    let letrec letrec*
+    cond case
+    and or when unless
+
+    ; eval stuff
     compile
     eval
     module-path

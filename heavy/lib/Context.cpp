@@ -1594,8 +1594,8 @@ Float* Context::CreateFloat(llvm::APFloat Val) {
   return new (getAllocator()) Float(Val);
 }
 
-Vector* Context::CreateVector(unsigned N) {
-  return new (getAllocator(), N) Vector(Undefined(), N);
+Vector* Context::CreateVector(unsigned N, Value Default) {
+  return new (getAllocator(), N) Vector(Default, N);
 }
 
 Vector* Context::CreateVector(ArrayRef<Value> Xs) {

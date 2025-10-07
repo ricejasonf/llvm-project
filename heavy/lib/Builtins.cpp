@@ -60,6 +60,17 @@ heavy::ExternFunction cons;
 heavy::ExternFunction car;
 heavy::ExternFunction cdr;
 heavy::ExternFunction append;
+heavy::ExternFunction vector;
+heavy::ExternFunction make_vector;
+heavy::ExternFunction vector_length;
+heavy::ExternFunction vector_ref;
+heavy::ExternFunction vector_set;
+heavy::ExternFunction make_list;
+heavy::ExternFunction list_set;
+heavy::ExternFunction list_ref;
+heavy::ExternFunction map;
+heavy::ExternFunction any;
+heavy::ExternFunction every;
 heavy::ExternFunction dump;
 heavy::ExternFunction write;
 heavy::ExternFunction newline;
@@ -655,29 +666,39 @@ void list(Context& C, ValueRefs Args) {
   C.Cont(C.CreateList(Args));
 }
 
-void length(Context& C, ValueRefs Args) {
-  if (Args.size() != 1)
-    return C.RaiseError("invalid arity");
-
-  Value Cur = Args[0];
+// Return length of proper list.
+// Return negative value for circular lists.
+// Return nullptr for improper list.
+Value length_helper(Value Cur) {
   Value CurFast = Cur;
   int32_t Count = 0;
   while (!isa<Empty>(Cur)) {
     Pair* P1 = dyn_cast<Pair>(Cur);
     Pair* P2 = dyn_cast_or_null<Pair>(CurFast);
     if (!P1)
-      return C.RaiseError("expecting a list");
+      return Value();
 
     Cur = P1->Cdr;
     CurFast = P2 ? P2->Cdr.cdr() : nullptr;
 
+    // TODO Return length of cycle as negative integer.
     if (Cur == CurFast)
-      return C.RaiseError("cycle detected");
+      return Value(Int(-1));
 
     ++Count;
   }
 
-  return C.Cont(Int{Count});
+  return Int{Count};
+}
+
+// Return negative number if list is circular.
+void length(Context& C, ValueRefs Args) {
+  if (Args.size() != 1)
+    return C.RaiseError("invalid arity");
+  Value Result = length_helper(Args[0]);
+  if (!Result)
+    return C.RaiseError("expecting a list");
+  C.Cont(Result);
 }
 
 void cons(Context& C, ValueRefs Args) {
@@ -710,6 +731,7 @@ Value append_rec(Context& C, Value List, Value Cdr) {
   return Value();
 };
 }
+
 void append(Context& C, ValueRefs Args) {
   Value NewList = Args.empty() ? Empty() : Args.back();
   Args = Args.drop_back(1);
@@ -720,6 +742,254 @@ void append(Context& C, ValueRefs Args) {
   }
   C.Cont(NewList);
 }
+
+void make_list(Context& C, ValueRefs Args) {
+  if (Args.size() < 1 || Args.size() > 2)
+    return C.RaiseError("invalid arity");
+
+  Value Length = Args[0];
+  if (!isa<Int>(Length) || cast<Int>(Length) < 0)
+    return C.RaiseError("expecting positive integer");
+
+  Value Default = Args.size() == 2 ? Args[1] : Value(Undefined());
+
+  unsigned K = static_cast<unsigned>(cast<Int>(Length));
+  Value Result = Empty();
+  for (unsigned I = 0; I < K; I++)
+    Result = C.CreatePair(Default, Result);
+
+  C.Cont(Result);
+}
+
+void list_ref(Context& C, ValueRefs Args) {
+  if (Args.size() != 2)
+    return C.RaiseError("invalid arity");
+
+  Value List = Args[0];
+  Value Index = Args[1];
+
+  if (!isa<Pair>(List))
+    return C.RaiseError("expecting non-empty list");
+
+  int Len = 0;
+  if (Value Length = length_helper(List))
+    Len = cast<Int>(Length);
+  else
+    return;
+
+  int K = 0;
+  if (!isa<Int>(Index) || cast<Int>(Index) < 0)
+    return C.RaiseError("expecting positive integer");
+  K = cast<Int>(Index);
+
+  if (Len >= 0 && K >= Len)
+    return C.RaiseError("index is out of range");
+
+  Pair* P = cast<Pair>(List);
+  for (int I = 0; I < K; I++)
+    P = cast<Pair>(P->Cdr);
+
+  C.Cont(P->Car);
+}
+
+void list_set(Context& C, ValueRefs Args) {
+  if (Args.size() != 3)
+    return C.RaiseError("invalid arity");
+
+  Value List = Args[0];
+  Value Index = Args[1];
+  Value Obj = Args[2];
+
+  if (!isa<Pair>(List))
+    return C.RaiseError("expecting non-empty list");
+
+  int Len = 0;
+  if (Value Length = length_helper(List))
+    Len = cast<Int>(Length);
+  else
+    return;
+
+  int K = 0;
+  if (!isa<Int>(Index) || cast<Int>(Index) < 0)
+    return C.RaiseError("expecting positive integer");
+  K = cast<Int>(Index);
+
+  // If Len is negative it has infinite length.
+  if (Len >= 0 && K >= Len)
+    return C.RaiseError("index is out of range");
+
+  Pair* P = cast<Pair>(List);
+  for (int I = 0; I < K; I++)
+    P = cast<Pair>(P->Cdr);
+  P->Car = Obj;
+  C.Cont();
+}
+
+void vector(Context& C, ValueRefs Args) {
+  C.Cont(C.CreateVector(Args));
+}
+
+void vector_length(Context& C, ValueRefs Args) {
+  if (Args.size() != 1)
+    return C.RaiseError("invalid arity");
+
+  Vector* Vec = dyn_cast<Vector>(Args[0]);
+  if (!Vec)
+    return C.RaiseError("expecting a vector");
+
+  unsigned Len = Vec->getElements().size();
+  Value Length = Int(static_cast<int32_t>(Len));
+
+  C.Cont(Length);
+}
+
+void make_vector(Context& C, ValueRefs Args) {
+  if (Args.size() < 1 || Args.size() > 2)
+    return C.RaiseError("invalid arity");
+
+  Value Length = Args[0];
+  if (!isa<Int>(Length) || cast<Int>(Length) < 0)
+    return C.RaiseError("expecting positive integer");
+
+  Value Default = Args.size() == 2 ? Args[1] : Value(Undefined());
+
+  unsigned K = static_cast<unsigned>(cast<Int>(Length));
+  Vector* Vec = C.CreateVector(K, Default);
+
+  C.Cont(Vec);
+}
+
+void vector_ref(Context& C, ValueRefs Args) {
+  if (Args.size() != 2)
+    return C.RaiseError("invalid arity");
+
+  Vector* Vec = dyn_cast<Vector>(Args[0]);
+  Value Index = Args[1];
+
+  if (!Vec)
+    return C.RaiseError("expecting a vector");
+
+  ValueRefs Xs = Vec->getElements();
+
+  unsigned K = 0;
+  if (!isa<Int>(Index) || cast<Int>(Index) < 0)
+    return C.RaiseError("expecting positive integer");
+  K = static_cast<unsigned>(cast<Int>(Index));
+
+  if (K >= Xs.size())
+    return C.RaiseError("index is out of range");
+
+  Value Result = Xs[K];
+  C.Cont(Result);
+}
+
+void vector_set(Context& C, ValueRefs Args) {
+  if (Args.size() != 3)
+    return C.RaiseError("invalid arity");
+
+  Vector* Vec = dyn_cast<Vector>(Args[0]);
+  if (!Vec)
+    return C.RaiseError("expecting vector");
+  ValueRefs Xs = Vec->getElements();
+
+  Value Index = Args[1];
+  if (!isa<Int>(Index) || cast<Int>(Index) < 0)
+    return C.RaiseError("expecting positive integer");
+  unsigned K = static_cast<unsigned>(cast<Int>(Index));
+
+  if (K >= Xs.size())
+    return C.RaiseError("index out of range");
+
+
+  Xs[K] = Args[2];
+  C.Cont();
+}
+
+#if 0
+namespace {
+// Push continuations to map proc such that evaluation applies
+// arguments in the same order that the lists provide.
+void map_apply(Context& C, Value Proc, ValueRefs Lists) {
+  map_push_cont
+}
+}  // end anononymous namespace
+
+// TODO Move this to (heavy base)
+void map(Context& C, ValueRefs Args) {
+  if (Args.size() < 1)
+    return C.RaiseError("invalid arity");
+
+  Lambda* Proc = dyn_cast<Lambda>(Args[0]);
+  if (!Proc)
+    return C.RaiseError("expecting procedure");
+
+  Args = Args.drop_front();
+  Value NewList = Empty();
+
+  int MinLength = 0;
+  for (Value Arg : Args) {
+    if (Value LengthVal = length_helper(Arg)) {
+      int Length = cast<Int>(LengthVal);
+      if (Length < 0)
+        MinLength = -1;
+      else if (Length < MinLength)
+        MinLength = Length;
+    }
+  }
+  if (MinLength < 0)
+    return C.RaiseError("expecting at least one finite list");
+
+    unsigned NumArgs = Args.size();
+    // Note that these are initialized with Undefined.
+    Vector* ProcArgs = Context.CreateVector(NumArgs);
+    Vector* Lists = Context.CreateVector(NumArgs);
+    Value Result = Context.CreateList(Lists);
+
+    for (int J = 0; J < NumArgs; ++J) {
+      if (Pair* P = dyn_cast<Pair>(Args[J]))
+        Lists.get(J) = P;
+    }
+
+    C.PushCont([](Context& C, ValueRefs) {
+      Value Result = C.getCapture(0);
+      C.Cont(Result);
+    }, CaptureList{Result});
+    C.PushCont([](Context& C, ValueRefs Args) {
+      // Beware of user defined procs.
+      if (Args.size() != 1)
+        return C.RaiseError("invalid arity");
+      Value Result = C.getCapture(0);
+      if (Pair* ResultPair = dyn_cast<pair>(Result)) {
+        ResultPair->Car = Args[0];
+        Result = ResultPair->Cdr;
+      } else {
+        return C.Cont();
+      }
+
+      Value Proc = C.getCapture(1);
+      Value ProcArgs = C.getCapture(2);
+      Value Lists = C.getCapture(3);
+
+      for (int J = 0; J < NumArgs; ++J) {
+        if (Pair* P = dyn_cast<Pair>(Args[J])) {
+          ProcArgs.get(J) = P->Car;
+          Lists.get(J) = P->Cdr;
+        }
+      }
+
+      // Trampoline until finished.
+      C.PushCont([](Context& C, ValueRefs) {
+        if (Args.size() != 1)
+          return C.RaiseError("invalid arity");
+        Value Result = ;
+        C.Apply(Proc, ProcArgs);
+      }, CaptureList{Result, Proc, ProcArgs, Lists})
+      return C.Apply(Proc, ProcArgs.getElements());
+    }, CaptureList{Result, Proc, ProcArgs, Lists});
+
+    C.Cont(Result);
+}
+#endif
 
 void with_exception_handler(Context& C, ValueRefs Args) {
   if (Args.size() != 2) return C.RaiseError("invalid arity");
@@ -987,6 +1257,14 @@ void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(car)     = heavy::builtins::car;
   HEAVY_BASE_VAR(cdr)     = heavy::builtins::cdr;
   HEAVY_BASE_VAR(append)  = heavy::builtins::append;
+  HEAVY_BASE_VAR(vector)  = heavy::builtins::vector;
+  HEAVY_BASE_VAR(make_vector) = heavy::builtins::make_vector;
+  HEAVY_BASE_VAR(vector_length) = heavy::builtins::vector_length;
+  HEAVY_BASE_VAR(vector_ref) = heavy::builtins::vector_ref;
+  HEAVY_BASE_VAR(vector_set) = heavy::builtins::vector_set;
+  HEAVY_BASE_VAR(make_list) = heavy::builtins::make_list;
+  HEAVY_BASE_VAR(list_ref) = heavy::builtins::list_ref;
+  HEAVY_BASE_VAR(list_set) = heavy::builtins::list_set;
   HEAVY_BASE_VAR(dump)    = heavy::builtins::dump;
   HEAVY_BASE_VAR(write)   = heavy::builtins::write;
   HEAVY_BASE_VAR(newline) = heavy::builtins::newline;
@@ -1073,6 +1351,17 @@ void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"car",     HEAVY_BASE_VAR(car)},
     {"cdr",     HEAVY_BASE_VAR(cdr)},
     {"append",  HEAVY_BASE_VAR(append)},
+    {"vector", HEAVY_BASE_VAR(vector)},
+    {"make-vector", HEAVY_BASE_VAR(make_vector)},
+    {"vector-length", HEAVY_BASE_VAR(vector_length)},
+    {"vector-ref", HEAVY_BASE_VAR(vector_ref)},
+    {"vector-set!", HEAVY_BASE_VAR(vector_set)},
+    {"make-list", HEAVY_BASE_VAR(make_list)},
+    {"list-ref", HEAVY_BASE_VAR(list_ref)},
+    {"list-set!", HEAVY_BASE_VAR(list_set)},
+    //{"map",     HEAVY_BASE_VAR(map)},
+    //{"any",     HEAVY_BASE_VAR(any)},
+    //{"every",   HEAVY_BASE_VAR(every)},
     {"dump",    HEAVY_BASE_VAR(dump)},
     {"write",   HEAVY_BASE_VAR(write)},
     {"newline", HEAVY_BASE_VAR(newline)},

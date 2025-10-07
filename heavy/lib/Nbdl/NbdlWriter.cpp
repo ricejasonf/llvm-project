@@ -332,7 +332,7 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
 
   void Visit(GetOp Op) {
     auto MemberNameOp = Op.getKey().getDefiningOp<nbdl_gen::MemberNameOp>();
-      OS << "decltype(auto) "
+      OS << "auto&& "
          << SetLocalVarName(Op.getResult(), "get_")
          << " = ";
     if (MemberNameOp) {
@@ -413,7 +413,7 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
   }
 
   void Visit(ApplyOp Op) {
-    OS << "decltype(auto) "
+    OS << "auto&& "
        << SetLocalVarName(Op.getResult(), "apply_")
        << " = ";
     // No forwarding stuff here

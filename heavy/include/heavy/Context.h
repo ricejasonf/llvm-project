@@ -345,7 +345,7 @@ public:
                               llvm::ArrayRef<Value> Values);
   String*     CreateFormatted(Error* Err);
   Vector*     CreateVector(ArrayRef<Value> Xs);
-  Vector*     CreateVector(unsigned N);
+  Vector*     CreateVector(unsigned N, Value Default = Undefined());
   ByteVector* CreateByteVector(llvm::ArrayRef<Value> Xs);
   EnvFrame*   CreateEnvFrame(llvm::ArrayRef<Value> Names);
   EnvFrame*   CreateEnvFrame(unsigned N);
