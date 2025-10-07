@@ -1,31 +1,10 @@
 (import (heavy builtins))
 
 (define-library (heavy base)
-  (import (heavy builtins))
-  (import (heavy base r7rs-syntax))
+  (import (heavy builtins)
+          (heavy base r7rs-syntax)
+          (heavy base list))
   (begin
-    (define (caar x) (car (car x)))
-    (define (cadr x) (car (cdr x)))
-    (define (cdar x) (cdr (car x)))
-    (define (cddr x) (cdr (cdr x)))
-
-    (define (member-fast obj list compare)
-      (if (pair? list)
-        (if (compare obj (car list))
-          list
-          (member-fast obj (cdr list) compare))
-        #f))
-
-    ; TODO Use builtins.case-lambda.
-    (define (member obj list . optional-compare)
-      (define compare
-        (if (pair? optional-compare)
-          (car optional-compare)
-          equal?))
-      (member-fast obj list compare))
-
-
-
 
     ) ; end of begin
   (export
@@ -81,10 +60,15 @@
     write
     newline
 
-    ; r7rs-syntax
+    ; (heavy base r7rs-syntax)
     let letrec letrec*
     cond case
     and or when unless
+
+    ; (heavy base list)
+    caar cadr cdar cddr
+    member memq memv
+    map reverse
 
     ; eval stuff
     compile

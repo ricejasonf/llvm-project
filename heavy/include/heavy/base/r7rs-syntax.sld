@@ -13,16 +13,17 @@
 
     (define-syntax letrec
       (syntax-rules ()
-        ((letrec stuff) (letrec* stuff))))
+        ((letrec ((var init) ...) body ...)
+         ((lambda () (define var init) ...  body ...)))))
 
     (define-syntax let
       (syntax-rules ()
         ((let ((name val) ...) body ...)
           ((lambda (name ...) body ...) val ...))
         ((let tag ((name val) ...) body ...)
-          ((letrec ((tag (lambda (name ...)
-            body ...)))
-            tag)
+          ((letrec
+             ((tag (lambda (name ...) body ...)))
+             tag)
             val ...))))
 
     (define-syntax cond

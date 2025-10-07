@@ -131,10 +131,30 @@
     ))
 (newline)
 
-;CHECK-NEXT: (baz bar foo)
+; CHECK-NEXT: (baz bar foo)
 (write
   (let ((List (list 'foo 'bar 'baz)))
     (list (list-ref List 2)
           (list-ref List 1)
           (list-ref List 0))))
+(newline)
+
+; CHECK-NEXT: ()
+(write
+  (reverse '()))
+(newline)
+
+; CHECK-NEXT: (1)
+(write
+  (reverse '(1)))
+(newline)
+
+; CHECK-NEXT: (5 4 3 2 1)
+(write
+  (reverse '(1 2 3 4 5)))
+(newline)
+
+; CHECK-NEXT: (baz uhh)
+(write
+  (cadr '((foo bar) (baz uhh))))
 (newline)

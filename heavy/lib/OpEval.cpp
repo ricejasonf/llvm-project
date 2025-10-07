@@ -111,7 +111,7 @@ public:
         mlir::Operation* TL = &*i;
         auto G = dyn_cast<GlobalOp>(TL);
         // External GlobalOps are skipped.
-        if ((G && !G.isExternal()) || isa<CommandOp>(TL)) {
+        if ((G && !G.isExternal()) || isa<CommandOp, LoadModuleOp>(TL)) {
           Context.PushCont([](heavy::Context& C, ValueRefs) mutable {
             heavy::Value Op = C.getCapture(0);
             Value Args[] = {Op};

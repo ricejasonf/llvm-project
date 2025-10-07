@@ -1279,17 +1279,12 @@ void Context::Raise(Value Obj) {
 }
 
 void Context::RaiseError(String* Msg, llvm::ArrayRef<Value> IrrArgs) {
-  heavy::SourceLocation Loc = this->Loc;
   Value IrrList = Empty();
-  while (!IrrArgs.empty()) {
-    Value Irr = IrrArgs.front();
-    if (!Loc.isValid()) {
-      Loc = Irr.getSourceLocation();
-    }
+  for (Value Irr : llvm::reverse(IrrArgs))
+    setLoc(Irr.getSourceLocation());
+  for (Value Irr : IrrArgs)
     IrrList = CreatePair(Irr, IrrList);
-    IrrArgs = IrrArgs.drop_front();
-  }
-  Value Error = CreateError(Loc, Msg, IrrList);
+  Value Error = CreateError(this->Loc, Msg, IrrList);
   Raise(Error);
 }
 
