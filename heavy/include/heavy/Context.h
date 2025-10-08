@@ -226,7 +226,7 @@ public:
   // PushEnvFrame - Creates and pushes an EnvFrame to the
   //                current environment (EnvStack)
   EnvFrame* PushEnvFrame(llvm::ArrayRef<Value> Names);
-  void PopEnvFrame();
+  void PopEnvFrame(EnvFrame*);
   void PushLocalBinding(Binding* B);
 
   // PushLambdaFormals - Check formals, create an EnvFrame,
@@ -303,7 +303,7 @@ public:
     }
   }
 
-  Value RebuildLiteral(Value V);
+  Value RebuildLiteral(Value V, Value Env = nullptr);
 
   Heap<Context>& getAllocator() { return *this; }
 
@@ -395,7 +395,8 @@ public:
     return new (*this) BuiltinSyntax(Fn);
   }
 
-  SyntaxClosure* CreateSyntaxClosure(SourceLocation Loc, Value Node,
+  Value CreateSyntaxClosure(SourceLocation Loc, Value Node, Value Env);
+  SyntaxClosure* CreateSyntaxClosure(SourceLocation Loc, Symbol* S,
                                      Value Env);
 
   SourceValue* CreateSourceValue(SourceLocation Loc) {

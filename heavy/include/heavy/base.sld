@@ -3,7 +3,8 @@
 (define-library (heavy base)
   (import (heavy builtins)
           (heavy base r7rs-syntax)
-          (heavy base list))
+          (heavy base list)
+          (heavy base int))
   (begin
 
     ) ; end of begin
@@ -18,7 +19,6 @@
     quote
     set!
     syntax-rules
-    ir-macro-transformer
     begin
     cond-expand
     define-library
@@ -32,8 +32,8 @@
     -
     /
     *
-    >
-    <
+    < <= > >=
+    positive? zero?
     apply
     append
     call-with-values
@@ -68,7 +68,7 @@
     ; (heavy base list)
     caar cadr cdar cddr
     member memq memv
-    map reverse
+    reverse map
 
     ; eval stuff
     compile

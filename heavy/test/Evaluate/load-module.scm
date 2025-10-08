@@ -32,3 +32,7 @@
   (newline)
   (write y)) 42 44)
 (newline)
+
+; CHECK: 9000
+(lam (lam (write 9000)))
+(newline)

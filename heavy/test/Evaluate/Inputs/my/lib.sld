@@ -32,11 +32,16 @@
               (attributes
                 `("info", (MakeAttr Arg))))) X))))
 
-  (define-syntax my-lambda
-    (syntax-rules (:)
-      ((my-lambda ((arg : type) ...) body ...)
-       (lambda (arg ...)
-         body ...))))
+    (define-syntax lam
+      (syntax-rules ()
+        ((lam body)
+         ((lambda () body)))))
+
+    (define-syntax my-lambda
+      (syntax-rules (:)
+        ((my-lambda ((arg : type) ...) body ...)
+         (lambda (arg ...)
+           body ...))))
 
     (write "end of init")
     (newline)
@@ -45,6 +50,7 @@
   (export hello-module
           hello-module-syntax
           create-op-literal
+          lam
           my-lambda)
 )
 (write "end of module")

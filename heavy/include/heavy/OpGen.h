@@ -374,6 +374,10 @@ public:
     return createLiteral(V);
   }
 
+  mlir::Value VisitUndefined(Undefined U) {
+    return createUndefined();
+  }
+
   // VisitOperation and VisitContArg are both idempotent
   // so they are declared static for reuse in the static
   // value conversion functions.

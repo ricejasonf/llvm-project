@@ -1634,6 +1634,7 @@ public:
   }
 
   void Insert(String* Id, String* MangledName) {
+    assert(!MangledName->getStringRef().empty());
     Map[Id] = MangledName;
   }
 
@@ -1840,6 +1841,7 @@ public:
 
   // Add a named location or syntax keyword.
   void Insert(Symbol* S, String* MangledName) {
+    assert(!MangledName->getStringRef().empty());
     EnvMap[S->getString()] = MangledName;
   }
 

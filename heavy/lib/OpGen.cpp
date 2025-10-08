@@ -159,6 +159,9 @@ mlir::Value OpGen::GetSingleResult(heavy::Value V) {
   if (!TopLevelOp)
     InsertTopLevelCommandOp(Context.getLoc());
 
+  if (IsLocalDefineAllowed)
+    FinishLocalDefines();
+
   TailPosScope TPS(*this);
   IsTailPos = false;
   mlir::Value Result = Visit(V);
@@ -582,7 +585,7 @@ mlir::Value OpGen::createLambdaBody(SourceLocation Loc,
       Builder.create<ContOp>(Result.getLoc(), Result);
     }
 
-    Context.PopEnvFrame();
+    Context.PopEnvFrame(EnvFrame);
     Captures = std::move(LS.Node.Captures);
   }
 
@@ -826,13 +829,13 @@ mlir::Value OpGen::createSyntaxRules(SourceLocation Loc,
     mlir::OpBuilder::InsertionGuard IG(Builder);
     Builder.setInsertionPointToStart(&B);
 
-    Value PrevEnvStack = Context.EnvStack;
+    Value PrevEnvStack = Context.getEnvironment();
     PatternTemplate PT(*this, Keyword, Ellipsis, EnvArg, Literals);
 
     PT.VisitPatternTemplate(Pattern, Template, ExprArg);
     PatternDefs = I->Cdr;
     // Restore the environment.
-    Context.EnvStack = PrevEnvStack;
+    Context.setEnvironment(PrevEnvStack);
   }
 
   // Terminate with error call for when no patterns match.
@@ -901,6 +904,8 @@ bool OpGen::WalkDefineInits(Value Env, IdSet& LocalIds) {
   // Insert the binding initializer.
   auto Undef = cast<heavy::Undefined>(B->getValue());
   Value DefineArgs = Undef.getTracer();
+  // FIXME If we restruct SyntaxClosure to wrapping Symbols
+  // then this is not needed since DefineArgs is never just an identifier.
   // SC may be nullptr.
   auto* SC = dyn_cast<SyntaxClosure>(Undef.getTracer());
   SyntaxClosureScope SCScope(*this, SC);
@@ -910,6 +915,8 @@ bool OpGen::WalkDefineInits(Value Env, IdSet& LocalIds) {
   mlir::Value BVal = LocalizeValue(BindingTable.lookup(B), B);
   SourceLocation Loc = DefineArgs.getSourceLocation();
   assert(BVal && "BindingTable should have an entry for local define");
+  if (!Init)
+    return true;
   create<SetOp>(Loc, BVal, Init);
   return false;
 }
@@ -952,6 +959,8 @@ mlir::Value OpGen::createDefine(Value Id, Value DefineArgs, Value OrigCall) {
     if (auto* S = dyn_cast<Symbol>(Id))
       Id = Context.CreateSyntaxClosure(S->getSourceLocation(),
                                        S, CurSyntaxClosure->Env);
+// FIXME If we restruct SyntaxClosure to wrapping Symbols
+// then this is not needed since DefineArgs is never just an identifier.
     // Save syntactic closure information for DefineArgs.
     DefineArgs = DefineArgs == CurSyntaxClosure->Node
       ? CurSyntaxClosure
@@ -1004,6 +1013,8 @@ mlir::Value OpGen::createTopLevelDefine(Value Id, Value DefineArgs,
     TailPosScope TPS(*this);
     IsTailPos = false;
     mlir::Value Init = VisitDefineArgs(DefineArgs);
+    if (!Init)
+      return mlir::Value();
     mlir::Value LocalV = create<LoadGlobalOp>(DefineLoc, MangledName);
     return create<SetOp>(DefineLoc, LocalV, Init);
   }
@@ -1043,13 +1054,12 @@ mlir::Value OpGen::createTopLevelDefine(Value Id, Value DefineArgs,
 
 mlir::Value OpGen::createIf(SourceLocation Loc, Value Cond, Value Then,
                             Value Else) {
-  if (IsLocalDefineAllowed)
-    FinishLocalDefines();
   // Cond
   mlir::Value CondResult;
   {
     TailPosScope TPS(*this);
     IsTailPos = false;
+    // Local defines are finished in here.
     CondResult = GetSingleResult(Cond);
   }
 

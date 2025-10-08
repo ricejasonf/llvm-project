@@ -52,8 +52,8 @@ heavy::ExternFunction add;
 heavy::ExternFunction sub;
 heavy::ExternFunction div;
 heavy::ExternFunction mul;
-heavy::ExternFunction gt;
-heavy::ExternFunction lt;
+heavy::ExternFunction is_positive;
+heavy::ExternFunction is_zero;
 heavy::ExternFunction list;
 heavy::ExternFunction length;
 heavy::ExternFunction cons;
@@ -68,9 +68,6 @@ heavy::ExternFunction vector_set;
 heavy::ExternFunction make_list;
 heavy::ExternFunction list_set;
 heavy::ExternFunction list_ref;
-heavy::ExternFunction map;
-heavy::ExternFunction any;
-heavy::ExternFunction every;
 heavy::ExternFunction dump;
 heavy::ExternFunction write;
 heavy::ExternFunction newline;
@@ -472,7 +469,7 @@ void call_with_values(Context& C, ValueRefs Args) {
 void dump(Context& C, ValueRefs Args) {
   if (Args.size() != 1) return C.RaiseError("invalid arity");
   Args[0].dump();
-  C.Cont(heavy::Undefined());
+  C.Cont(Args[0]);
 }
 
 void write(Context& C, ValueRefs Args) {
@@ -639,12 +636,26 @@ void div(Context& C, ValueRefs Args) {
   }
 }
 
-void gt(Context& C, ValueRefs Args) {
-  C.RaiseError("TODO gt");
+void is_positive(Context& C, ValueRefs Args) {
+  if (Args.size() != 1)
+    return C.RaiseError("invalid arity");
+
+  Value Input = Args[0];
+  if (!isa<Int, Float>(Input))
+    return C.RaiseError("expecting number");
+
+  C.Cont(Bool(Number::getAsDouble(Input) > 0.0));
 }
 
-void lt(Context& C, ValueRefs Args) {
-  C.RaiseError("TODO lt");
+void is_zero(Context& C, ValueRefs Args) {
+  if (Args.size() != 1)
+    return C.RaiseError("invalid arity");
+
+  Value Input = Args[0];
+  if (!isa<Int, Float>(Input))
+    return C.RaiseError("expecting number");
+
+  C.Cont(Bool(Number::getAsDouble(Input) == 0.0));
 }
 
 void equal(Context& C, ValueRefs Args) {
@@ -697,7 +708,7 @@ void length(Context& C, ValueRefs Args) {
     return C.RaiseError("invalid arity");
   Value Result = length_helper(Args[0]);
   if (!Result)
-    return C.RaiseError("expecting a list");
+    return C.RaiseError("expecting a list: {}", Args[0]);
   C.Cont(Result);
 }
 
@@ -708,15 +719,21 @@ void cons(Context& C, ValueRefs Args) {
 }
 
 void car(Context& C, ValueRefs Args) {
-  if (Args.size() != 1 || !isa<heavy::Pair>(Args[0]))
-    return C.RaiseError("expecting pair");
-  C.Cont(cast<heavy::Pair>(Args[0])->Car);
+  if (Args.size() != 1)
+    return C.RaiseError("invalid arity");
+  if (auto* P = dyn_cast<heavy::Pair>(Args[0]))
+    return C.Cont(P->Car);
+
+  return C.RaiseError("expecting pair: {}", Args[0]);
 }
 
 void cdr(Context& C, ValueRefs Args) {
-  if (Args.size() != 1 || !isa<heavy::Pair>(Args[0]))
-    return C.RaiseError("expecting pair");
-  C.Cont(cast<heavy::Pair>(Args[0])->Cdr);
+  if (Args.size() != 1)
+    return C.RaiseError("invalid arity");
+  if (auto* P = dyn_cast<heavy::Pair>(Args[0]))
+    return C.Cont(P->Cdr);
+
+  return C.RaiseError("expecting pair: {}", Args[0]);
 }
 
 namespace {
@@ -904,92 +921,6 @@ void vector_set(Context& C, ValueRefs Args) {
   Xs[K] = Args[2];
   C.Cont();
 }
-
-#if 0
-namespace {
-// Push continuations to map proc such that evaluation applies
-// arguments in the same order that the lists provide.
-void map_apply(Context& C, Value Proc, ValueRefs Lists) {
-  map_push_cont
-}
-}  // end anononymous namespace
-
-// TODO Move this to (heavy base)
-void map(Context& C, ValueRefs Args) {
-  if (Args.size() < 1)
-    return C.RaiseError("invalid arity");
-
-  Lambda* Proc = dyn_cast<Lambda>(Args[0]);
-  if (!Proc)
-    return C.RaiseError("expecting procedure");
-
-  Args = Args.drop_front();
-  Value NewList = Empty();
-
-  int MinLength = 0;
-  for (Value Arg : Args) {
-    if (Value LengthVal = length_helper(Arg)) {
-      int Length = cast<Int>(LengthVal);
-      if (Length < 0)
-        MinLength = -1;
-      else if (Length < MinLength)
-        MinLength = Length;
-    }
-  }
-  if (MinLength < 0)
-    return C.RaiseError("expecting at least one finite list");
-
-    unsigned NumArgs = Args.size();
-    // Note that these are initialized with Undefined.
-    Vector* ProcArgs = Context.CreateVector(NumArgs);
-    Vector* Lists = Context.CreateVector(NumArgs);
-    Value Result = Context.CreateList(Lists);
-
-    for (int J = 0; J < NumArgs; ++J) {
-      if (Pair* P = dyn_cast<Pair>(Args[J]))
-        Lists.get(J) = P;
-    }
-
-    C.PushCont([](Context& C, ValueRefs) {
-      Value Result = C.getCapture(0);
-      C.Cont(Result);
-    }, CaptureList{Result});
-    C.PushCont([](Context& C, ValueRefs Args) {
-      // Beware of user defined procs.
-      if (Args.size() != 1)
-        return C.RaiseError("invalid arity");
-      Value Result = C.getCapture(0);
-      if (Pair* ResultPair = dyn_cast<pair>(Result)) {
-        ResultPair->Car = Args[0];
-        Result = ResultPair->Cdr;
-      } else {
-        return C.Cont();
-      }
-
-      Value Proc = C.getCapture(1);
-      Value ProcArgs = C.getCapture(2);
-      Value Lists = C.getCapture(3);
-
-      for (int J = 0; J < NumArgs; ++J) {
-        if (Pair* P = dyn_cast<Pair>(Args[J])) {
-          ProcArgs.get(J) = P->Car;
-          Lists.get(J) = P->Cdr;
-        }
-      }
-
-      // Trampoline until finished.
-      C.PushCont([](Context& C, ValueRefs) {
-        if (Args.size() != 1)
-          return C.RaiseError("invalid arity");
-        Value Result = ;
-        C.Apply(Proc, ProcArgs);
-      }, CaptureList{Result, Proc, ProcArgs, Lists})
-      return C.Apply(Proc, ProcArgs.getElements());
-    }, CaptureList{Result, Proc, ProcArgs, Lists});
-
-    C.Cont(Result);
-}
-#endif
 
 void with_exception_handler(Context& C, ValueRefs Args) {
   if (Args.size() != 2) return C.RaiseError("invalid arity");
@@ -1249,8 +1180,8 @@ void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(sub)     = heavy::builtins::sub;
   HEAVY_BASE_VAR(div)     = heavy::builtins::div;
   HEAVY_BASE_VAR(mul)     = heavy::builtins::mul;
-  HEAVY_BASE_VAR(gt)      = heavy::builtins::gt;
-  HEAVY_BASE_VAR(lt)      = heavy::builtins::lt;
+  HEAVY_BASE_VAR(is_positive) = heavy::builtins::is_positive;
+  HEAVY_BASE_VAR(is_zero) = heavy::builtins::is_zero;
   HEAVY_BASE_VAR(list)    = heavy::builtins::list;
   HEAVY_BASE_VAR(length)  = heavy::builtins::length;
   HEAVY_BASE_VAR(cons)    = heavy::builtins::cons;
@@ -1343,8 +1274,8 @@ void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"-",       HEAVY_BASE_VAR(sub)},
     {"/",       HEAVY_BASE_VAR(div)},
     {"*",       HEAVY_BASE_VAR(mul)},
-    {">",       HEAVY_BASE_VAR(gt)},
-    {"<",       HEAVY_BASE_VAR(lt)},
+    {"positive?", HEAVY_BASE_VAR(is_positive)},
+    {"zero?", HEAVY_BASE_VAR(is_zero)},
     {"list",    HEAVY_BASE_VAR(list)},
     {"length",  HEAVY_BASE_VAR(length)},
     {"cons",    HEAVY_BASE_VAR(cons)},
@@ -1359,9 +1290,6 @@ void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"make-list", HEAVY_BASE_VAR(make_list)},
     {"list-ref", HEAVY_BASE_VAR(list_ref)},
     {"list-set!", HEAVY_BASE_VAR(list_set)},
-    //{"map",     HEAVY_BASE_VAR(map)},
-    //{"any",     HEAVY_BASE_VAR(any)},
-    //{"every",   HEAVY_BASE_VAR(every)},
     {"dump",    HEAVY_BASE_VAR(dump)},
     {"write",   HEAVY_BASE_VAR(write)},
     {"newline", HEAVY_BASE_VAR(newline)},

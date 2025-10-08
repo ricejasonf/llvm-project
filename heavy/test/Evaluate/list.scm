@@ -158,3 +158,13 @@
 (write
   (cadr '((foo bar) (baz uhh))))
 (newline)
+
+; COM-CHECK-NEXT: (#t #f #t #f)
+#|
+(write
+  (map <
+    '(0 1 1 3)
+    '(1 2 2 7)
+    '(2 0 3 3)))
+(newline)
+|#

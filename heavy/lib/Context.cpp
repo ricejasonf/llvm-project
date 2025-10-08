@@ -195,17 +195,20 @@ EnvFrame* Context::PushEnvFrame(llvm::ArrayRef<Value> Ids) {
   return E;
 }
 
-void Context::PopEnvFrame() {
+void Context::PopEnvFrame(heavy::EnvFrame* EnvFrame) {
   // We want to remove the current local scope
   // and assert that we aren't popping anything else
   // Walk through the local bindings
   Value Env = EnvStack;
   Pair* EnvPair;
   while ((EnvPair = dyn_cast<Pair>(Env))) {
-    if (!isa<Binding>(EnvPair->Car)) break;
+    if (EnvPair->Car == Value(EnvFrame))
+      break;
+    else
+      assert(isa<Binding>(EnvPair->Car));
     Env = EnvPair->Cdr;
   }
-  assert(isa<EnvFrame>(EnvPair->Car) &&
+  assert(isa<heavy::EnvFrame>(EnvPair->Car) &&
       "Scope must exist to pop");
   EnvStack = EnvPair->Cdr;
 }
@@ -1151,6 +1154,7 @@ bool Context::TryLoadPrebuiltModule(heavy::SourceLocation Loc,
 }
 
 void Context::AddKnownAddress(llvm::StringRef MangledName, heavy::Value Value) {
+  assert(!MangledName.empty() && "expecting valid mangled name");
   String* Name = CreateIdTableEntry(MangledName);
   KnownAddresses[Name] = Value;
 }
@@ -1201,20 +1205,9 @@ bool Context::CheckKind(ValueKind VK, Value V) {
 }
 bool Context::CheckNumber(Value V) {
   if (V.isNumber()) return false;
-  String* S = CreateString(llvm::StringRef("invalid type "),
-                           getKindName(V.getKind()),
-                           llvm::StringRef(", expecting number"));
-  RaiseError(S, V);
+  RaiseError("expecting number: {}", V);
   return true;
 }
-
-#if 0
-void Context::SetError(Value E) {
-  assert(isa<Error>(E) || isa<Exception>(E));
-  Err = E;
-  Raise(E);
-}
-#endif
 
 void Context::SetErrorHandler(Value Handler) {
   assert((isa<Empty>(ExceptionHandlers) ||
@@ -1424,10 +1417,12 @@ namespace {
 class LiteralRebuilder : public ValueVisitor<LiteralRebuilder, Value> {
   friend class ValueVisitor<LiteralRebuilder, Value>;
   heavy::Context& Context;
+  Value Env;
 
 public:
-  LiteralRebuilder(heavy::Context& C)
-    : Context(C)
+  LiteralRebuilder(heavy::Context& C, Value Env = nullptr)
+    : Context(C),
+      Env(Env)
   { }
 
 private:
@@ -1435,7 +1430,18 @@ private:
     return V;
   }
 
+  Value VisitSymbol(Symbol* S) {
+    if (Env)
+      return Context.CreateSyntaxClosure(S->getSourceLocation(), S, Env);
+    else
+      return S;
+  }
+
   Value VisitSyntaxClosure(SyntaxClosure* SC) {
+    // Do not directly nest syntax closures.
+    if (Env)
+      return SC;
+
     // Unwrap the SyntaxClosure.
     return Visit(SC->Node);
   }
@@ -1445,7 +1451,11 @@ private:
     Value Cdr = Visit(P->Cdr);
     if (Car == P->Car && Cdr == P->Cdr)
       return P;
-    return Context.CreatePair(Car, Cdr);
+    heavy::SourceLocation Loc = P->getSourceLocation();
+    if (Loc.isValid())
+      return Context.CreatePairWithSource(Car, Cdr, Loc);
+    else
+      return Context.CreatePair(Car, Cdr);
   }
 
   Value VisitVector(Vector* V) {
@@ -1466,8 +1476,8 @@ private:
 // Rebuild the parts of a literal if it contains
 // an unexpanded SyntaxClosure.
 // Otherwise, it is idempotent.
-Value Context::RebuildLiteral(Value V) {
-  LiteralRebuilder Rebuilder(*this);
+Value Context::RebuildLiteral(Value V, Value Env) {
+  LiteralRebuilder Rebuilder(*this, Env);
   return Rebuilder.Visit(V);
 }
 
@@ -1626,12 +1636,15 @@ EnvFrame* Context::CreateEnvFrame(llvm::ArrayRef<Value> Ids) {
   return E;
 }
 
-SyntaxClosure* Context::CreateSyntaxClosure(SourceLocation Loc, Value Node,
+// Create syntax with Symbols rebuilt as SyntaxClosures.
+Value Context::CreateSyntaxClosure(SourceLocation Loc, Value Node,
+                                                       Value Env) {
+  return RebuildLiteral(Node, Env);
+}
+
+SyntaxClosure* Context::CreateSyntaxClosure(SourceLocation Loc, Symbol* S,
                                             Value Env) {
-  // Prevent direct nesting of SyntaxClosures.
-  if (auto* SC = dyn_cast<SyntaxClosure>(Node))
-    return SC;
-  return new (*this) SyntaxClosure(Loc, Env, Node);
+  return new (*this) SyntaxClosure(Loc, Env, Value(S));
 }
 
 EnvEntry Context::GetSyntax(EnvEntry Entry) {

@@ -821,8 +821,7 @@ private:
     // Create a SyntaxClosure with the provided env argument.
     heavy::Value Input = getValue(Op.getInput());
     heavy::Value Env = getValue(Op.getEnv());
-    SyntaxClosure* SC = Context.CreateSyntaxClosure(Context.getLoc(),
-                                                    Input, Env);
+    Value SC = Context.CreateSyntaxClosure(Context.getLoc(), Input, Env);
     setValue(Op.getResult(), SC);
 
     return next(Op);

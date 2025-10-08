@@ -5,11 +5,10 @@
 (define-library (heavy base r7rs-syntax)
   (import (heavy builtins))
   (begin
-    ; lambda already gives a nice error for an empty body.
     (define-syntax letrec*
       (syntax-rules ()
-        ((letrec* ((var init) ...) body ...)
-         ((lambda () (define var init) ...  body ...)))))
+        ((letrec* ((var init) ...) body1 body ...)
+         ((lambda () (define var init) ...  body1 body ...)))))
 
     (define-syntax letrec
       (syntax-rules ()
@@ -18,14 +17,16 @@
 
     (define-syntax let
       (syntax-rules ()
-        ((let ((name val) ...) body ...)
-          ((lambda (name ...) body ...) val ...))
-        ((let tag ((name val) ...) body ...)
+        ((let ((name val) ...) body1 body ...)
+          ((lambda (name ...) body1 body ...) val ...))
+        ((let tag ((name val) ...) body1 body ...)
           ((letrec
-             ((tag (lambda (name ...) body ...)))
+             ((tag (lambda (name ...) body1 body ...)))
              tag)
             val ...))))
 
+    ; FIXME cond should be in the environment within syntax body.
+    ;       (this applies to all define-syntax)
     (define-syntax cond
       (syntax-rules (else =>)
         ((cond (else result1 result2 ...))

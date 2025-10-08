@@ -2,7 +2,8 @@
 
 (define-library (heavy base list)
   (import (heavy builtins)
-          (heavy base r7rs-syntax))
+          (heavy base r7rs-syntax)
+          (only (heavy base int) < <=))
   (begin
     (define (caar x) (car (car x)))
     (define (cadr x) (car (cdr x)))
@@ -34,10 +35,42 @@
             (cons (car List) NewList))
           NewList)))
 
+    (define (map Proc . InputLists)
+      (define (MapFast FastProc List)
+        (if (pair? List)
+          (cons (FastProc (car List))
+                (MapFast FastProc (cdr List)))
+          '()))
+      (define MaxLen
+        (let Loop ((Lists InputLists)
+                   (MinLength -1))
+          (dump Lists)
+          (if (pair? Lists)
+            (let ((Len (length (car Lists))))
+              (Loop
+                (cdr Lists)
+                (if (<= 0 Len MinLength)
+                  Len
+                  MinLength)))
+            MinLength)))
+      (dump 'wtf)
+      (when (< MaxLen 0)
+        (error "expecting at least one finite list" InputLists))
+      (let Loop ((I 0)
+                 (Lists InputLists)
+                 (Result '()))
+        (if (< I MaxLen)
+          (let ((Args (MapFast car Lists))
+                (NextLists (MapFast cdr Lists)))
+            (Loop (+ I 1) NextLists (cons (apply Proc Args))))
+          Result)))
+
+
+
     ) ; end of begin
   (export
     caar cadr cdar cddr
     member memq memv
-    reverse
+    reverse map
     )
 )
