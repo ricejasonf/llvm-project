@@ -72,8 +72,8 @@ bool isDotSubsequent(char c) {
 bool isPeculiarIdentifierPrefix(char InitChar, char const* CurPtr) {
   // InitChar - The '+', '-' or '.'
   char Char = *CurPtr;
-  char NextChar;
-  char NextNextChar;
+  char NextChar = '\0';
+  char NextNextChar = '\0';
   if (Char != '\0')
     NextChar = *(CurPtr + 1);
   if (NextChar != '\0')

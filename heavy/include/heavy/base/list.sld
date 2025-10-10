@@ -44,28 +44,30 @@
       (define MaxLen
         (let Loop ((Lists InputLists)
                    (MinLength -1))
-          (dump Lists)
           (if (pair? Lists)
-            (let ((Len (length (car Lists))))
-              (Loop
-                (cdr Lists)
-                (if (<= 0 Len MinLength)
-                  Len
-                  MinLength)))
+            (letrec
+              ((Len (length (car Lists)))
+               (NextLists (cdr Lists))
+               (NextMinLength
+                 (if (or (< Len MinLength)
+                         (< MinLength 0))
+                   Len
+                   MinLength)))
+              (Loop NextLists NextMinLength))
             MinLength)))
-      (dump 'wtf)
       (when (< MaxLen 0)
         (error "expecting at least one finite list" InputLists))
-      (let Loop ((I 0)
-                 (Lists InputLists)
-                 (Result '()))
-        (if (< I MaxLen)
-          (let ((Args (MapFast car Lists))
-                (NextLists (MapFast cdr Lists)))
-            (Loop (+ I 1) NextLists (cons (apply Proc Args))))
-          Result)))
-
-
+      (let ()
+        (define ReverseResult
+          (let Loop ((I 0)
+                     (Lists InputLists)
+                     (Result '()))
+            (if (< I MaxLen)
+              (let ((Args (MapFast car Lists))
+                    (NextLists (MapFast cdr Lists)))
+                (Loop (+ I 1) NextLists (cons (apply Proc Args) Result)))
+              Result)))
+        (reverse ReverseResult)))
 
     ) ; end of begin
   (export

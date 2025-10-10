@@ -28,6 +28,7 @@ class TemplateGen : TemplateBase<TemplateGen> {
   friend TemplateBase<TemplateGen>;
   friend ValueVisitor<TemplateGen, TemplateResult>;
 
+  Value Keyword;
   Value Ellipsis;
   NameSet& PatternVarNames;
   llvm::SmallVectorImpl<mlir::Value>* CurrentPacks = nullptr;
@@ -39,15 +40,36 @@ class TemplateGen : TemplateBase<TemplateGen> {
 public:
   using ErrorTy = TemplateError;
 
-  TemplateGen(heavy::OpGen& O, NameSet& PVNames,
-              Value Ellipsis)
+  TemplateGen(heavy::OpGen& O, Value Keyword,
+              NameSet& PVNames, Value Ellipsis)
     : TemplateBase(O),
+      Keyword(Keyword),
       Ellipsis(Ellipsis),
       PatternVarNames(PVNames)
   { }
 
   // Create operations to transform syntax and compile the result.
   void BuildTemplate(heavy::Value Template) {
+    {
+      Symbol* KeywordStr = nullptr;
+      // FIXME Unwrapping the SC like this is probably not correct.
+      if (auto* SC = dyn_cast<SyntaxClosure>(Keyword))
+        KeywordStr = cast<Symbol>(SC->Node);
+      else
+        KeywordStr = cast<Symbol>(Keyword);
+      // Add the Keyword (name of the syntax) as a Rename.
+      auto SyntaxFuncOp = OpGen.Builder.getBlock()->getParentOp()
+                          ->getParentOfType<FuncOp>();
+      llvm::StringRef SyntaxFuncName = SyntaxFuncOp.getSymName();
+      // Insert RenameOps before the RenameEnv EnvFrameOp.
+      mlir::OpBuilder::InsertionGuard IG(OpGen.Builder);
+      OpGen.Builder.setInsertionPoint(RenameEnv);
+      auto SyntaxOp = OpGen.create<heavy::SyntaxOp>(
+                          Keyword.getSourceLocation(), SyntaxFuncName);
+      createRename(KeywordStr, SyntaxOp);
+    }
+
+    // Transform the syntax.
     heavy::SourceLocation Loc = Template.getSourceLocation();
     mlir::Value TransformedSyntax = transformSyntax(Template);
     finishRenameEnv();

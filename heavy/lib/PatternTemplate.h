@@ -78,9 +78,6 @@ public:
     heavy::SourceLocation Loc = Pattern.getSourceLocation();
     if (isa_and_nonnull<Symbol>(Pattern.car())) {
       // Ignore the initial keyword.
-      // FIXME We don't actually check name, but other
-      //       implementations simply ignore the first
-      //       element altogether.
       Pair* P = cast<Pair>(Pattern);
       auto MatchPairOp = OpGen.create<heavy::MatchPairOp>(Loc, E);
       Visit(P->Cdr, MatchPairOp.getCdr());
@@ -89,7 +86,7 @@ public:
     }
 
     if (!OpGen.CheckError()) {
-      TemplateGen TG(OpGen, PatternVars, Ellipsis);
+      TemplateGen TG(OpGen, Keyword, PatternVars, Ellipsis);
       TG.BuildTemplate(Template);
     }
 

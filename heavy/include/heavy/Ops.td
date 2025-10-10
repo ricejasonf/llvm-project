@@ -508,7 +508,8 @@ def heavy_RenameOp : HeavyOp<"rename"> {
     expansion.
   }];
 
-  let arguments = (ins StrAttr:$id, HeavyValue:$capture);
+  let arguments = (ins StrAttr:$id,
+        AnyTypeOf<[HeavyValue, HeavySyntax]>:$capture);
   let results   = (outs HeavyValue:$result);
   let builders = [
     OpBuilder<(ins "::llvm::StringRef":$id, "::mlir::Value":$capture)>

@@ -145,11 +145,11 @@ protected:
     return OpGen.create<SpliceOp>(Loc, ValX, ValY);
   }
 
-  mlir::Value createRename(Symbol* P) {
+  mlir::Value createRename(Symbol* P, mlir::Value ProvidedVal = nullptr) {
     String* UniqueStr = P->getString();
 
     // Check for memoized SC.
-    {
+    if (!ProvidedVal) {
       auto [R, SC] = RenameOps.lookup(UniqueStr);
       if (SC)
         return SC;
@@ -158,18 +158,25 @@ protected:
     // The result will be a symbol literal.
     // The built RenameOps are added to the RenameOps list.
     SourceLocation Loc = P->getSourceLocation();
-
-    mlir::Value LiteralResult = createLiteral(P);
-    mlir::Value SC = OpGen.create<SyntaxClosureOp>(Loc, LiteralResult,
-                                                   RenameEnv);
-
-    heavy::Context& Context = OpGen.getContext();
-    EnvEntry Entry = Context.Lookup(P);
     llvm::StringRef Id = P->getStringRef();
+
+    mlir::Value CaptureVal = ProvidedVal ? ProvidedVal : createLiteral(P);
+    mlir::Value SC;
+    if (!isa<HeavySyntaxTy>(CaptureVal.getType()))
+      SC = OpGen.create<SyntaxClosureOp>(Loc, CaptureVal, RenameEnv);
+
+    if (ProvidedVal) {
+      mlir::Value R = OpGen.create<heavy::RenameOp>(Loc, Id, CaptureVal);
+      RenameOps.insert({UniqueStr, {R, SC}});
+      return SC;
+    }
 
     // Insert RenameOps before the RenameEnv EnvFrameOp.
     mlir::OpBuilder::InsertionGuard IG(OpGen.Builder);
     OpGen.Builder.setInsertionPoint(RenameEnv);
+
+    heavy::Context& Context = OpGen.getContext();
+    EnvEntry Entry = Context.Lookup(P);
 
     std::string MangledNameStr;
     llvm::StringRef MangledName;

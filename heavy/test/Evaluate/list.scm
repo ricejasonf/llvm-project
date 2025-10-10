@@ -159,12 +159,49 @@
   (cadr '((foo bar) (baz uhh))))
 (newline)
 
-; COM-CHECK-NEXT: (#t #f #t #f)
-#|
+; CHECK-NEXT: (#t #f #t #f)
 (write
   (map <
     '(0 1 1 3)
     '(1 2 2 7)
     '(2 0 3 3)))
 (newline)
-|#
+
+; CHECK-NEXT: ()
+(write
+  (map + '() '() '()))
+(newline)
+
+; CHECK-NEXT: (5)
+(write
+  (map + '(5)))
+(newline)
+
+; CHECK-NEXT: (7)
+(write
+  (map + '(5) '(2)))
+(newline)
+
+; CHECK-NEXT: (#(a b c) #(d e f) #(g h i))
+(write
+  (map vector
+    '(a d g 'oof)
+    '(b e h)
+    '(c f i)))
+(newline)
+
+; CHECK-NEXT: (#(a b c) #(d e f) #(g h i))
+(write
+  (map vector
+    '(a d g)
+    '(b e h 'oof)
+    '(c f i)))
+(newline)
+
+; CHECK-NEXT: (#(a b c) #(d e f) #(g h i))
+(write
+  (map vector
+    '(a d g)
+    '(b e h)
+    '(c f i 'oof)))
+(newline)
