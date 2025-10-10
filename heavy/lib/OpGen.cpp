@@ -537,8 +537,7 @@ OpGen::createLambdaFunction(Value Formals, SourceLocation Loc,
     return {nullptr, nullptr};
 
   bool HasRestParam = false;
-  heavy::EnvFrame* EnvFrame = Context.PushLambdaFormals(Formals, HasRestParam,
-                                                        CurSyntaxClosure);
+  heavy::EnvFrame* EnvFrame = Context.PushLambdaFormals(Formals, HasRestParam);
   if (!EnvFrame)
     return {nullptr, nullptr};
   unsigned Arity = EnvFrame->getBindings().size();
@@ -712,7 +711,8 @@ mlir::Value OpGen::createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall) {
 
   std::string MangledName;
   if (isTopLevel()) {
-    TopLevelEnv = cast<Environment>(Context.EnvStack);
+    TopLevelEnv = Context.GetTopLevelEnvironment();
+    assert(TopLevelEnv && "expecting top level environment");
     // Create the syntax as a global.
     MangledName = mangleSyntax(Keyword);
     if (MangledName.empty())
@@ -755,8 +755,6 @@ mlir::Value OpGen::createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall) {
     Context.RunSync(HEAVY_BASE_VAR(op_eval), GlobalOpVal);
   } else {
     return SetError("TODO support local syntax");
-    //Binding* B = Context.CreateBinding(Keyword, Syntax);
-    //Context.PushLocalBinding(B);
   }
 
   return mlir::Value();
@@ -829,13 +827,10 @@ mlir::Value OpGen::createSyntaxRules(SourceLocation Loc,
     mlir::OpBuilder::InsertionGuard IG(Builder);
     Builder.setInsertionPointToStart(&B);
 
-    Value PrevEnvStack = Context.getEnvironment();
     PatternTemplate PT(*this, Keyword, Ellipsis, EnvArg, Literals);
 
     PT.VisitPatternTemplate(Pattern, Template, ExprArg);
     PatternDefs = I->Cdr;
-    // Restore the environment.
-    Context.setEnvironment(PrevEnvStack);
   }
 
   // Terminate with error call for when no patterns match.
@@ -895,7 +890,7 @@ bool OpGen::WalkDefineInits(Value Env, IdSet& LocalIds) {
   Value Id = B->getIdentifier();
   bool IsNameInserted;
   std::tie(std::ignore, IsNameInserted) =
-    LocalIds.insert(getIdentifierUniqueId(Id));
+    LocalIds.insert(Context.GetIdentifierUniqueId(Id));
   if (!IsNameInserted) {
     SetError("local variable has duplicate definitions", Id);
     return true;
@@ -926,7 +921,9 @@ bool OpGen::FinishLocalDefines() {
   IsTailPos = false;
   IsLocalDefineAllowed = false;
   IdSet LocalIds;
-  return WalkDefineInits(Context.EnvStack, LocalIds);
+  // Get the localiest EnvFrame.
+  Value EnvStack = Context.GetLocalEnvStack();
+  return WalkDefineInits(EnvStack, LocalIds);
 }
 
 mlir::Value OpGen::createBody(SourceLocation Loc, Value Body) {
@@ -953,20 +950,6 @@ mlir::Value OpGen::createDefine(Value Id, Value DefineArgs, Value OrigCall) {
   // Create the binding with an undefined object that secretly holds
   // its syntax in the current environment.
   Value Env;
-
-  if (CurSyntaxClosure) {
-    // Save syntactic closure information for Id.
-    if (auto* S = dyn_cast<Symbol>(Id))
-      Id = Context.CreateSyntaxClosure(S->getSourceLocation(),
-                                       S, CurSyntaxClosure->Env);
-// FIXME If we restruct SyntaxClosure to wrapping Symbols
-// then this is not needed since DefineArgs is never just an identifier.
-    // Save syntactic closure information for DefineArgs.
-    DefineArgs = DefineArgs == CurSyntaxClosure->Node
-      ? CurSyntaxClosure
-      : Context.CreateSyntaxClosure(DefineArgs.getSourceLocation(),
-                                    DefineArgs, CurSyntaxClosure->Env);
-  }
   Binding* B = Context.CreateBinding(Id, Undefined(DefineArgs));
   // Push to the local environment.
   Context.PushLocalBinding(B);
@@ -983,17 +966,22 @@ mlir::Value OpGen::createTopLevelDefine(Value Id, Value DefineArgs,
   }
 
   assert(isTopLevel() && "expecting top level");
-  Environment* Env = nullptr;
-  if (auto* SC = dyn_cast<SyntaxClosure>(Id))
-    Env = cast<Environment>(SC->Env);
-  else if (CurSyntaxClosure)
-    Env = cast<Environment>(CurSyntaxClosure->Env);
-  else
-    Env = cast<Environment>(Context.EnvStack);
-
-  // Unwrap SyntaxClosures.
   assert(isIdentifier(Id) && "expecting identifier");
-  Symbol* S = cast<Symbol>(Context.RebuildLiteral(Id));
+
+  Environment* Env = nullptr;
+  Symbol* S = nullptr;
+  // Unwrap SyntaxClosures.
+  if (auto* SC = dyn_cast<SyntaxClosure>(Id)) {
+    S = cast<Symbol>(SC->Node);
+    Env = Context.GetTopLevelEnvironment(SC->Env);
+    if (!Env)
+      return SetError("FIXME support top level names in syntax closures");
+  } else {
+    S = cast<Symbol>(Id);
+    Env = Context.GetTopLevelEnvironment();
+  }
+    
+  assert(Env && "expecting top level environment");
 
   // If EnvStack isn't an Environment then there is local
   // scope information on top of it
@@ -1187,16 +1175,16 @@ mlir::Value OpGen::VisitExternName(ExternName* EN) {
 }
 
 mlir::Value OpGen::VisitSyntaxClosure(SyntaxClosure* SC) {
-  SyntaxClosureScope SCScope(*this, SC);
-  mlir::Value Result = Visit(SC->Node);
-  return Result;
+  return VisitSymbol(cast<Symbol>(SC->Node), SC->Env);
 }
 
-mlir::Value OpGen::VisitSymbol(Symbol* S) {
-  EnvEntry Entry = LookupEnv(S);
+mlir::Value OpGen::VisitSymbol(Symbol* S, Value ClosedEnv) {
+  EnvEntry Entry = LookupEnv(S, ClosedEnv);
   SourceLocation Loc = S->getSourceLocation();
 
   if (!Entry) {
+    if (!Context.GetTopLevelEnvironment(ClosedEnv))
+      return SetError("identifier is undefined in syntax closure: {}", S);
     // Default to the name of a global
     heavy::Mangler Mangler(Context);
     std::string MangledName = Mangler.mangleVariable(getModulePrefix(), S);
@@ -1289,10 +1277,9 @@ mlir::Value OpGen::createError(heavy::SourceLocation Loc,
   return mlir::Value();
 }
 
-mlir::Value OpGen::createOpGen(SourceLocation Loc, mlir::Value Input,
-                               mlir::Value Env) {
+mlir::Value OpGen::createOpGen(SourceLocation Loc, mlir::Value Input) {
   // OpGenOp should always be considered tail position.
-  create<heavy::OpGenOp>(Loc, Input, Env);
+  create<heavy::OpGenOp>(Loc, Input);
   return mlir::Value();
 }
 
@@ -1317,6 +1304,7 @@ mlir::Value OpGen::createContinuation(mlir::Operation* CallOp) {
 }
 
 mlir::Value OpGen::CallSyntax(Value Operator, Pair* P) {
+  Context.EnsureEnvFrame();
   switch (Operator.getKind()) {
     case ValueKind::BuiltinSyntax: {
       Context.setLoc(P->getSourceLocation());
@@ -1519,22 +1507,17 @@ void OpGen::Export(Value NameList) {
   return Context.Cont();
 }
 
-heavy::EnvEntry OpGen::LookupEnv(heavy::Value Id) {
+heavy::EnvEntry OpGen::LookupEnv(Value Id, Value ClosedEnv) {
   assert(isIdentifier(Id) && "expecting an identifier");
   // For any given SyntaxClosure, use the object as the lookup
   // in the current environment, and then use the raw Symbol
   // in the closed environment.
-  heavy::EnvEntry Result;
-  heavy::Value ClosedEnv;
-  if (auto* SC = dyn_cast<SyntaxClosure>(Id)) {
-    ClosedEnv = SC->Env;
-    Id = SC->Node;
-  } else if (CurSyntaxClosure) {
-    ClosedEnv = CurSyntaxClosure->Env;
-  }
+  if (auto* SC = dyn_cast<SyntaxClosure>(Id))
+    return LookupEnv(SC->Node, SC->Env);
 
   assert(isa<Symbol>(Id) && "syntax closure should be unwrapped");
 
+  heavy::EnvEntry Result;
   if (ClosedEnv) {
     SyntaxClosure StackSC;
     Symbol* S = cast<Symbol>(Id);

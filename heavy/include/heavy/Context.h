@@ -112,6 +112,11 @@ class Context : public ContinuationStack<Context>,
   //    and swap it back upon completion (via RAII)
   //  - TODO EnvStack et al. could probably be moved to OpGen.
   Value EnvStack;
+  Environment* GetTopLevelEnvironment(Value Env = nullptr);
+  void EnsureEnvFrame() {
+    if (isa<Environment>(EnvStack))
+      PushEnvFrame();
+  }
 
 public: // Provide access in lib/Mlir bindings.
   std::unique_ptr<mlir::DialectRegistry> DialectRegistry;
@@ -125,6 +130,7 @@ private:
 public:
   heavy::OpGen* OpGen = nullptr;
   heavy::OpEvalPtr OpEval;
+
 
   // Work around DidCallContinuation being set with compiler errors.
   bool CheckError();
@@ -162,7 +168,6 @@ public:
   void dumpModuleOp();
   void verifyModule();
   bool OutputModule(llvm::StringRef MangledName, llvm::StringRef ModulePath);
-  void PushTopLevel(Value);
 
   // Return true on invalid kind
   bool CheckKind(ValueKind VK, Value V);
@@ -181,7 +186,9 @@ public:
     EnvStack = E;
   }
 
-  Environment* getTopLevelEnvironment();
+  Value& GetLocalEnvStack(Value Stack = nullptr);
+  // Provide a hashable value for checking for duplicate identifiers.
+  std::pair<uintptr_t, uintptr_t> GetIdentifierUniqueId(Value V);
 
   Module* RegisterModule(llvm::StringRef MangledName,
                          heavy::ModuleLoadNamesFn* LoadNames = nullptr);
@@ -225,19 +232,20 @@ public:
 
   // PushEnvFrame - Creates and pushes an EnvFrame to the
   //                current environment (EnvStack)
-  EnvFrame* PushEnvFrame(llvm::ArrayRef<Value> Names);
+  EnvFrame* PushEnvFrame(llvm::ArrayRef<Value> Names = {});
   void PopEnvFrame(EnvFrame*);
   void PushLocalBinding(Binding* B);
+  void PushEnv(Value V, Value Env);
 
   // PushLambdaFormals - Check formals, create an EnvFrame,
   //                     and push it onto the EnvStack
   //                     Return the pushed EnvFrame or nullptr.
-  EnvFrame* PushLambdaFormals(Value Formals, bool& HasRestParam,
-                              SyntaxClosure* SC);
+  EnvFrame* PushLambdaFormals(Value Formals, bool& HasRestParam);
+
 private:
   bool CheckLambdaFormals(Value Formals,
                           llvm::SmallVectorImpl<Value>& Names,
-                          bool& HasRestParam, SyntaxClosure* SC);
+                          bool& HasRestParam);
 public:
 
   void EmitStackSpaceError();

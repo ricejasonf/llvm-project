@@ -186,12 +186,12 @@ private:
   heavy::Value VisitPair(Pair* P, bool& Rebuilt, int Depth) {
     assert(Depth > 0 && "Depth cannot be zero here.");
     if (OpGen.CheckError()) return Undefined{};
-    if (isSymbol(P->Car, "quasiquote")) {
+    if (isSymbolAux(P->Car, "quasiquote")) {
       return HandleQuasiquote(P, Rebuilt, Depth + 1);
-    } else if (isSymbol(P->Car, "unquote")) {
+    } else if (isSymbolAux(P->Car, "unquote")) {
       return HandleUnquote(P, Rebuilt, Depth);
     } else if (isa<Pair>(P->Car) &&
-               isSymbol(cast<Pair>(P->Car)->Car, "unquote-splicing")) {
+               isSymbolAux(cast<Pair>(P->Car)->Car, "unquote-splicing")) {
       Pair* P2 = cast<Pair>(P->Car);
       return HandleUnquoteSplicing(P, P2, P->Cdr, Rebuilt, Depth);
     } else {

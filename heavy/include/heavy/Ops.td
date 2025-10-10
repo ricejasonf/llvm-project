@@ -162,7 +162,7 @@ def heavy_OpGenOp : HeavyOp<"opgen", [Terminator]> {
     This operation is used for syntax code generation.
   }];
 
-  let arguments = (ins HeavyValue:$input, HeavyValue:$env);
+  let arguments = (ins HeavyValue:$input);
   let results   = (outs);
 }
 

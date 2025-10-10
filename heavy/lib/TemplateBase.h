@@ -48,29 +48,37 @@ public:
     if (mlir::Value* MVP = std::get_if<mlir::Value>(&Result))
       TransformedSyntax = *MVP;
     else
-      TransformedSyntax = createLiteral(std::get<heavy::Value>(Result));
+      TransformedSyntax = this->createLiteral(std::get<heavy::Value>(Result));
     return TransformedSyntax;
   }
 
   // Create a new environment with the renamed name/values in it.
   // (They will have their original names in the "renamed environment".)
-  mlir::Value createRenameEnv() {
+  mlir::Value finishRenameEnv() {
     heavy::SourceLocation Loc;
-    // Move the RenameOps to the end of the current block.
-    mlir::Block* Block = OpGen.Builder.getBlock();
-    auto InsertionPoint = OpGen.Builder.getInsertionPoint();
-    for (mlir::Value RV : RenameOps)
-      RV.getDefiningOp()->moveBefore(Block, InsertionPoint);
+    // Create the RenameOps.
+    llvm::SmallVector<mlir::Value, 12> RenameOpVector;
+    for (auto [Str, Pair] : RenameOps) {
+      auto [R, SC] = Pair;
+      // Move RenameOps to the beginning of the block.
+      R.getDefiningOp()->moveBefore(RenameEnv);
+      RenameOpVector.push_back(R);
+    }
 
-    // Add the RenameOps to an EnvFrame
+    // Add the RenameOps to a new EnvFrameOp
     // to serve as the base of the environment.
-    return OpGen.create<EnvFrameOp>(Loc, RenameOps);
+    mlir::OpBuilder::InsertionGuard IG(OpGen.Builder);
+    OpGen.Builder.setInsertionPoint(RenameEnv);
+    auto NewRenameEnv = OpGen.create<EnvFrameOp>(Loc, RenameOpVector);
+    RenameEnv.getResult().replaceAllUsesWith(NewRenameEnv);
+    RenameEnv->erase();
+    RenameEnv = NewRenameEnv;
+    return NewRenameEnv;
   }
 
   // Compile the result (at the "comile-time"'s "run-time").
-  void createOpGen(heavy::SourceLocation Loc, mlir::Value Expr,
-                   mlir::Value Env) {
-    OpGen.createOpGen(Loc, Expr, Env);
+  void createOpGen(heavy::SourceLocation Loc, mlir::Value Expr) {
+    OpGen.createOpGen(Loc, Expr);
   }
 
 
@@ -79,10 +87,14 @@ protected:
   using ValueVisitor<Derived, TemplateResult>::getDerived;
 
   heavy::OpGen& OpGen;
-  llvm::SmallVector<mlir::Value, 8> RenameOps;
+  heavy::EnvFrameOp RenameEnv;
+  // Map the results of RenameOps.
+  llvm::DenseMap<String*, std::pair<mlir::Value, mlir::Value>> RenameOps;
 
   TemplateBase(heavy::OpGen& O)
-    : OpGen(O)
+    : OpGen(O),
+      RenameEnv(O.create<EnvFrameOp>(heavy::SourceLocation(),
+                                     llvm::ArrayRef<mlir::Value>()))
   { }
 
   mlir::Location createLoc(heavy::SourceLocation Loc) {
@@ -134,18 +146,30 @@ protected:
   }
 
   mlir::Value createRename(Symbol* P) {
+    String* UniqueStr = P->getString();
+
+    // Check for memoized SC.
+    {
+      auto [R, SC] = RenameOps.lookup(UniqueStr);
+      if (SC)
+        return SC;
+    }
+
     // The result will be a symbol literal.
     // The built RenameOps are added to the RenameOps list.
+    SourceLocation Loc = P->getSourceLocation();
+
     mlir::Value LiteralResult = createLiteral(P);
+    mlir::Value SC = OpGen.create<SyntaxClosureOp>(Loc, LiteralResult,
+                                                   RenameEnv);
 
     heavy::Context& Context = OpGen.getContext();
     EnvEntry Entry = Context.Lookup(P);
-    SourceLocation Loc = P->getSourceLocation();
     llvm::StringRef Id = P->getStringRef();
 
-    // Insert RenameOps at the beginning of the pattern block.
+    // Insert RenameOps before the RenameEnv EnvFrameOp.
     mlir::OpBuilder::InsertionGuard IG(OpGen.Builder);
-    OpGen.Builder.setInsertionPointToStart(OpGen.Builder.getBlock());
+    OpGen.Builder.setInsertionPoint(RenameEnv);
 
     std::string MangledNameStr;
     llvm::StringRef MangledName;
@@ -155,8 +179,8 @@ protected:
       mlir::Value Capture = OpGen.Lookup(Entry.Value);
       assert(Capture && "expecting value in lookup");
       mlir::Value R = OpGen.create<heavy::RenameOp>(Loc, Id, Capture);
-      RenameOps.push_back(R);
-      return LiteralResult;
+      RenameOps.insert({UniqueStr, {R, SC}});
+      return SC;
     } else if (Entry.MangledName) {
       MangledName = Entry.MangledName->getStringRef();
     } else {
@@ -170,8 +194,8 @@ protected:
 
     assert(!MangledName.empty() && "should have mangled name");
     mlir::Value R = OpGen.create<RenameGlobalOp>(Loc, Id, MangledName);
-    RenameOps.push_back(R);
-    return LiteralResult;
+    RenameOps.insert({UniqueStr, {R, SC}});
+    return SC;
   }
 
   // ValueVisitor functions

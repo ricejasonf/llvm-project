@@ -73,6 +73,8 @@ public:
   mlir::Value VisitPatternTemplate(heavy::Value Pattern,
                                    heavy::Value Template,
                                    mlir::Value E) {
+    heavy::Context& Context = OpGen.getContext();
+    EnvFrame* EF = Context.PushEnvFrame();
     heavy::SourceLocation Loc = Pattern.getSourceLocation();
     if (isa_and_nonnull<Symbol>(Pattern.car())) {
       // Ignore the initial keyword.
@@ -91,6 +93,7 @@ public:
       TG.BuildTemplate(Template);
     }
 
+    Context.PopEnvFrame(EF);
     return mlir::Value();
   }
 

@@ -1248,6 +1248,7 @@ public:
 //                 transformation.
 //                 The SourceLocation is the location of the
 //                 PairWithSource from substitution.
+class EnvFrame;
 class SyntaxClosure : public ValueBase,
                       public ValueWithSource {
 public:
@@ -1261,9 +1262,9 @@ public:
       Node(Node)
   { }
 
-  // We store one on the stack for lookup.
+  // For SC on the stack.
   SyntaxClosure()
-    : SyntaxClosure(SourceLocation(), Value(), Value())
+    : SyntaxClosure({}, Value(), Value())
   { }
 
   using ValueWithSource::getSourceLocation;
@@ -1280,9 +1281,6 @@ inline bool isIdentifier(Value V) {
 
   return isa<Symbol>(V);
 }
-
-// Provide a hashable value for checking for duplicate identifiers.
-std::pair<uintptr_t, uintptr_t> getIdentifierUniqueId(Value V);
 
 class Vector final
   : public ValueBase,
@@ -1532,10 +1530,15 @@ class EnvFrame final
     return NumBindings;
   }
 
+  // Store shadow scopes.
+  Value LocalStack;
+
 public:
+
   EnvFrame(unsigned NumBindings)
     : ValueBase(ValueKind::EnvFrame),
-      NumBindings(NumBindings)
+      NumBindings(NumBindings),
+      LocalStack(Empty())
   { }
 
   llvm::ArrayRef<Binding*> getBindings() const {
@@ -1548,16 +1551,15 @@ public:
         getTrailingObjects<Binding*>(), NumBindings);
   }
 
+  Value getLocalStack() const { return LocalStack; }
+
   static size_t sizeToAlloc(unsigned NumBindings) {
     return totalSizeToAlloc<Binding*>(NumBindings);
   }
 
-  // Return nullptr if not found.
-  EnvEntry Lookup(Value Id) const {
-    for (Value V : getBindings()) {
-      Binding* B = cast<Binding>(V);
-      EnvEntry Result = B->Lookup(Id);
-      if (Result)
+  EnvEntry LookupBindings(Value Id) const {
+    for (Binding* B : getBindings()) {
+      if (EnvEntry Result = B->Lookup(Id))
         return Result;
     }
     return {};
@@ -1857,6 +1859,11 @@ inline bool isSymbol(Value V , llvm::StringRef Str) {
     return S->Equiv(Str);
   }
   return false;
+}
+inline bool isSymbolAux(Value V , llvm::StringRef Str) {
+  if (auto* SC = dyn_cast<SyntaxClosure>(V))
+    V = SC->Node;
+  return isSymbol(V, Str);
 }
 
 inline SourceLocation ValueBase::getSourceLocation() {

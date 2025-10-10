@@ -90,3 +90,23 @@
   (my-define not-my-local 12)
   (write not-my-local)
   (newline)))
+
+; Test nested syntax closures.
+(define-library (my my-let)
+  (import (heavy builtins))
+  (begin
+    (define-syntax my-let
+      (syntax-rules ()
+        ((my-let ((name val) ...) body1 body ...)
+          ((lambda (name ...) body1 body ...) val ...))))
+    )
+  (export my-let)
+  )
+
+(import (my my-let))
+
+; CHECK: 805
+(my-let ((X 805))
+  (my-let ((Y 806))
+    (write X)))
+(newline)

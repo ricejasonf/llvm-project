@@ -848,12 +848,8 @@ private:
 
   BlockItrTy Visit(OpGenOp Op) {
     heavy::OpGen* OpGen = Context.OpGen;  // For debug only.
-    heavy::Value PrevEnv = Context.getEnvironment();
     heavy::Value Input = getValue(Op.getInput());
-    heavy::Value Env = getValue(Op.getEnv());
-    Context.setEnvironment(Env);
     mlir::Value Result = Context.OpGen->Visit(Input);
-    Context.setEnvironment(PrevEnv);
     heavy::Value Output = heavy::OpGen::fromValue(Result);
     assert(OpGen == Context.OpGen && "OpGen visit should not unwind itself");
     if (!Context.OpGen || !Context.OpGen->CheckError())

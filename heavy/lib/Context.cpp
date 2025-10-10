@@ -107,20 +107,6 @@ Environment::Environment(Context& C, heavy::Symbol* ModulePrefix)
 { }
 Environment::~Environment() = default;
 
-Environment* Context::getTopLevelEnvironment() {
-  // EnvStack is always an Environment or an improper
-  // list ending with an Environment.
-  if (auto* E = dyn_cast<Environment>(EnvStack)) {
-    return E;
-  }
-  while (Pair* P = dyn_cast<Pair>(EnvStack)) {
-    if (auto* E = dyn_cast<Environment>(P->Cdr)) {
-      return E;
-    }
-  }
-  llvm_unreachable("EnvStack should have an Environment.");
-}
-
 Module* Context::RegisterModule(llvm::StringRef MangledName,
                                 heavy::ModuleLoadNamesFn* LoadNames) {
   auto Result = Modules.try_emplace(MangledName,
@@ -133,7 +119,7 @@ Module* Context::RegisterModule(llvm::StringRef MangledName,
 }
 
 void Context::Import(heavy::ImportSet* ImportSet) {
-  Environment* Env = dyn_cast<Environment>(EnvStack);
+  Environment* Env = GetTopLevelEnvironment();
   if (!Env) {
     // Import doesn't work in local scope.
     OpGen->SetError("unexpected import", ImportSet);
@@ -160,17 +146,16 @@ void Context::Import(heavy::ImportSet* ImportSet) {
 }
 
 EnvFrame* Context::PushLambdaFormals(Value Formals,
-                                     bool& HasRestParam,
-                                     SyntaxClosure* SC) {
+                                     bool& HasRestParam) {
   llvm::SmallVector<Value, 8> Ids;
   HasRestParam = false;
   if (CheckLambdaFormals(Formals, Ids,
-                         HasRestParam, SC)) return nullptr;
+                         HasRestParam)) return nullptr;
 
   llvm::SmallSet<std::pair<uintptr_t, uintptr_t>, 8> IdSet;
   // ensure uniqueness of names
   for (Value Id : Ids) {
-    auto Result = IdSet.insert(getIdentifierUniqueId(Id));
+    auto Result = IdSet.insert(GetIdentifierUniqueId(Id));
     if (!Result.second) {
       OpGen->SetError("duplicate parameter name", Id);
     }
@@ -179,84 +164,111 @@ EnvFrame* Context::PushLambdaFormals(Value Formals,
   return PushEnvFrame(Ids);
 }
 
-std::pair<uintptr_t, uintptr_t> heavy::getIdentifierUniqueId(Value V) {
+std::pair<uintptr_t, uintptr_t> Context::GetIdentifierUniqueId(Value V) {
   assert(isIdentifier(V) && "expecting identifier");
   if (auto* S = dyn_cast<Symbol>(V))
     return {Value(S).getOpaqueValue(), 0};
 
   auto* SC = cast<SyntaxClosure>(V);
+  Value Env = GetLocalEnvStack(SC->Env);
   return {Value(cast<Symbol>(SC->Node)->getString()).getOpaqueValue(),
-          Value(SC->Env).getOpaqueValue()};
+          Env.getOpaqueValue()};
+}
+
+// Get the localiest EnvFrame->LocalStack or this->EnvStack.
+Value& Context::GetLocalEnvStack(Value Stack) {
+  if (!Stack)
+    Stack = this->EnvStack;
+  EnvFrame* CurEF = nullptr;
+  if (auto* EnvPair = dyn_cast<Pair>(Stack)) {
+    if (auto* EF = dyn_cast<EnvFrame>(EnvPair->Car)) {
+      Stack = EF->LocalStack;
+      CurEF = EF;
+    }
+  }
+  return CurEF ? CurEF->LocalStack : this->EnvStack;
 }
 
 EnvFrame* Context::PushEnvFrame(llvm::ArrayRef<Value> Ids) {
   EnvFrame* E = CreateEnvFrame(Ids);
-  EnvStack = CreatePair(E, EnvStack);
+  PushEnv(E, this->EnvStack);
+
+  // Push to any syntax closures not in the current EnvStack.
+  for (Value Id : Ids) {
+    if (auto* SC = dyn_cast<SyntaxClosure>(Id)) {
+      if (this->EnvStack != SC->Env)
+        PushEnv(E, SC->Env);
+    }
+  }
+
   return E;
 }
 
-void Context::PopEnvFrame(heavy::EnvFrame* EnvFrame) {
-  // We want to remove the current local scope
-  // and assert that we aren't popping anything else
-  // Walk through the local bindings
-  Value Env = EnvStack;
-  Pair* EnvPair;
-  while ((EnvPair = dyn_cast<Pair>(Env))) {
-    if (EnvPair->Car == Value(EnvFrame))
-      break;
-    else
-      assert(isa<Binding>(EnvPair->Car));
-    Env = EnvPair->Cdr;
-  }
-  assert(isa<heavy::EnvFrame>(EnvPair->Car) &&
-      "Scope must exist to pop");
-  EnvStack = EnvPair->Cdr;
+void Context::PushLocalBinding(Binding* B) {
+  PushEnv(B, this->EnvStack);
+  if (auto* SC = dyn_cast<SyntaxClosure>(B->getIdentifier()))
+    if (this->EnvStack != SC->Env)
+      PushEnv(B, SC->Env);
 }
 
-void Context::PushLocalBinding(Binding* B) {
-  EnvStack = CreatePair(B, EnvStack);
+void Context::PushEnv(Value V, Value Env) {
+  // Push to the localiest stack.
+  Value& Dest = GetLocalEnvStack(Env);
+  Dest = CreatePair(V, Dest);
+}
+
+// Pop the environment until after PopOff is popped off.
+void Context::PopEnvFrame(EnvFrame* PopOff) {
+  // We want to remove the current local scope.
+  // Find the EnvFrame nested in the LocalStacks of other EnvFrames.
+  Value Stack = this->EnvStack;
+  EnvFrame* CurEF = nullptr;
+
+  Pair* EnvPair;
+  while ((EnvPair = dyn_cast<Pair>(Stack))) {
+    if (auto* EF = dyn_cast<EnvFrame>(EnvPair->Car)) {
+      if (EF == PopOff) {
+        if (CurEF)
+          CurEF->LocalStack = EnvPair->Cdr;
+        else
+          this->EnvStack = EnvPair->Cdr;
+        return;
+      }
+      Stack = EF->LocalStack;
+      CurEF = EF;
+    } else {
+      assert(isa<Binding>(EnvPair->Car));
+      Stack = EnvPair->Cdr;
+    }
+  }
 }
 
 // CheckLambdaFormals - Returns true on error
 bool Context::CheckLambdaFormals(Value Formals,
-                               llvm::SmallVectorImpl<Value>& Names,
-                               bool& HasRestParam,
-                               SyntaxClosure* SC) {
+                                 llvm::SmallVectorImpl<Value>& Names,
+                                 bool& HasRestParam) {
   Value V = Formals;
-  if (isa<Empty>(V)) return false;
+  if (isa<Empty>(V))
+    return false;
 
-  // Ensure Ids within SyntaxClosures keep that information.
-  if (auto* SCV = dyn_cast<SyntaxClosure>(V)) {
-    // It is either the whole list or just an identifier.
-    if (isa<Pair>(SCV->Node) && !Names.empty()) {
-      OpGen->SetError("invalid formals syntax from syntax expansion", SCV);
-      return true;
-    }
-    return CheckLambdaFormals(SCV->Node, Names, HasRestParam, SCV);
-  } else {
-    if (isIdentifier(V)) {
-      // If the formals are just a Symbol
-      // or an improper list ending with a
-      // Symbol, then that Symbol is a "rest"
-      // parameter that binds remaining
-      // arguments as a list.
-      if (SC && !isa<SyntaxClosure>(V))
-        V = CreateSyntaxClosure(V.getSourceLocation(), V, SC->Env);
-      Names.push_back(V);
-      HasRestParam = true;
-      return false;
-    }
-    Pair* P = dyn_cast<Pair>(V);
-    if (!P || !isIdentifier(P->Car)) {
-      OpGen->SetError("invalid formals syntax", V);
-      return true;
-    }
-    V = P->Car;
-    if (SC && !isa<SyntaxClosure>(V))
-      V = CreateSyntaxClosure(V.getSourceLocation(), V, SC->Env);
+  if (isIdentifier(V)) {
+    // If the formals are just a Symbol
+    // or an improper list ending with a
+    // Symbol, then that Symbol is a "rest"
+    // parameter that binds remaining
+    // arguments as a list.
     Names.push_back(V);
-    return CheckLambdaFormals(P->Cdr, Names, HasRestParam, SC);
+    HasRestParam = true;
+    return false;
   }
+  Pair* P = dyn_cast<Pair>(V);
+  if (!P || !isIdentifier(P->Car)) {
+    OpGen->SetError("invalid formals syntax", V);
+    return true;
+  }
+  V = P->Car;
+  Names.push_back(V);
+  return CheckLambdaFormals(P->Cdr, Names, HasRestParam);
 }
 
 EnvEntry Context::Lookup(Value Id, Value Stack) {
@@ -266,9 +278,12 @@ EnvEntry Context::Lookup(Value Id, Value Stack) {
     case ValueKind::Binding:
       Result = cast<Binding>(V)->Lookup(Id);
       break;
-    case ValueKind::EnvFrame:
-      Result = cast<EnvFrame>(V)->Lookup(Id);
+    case ValueKind::EnvFrame: {
+      Result = Lookup(Id, cast<EnvFrame>(V)->LocalStack);
+      if (!Result)
+        Result = cast<EnvFrame>(V)->LookupBindings(Id);
       break;
+    }
     case ValueKind::ImportSet:
       if (auto* Name = dyn_cast<Symbol>(Id))
         Result = cast<ImportSet>(V)->Lookup(*this, Name);
@@ -304,10 +319,6 @@ void Context::verifyModule() {
   if (mlir::failed(mlir::verify(M))) {
     llvm::errs() << "error: verfication failed\n";
   }
-}
-
-void Context::PushTopLevel(heavy::Value V) {
-  OpGen->VisitTopLevel(V);
 }
 
 namespace {
@@ -469,13 +480,16 @@ private:
   }
 
   void VisitEnvFrame(EnvFrame* E) {
-    OS << "#<EnvFrame {";
+    OS << "#<EnvFrame {Bindings: {";
     // Print the name of each binding.
     llvm::interleaveComma(E->getBindings(), OS,
       [&](Value B) {
         VisitBinding(cast<Binding>(B));
       });
+    OS << "} LocalStack: {";
+    Visit(E->getLocalStack());
     OS << "}>";
+
   }
 
   void VisitBinding(Binding* B) {
@@ -1737,4 +1751,19 @@ String* Context::CreateFormatted(Error* Err) {
     Irrs.push_back(Irr);
 
   return CreateFormatted(Err->getErrorMessage(), Irrs);
+}
+
+// Return nullptr if there is anything other
+// than the single empty EnvFrame on top.
+Environment* Context::GetTopLevelEnvironment(Value Env) {
+  if (!Env)
+    Env = EnvStack;
+  if (auto* Result = dyn_cast<Environment>(Env))
+    return Result;
+  if (auto* P = dyn_cast<Pair>(Env)) {
+    if (auto* Result = dyn_cast<Environment>(P->Cdr);
+        Result && isa<EnvFrame>(P->Car))
+      return Result;
+  }
+  return nullptr;
 }

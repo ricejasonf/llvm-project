@@ -223,9 +223,10 @@ class CopyCollector : private ValueVisitor<CopyCollector, heavy::Value> {
 
   // SyntaxClosure
   heavy::Value VisitSyntaxClosure(heavy::SyntaxClosure* SyntaxClosure) {
-    return new (NewHeap) heavy::SyntaxClosure(SyntaxClosure->getSourceLocation(),
-                                              Visit(SyntaxClosure->Env),
-                                              Visit(SyntaxClosure->Node));
+    return new (NewHeap) heavy::SyntaxClosure(
+        SyntaxClosure->getSourceLocation(),
+        Visit(SyntaxClosure->Env),
+        Visit(SyntaxClosure->Node));
   }
 
   // Vector

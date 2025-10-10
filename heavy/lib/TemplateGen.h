@@ -50,8 +50,8 @@ public:
   void BuildTemplate(heavy::Value Template) {
     heavy::SourceLocation Loc = Template.getSourceLocation();
     mlir::Value TransformedSyntax = transformSyntax(Template);
-    mlir::Value RenameEnv = createRenameEnv();
-    createOpGen(Loc, TransformedSyntax, RenameEnv);
+    finishRenameEnv();
+    createOpGen(Loc, TransformedSyntax);
   }
 
 private:

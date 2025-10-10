@@ -280,8 +280,7 @@ public:
                          llvm::MutableArrayRef<mlir::Value> Args);
   mlir::Value createError(heavy::SourceLocation Loc,
                           llvm::MutableArrayRef<mlir::Value> Args);
-  mlir::Value createOpGen(SourceLocation Loc, mlir::Value Input,
-                          mlir::Value Env);
+  mlir::Value createOpGen(SourceLocation Loc, mlir::Value Input);
   mlir::Value createBody(SourceLocation Loc, Value Body);
   mlir::Value createSequence(SourceLocation Loc, Value Body);
   mlir::Value createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall);
@@ -398,7 +397,7 @@ public:
 
   mlir::Value VisitExternName(ExternName* EN);
   mlir::Value VisitSyntaxClosure(SyntaxClosure* SC);
-  mlir::Value VisitSymbol(Symbol* S);
+  mlir::Value VisitSymbol(Symbol* S, Value ClosedEnv = nullptr);
   mlir::Value VisitBinding(Binding* B);
 
   mlir::Value VisitPair(Pair* P);
@@ -410,7 +409,7 @@ public:
 
   mlir::Operation* LookupSymbol(llvm::StringRef MangledName);
 
-  heavy::EnvEntry LookupEnv(heavy::Value Id);
+  heavy::EnvEntry LookupEnv(heavy::Value Id, heavy::Value ClosedEnv = nullptr);
 private:
   mlir::Value CallSyntax(Value Operator, Pair* P);
   mlir::Value HandleCall(Pair* P, heavy::EnvEntry FnEnvEntry);
