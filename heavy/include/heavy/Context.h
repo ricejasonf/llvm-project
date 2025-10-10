@@ -186,6 +186,7 @@ public:
     EnvStack = E;
   }
 
+  EnvFrame* GetLocalEnvFrame(Value Stack, bool IsLambdaScope = false);
   Value& GetLocalEnvStack(Value Stack = nullptr);
   // Provide a hashable value for checking for duplicate identifiers.
   std::pair<uintptr_t, uintptr_t> GetIdentifierUniqueId(Value V);
@@ -232,7 +233,8 @@ public:
 
   // PushEnvFrame - Creates and pushes an EnvFrame to the
   //                current environment (EnvStack)
-  EnvFrame* PushEnvFrame(llvm::ArrayRef<Value> Names = {});
+  EnvFrame* PushEnvFrame(llvm::ArrayRef<Value> Names = {},
+                         bool IsLambdaScope = false);
   void PopEnvFrame(EnvFrame*);
   void PushLocalBinding(Binding* B);
   void PushEnv(Value V, Value Env);
@@ -355,8 +357,8 @@ public:
   Vector*     CreateVector(ArrayRef<Value> Xs);
   Vector*     CreateVector(unsigned N, Value Default = Undefined());
   ByteVector* CreateByteVector(llvm::ArrayRef<Value> Xs);
-  EnvFrame*   CreateEnvFrame(llvm::ArrayRef<Value> Names);
-  EnvFrame*   CreateEnvFrame(unsigned N);
+  EnvFrame*   CreateEnvFrame(llvm::ArrayRef<Value> Names, bool IsLambdaScope);
+  EnvFrame*   CreateEnvFrame(unsigned N, bool IsLambdaScope = false);
 
   template <typename T>
   Any* CreateAny(T Obj) {

@@ -161,7 +161,7 @@ EnvFrame* Context::PushLambdaFormals(Value Formals,
     }
   }
 
-  return PushEnvFrame(Ids);
+  return PushEnvFrame(Ids, /*IsLambdaScope=*/true);
 }
 
 std::pair<uintptr_t, uintptr_t> Context::GetIdentifierUniqueId(Value V) {
@@ -175,40 +175,38 @@ std::pair<uintptr_t, uintptr_t> Context::GetIdentifierUniqueId(Value V) {
           Env.getOpaqueValue()};
 }
 
+// Get the localiest EnvFrame.
+EnvFrame* Context::GetLocalEnvFrame(Value Stack, bool IsLambdaScope) {
+  EnvFrame* MostLocalEF = nullptr;
+  for (Value EnvNode : Stack) {
+    if (auto* EF = dyn_cast<EnvFrame>(EnvNode)) {
+      if (auto* NestedEF = GetLocalEnvFrame(EF->getLocalStack(),
+                                            IsLambdaScope))
+        return NestedEF;
+      if (!IsLambdaScope || EF->isLambdaScope())
+        MostLocalEF = EF;
+    }
+  }
+  return MostLocalEF;
+}
+
 // Get the localiest EnvFrame->LocalStack or this->EnvStack.
 Value& Context::GetLocalEnvStack(Value Stack) {
   if (!Stack)
     Stack = this->EnvStack;
-  EnvFrame* CurEF = nullptr;
-  if (auto* EnvPair = dyn_cast<Pair>(Stack)) {
-    if (auto* EF = dyn_cast<EnvFrame>(EnvPair->Car)) {
-      Stack = EF->LocalStack;
-      CurEF = EF;
-    }
-  }
-  return CurEF ? CurEF->LocalStack : this->EnvStack;
+  EnvFrame* MostLocalEF = GetLocalEnvFrame(Stack);
+  return MostLocalEF ? MostLocalEF->LocalStack : this->EnvStack;
 }
 
-EnvFrame* Context::PushEnvFrame(llvm::ArrayRef<Value> Ids) {
-  EnvFrame* E = CreateEnvFrame(Ids);
+EnvFrame* Context::PushEnvFrame(llvm::ArrayRef<Value> Ids,
+                                bool IsLambdaScope) {
+  EnvFrame* E = CreateEnvFrame(Ids, IsLambdaScope);
   PushEnv(E, this->EnvStack);
-
-  // Push to any syntax closures not in the current EnvStack.
-  for (Value Id : Ids) {
-    if (auto* SC = dyn_cast<SyntaxClosure>(Id)) {
-      if (this->EnvStack != SC->Env)
-        PushEnv(E, SC->Env);
-    }
-  }
-
   return E;
 }
 
 void Context::PushLocalBinding(Binding* B) {
   PushEnv(B, this->EnvStack);
-  if (auto* SC = dyn_cast<SyntaxClosure>(B->getIdentifier()))
-    if (this->EnvStack != SC->Env)
-      PushEnv(B, SC->Env);
 }
 
 void Context::PushEnv(Value V, Value Env) {
@@ -480,7 +478,10 @@ private:
   }
 
   void VisitEnvFrame(EnvFrame* E) {
-    OS << "#<EnvFrame {Bindings: {";
+    OS << "#<EnvFrame {";
+    if (E->isLambdaScope())
+      OS << "IsLambda, ";
+    OS << "Bindings: {";
     // Print the name of each binding.
     llvm::interleaveComma(E->getBindings(), OS,
       [&](Value B) {
@@ -488,7 +489,7 @@ private:
       });
     OS << "} LocalStack: {";
     Visit(E->getLocalStack());
-    OS << "}>";
+    OS << "}}>";
 
   }
 
@@ -1636,14 +1637,14 @@ ByteVector* Context::CreateByteVector(ArrayRef<Value> Xs) {
   return BV;
 }
 
-EnvFrame* Context::CreateEnvFrame(unsigned N) {
+EnvFrame* Context::CreateEnvFrame(unsigned N, bool IsLambdaScope) {
   unsigned MemSize = EnvFrame::sizeToAlloc(N);
   void* Mem = Allocate(MemSize, alignof(EnvFrame));
-  return new (Mem) EnvFrame(N);
+  return new (Mem) EnvFrame(N, IsLambdaScope);
 }
 
-EnvFrame* Context::CreateEnvFrame(llvm::ArrayRef<Value> Ids) {
-  EnvFrame* E = CreateEnvFrame(Ids.size());
+EnvFrame* Context::CreateEnvFrame(llvm::ArrayRef<Value> Ids, bool IsLambdaScope) {
+  EnvFrame* E = CreateEnvFrame(Ids.size(), IsLambdaScope);
   auto Bindings = E->getBindings();
   for (unsigned i = 0; i < Bindings.size(); i++)
     Bindings[i] = CreateBinding(Ids[i], CreateUndefined());

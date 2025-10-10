@@ -1525,6 +1525,7 @@ class EnvFrame final
   friend class Context;
   friend class CopyCollector;
 
+  bool IsLambdaScope;
   unsigned NumBindings;
   size_t numTrailingObjects(OverloadToken<Binding*> const) const {
     return NumBindings;
@@ -1535,11 +1536,14 @@ class EnvFrame final
 
 public:
 
-  EnvFrame(unsigned NumBindings)
+  EnvFrame(unsigned NumBindings, bool IsLambdaScope)
     : ValueBase(ValueKind::EnvFrame),
+      IsLambdaScope(IsLambdaScope),
       NumBindings(NumBindings),
       LocalStack(Empty())
   { }
+
+  bool isLambdaScope() const { return IsLambdaScope; }
 
   llvm::ArrayRef<Binding*> getBindings() const {
     return llvm::ArrayRef<Binding*>(

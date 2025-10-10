@@ -263,10 +263,10 @@ void VectorOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
   VectorOp::build(B, OpState, HeavyValueT, args);
 }
 
-void EnvFrameOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
-                            llvm::ArrayRef<mlir::Value> args) {
+void RenameEnvOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                    mlir::Value Env, llvm::ArrayRef<mlir::Value> Bindings) {
   mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
-  EnvFrameOp::build(B, OpState, HeavyValueT, args);
+  RenameEnvOp::build(B, OpState, HeavyValueT, Env, Bindings);
 }
 
 void UndefinedOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState) {

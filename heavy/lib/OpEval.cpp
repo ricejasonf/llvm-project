@@ -176,7 +176,7 @@ private:
     else if (isa<MatchIdOp>(Op))      return Visit(cast<MatchIdOp>(Op));
     else if (isa<RenameOp>(Op))       return Visit(cast<RenameOp>(Op));
     else if (isa<RenameGlobalOp>(Op)) return Visit(cast<RenameGlobalOp>(Op));
-    else if (isa<EnvFrameOp>(Op))     return Visit(cast<EnvFrameOp>(Op));
+    else if (isa<RenameEnvOp>(Op))    return Visit(cast<RenameEnvOp>(Op));
     else if (isa<ToVectorOp>(Op))     return Visit(cast<ToVectorOp>(Op));
     else if (isa<VectorOp>(Op))       return Visit(cast<VectorOp>(Op));
     else if (isa<LoadModuleOp>(Op))   return Visit(cast<LoadModuleOp>(Op));
@@ -552,15 +552,21 @@ private:
     return next(Op);
   }
 
-  BlockItrTy Visit(EnvFrameOp Op) {
-    unsigned Size = Op.getArgs().size();
-    heavy::EnvFrame* EnvFrame = Context.CreateEnvFrame(Size);
+  BlockItrTy Visit(RenameEnvOp Op) {
+    unsigned NumBindings = Op.getBindings().size();
+    heavy::EnvFrame* EnvFrame = Context.CreateEnvFrame(NumBindings);
     llvm::MutableArrayRef<Binding*> Bindings = EnvFrame->getBindings();
-    auto Vals = Op.getArgs();
-    for (unsigned I = 0; I < Size; ++I)
+    auto Vals = Op.getBindings();
+    for (unsigned I = 0; I < NumBindings; ++I)
       Bindings[I] = cast<Binding>(getBindingOrValue(Vals[I]));
 
-    setValue(Op, EnvFrame);
+    // Add the local environment on top of EnvFrame.
+    heavy::Value Env = getValue(Op.getEnv());
+    heavy::EnvFrame* LocalEnvFrame = Context.GetLocalEnvFrame(Env);
+    // EnvFrame is the tail.
+    heavy::Value NewEnv = Context.CreatePair(LocalEnvFrame, EnvFrame);
+
+    setValue(Op, NewEnv);
     return next(Op);
   }
 

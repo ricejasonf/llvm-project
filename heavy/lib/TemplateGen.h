@@ -40,9 +40,9 @@ class TemplateGen : TemplateBase<TemplateGen> {
 public:
   using ErrorTy = TemplateError;
 
-  TemplateGen(heavy::OpGen& O, Value Keyword,
+  TemplateGen(heavy::OpGen& O, mlir::Value EnvArg, Value Keyword,
               NameSet& PVNames, Value Ellipsis)
-    : TemplateBase(O),
+    : TemplateBase(O, EnvArg),
       Keyword(Keyword),
       Ellipsis(Ellipsis),
       PatternVarNames(PVNames)
@@ -61,7 +61,7 @@ public:
       auto SyntaxFuncOp = OpGen.Builder.getBlock()->getParentOp()
                           ->getParentOfType<FuncOp>();
       llvm::StringRef SyntaxFuncName = SyntaxFuncOp.getSymName();
-      // Insert RenameOps before the RenameEnv EnvFrameOp.
+      // Insert RenameOps before the RenameEnvOp.
       mlir::OpBuilder::InsertionGuard IG(OpGen.Builder);
       OpGen.Builder.setInsertionPoint(RenameEnv);
       auto SyntaxOp = OpGen.create<heavy::SyntaxOp>(
@@ -176,8 +176,8 @@ class Transformer : public TemplateBase<Transformer> {
   }
 
 public:
-  Transformer(heavy::OpGen& O, bool IsIr)
-    : TemplateBase(O),
+  Transformer(heavy::OpGen& O, mlir::Value EnvArg, bool IsIr)
+    : TemplateBase(O, EnvArg),
       IsImplicitRename(IsIr)
   { }
 };

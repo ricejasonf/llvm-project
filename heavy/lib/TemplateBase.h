@@ -65,11 +65,12 @@ public:
       RenameOpVector.push_back(R);
     }
 
-    // Add the RenameOps to a new EnvFrameOp
+    // Add the RenameOps to a new RenameEnvOp
     // to serve as the base of the environment.
     mlir::OpBuilder::InsertionGuard IG(OpGen.Builder);
     OpGen.Builder.setInsertionPoint(RenameEnv);
-    auto NewRenameEnv = OpGen.create<EnvFrameOp>(Loc, RenameOpVector);
+    auto NewRenameEnv = OpGen.create<RenameEnvOp>(Loc, RenameEnv.getEnv(),
+                                                  RenameOpVector);
     RenameEnv.getResult().replaceAllUsesWith(NewRenameEnv);
     RenameEnv->erase();
     RenameEnv = NewRenameEnv;
@@ -87,14 +88,14 @@ protected:
   using ValueVisitor<Derived, TemplateResult>::getDerived;
 
   heavy::OpGen& OpGen;
-  heavy::EnvFrameOp RenameEnv;
+  heavy::RenameEnvOp RenameEnv;
   // Map the results of RenameOps.
   llvm::DenseMap<String*, std::pair<mlir::Value, mlir::Value>> RenameOps;
 
-  TemplateBase(heavy::OpGen& O)
+  TemplateBase(heavy::OpGen& O, mlir::Value EnvArg)
     : OpGen(O),
-      RenameEnv(O.create<EnvFrameOp>(heavy::SourceLocation(),
-                                     llvm::ArrayRef<mlir::Value>()))
+      RenameEnv(O.create<RenameEnvOp>(heavy::SourceLocation(), EnvArg,
+                                      llvm::ArrayRef<mlir::Value>()))
   { }
 
   mlir::Location createLoc(heavy::SourceLocation Loc) {
@@ -171,7 +172,7 @@ protected:
       return SC;
     }
 
-    // Insert RenameOps before the RenameEnv EnvFrameOp.
+    // Insert RenameOps before the RenameEnv RenameEnvOp.
     mlir::OpBuilder::InsertionGuard IG(OpGen.Builder);
     OpGen.Builder.setInsertionPoint(RenameEnv);
 

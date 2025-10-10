@@ -103,11 +103,13 @@ class CopyCollector : private ValueVisitor<CopyCollector, heavy::Value> {
   // EnvFrame
   heavy::Value VisitEnvFrame(heavy::EnvFrame* EnvFrame) {
     llvm::ArrayRef<heavy::Binding*> Bindings = EnvFrame->getBindings();
+    bool IsLambdaScope = EnvFrame->isLambdaScope();
     unsigned MemSize = EnvFrame::sizeToAlloc(Bindings.size());
 
     void* Mem = NewHeap.Allocate(MemSize, alignof(heavy::EnvFrame));
 
-    heavy::EnvFrame* NewE = new (Mem) heavy::EnvFrame(Bindings.size());
+    heavy::EnvFrame* NewE = new (Mem) heavy::EnvFrame(Bindings.size(),
+                                                      IsLambdaScope);
     auto NewBindings = NewE->getBindings();
     for (unsigned i = 0; i < Bindings.size(); i++) {
       NewBindings[i] = cast<heavy::Binding>(Visit(Bindings[i]));

@@ -535,6 +535,25 @@ def heavy_RenameGlobalOp : HeavyOp<"rename_global"> {
   ];
 }
 
+def heavy_RenameEnvOp : HeavyOp<"rename_env"> {
+  let description = [{
+    RenameEnvOp creates a new EnvFrame with $bindings
+    which serves as the tail of a new environment stack
+    with the most local EnvFrame from $env on top.
+
+    The local EnvFrame holds the local stack so any syntax closure
+    created will be topped with any newly added local variables
+    or EnvFrames automatically.
+  }];
+
+  let arguments = (ins HeavyValue:$env, Variadic<HeavyValue>:$bindings);
+  let results   = (outs HeavyValue: $result);
+  let builders = [
+    OpBuilder<(ins "::mlir::Value":$env,
+                   "::llvm::ArrayRef<::mlir::Value>":$args)>
+  ];
+}
+
 def heavy_SourceLocOp : HeavyOp<"source-loc"> {
   let summary = "source-loc";
   let description = [{
@@ -631,22 +650,6 @@ def heavy_VectorOp : HeavyOp<"vector"> {
   let summary = "vector";
   let description = [{
     VectorOp creates a heavy::Vector from its arguments.
-  }];
-
-  let arguments = (ins Variadic<HeavyValue>:$args);
-  let results   = (outs HeavyValue: $result);
-  let builders = [
-    OpBuilder<(ins "::llvm::ArrayRef<::mlir::Value>":$args)>
-  ];
-}
-
-def heavy_EnvFrameOp : HeavyOp<"env_frame"> {
-  let description = [{
-    EnvFrameOp creates a vector-like object of bindings.
-
-    Since it serves to define lexical scopes in the
-    environment, it exists apart from VectorOp so that
-    the bindings do not get unwrapped during evaluation.
   }];
 
   let arguments = (ins Variadic<HeavyValue>:$args);

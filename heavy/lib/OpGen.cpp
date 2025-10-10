@@ -876,21 +876,27 @@ mlir::Value OpGen::createSequence(SourceLocation Loc, Value Body) {
 //    been inserted by the `define` syntax. They are
 //    initialized to "undefined" and their corresponding
 //    heavy::Bindings placed in the EnvStack.
-//    Walk the EnvStack up to the nearest EnvFrame and
-//    collect these and insert the lazy initializers via SetOp
+//    Walk the EnvStack owned by the EnvFrame of the current lambda scope.
+//    Collect these and insert the lazy initializers via SetOp
 //    in the lexical order that they were defined.
 bool OpGen::WalkDefineInits(Value Env, IdSet& LocalIds) {
   Pair* P = dyn_cast<Pair>(Env);
   if (!P) return false;
-  if (isa<EnvFrame>(P->Car)) return false;
-  if (WalkDefineInits(P->Cdr, LocalIds)) return true;
+  // Walk the defines before this.
+  if (WalkDefineInits(P->Cdr, LocalIds))
+    return true;
+  // Walk any defines in nested scopes.
+  if (auto* EF = dyn_cast<EnvFrame>(P->Car)) {
+    assert(!EF->isLambdaScope() &&
+        "should not have any nested lambda scopes");
+    return WalkDefineInits(EF->getLocalStack(), LocalIds);
+  }
 
   // Check for duplicate names.
   Binding* B = cast<Binding>(P->Car);
   Value Id = B->getIdentifier();
-  bool IsNameInserted;
-  std::tie(std::ignore, IsNameInserted) =
-    LocalIds.insert(Context.GetIdentifierUniqueId(Id));
+  std::pair<uintptr_t, uintptr_t> UniqueId = Context.GetIdentifierUniqueId(Id);
+  auto [_, IsNameInserted] = LocalIds.insert(UniqueId);
   if (!IsNameInserted) {
     SetError("local variable has duplicate definitions", Id);
     return true;
@@ -916,14 +922,18 @@ bool OpGen::WalkDefineInits(Value Env, IdSet& LocalIds) {
   return false;
 }
 
-bool OpGen::FinishLocalDefines() {
+void OpGen::FinishLocalDefines() {
   TailPosScope TPS(*this);
   IsTailPos = false;
   IsLocalDefineAllowed = false;
   IdSet LocalIds;
-  // Get the localiest EnvFrame.
-  Value EnvStack = Context.GetLocalEnvStack();
-  return WalkDefineInits(EnvStack, LocalIds);
+  // Get the most local EnvFrame that is a lambda scope.
+  EnvFrame* EF = Context.GetLocalEnvFrame(Context.EnvStack,
+                                          /*IsLambdaScope=*/true);
+  assert(EF && "expecting a lambda scope env frame");
+  if (!EF)
+    return;
+  WalkDefineInits(EF->getLocalStack(), LocalIds);
 }
 
 mlir::Value OpGen::createBody(SourceLocation Loc, Value Body) {
@@ -1304,7 +1314,6 @@ mlir::Value OpGen::createContinuation(mlir::Operation* CallOp) {
 }
 
 mlir::Value OpGen::CallSyntax(Value Operator, Pair* P) {
-  Context.EnsureEnvFrame();
   switch (Operator.getKind()) {
     case ValueKind::BuiltinSyntax: {
       Context.setLoc(P->getSourceLocation());
@@ -1312,6 +1321,7 @@ mlir::Value OpGen::CallSyntax(Value Operator, Pair* P) {
       return BS->Fn(*this, P);
     }
     case ValueKind::Syntax: {
+      EnvFrame* EF = Context.PushEnvFrame();
       heavy::Context& Context = this->Context;
       Context.setLoc(P->getSourceLocation());
       Value Input = P;
@@ -1325,6 +1335,7 @@ mlir::Value OpGen::CallSyntax(Value Operator, Pair* P) {
       assert(OpGen == Context.OpGen && "OpGen should not unwind itself");
       if (auto ResultErr = dyn_cast_or_null<heavy::Error>(Result))
         SetError(ResultErr);
+      Context.PopEnvFrame(EF);
       return toValue(Result);
     }
     default: {

@@ -20,7 +20,7 @@
 
 (define ok 'ok!)
 
-; CHECK-NEXT: ok
+; CHECK-NEXT: ok!
 ((capture-late-bind 5))
 
 (newline)

@@ -159,7 +159,7 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
 
   void InsertTopLevelCommandOp(SourceLocation Loc);
   bool WalkDefineInits(Value Env, IdSet& LocalNames);
-  bool FinishLocalDefines();
+  void FinishLocalDefines();
 
 public:
   explicit OpGen(heavy::Context& C, heavy::Symbol* ModulePrefix = nullptr);
