@@ -40,6 +40,7 @@ heavy::ExternSyntax<> create_op;
 heavy::ExternFunction create_op_impl;
 heavy::ExternFunction region;
 heavy::ExternFunction entry_block;
+heavy::ExternFunction add_argument;
 heavy::ExternFunction results;
 heavy::ExternFunction result;
 heavy::ExternFunction at_block_begin;
@@ -135,9 +136,7 @@ void create_op_impl(Context& C, ValueRefs Args) {
 
   // operands
   for (heavy::Value V : Operands->getElements()) {
-    // FIXME
-    // Implicitly unwrapping lists here because
-    // unquote-splicing is not implemented.
+    // Implicitly unwrap lists.
     if (isa<heavy::Pair, heavy::Empty>(V)) {
       for (heavy::Value V2 : V) {
         auto MVal = any_cast<mlir::Value>(V2);
@@ -846,6 +845,7 @@ void HEAVY_MLIR_INIT(heavy::Context& C) {
   HEAVY_MLIR_VAR(create_op_impl) = heavy::mlir_bind::create_op_impl;
   HEAVY_MLIR_VAR(region) = heavy::mlir_bind::region;
   HEAVY_MLIR_VAR(entry_block) = heavy::mlir_bind::entry_block;
+  HEAVY_MLIR_VAR(add_argument) = heavy::mlir_bind::add_argument;
   HEAVY_MLIR_VAR(results) = heavy::mlir_bind::results;
   HEAVY_MLIR_VAR(result) = heavy::mlir_bind::result;
   HEAVY_MLIR_VAR(at_block_begin) = heavy::mlir_bind::at_block_begin;
@@ -880,6 +880,7 @@ void HEAVY_MLIR_LOAD_MODULE(heavy::Context& C) {
     {"current-builder", HEAVY_MLIR_VAR(current_builder).get_binding(C)},
     {"region", HEAVY_MLIR_VAR(region)},
     {"entry-block", HEAVY_MLIR_VAR(entry_block)},
+    {"add-argument", HEAVY_MLIR_VAR(add_argument)},
     {"results", HEAVY_MLIR_VAR(results)},
     {"result", HEAVY_MLIR_VAR(result)},
     {"at-block-begin", HEAVY_MLIR_VAR(at_block_begin)},
