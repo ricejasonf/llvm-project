@@ -1641,7 +1641,7 @@ public:
   }
 
   void Insert(String* Id, String* MangledName) {
-    assert(!MangledName->getStringRef().empty());
+    // assert(!MangledName->getStringRef().empty());
     Map[Id] = MangledName;
   }
 

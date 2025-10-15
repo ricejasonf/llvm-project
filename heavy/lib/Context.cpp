@@ -1302,10 +1302,10 @@ void Context::Raise(Value Obj) {
 
 void Context::RaiseError(String* Msg, llvm::ArrayRef<Value> IrrArgs) {
   Value IrrList = Empty();
-  for (Value Irr : llvm::reverse(IrrArgs))
+  for (Value Irr : llvm::reverse(IrrArgs)) {
     setLoc(Irr.getSourceLocation());
-  for (Value Irr : IrrArgs)
     IrrList = CreatePair(Irr, IrrList);
+  }
   Value Error = CreateError(this->Loc, Msg, IrrList);
   Raise(Error);
 }

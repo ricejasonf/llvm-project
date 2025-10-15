@@ -99,7 +99,7 @@ void create_op_impl(Context& C, ValueRefs Args) {
 
   llvm::StringRef OpName = Args[0].getStringRef();
   if (OpName.empty())
-    return C.RaiseError("expecting operation name");
+    return C.RaiseError("expecting operation name: {}", Args[0]);
 
   Args = Args.drop_front();
 
@@ -114,14 +114,15 @@ void create_op_impl(Context& C, ValueRefs Args) {
     llvm::StringRef Name;
     if (auto* P = dyn_cast<heavy::Pair>(V)) {
       Name = P->Car.getStringRef();
+      if (Name.empty())
+        return C.RaiseError(
+            "expecting name-value pair for attribute: {}", Value(P));
       if (auto* P2 = dyn_cast<heavy::Pair>(P->Cdr)) {
         V = P2->Car;
         if (!isa<heavy::Empty>(P2->Cdr))
           Name = "";  // Clear the name so we raise error below.
       }
     }
-    if (Name.empty())
-      return C.RaiseError("expecting name-value pair for attribute", V);
 
     auto Attr = any_cast<mlir::Attribute>(V);
 
@@ -141,14 +142,14 @@ void create_op_impl(Context& C, ValueRefs Args) {
       for (heavy::Value V2 : V) {
         auto MVal = any_cast<mlir::Value>(V2);
         if (!MVal)
-          return C.RaiseError("expecting mlir.value", V2);
+          return C.RaiseError("expecting mlir.value: {}", V2);
         OpState.operands.push_back(MVal);
       }
       break;
     }
     auto MVal = any_cast<mlir::Value>(V);
     if (!MVal)
-      return C.RaiseError("expecting mlir.value", V);
+      return C.RaiseError("expecting mlir.value: {}", V);
     OpState.operands.push_back(MVal);
   }
 
@@ -160,7 +161,7 @@ void create_op_impl(Context& C, ValueRefs Args) {
   for (heavy::Value V : ResultTypes->getElements()) {
     auto MType = any_cast<mlir::Type>(V);
     if (!MType)
-      return C.RaiseError("expecting mlir.type", V);
+      return C.RaiseError("expecting mlir.type: {}", V);
     OpState.types.push_back(MType);
   }
 
@@ -168,7 +169,7 @@ void create_op_impl(Context& C, ValueRefs Args) {
   for (heavy::Value V : Successors->getElements()) {
     mlir::Block* Block = any_cast<mlir::Block*>(V);
     if (Block == nullptr)
-      return C.RaiseError("expecting mlir.block", V);
+      return C.RaiseError("expecting mlir.block: {}", V);
     OpState.successors.push_back(Block);
   }
 

@@ -21,13 +21,13 @@
       (map InitRegion Is BlockArgTypesList UserFns))
 
     (define-syntax create-op
-      (syntax-rules (: loc attributes operands result-types region)
+      (syntax-rules (: loc: attributes: operands: result-types: region:)
         ((create-op Name
-          (loc Loc)
-          (operands Operands ...)
-          (attributes (AttrName Attr) ...)
-          (result-types ResultTypes ...)
-          (region RegionName ((BlockArg : BlockArgType) ...)
+          (loc: Loc)
+          (operands: Operands ...)
+          (attributes: (AttrName Attr) ...)
+          (result-types: ResultTypes ...)
+          (region: RegionName ((BlockArg : BlockArgType) ...)
                     RegionBody ...) ...)
          (let ((Op
                   (old-create-op Name

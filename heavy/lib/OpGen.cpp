@@ -846,6 +846,8 @@ mlir::Value OpGen::createSyntaxRules(SourceLocation Loc,
 
 // Create a sequence of operations in the current block.
 mlir::Value OpGen::createSequence(SourceLocation Loc, Value Body) {
+  if (CheckError())
+    return mlir::Value();
   if (!isa<Pair>(Body)) {
     return SetError(Loc, "sequence must contain an expression", Body);
   }
@@ -922,6 +924,8 @@ bool OpGen::WalkDefineInits(Value Env, IdSet& LocalIds) {
 }
 
 void OpGen::FinishLocalDefines() {
+  if (CheckError())
+    return;
   TailPosScope TPS(*this);
   IsTailPos = false;
   IsLocalDefineAllowed = false;
