@@ -38,7 +38,7 @@ heavy::ContextLocal   current_context;
 heavy::ContextLocal   current_builder;
 heavy::ExternSyntax<> create_op;
 heavy::ExternFunction create_op_impl;
-heavy::ExternFunction region;
+heavy::ExternFunction get_region;
 heavy::ExternFunction entry_block;
 heavy::ExternFunction add_argument;
 heavy::ExternFunction results;
@@ -296,19 +296,19 @@ void create_op(Context& C, ValueRefs Args) {  // Syntax
   C.Cont(OpGen.fromValue(Call));
 }
 
-// Get an operation region by index (defaulting to 0).
-// (region _op_)
-// (region op _index_)
-void region(Context& C, ValueRefs Args) {
+// Get an operation get_region by index (defaulting to 0).
+// (get-region _op_)
+// (get-region op _index_)
+void get_region(Context& C, ValueRefs Args) {
   if (Args.size() != 1 && Args.size() != 2)
     return C.RaiseError("invalid arity");
 
-  mlir::Operation* Op = heavy::dyn_cast<mlir::Operation>(Args[1]);
+  mlir::Operation* Op = heavy::dyn_cast<mlir::Operation>(Args[0]);
   if (!Op)
-    return C.RaiseError("expecting mlir.op");
+    return C.RaiseError("expecting mlir.op: {}", {Args[0]});
 
   if (Args.size() > 1 && !heavy::isa<heavy::Int>(Args[1]))
-    return C.RaiseError("expecting index");
+    return C.RaiseError("expecting index: {}", {Args[1]});
 
   int32_t Index = heavy::isa<heavy::Int>(Args[1]) ?
                     int32_t{heavy::cast<heavy::Int>(Args[1])} : 0;
@@ -843,7 +843,7 @@ void HEAVY_MLIR_INIT(heavy::Context& C) {
 
   HEAVY_MLIR_VAR(create_op) = heavy::mlir_bind::create_op;
   HEAVY_MLIR_VAR(create_op_impl) = heavy::mlir_bind::create_op_impl;
-  HEAVY_MLIR_VAR(region) = heavy::mlir_bind::region;
+  HEAVY_MLIR_VAR(get_region) = heavy::mlir_bind::get_region;
   HEAVY_MLIR_VAR(entry_block) = heavy::mlir_bind::entry_block;
   HEAVY_MLIR_VAR(add_argument) = heavy::mlir_bind::add_argument;
   HEAVY_MLIR_VAR(results) = heavy::mlir_bind::results;
@@ -875,10 +875,10 @@ void HEAVY_MLIR_INIT(heavy::Context& C) {
 void HEAVY_MLIR_LOAD_MODULE(heavy::Context& C) {
   HEAVY_MLIR_INIT(C);
   heavy::initModuleNames(C, HEAVY_MLIR_LIB_STR, {
-    {"create-op", HEAVY_MLIR_VAR(create_op)},
+    {"old-create-op", HEAVY_MLIR_VAR(create_op)},
     {"%create-op", HEAVY_MLIR_VAR(create_op_impl)},
     {"current-builder", HEAVY_MLIR_VAR(current_builder).get_binding(C)},
-    {"region", HEAVY_MLIR_VAR(region)},
+    {"get-region", HEAVY_MLIR_VAR(get_region)},
     {"entry-block", HEAVY_MLIR_VAR(entry_block)},
     {"add-argument", HEAVY_MLIR_VAR(add_argument)},
     {"results", HEAVY_MLIR_VAR(results)},

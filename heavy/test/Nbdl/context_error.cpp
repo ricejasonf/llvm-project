@@ -1,4 +1,4 @@
-// RUN: clang++ --std=c++23 -I %S/Inputs -fsyntax-only -Xclang -fheavy -Xclang -verify %s
+// RUN: clang++ --std=c++23 -I %heavy_module_path -fsyntax-only -Xclang -fheavy -Xclang -verify %s
 
 heavy_scheme {
 (import (heavy builtins)
@@ -19,7 +19,7 @@ heavy_scheme {
 
 (define (build-member-name name)
   (result
-    (create-op "nbdl.member_name"
+    (old-create-op "nbdl.member_name"
                (attributes
                  `("name", (string-attr name)))
                (result-types !nbdl.symbol))))
@@ -30,12 +30,12 @@ heavy_scheme {
   (lambda ()
     (define parent
       (result
-        (create-op "nbdl.empty"
+        (old-create-op "nbdl.empty"
                    (result-types !nbdl.empty))))
     (define (build-member key typename . init-args)
       (define store
         (result
-          (create-op "nbdl.store"
+          (old-create-op "nbdl.store"
                     (loc typename)
                     (attributes `("name", (flat-symbolref-attr typename)))
                     (operands init-args)
@@ -43,20 +43,20 @@ heavy_scheme {
                     )))
       (set! parent
         (result
-          (create-op "nbdl.store_compose"
+          (old-create-op "nbdl.store_compose"
                      (loc typename)
                      (operands key store parent)
                      (result-types !nbdl.store)))))
     (define foo-input
       (result
-        (create-op "nbdl.literal"
+        (old-create-op "nbdl.literal"
                    (attributes
                      `("value", (attr "42" i32)))
                    (result-types !nbdl.opaque))))
 
     (build-member (build-member-name 'foo)
                   '::moo::foo_t)
-    (create-op "nbdl.cont"
+    (old-create-op "nbdl.cont"
                (operands parent))
   ))
   (define my_context

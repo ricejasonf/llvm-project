@@ -822,22 +822,21 @@ mlir::Value OpGen::createSyntaxRules(SourceLocation Loc,
       return SetError("expecting pattern template pair", I->Car);
     }
 
-    auto PatternOp = create<heavy::PatternOp>(Pattern.getSourceLocation());
-    mlir::Block& B = PatternOp.getRegion().emplaceBlock();
-    mlir::OpBuilder::InsertionGuard IG(Builder);
-    Builder.setInsertionPointToStart(&B);
+    // Create a PatternOp for all but the last pattern.
+    mlir::OpBuilder::InsertPoint RestoreIp;
+    if (!isa<Empty>(I->Cdr)) {
+      auto PatternOp = create<heavy::PatternOp>(Pattern.getSourceLocation());
+      mlir::Block& B = PatternOp.getRegion().emplaceBlock();
+      RestoreIp = Builder.saveInsertionPoint();
+      Builder.setInsertionPointToStart(&B);
+    }
 
     PatternTemplate PT(*this, Keyword, Ellipsis, EnvArg, Literals);
-
     PT.VisitPatternTemplate(Pattern, Template, ExprArg);
+    if (RestoreIp.isSet())
+      Builder.restoreInsertionPoint(RestoreIp);
     PatternDefs = I->Cdr;
   }
-
-  // Terminate with error call for when no patterns match.
-  mlir::Value ErrorMsg = createLiteral(Loc,
-      Context.CreateString("no matching pattern for syntax"));
-  std::array<mlir::Value, 2> ErrorArgs{ErrorMsg, ExprArg};
-  createError(Loc, ErrorArgs);
 
   if (!isa<Empty>(PatternDefs) || Body.empty()) {
     return SetError("expecting list of pattern templates pairs", PatternDefs);
@@ -1442,6 +1441,10 @@ mlir::Operation* OpGen::LookupSymbol(llvm::StringRef MangledName) {
 }
 
 void OpGen::Export(Value NameList) {
+  // FIXME Map names to ExportIdOp to check for lazily
+  //       imported/defined variables.
+  //       (ie instead of NameSet)
+
   // Iterate existing ExportIdOp nodes and load them into NameSet
   llvm::SmallSet<llvm::StringRef, 8> NameSet;
   auto& Ops = getModuleOp().getBody()->getOperations();

@@ -158,8 +158,12 @@ public:
       // Create range for pack values by finding the
       // SyntaxClosureOps in the Body region.
       for (mlir::Operation& Op : Block) {
-        if (auto SC = dyn_cast<SyntaxClosureOp>(&Op))
+        if (auto SC = dyn_cast<SyntaxClosureOp>(&Op)) {
           Packs.push_back(SC.getResult());
+        } else if (auto SP = dyn_cast<SubpatternOp>(&Op)) {
+          for (mlir::Value V : SP.getResults())
+            Packs.push_back(V);
+        }
       }
 
       // Insert the terminator.

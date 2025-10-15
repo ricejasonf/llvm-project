@@ -2,7 +2,7 @@
 
 (define-library (my lib)
   (import (heavy builtins)
-          (heavy mlir))
+          (heavy mlir builtins))
   (begin
     (define (hello-module x)
       (write "hello module!")
@@ -28,7 +28,7 @@
               (value-attr Z))
             ; Trigger compiling define initializers with a syntactic closure.
             (EmptyThunk)
-            (create-op "heavy.literal"
+            (old-create-op "heavy.literal"
               (attributes
                 `("info", (MakeAttr Arg))))) X))))
 

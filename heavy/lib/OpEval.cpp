@@ -610,7 +610,7 @@ private:
   BlockItrTy patternFail(mlir::Operation* Op, llvm::StringRef ErrMsg,
                          llvm::ArrayRef<heavy::Value> Irr) {
     assert((isa<MatchOp, MatchPairOp, MatchTailOp, MatchArgsOp,
-                MatchIdOp>(Op)) &&
+                MatchIdOp, SubpatternOp>(Op)) &&
         "Operation must be a pattern matcher");
 
     mlir::Operation* ParentOp = Op->getParentOp();
@@ -623,8 +623,9 @@ private:
       return BlockItrTy();
     }
 
+    // Use the SubPatternOp itself as the sentinel for pattern failure.
     if (auto SubpatternOp = dyn_cast<heavy::SubpatternOp>(ParentOp))
-      return BlockItrTy();
+      return BlockItrTy(SubpatternOp);
 
     assert(isa<heavy::PatternOp>(ParentOp) && "expecting a PatternOp.");
 
@@ -636,27 +637,36 @@ private:
     heavy::Value P = Op.getVal().getValue(Context);
     heavy::Value E = getValue(Op.getInput());
     heavy::EnvEntry Entry;
-    if (Symbol* S = dyn_cast<Symbol>(E)) {
+    if (isIdentifier(E) && isIdentifier(P)) {
       // If the symbol is in the environment we can skip
       // because it will not match a literal.
-      Entry = Context.Lookup(S);
-      if (Entry)
-        E = Entry.Value;
+      heavy::EnvEntry EntryE = Context.Lookup(E);
+      heavy::EnvEntry EntryP = Context.Lookup(P);
+      if (EntryE && EntryP && EntryE.Value == EntryP.Value)
+        return next(Op);
+      else if (EntryE || EntryP)
+        return patternFail(Op,
+            "expecting identifier with identical binding: {1}", {E, P});
+      // Unwrap syntax closures.
+      P = Context.RebuildLiteral(P);
+      E = Context.RebuildLiteral(E);
     }
-    if (equal(P, E))
+    if (equal(P, E)) {
       return next(Op);
-    else
-      return patternFail(Op, "expecting literal", {P, E});
+    } else {
+      Context.setLoc(E.getSourceLocation());
+      return patternFail(Op, "expecting literal: {1}", {E, P});
+    }
   }
 
   BlockItrTy Visit(MatchPairOp Op) {
     heavy::Value E = getValue(Op.getInput());
     if (auto* Pair = dyn_cast<heavy::Pair>(E)) {
-      Context.setLoc(E.getSourceLocation());
       setValue(Op.getCar(), Pair->Car);
       setValue(Op.getCdr(), Pair->Cdr);
       return next(Op);
     }
+    Context.setLoc(E.getSourceLocation());
     return patternFail(Op, "expecting pair", E);
   }
 
@@ -755,7 +765,7 @@ private:
 
   BlockItrTy Visit(SubpatternOp Op) {
     heavy::Value E = getValue(Op.getInput());
-    heavy::Pair* Tail = dyn_cast<heavy::Pair>(getValue(Op.getTail()));
+    heavy::Value Tail = getValue(Op.getTail());
 
     // Match the empty list.
     if (isa<heavy::Empty>(E)) {
@@ -775,15 +785,23 @@ private:
     // stopping when we find tail or a non-pair object.
     // Each "pack" should be a list.
     while (auto* Pair = dyn_cast<heavy::Pair>(E)) {
-      if (Pair == Tail)
+      if (E == Tail)
         break;
       auto Scope = ValueMapScope(ValueMap);
       BlockItrTy Itr = Op.getBody().front().begin();
       setValue(BodyArg, Pair->Car);
-      while (Itr != BlockItrTy())
+      while (Itr != BlockItrTy() && Itr != BlockItrTy(Op))
         Itr = Visit(&*Itr);
+      // Check subpattern failure.
+      if (Itr == BlockItrTy(Op))
+        break;
       E = Pair->Cdr;
     }
+
+    // Fail if E still has junk that is not Tail and
+    // did not get gobbled up by the subpattern.
+    if (E != Tail)
+      return patternFail(Op, "unexpected elements after subpattern", {E});
 
     return next(Op);
   }
@@ -820,7 +838,7 @@ private:
     if (P == E) {
       return next(Op);
     }
-    return patternFail(Op, "identifier does not match", {P, E});
+    return patternFail(Op, "identifier does not match", {E, P});
   }
 
   BlockItrTy Visit(SyntaxClosureOp Op) {

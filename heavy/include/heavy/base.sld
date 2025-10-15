@@ -34,6 +34,7 @@
     *
     < <= > >=
     positive? zero?
+    range
     apply
     append
     call-with-values
@@ -64,6 +65,7 @@
     let letrec letrec*
     cond case
     and or when unless
+    do
 
     ; (heavy base list)
     caar cadr cdar cddr

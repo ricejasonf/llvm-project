@@ -4,6 +4,13 @@
   (import (heavy builtins)
           (heavy base r7rs-syntax))
   (begin
+    (define range ; Copied from R7RS
+      (case-lambda
+        ((e) (range 0 e))
+        ((b e) (do ((r '() (cons e r))
+                    (e (- e 1) (- e 1)))
+                 ((< e b) r)))))
+
     (define (< x1 x2 . xN)
       (if (positive? (- x2 x1))
         (if (pair? xN)
@@ -37,4 +44,5 @@
     ) ; end begin
   (export
     < <= > >=
+    range
     ))

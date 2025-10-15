@@ -17,6 +17,7 @@
 #include <heavy/OpGen.h>
 #include <heavy/Value.h>
 #include <heavy/ValueVisitor.h>
+#include "llvm/ADT/ScopedHashTable.h"
 #include <llvm/Support/Casting.h>
 
 namespace heavy {
@@ -31,7 +32,11 @@ class TemplateGen : TemplateBase<TemplateGen> {
   Value Keyword;
   Value Ellipsis;
   NameSet& PatternVarNames;
-  llvm::SmallVectorImpl<mlir::Value>* CurrentPacks = nullptr;
+
+  // Store the inputs to ExpandPackOp being constructed.
+  using PackCaptureInfoTy = std::pair<mlir::Block*,
+                  llvm::SmallVectorImpl<mlir::Value>*>;
+  llvm::SmallVector<PackCaptureInfoTy, 4> PackStack;
 
   bool isEllipsis(heavy::Value Id) {
     return equal(Id, Ellipsis);
@@ -58,8 +63,10 @@ public:
       else
         KeywordStr = cast<Symbol>(Keyword);
       // Add the Keyword (name of the syntax) as a Rename.
-      auto SyntaxFuncOp = OpGen.Builder.getBlock()->getParentOp()
-                          ->getParentOfType<FuncOp>();
+      mlir::Operation* CurrentOp = OpGen.Builder.getBlock()->getParentOp();
+      auto SyntaxFuncOp = isa<FuncOp>(CurrentOp)
+                                      ? cast<FuncOp>(CurrentOp)
+                                      : CurrentOp->getParentOfType<FuncOp>();
       llvm::StringRef SyntaxFuncName = SyntaxFuncOp.getSymName();
       // Insert RenameOps before the RenameEnvOp.
       mlir::OpBuilder::InsertionGuard IG(OpGen.Builder);
@@ -81,24 +88,26 @@ private:
                          heavy::Value Car, heavy::Value Cdr) {
     TemplateResult CdrResult = Visit(Cdr);
     auto Body = std::make_unique<mlir::Region>();
-    llvm::SmallVector<mlir::Value, 4> Packs;
-    llvm::SmallVectorImpl<mlir::Value>* PrevPacks = CurrentPacks;
-    CurrentPacks = &Packs;
     mlir::Block& Block = Body->emplaceBlock();
+    llvm::SmallVector<mlir::Value, 4> Packs;
+    PackStack.push_back({&Block, &Packs});
+
     {
       mlir::OpBuilder::InsertionGuard IG(OpGen.Builder);
       OpGen.Builder.setInsertionPointToStart(&Block);
       TemplateResult Last = Visit(Car);
       if (OpGen.CheckError())
-        return mlir::Value();
+        return OpGen.createUndefined();
       if (std::holds_alternative<heavy::Value>(Last))
         return OpGen.SetError("expansion template should contain pack");
       OpGen.create<ResolveOp>(Loc, createValue(Last));
     }
-    CurrentPacks = PrevPacks;
+
     // Create the op.
     auto EPO = OpGen.create<ExpandPacksOp>(Loc, createValue(CdrResult),
                                            Packs, std::move(Body));
+    assert(!EPO.getPacks().empty() && "should have added some packs");
+    PackStack.pop_back();
     return EPO.getResult();
   }
 
@@ -113,6 +122,8 @@ private:
   }
 
   mlir::Value GetPatternVar(heavy::Symbol* S) {
+    if (OpGen.CheckError())
+      return OpGen.createUndefined();
     heavy::Context& Context = OpGen.getContext();
     heavy::Value SCV = Context.Lookup(S).Value;
     if (Binding* B = dyn_cast<Binding>(SCV))
@@ -120,39 +131,61 @@ private:
     auto* Op = cast<mlir::Operation>(SCV);
     auto SynClo = cast<SyntaxClosureOp>(Op);
     mlir::Value Result = SynClo.getResult();
-    if (auto SP = dyn_cast<SubpatternOp>(SynClo->getParentOp())) {
+    unsigned PackDepth = PackStack.size();
+    unsigned CurPackDepth = PackDepth;
+    unsigned VarDepth = 0;
+    while (auto SP = dyn_cast<SubpatternOp>(
+              Result.getDefiningOp()->getParentOp())) {
+      ++VarDepth;
+      if (CurPackDepth < 1)
+        return OpGen.SetError(
+            "unexpanded pack must appear in "
+            "subtemplate followed by ellipsis: {} "
+            "(expansion depth = {}) "
+            "(variable depth = {})",
+            {S, Int(static_cast<int32_t>(PackDepth)),
+                Int(static_cast<int32_t>(VarDepth))});
       assert(Result.hasOneUse() &&
-          "pattern variable should be used only once");
+          "pattern variable op must have single use");
       mlir::OpOperand& Operand = *(Result.use_begin());
-      return SP.getPacks()[Operand.getOperandNumber()];
-    } else {
-      return Result;
+      Result = SP.getPacks()[Operand.getOperandNumber()];
+
+        // Push the result to the list of pack captures (and add a block argument??).
+      --CurPackDepth;
     }
+
+    if (CurPackDepth > 0)
+      return OpGen.SetError(
+          "pattern variable followed by too many ellipsis", S);
+
+    return MaybeCaptureExpandArg(S->getSourceLocation(), Result);
   }
 
-  // Get or create a capture of an argument to pack expasion.
-  mlir::Value CaptureExpandArg(heavy::Symbol* S) {
-    assert(CurrentPacks && "pack expansion op requires pack list");
-    auto& CP = *CurrentPacks;
+  // Get or create a capture of an argument to pack expansion.
+  mlir::Value MaybeCaptureExpandArg(heavy::SourceLocation Loc,
+                                    mlir::Value Result) {
+    if (PackStack.empty())
+      return Result;
 
-    SourceLocation Loc = S->getSourceLocation();
-    mlir::Value Var = GetPatternVar(S);
-    mlir::Block* Block = OpGen.Builder.getBlock();
-
-    // Check if Var is already captured.
-    auto Itr = std::find(CP.begin(), CP.end(), Var);
-    if (Itr != CP.end())
-      return Block->getArgument(std::distance(Itr, CP.begin()));
-
-    CP.push_back(Var);
-    mlir::Type HeavyValueT = OpGen.Builder.getType<HeavyValueTy>();
-    mlir::Location MLoc = createLoc(Loc);
-    return Block->addArgument(HeavyValueT, MLoc);
+    assert(!PackStack.empty() && "pack expansion op requires pack list");
+    for (PackCaptureInfoTy PackCaptureInfo : PackStack) {
+      auto [Block, CP] = PackCaptureInfo;
+      auto Itr = std::find(CP->begin(), CP->end(), Result);
+      if (Itr != CP->end()) {
+        Result = Block->getArgument(std::distance(Itr, CP->begin()));
+      } else {
+        CP->push_back(Result);
+        mlir::Type HeavyValueT = OpGen.Builder.getType<HeavyValueTy>();
+        mlir::Location MLoc = createLoc(Loc);
+        Result = Block->addArgument(HeavyValueT, MLoc);
+      }
+    }
+    return Result;
   }
 
   TemplateResult VisitSymbol(Symbol* P) {
     if (PatternVarNames.contains(P->getString()))
-      return CurrentPacks ? CaptureExpandArg(P) : GetPatternVar(P);
+      return GetPatternVar(P);
 
     if (isEllipsis(P))
       return OpGen.SetError("unexpected ellipsis", P);

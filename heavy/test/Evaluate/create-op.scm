@@ -1,32 +1,48 @@
-; RUN: heavy-scheme %s | FileCheck %s
+; RUN: heavy-scheme --module-path=%heavy_module_path %s | FileCheck %s
 (import (heavy builtins))
 (import (heavy mlir))
 
 (define !heavy.value (type "!heavy.value"))
 
-; CHECK: #op{"heavy.literal"() {info = #heavy<"\22foo\22">} : () -> ()
-(write (create-op "heavy.literal"
-  (attributes
-    `("info", (value-attr "foo")))))
+; CHECK: #op{%0 = "heavy.literal"() {info = #heavy<"\22foo\22">} : () -> !heavy.value
+(write
+  (create-op "heavy.literal"
+    (loc 0)
+    (operands)
+    (attributes
+      (info (value-attr "foo")))
+    (result-types !heavy.value)))
 
 (newline)
 
-; CHECK: #op{"heavy.literal"() {info = #heavy<"5">} : () -> ()
-(write (create-op "heavy.literal"
-  (attributes
-    `("info", (value-attr 5)))))
+; CHECK: #op{%0 = "heavy.literal"() {info = #heavy<"5">} : () -> !heavy.value
+(write
+  (create-op "heavy.literal"
+    (loc 0)
+    (operands)
+    (attributes
+      (info (value-attr 5)))
+    (result-types !heavy.value)
+    ))
 
 (newline)
 
-; CHECK: #op{"heavy.literal"() {info = #heavy<"5000">} : () -> ()
-(write (create-op "heavy.literal"
-  (attributes
-    `("info", (attr "#heavy<\"5000\">" !heavy.value)))))
+; CHECK: #op{%0 = "heavy.literal"() {info = #heavy<"5000">} : () -> !heavy.value
+(write
+  (create-op "heavy.literal"
+    (loc 0)
+    (operands)
+    (attributes
+      (info (attr "#heavy<\"5000\">" !heavy.value)))
+    (result-types !heavy.value)))
 
 (define the-answer
   (create-op "heavy.literal"
+    (loc 0)
+    (operands)
     (attributes
-      `("info", (value-attr 41)))))
+      (info (value-attr 41)))
+    (result-types !heavy.value)))
 
 (newline)
 ; CHECK: non-parent:()
@@ -43,22 +59,33 @@
 (define the-number-one 1)
 
 (define command
-  (create-op "heavy.command" (regions the-number-one)))
-(with-builder (lambda ()
-  (at-block-begin (entry-block command))
-  ((lambda ()
-  (define callee
-    (create-op "heavy.load_global"
-      (result-types !heavy.value)
-      (attributes
-       `("name", (flat-symbolref-attr "_HEAVYL5SheavyL4SbaseV5Swrite")))))
-  (define arg1
-    (create-op "heavy.literal"
-      (result-types !heavy.value)
-      (attributes
-       `("info", (value-attr 42)))))
-  (create-op "heavy.apply"
-    (operands (result callee) (result arg1)))))))
+  (create-op "heavy.command"
+    (loc 0)
+    (operands)
+    (attributes)
+    (result-types)
+    (region "body" ()
+      (define callee
+        (create-op "heavy.load_global"
+          (loc 0)
+          (operands)
+          (attributes
+            (name (flat-symbolref-attr "_HEAVYL5SheavyL4SbaseV5Swrite")))
+          (result-types !heavy.value)
+          ))
+      (define arg1
+        (create-op "heavy.literal"
+          (loc 0)
+          (operands)
+          (attributes
+            (info (value-attr 42)))
+          (result-types !heavy.value)))
+      (create-op "heavy.apply"
+        (loc 0)
+        (operands (result callee) (result arg1))
+        (attributes)
+        (result-types))
+      )))
 (write command)
 (newline)
 

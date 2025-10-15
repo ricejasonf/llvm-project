@@ -116,7 +116,7 @@ protected:
     }
 
     // TemplateError
-    return mlir::Value();
+    return OpGen.createUndefined();
   }
 
   mlir::Value createLiteral(heavy::Value V) {
@@ -147,6 +147,10 @@ protected:
   }
 
   mlir::Value createRename(Symbol* P, mlir::Value ProvidedVal = nullptr) {
+    // Since RenameOps are memoized, every operation
+    // inserted in this function needs to have the FuncOp
+    // as its parent operation.
+    mlir::OpBuilder::InsertionGuard IG(OpGen.Builder);
     String* UniqueStr = P->getString();
 
     // Check for memoized SC.
@@ -161,10 +165,15 @@ protected:
     SourceLocation Loc = P->getSourceLocation();
     llvm::StringRef Id = P->getStringRef();
 
+    // Insert Literals and SyntaxClosures after the RenameEnvOp
+    OpGen.Builder.setInsertionPointAfter(RenameEnv);
+
     mlir::Value CaptureVal = ProvidedVal ? ProvidedVal : createLiteral(P);
     mlir::Value SC;
-    if (!isa<HeavySyntaxTy>(CaptureVal.getType()))
-      SC = OpGen.create<SyntaxClosureOp>(Loc, CaptureVal, RenameEnv);
+    {
+      if (!isa<HeavySyntaxTy>(CaptureVal.getType()))
+        SC = OpGen.create<SyntaxClosureOp>(Loc, CaptureVal, RenameEnv);
+    }
 
     if (ProvidedVal) {
       mlir::Value R = OpGen.create<heavy::RenameOp>(Loc, Id, CaptureVal);
@@ -172,8 +181,7 @@ protected:
       return SC;
     }
 
-    // Insert RenameOps before the RenameEnv RenameEnvOp.
-    mlir::OpBuilder::InsertionGuard IG(OpGen.Builder);
+    // Insert RenameOps before the RenameEnvOp.
     OpGen.Builder.setInsertionPoint(RenameEnv);
 
     heavy::Context& Context = OpGen.getContext();
@@ -196,7 +204,7 @@ protected:
       heavy::Mangler Mangler(Context);
       MangledNameStr = Mangler.mangleVariable(OpGen.getModulePrefix(), P);
       if (MangledNameStr.empty())
-        return mlir::Value();  // Error
+        return OpGen.createUndefined();
       MangledName = llvm::StringRef(MangledNameStr);
     }
 
@@ -238,7 +246,7 @@ protected:
       return P;
 
     if (OpGen.CheckError())
-      return mlir::Value();
+      return OpGen.createUndefined();
 
     return createCons(Loc, CarResult, CdrResult);
   }

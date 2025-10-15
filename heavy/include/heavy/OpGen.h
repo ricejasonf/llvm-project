@@ -241,7 +241,8 @@ public:
       // An error may occur here, but we always want
       // this function to return a valid operation.
       // Just continue until the error is realized.
-      FinishLocalDefines();
+      if (!CheckError())
+        FinishLocalDefines();
     }
     return createHelper<Op>(Builder, Loc, std::forward<Args>(args)...);
   }
@@ -345,14 +346,23 @@ public:
   }
 
   template <typename T>
-  mlir::Value SetError(SourceLocation Loc, T Str, Value V = Undefined()) {
-    heavy::Error* E = Context.CreateError(Loc, Str, Context.CreatePair(V));
+  mlir::Value SetError(SourceLocation Loc, T Str,
+                       llvm::ArrayRef<Value> IrrArgs = {}) {
+    heavy::Error* E = Context.CreateError(Loc, Str, Context.CreateList(IrrArgs));
     return SetError(E);
   }
 
   template <typename T>
-  mlir::Value SetError(T Str, Value V = Undefined()) {
-    return SetError(V.getSourceLocation(), Str, V);
+  mlir::Value SetError(T Str, llvm::ArrayRef<Value> IrrArgs = {}) {
+    heavy::SourceLocation Loc;
+    for (Value Irr : llvm::reverse(IrrArgs))
+      Loc = Loc.isValid() ? Loc : Irr.getSourceLocation();
+    return SetError(Loc, Str, IrrArgs);
+  }
+
+  template <typename T>
+  mlir::Value SetError(T Str, Value V) {
+    return SetError(Str, llvm::ArrayRef<Value>(V));
   }
 
   mlir::Value Error() {

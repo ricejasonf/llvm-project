@@ -13,9 +13,9 @@
 #ifndef LLVM_HEAVY_MLIR_H
 #define LLVM_HEAVY_MLIR_H
 
-#define HEAVY_MLIR_LIB                _HEAVYL5SheavyL4Smlir
-#define HEAVY_MLIR_LIB_(NAME)         _HEAVYL5SheavyL4Smlir ## NAME
-#define HEAVY_MLIR_LIB_STR            "_HEAVYL5SheavyL4Smlir"
+#define HEAVY_MLIR_LIB                _HEAVYL5SheavyL4SmlirL8Sbuiltins
+#define HEAVY_MLIR_LIB_(NAME)         _HEAVYL5SheavyL4SmlirL8Sbuiltins ## NAME
+#define HEAVY_MLIR_LIB_STR            "_HEAVYL5SheavyL4SmlirL8Sbuiltins"
 #define HEAVY_MLIR_LOAD_MODULE        HEAVY_MLIR_LIB_(_load_module)
 #define HEAVY_MLIR_INIT               HEAVY_MLIR_LIB_(_init)
 

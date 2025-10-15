@@ -1,4 +1,4 @@
-; RUN: heavy-scheme %s 2>&1 | FileCheck %s
+; RUN: heavy-scheme -module-path=%heavy_module_path %s 2>&1 | FileCheck %s
 (import (heavy builtins)
         (heavy mlir)
         (nbdl comp))
@@ -16,7 +16,7 @@
 
 (define (build-member-name name)
   (result
-    (create-op "nbdl.member_name"
+    (old-create-op "nbdl.member_name"
                (attributes
                  `("name", (string-attr name)))
                (result-types !nbdl.symbol))))
@@ -27,24 +27,24 @@
   (lambda (BazArg)
     (define parent
       (result
-        (create-op "nbdl.empty"
+        (old-create-op "nbdl.empty"
                    (result-types !nbdl.empty))))
     (define (build-member key typename . init-args)
       (define store
         (result
-          (create-op "nbdl.store"
+          (old-create-op "nbdl.store"
                     (attributes `("name", (flat-symbolref-attr typename)))
                     (operands init-args)
                     (result-types !nbdl.store)
                     )))
       (set! parent
         (result
-          (create-op "nbdl.store_compose"
+          (old-create-op "nbdl.store_compose"
                      (operands key store parent)
                      (result-types !nbdl.store)))))
     (define foo-input
       (result
-        (create-op "nbdl.literal"
+        (old-create-op "nbdl.literal"
                    (attributes
                      `("value", (attr "42" i32)))
                    (result-types !nbdl.opaque))))
@@ -52,7 +52,7 @@
     (build-member (build-member-name 'foo) '::moo::foo_t foo-input)
     (build-member (build-member-name 'bar) '::moo::bar_t)
     (build-member (build-member-name 'baz) '::moo::baz_t BazArg)
-    (create-op "nbdl.cont"
+    (old-create-op "nbdl.cont"
                (operands parent))
   ))
 (dump current-nbdl-module)
