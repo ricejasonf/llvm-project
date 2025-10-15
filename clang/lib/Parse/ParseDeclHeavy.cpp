@@ -105,6 +105,8 @@ public:
     if (Chars.empty()) return;
     // Copy to LexerSpellings to ensure null terminator.
     Chars = Chars.copy(LexerSpellings);
+    char* NullTerm = LexerSpellings.template Allocate<char>(1);
+    *NullTerm = 0;
     // Lex Tokens for the TokenBuffer.
     clang::Lexer Lexer(clang::SourceLocation(), Parser.getLangOpts(),
             Chars.data(), Chars.data(), &(*(Chars.end())));
