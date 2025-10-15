@@ -146,6 +146,7 @@ public:
     RaiseError(CreateString(Msg), IrrArgs);
   }
 
+  using Heap<Context>::MaybeCollectGarbage;
   void CollectGarbage();
 
   // WithEnv - Call a thunk with an environment and the ability to clean up

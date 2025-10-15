@@ -70,7 +70,7 @@ class CopyCollector : private ValueVisitor<CopyCollector, heavy::Value> {
   heavy::EnvEntry VisitEnvEntry(heavy::EnvEntry const& EnvEntry) {
     heavy::Value Value = Visit(EnvEntry.Value);
     heavy::String* MangledName
-      = VisitString(EnvEntry.MangledName);
+      = cast<String>(Visit(EnvEntry.MangledName));
     return heavy::EnvEntry{Value, MangledName};
   }
 
@@ -96,7 +96,7 @@ class CopyCollector : private ValueVisitor<CopyCollector, heavy::Value> {
 
   // ByteVector
   heavy::Value VisitByteVector(heavy::ByteVector* ByteVector) {
-    heavy::String* NewString = VisitString(ByteVector->getString());
+    heavy::String* NewString = cast<String>(Visit(ByteVector->getString()));
     return new (NewHeap) heavy::ByteVector(NewString);
   }
 
@@ -146,7 +146,6 @@ class CopyCollector : private ValueVisitor<CopyCollector, heavy::Value> {
   // ForwardRef
   heavy::Value VisitForwardRef(heavy::ForwardRef* ForwardRef) {
     // This is a wrapper for an already copied value.
-    // Unwrap it on the new heap.
     return ForwardRef->Val;
   }
 
@@ -246,6 +245,10 @@ class CopyCollector : private ValueVisitor<CopyCollector, heavy::Value> {
 
   template <typename ...Args>
   heavy::Value Visit(heavy::Value OldVal) {
+    // Handle the ValueSumTypes that alias ValueBase
+    if (isa<Undefined>(OldVal))
+      return VisitUndefined(cast<Undefined>(OldVal));
+
     void* ValueBase = OldVal.get<ValueSumType::ValueBase>();
     if (ValueBase == nullptr)
       return OldVal;
@@ -260,6 +263,7 @@ class CopyCollector : private ValueVisitor<CopyCollector, heavy::Value> {
 
     heavy::Value NewVal = Base::Visit(OldVal);
     // Overwrite the OldVal with a ForwardRef.
+    assert(NewVal && "expecting valid value");
     new (ValueBase) ForwardRef(NewVal);
 
     return NewVal;
@@ -283,10 +287,11 @@ public:
 
     // The module itself is not garbage collected,
     // but it has contained objects that are.
-    Module->Cleanup = cast_or_null<Lambda>(Visit(Module->Cleanup));
+    if (Module->Cleanup)
+      Module->Cleanup = cast_or_null<Lambda>(Visit(Module->Cleanup));
     for (auto& DensePair : Module->Map) {
-      DensePair.getFirst() = VisitString(DensePair.getFirst());
-      DensePair.getSecond() = VisitString(DensePair.getSecond());
+      DensePair.getFirst() = cast<String>(Visit(DensePair.getFirst()));
+      DensePair.getSecond() = cast<String>(Visit(DensePair.getSecond()));
     }
     return Module;
   }
@@ -303,14 +308,14 @@ public:
       if (OpGen->TopLevelHandler)
         OpGen->TopLevelHandler = Visit(OpGen->TopLevelHandler);
       if (OpGen->LibraryEnvProc)
-        OpGen->LibraryEnvProc = VisitBinding(OpGen->LibraryEnvProc);
+        OpGen->LibraryEnvProc = cast<Binding>(Visit(OpGen->LibraryEnvProc));
       // Note that the BindingTable has no unique ownership of the Bindings
       // as they are all pushed to the Environment.
     }
 
     for (auto& DensePair : Env->EnvMap) {
-      DensePair.getFirst() = VisitString(DensePair.getFirst());
-      DensePair.getSecond() = VisitString(DensePair.getSecond());
+      DensePair.getFirst() = cast<String>(Visit(DensePair.getFirst()));
+      DensePair.getSecond() = cast<String>(Visit(DensePair.getSecond()));
     }
 
     VisitedSpecials.push_back(Env);
@@ -319,6 +324,14 @@ public:
 };
 
 void Context::CollectGarbage() {
+  // FIXME The continuation stack and escape procedures
+  //       are saved as opaque string objects.
+  //       Wrap these in some kind of  "ContStack" value
+  //       and make a visitor for their captures.
+  llvm::errs() << "NOT COLLECTING GARBAGE: " << getBytesAllocated() << "\n";
+  MaxHint *= 2;
+  return;
+
   // Create NewHeap
   Heap::AllocatorTy NewHeap;
   CopyCollector GC(NewHeap, this->TrashHeap);
@@ -352,10 +365,16 @@ void Context::CollectGarbage() {
         ValAttr = LiteralOp.getInputAttr();
       else if (auto MatchOp = dyn_cast<heavy::MatchOp>(Op))
         ValAttr = MatchOp.getValAttr();
-      GC.VisitRootNode(ValAttr.getCachedValue());
+
+      // Just clear the value and the attr will rebuild it
+      // from its expression when and if it is requested.
+      if (ValAttr)
+        ValAttr.getCachedValue() = Value();
     };
     ModuleOp->walk(WalkerFn);
+
   }
+  ReplaceHeap(std::move(NewHeap));
 }
 
 String* IdTable::CreateIdTableEntry(llvm::StringRef Str) {

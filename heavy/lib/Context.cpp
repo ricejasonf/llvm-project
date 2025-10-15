@@ -322,6 +322,7 @@ void Context::verifyModule() {
 namespace {
 class Writer : public ValueVisitor<Writer> {
   friend class ValueVisitor<Writer>;
+  using Base = ValueVisitor<Writer>;
   unsigned IndentationLevel = 0;
   llvm::raw_ostream &OS;
 
@@ -338,6 +339,13 @@ public:
   Writer(llvm::raw_ostream& OS)
     : OS(OS)
   { }
+
+  void Visit(Value V) {
+    if (!V)
+      OS << "#<NULLPTR>";
+    else
+      Base::Visit(V);
+  }
 
 private:
   void PrintFormattedWhitespace() {
@@ -365,6 +373,12 @@ private:
       OS << '}';
     }
     OS << ">";
+  }
+
+  void VisitForwardRef(ForwardRef* F) {
+    OS << "#<ForwardRef {";
+    Visit(F->Val);
+    OS << "}>";
   }
 
   void VisitBool(Bool V) {

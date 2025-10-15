@@ -276,6 +276,7 @@ public:
       // This means a C++ function was not written correctly.
       assert((DidCallContinuation || getDerived().CheckError()) &&
           "function failed to call continuation");
+      getDerived().MaybeCollectGarbage();
     }
     DidCallContinuation = false;
   }

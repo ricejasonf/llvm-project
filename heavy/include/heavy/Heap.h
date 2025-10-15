@@ -92,19 +92,22 @@ public:
   }
 
   void* Allocate(size_t Size, size_t Alignment) {
-    size_t WorstCase = Size + Alignment;
-    size_t BytesUsed = getBytesAllocated();
-
-    if (BytesUsed + WorstCase > MaxHint) {
-      getDerived().CollectGarbage();
-    }
-
-    // Allocate on the possibly new heap.
     return TrashHeap.Allocate(Size, Alignment);
   }
 
   void Deallocate(void const*, size_t, size_t) {
     // Do nothing.
+  }
+
+  void MaybeCollectGarbage() {
+    size_t BytesUsed = getBytesAllocated();
+
+    if (BytesUsed > MaxHint)
+       getDerived().CollectGarbage();
+  }
+
+  void ReplaceHeap(AllocatorTy&& Alloc) {
+    TrashHeap = std::move(Alloc);
   }
 };
 

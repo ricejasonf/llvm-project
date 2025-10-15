@@ -1581,7 +1581,8 @@ public:
   Value Val;
 
   ForwardRef(Value V)
-    : ValueBase(ValueKind::ForwardRef)
+    : ValueBase(ValueKind::ForwardRef),
+      Val(V)
   { }
 
   static bool classof(Value V) {
