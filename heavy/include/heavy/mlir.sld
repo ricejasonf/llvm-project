@@ -4,6 +4,7 @@
   (import (heavy base)
           (heavy mlir builtins))
     (begin
+      (dump "MLIR!")
     (define (init-regions Op BlockArgTypesList UserFns)
       (define Is (range (length BlockArgTypesList)))
       (define (InitRegion RegionIndex BlockArgTypes UserFn)
@@ -28,7 +29,7 @@
           (attributes: (AttrName Attr) ...)
           (result-types: ResultTypes ...)
           (region: RegionName ((BlockArg : BlockArgType) ...)
-                    RegionBody ...) ...)
+                    RegionBody1 RegionBodyN ...) ...)
          (let ((Op
                   (old-create-op Name
                     (loc Loc)
@@ -39,7 +40,7 @@
                     ))
                 (BlockArgsTypesList (list (list BlockArgType ...) ...))
                 (UserFns (list (lambda (BlockArg ...)
-                                     RegionBody ...) ...)))
+                                     RegionBody1 RegionBodyN ...) ...)))
             (init-regions Op BlockArgsTypesList UserFns)
             Op)
         )))

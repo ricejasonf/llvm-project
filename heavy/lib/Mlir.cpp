@@ -311,8 +311,8 @@ void get_region(Context& C, ValueRefs Args) {
   if (Args.size() > 1 && !heavy::isa<heavy::Int>(Args[1]))
     return C.RaiseError("expecting index: {}", {Args[1]});
 
-  int32_t Index = heavy::isa<heavy::Int>(Args[1]) ?
-                    int32_t{heavy::cast<heavy::Int>(Args[1])} : 0;
+  int32_t Index = Args.size() > 1 && heavy::isa<heavy::Int>(Args[1])
+                    ? int32_t{heavy::cast<heavy::Int>(Args[1])} : 0;
   // Regions are part of the Ops TrailingObjects so
   // we can expect the pointers to be stable.
   mlir::Region* Region = &(Op->getRegion(Index));
@@ -338,7 +338,7 @@ void entry_block(Context& C, ValueRefs Args) {
   }
 
   if (!Region)
-    return C.RaiseError("expecting mlir.op/mlir.region");
+    return C.RaiseError("expecting mlir.op/mlir.region: {}", Args[0]);
   if (Region->empty())
     Region->emplaceBlock();
   mlir::Block* Block = &(Region->front());
@@ -355,9 +355,9 @@ void add_argument(Context& C, ValueRefs Args) {
   mlir::Type Type = any_cast<mlir::Type>(Args[1]);
   heavy::SourceLocation Loc= Args[2].getSourceLocation();
   if (!Block)
-    return C.RaiseError("expecting mlir::Block*", Args[0]);
+    return C.RaiseError("expecting mlir.block: {}", Args[0]);
   if (Type)
-    return C.RaiseError("expecting mlir::Block*", Args[1]);
+    return C.RaiseError("expecting mlir.block: {}", Args[1]);
 
   mlir::OpBuilder* Builder = getCurrentBuilder(C);
   if (!Builder)
@@ -387,10 +387,10 @@ void result(Context& C, ValueRefs Args) {
   Value IndexArg = Args.size() > 1 ? Args[1] : Value(Int{0});
 
   if (!Op)
-    return C.RaiseError("expecting mlir.op");
+    return C.RaiseError("expecting mlir.op, {}", Args[0]);
 
   if (!heavy::isa<heavy::Int>(IndexArg))
-    return C.RaiseError("expecting index");
+    return C.RaiseError("expecting index: {}", IndexArg);
 
   uint32_t Index = static_cast<uint32_t>(heavy::cast<heavy::Int>(IndexArg));
 
@@ -410,7 +410,7 @@ void block_arg(Context& C, ValueRefs Args) {
     return C.RaiseError("invalid arity");
   mlir::Block* Block = any_cast<mlir::Block*>(Args[0]);
   if (!Block || !isa<heavy::Int>(Args[1]))
-    return C.RaiseError("expecting block and index");
+    return C.RaiseError("expecting block and index: {} and {}", Args);
   int Index = cast<heavy::Int>(Args[1]);
   // A mlir::BlockArgument is a mlir::Value
   mlir::Value Val = Block->getArgument(Index);
@@ -445,7 +445,7 @@ static mlir::Block* get_arg_block(Context& C, ValueRefs Args) {
   if (Args.size() == 1)
     Block = any_cast<mlir::Block*>(Args[0]);
   if (Block == nullptr)
-    C.RaiseError("expecting mlir.block");
+    C.RaiseError("expecting mlir.block: {}", Args[0]);
   return Block;
 }
 
@@ -507,7 +507,7 @@ void set_insertion_point(Context& C, ValueRefs Args) {
     mlir::Block* Block = &R->front();
     Builder->setInsertionPointToStart(Block);
   } else {
-    return C.RaiseError("expecting mlir.op or mlir.region", Args[0]);
+    return C.RaiseError("expecting mlir.op or mlir.region: {}", Args[0]);
   }
   C.Cont();
 }
@@ -522,7 +522,7 @@ void set_insertion_after(Context& C, ValueRefs Args) {
 
   mlir::Operation* Op = dyn_cast<mlir::Operation>(Args[0]);
   if (!Op)
-    return C.RaiseError("expecting mlir_operation");
+    return C.RaiseError("expecting mlir_operation: {}", Args[0]);
 
   Builder->setInsertionPoint(Op);
   C.Cont();
@@ -531,10 +531,12 @@ void set_insertion_after(Context& C, ValueRefs Args) {
 // Get a type by parsing a string.
 // (type _string_)
 void type(Context& C, ValueRefs Args) {
+  if (Args.size() != 1)
+    return C.RaiseError("invalid arity");
   mlir::MLIRContext* MLIRContext = getCurrentContext(C);
   llvm::StringRef TypeStr = Args[0].getStringRef();
   if (TypeStr.empty())
-    return C.RaiseError("expecting string with type");
+    return C.RaiseError("expecting string with type:", Args[0]);
 
   mlir::Type Type = mlir::parseType(TypeStr, MLIRContext,
                                     nullptr, heavy::String::IsNullTerminated);
@@ -553,7 +555,7 @@ void function_type_impl(Context& C, ValueRefs Args) {
   auto* ArgTypeVals = heavy::dyn_cast<heavy::Vector>(Args[0]);
   auto* ResultTypeVals = heavy::dyn_cast<heavy::Vector>(Args[1]);
   if (!ArgTypeVals || !ResultTypeVals)
-    return C.RaiseError("expecting vectors");
+    return C.RaiseError("expecting vectors: {} and {}", Args);
 
   // Arg types
   llvm::SmallVector<mlir::Type, 8> ArgTypes;
@@ -561,7 +563,7 @@ void function_type_impl(Context& C, ValueRefs Args) {
   for (heavy::Value Arg : ArgTypeVals->getElements()) {
     mlir::Type ArgType = any_cast<mlir::Type>(Arg);
     if (!ArgType)
-      return C.RaiseError("expecting mlir.type");
+      return C.RaiseError("expecting mlir.type: {}", Arg);
     ArgTypes.push_back(ArgType);
   }
 
@@ -570,7 +572,7 @@ void function_type_impl(Context& C, ValueRefs Args) {
   for (heavy::Value Result : ResultTypeVals->getElements()) {
     mlir::Type ResultType = any_cast<mlir::Type>(Result);
     if (!ResultType)
-      return C.RaiseError("expecting mlir.type");
+      return C.RaiseError("expecting mlir.type: {}", Result);
     ResultTypes.push_back(ResultType);
   }
 
@@ -616,7 +618,7 @@ void attr(Context& C, ValueRefs Args) {
 
   llvm::StringRef AttrStr = AttrStrArg.getStringRef();
   if (AttrStr.empty())
-    return C.RaiseError("expecting string");
+    return C.RaiseError("expecting string: {}", AttrStrArg);
 
   Attr = mlir::parseAttribute(AttrStr, MLIRContext,
                               Type, nullptr,
@@ -633,7 +635,7 @@ void type_attr(Context& C, ValueRefs Args) {
     return C.RaiseError("invalid arity");
   mlir::Type Type = any_cast<mlir::Type>(Args[0]);
   if (!Type)
-    return C.RaiseError("expecting a mlir.type");
+    return C.RaiseError("expecting a mlir.type: {}", Args[0]);
   mlir::Attribute Attr = mlir::TypeAttr::get(Type);
   C.Cont(C.CreateAny(Attr));
 }
@@ -652,7 +654,7 @@ void string_attr(Context& C, ValueRefs Args) {
   if (Args.size() != 1)
     return C.RaiseError("invalid arity");
   if (!isa<heavy::String, heavy::Symbol>(Args[0]))
-    return C.RaiseError("expecting string-like object");
+    return C.RaiseError("expecting string-like object: {}", Args[0]);
   llvm::StringRef Str = Args[0].getStringRef();
   mlir::MLIRContext* MLIRContext = getCurrentContext(C);
   mlir::Attribute Attr = AttrTy::get(MLIRContext, Str);
@@ -664,12 +666,12 @@ void with_new_context(heavy::Context& C, heavy::ValueRefs Args) {
   // Create a new context, and call a
   // thunk with it as the current-context.
   if (Args.size() != 1)
-    return C.RaiseError("expecting thunk");
+    return C.RaiseError("expecting single thunk");
 
   auto* Thunk = dyn_cast<heavy::Lambda>(Args[0]);
 
   if (!Thunk)
-    return C.RaiseError("expecting thunk");
+    return C.RaiseError("expecting thunk: {}", Args[0]);
 
   auto NewContextPtr = std::make_unique<mlir::MLIRContext>(*C.DialectRegistry);
   heavy::Value NewMC = C.CreateAny(NewContextPtr.get());
@@ -742,7 +744,7 @@ void block_op(Context& C, heavy::ValueRefs Args) {
     Block = any_cast<mlir::Block*>(Args[0]);
 
   if (!Block)
-    return C.RaiseError("expecting block");
+    return C.RaiseError("expecting block: {}", Args);
 
   mlir::Operation* ParentOp = Block->getParentOp();
   heavy::Value Result = ParentOp != nullptr ? heavy::Value(ParentOp) :
@@ -793,9 +795,9 @@ void module_lookup(Context& C, heavy::ValueRefs Args) {
       dyn_cast<mlir::Operation>(Args[0]));
   llvm::StringRef SymbolName = Args[1].getStringRef();
   if (!ModuleOp)
-    return C.RaiseError("expecting mlir::ModuleOp");
+    return C.RaiseError("expecting mlir::ModuleOp: {}", Args[0]);
   if (SymbolName.empty())
-    return C.RaiseError("expecting nonempty string-like object");
+    return C.RaiseError("expecting nonempty string-like object: {}", Args[1]);
 
   mlir::Operation* Op = ModuleOp.lookupSymbol(SymbolName);
   heavy::Value Result = Op != nullptr ? heavy::Value(Op) : heavy::Empty();
@@ -822,7 +824,7 @@ void is_value(Context& C, ValueRefs Args) {
     }
 
     if (!Type)
-      return C.RaiseError("expecting a mlir.type");
+      return C.RaiseError("expecting a mlir.type: {}", Args[0]);
     Args = Args.drop_front();
   }
 
