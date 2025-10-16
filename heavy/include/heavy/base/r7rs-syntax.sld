@@ -133,7 +133,7 @@
     (define-syntax unless
       (syntax-rules ()
         ((unless test result1 result2 ...)
-         (if (not test)
+         (if (eq? test #f)
            (begin result1 result2 ...)))))
 
     (define-syntax guard

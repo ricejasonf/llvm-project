@@ -6,7 +6,10 @@
           (heavy base list)
           (heavy base int))
   (begin
-
+    ; No place else to put this
+    (define (not x)
+      (if (eq? x #f)
+        #t #f))
     ) ; end of begin
   (export
     ; syntax
@@ -60,6 +63,8 @@
     with-exception-handler
     write
     newline
+
+    not
 
     ; (heavy base r7rs-syntax)
     let letrec letrec*
