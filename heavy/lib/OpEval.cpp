@@ -108,6 +108,15 @@ public:
       // op_eval each top level operation.
       // Push the top level ops in reverse order
       for (auto i = Ops.rbegin(); i != Ops.rend(); ++i) {
+        // Loading modules is ... special.
+        if (auto LM = dyn_cast<LoadModuleOp>(&*i)) {
+          // This handles all of the consecutive LoadModuleOps.
+          Visit(LM, /*ShouldCont=*/false);
+          // Skip the others.
+          for (; i != Ops.rend() && isa<LoadModuleOp>(&*i); ++i);
+          if (i == Ops.rend())
+            break;
+        }
         mlir::Operation* TL = &*i;
         auto G = dyn_cast<GlobalOp>(TL);
         // External GlobalOps are skipped.
@@ -119,13 +128,26 @@ public:
           }, CaptureList{TL});
         }
       }
-      return Context.Cont();
+      Context.Cont();
     } else {
       SetError(SourceLocation(), "op_eval expects a top level op");
     }
   }
 
 private:
+  // Push a single LoadModuleOp to the continuation stack.
+  void PushLoadModuleOp(LoadModuleOp Op) {
+    heavy::Symbol* ModuleName = Context.CreateSymbol(Op.getName());
+    Context.PushCont([](heavy::Context& C, ValueRefs) {
+      heavy::Symbol* ModuleName = cast<Symbol>(C.getCapture(0));
+      C.PushCont([](heavy::Context& C, ValueRefs) {
+        heavy::Symbol* ModuleName = cast<Symbol>(C.getCapture(0));
+        C.InitModule(ModuleName);
+      }, CaptureList{ModuleName});
+      C.LoadModule(ModuleName);
+    }, CaptureList{ModuleName});
+  }
+
   BlockItrTy next(mlir::Operation* Op) {
     return ++BlockItrTy(Op);
   }
@@ -418,7 +440,12 @@ private:
     return next(Op);
   }
 
-  BlockItrTy Visit(LoadModuleOp Op) {
+  BlockItrTy Visit(LoadModuleOp Op, bool ShouldCont = true) {
+    // We always get here on the last LoadModuleOp.
+    // which is the last inserted LoadModuleOp.
+    // We need to evaluate all consecutive LoadModuleOps in the proper order.
+
+    // Push the LoadModuleOp.
     heavy::Symbol* ModuleName = Context.CreateSymbol(Op.getName());
     Context.PushCont([](heavy::Context& C, ValueRefs) {
       heavy::Symbol* ModuleName = cast<Symbol>(C.getCapture(0));
@@ -428,7 +455,19 @@ private:
       }, CaptureList{ModuleName});
       C.LoadModule(ModuleName);
     }, CaptureList{ModuleName});
-    Context.Cont();
+
+    // Handle previous LoadModuleOps.
+    mlir::Block* Block = Op->getBlock();
+    assert(Block && "expecting parent block");
+    BlockItrTy Itr(Op);
+    if (Itr != Block->begin()) {
+      --Itr;
+      if (auto PrevLM = dyn_cast<LoadModuleOp>(&*Itr))
+        Visit(PrevLM, /*IsFirst=*/false);
+    }
+
+    if (ShouldCont)
+      Context.Cont();
     return BlockItrTy();
   }
 

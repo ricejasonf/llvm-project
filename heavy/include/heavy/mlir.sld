@@ -4,46 +4,45 @@
   (import (heavy base)
           (heavy mlir builtins))
     (begin
-      (dump "MLIR!")
-    (define (init-regions Op BlockArgTypesList UserFns)
-      (define Is (range (length BlockArgTypesList)))
-      (define (InitRegion RegionIndex BlockArgTypes UserFn)
-        (with-builder
-          (lambda ()
-            (define Region (get-region Op RegionIndex))
-            (define Block (entry-block Region))
-            (define Args
-              (let ()
-                (define (Proc BlockArgType)
-                  (add-argument Block BlockArgType Loc))
-                (map Proc BlockArgTypes)))
-            (at-block-begin Block)
-            (apply UserFn Args))))
-      (map InitRegion Is BlockArgTypesList UserFns))
+      (define (init-regions Op BlockArgTypesList UserFns)
+        (define Is (range (length BlockArgTypesList)))
+        (define (InitRegion RegionIndex BlockArgTypes UserFn)
+          (with-builder
+            (lambda ()
+              (define Region (get-region Op RegionIndex))
+              (define Block (entry-block Region))
+              (define Args
+                (let ()
+                  (define (Proc BlockArgType)
+                    (add-argument Block BlockArgType Loc))
+                  (map Proc BlockArgTypes)))
+              (at-block-begin Block)
+              (apply UserFn Args))))
+        (map InitRegion Is BlockArgTypesList UserFns))
 
-    (define-syntax create-op
-      (syntax-rules (: loc: attributes: operands: result-types: region:)
-        ((create-op Name
-          (loc: Loc)
-          (operands: Operands ...)
-          (attributes: (AttrName Attr) ...)
-          (result-types: ResultTypes ...)
-          (region: RegionName ((BlockArg : BlockArgType) ...)
-                    RegionBody1 RegionBodyN ...) ...)
-         (let ((Op
-                  (old-create-op Name
-                    (loc Loc)
-                    (operands Operands ...)
-                    (attributes (list 'AttrName Attr) ...)
-                    (result-types ResultTypes ...)
-                    (regions (length '(RegionName ...)))
-                    ))
-                (BlockArgsTypesList (list (list BlockArgType ...) ...))
-                (UserFns (list (lambda (BlockArg ...)
-                                     RegionBody1 RegionBodyN ...) ...)))
-            (init-regions Op BlockArgsTypesList UserFns)
-            Op)
-        )))
+      (define-syntax create-op
+        (syntax-rules (: loc: attributes: operands: result-types: region:)
+          ((create-op Name
+            (loc: Loc)
+            (operands: Operands ...)
+            (attributes: (AttrName Attr) ...)
+            (result-types: ResultTypes ...)
+            (region: RegionName ((BlockArg : BlockArgType) ...)
+                      RegionBody1 RegionBodyN ...) ...)
+           (let ((Op
+                    (old-create-op Name
+                      (loc Loc)
+                      (operands Operands ...)
+                      (attributes (list 'AttrName Attr) ...)
+                      (result-types ResultTypes ...)
+                      (regions (length '(RegionName ...)))
+                      ))
+                  (BlockArgsTypesList (list (list BlockArgType ...) ...))
+                  (UserFns (list (lambda (BlockArg ...)
+                                       RegionBody1 RegionBodyN ...) ...)))
+              (init-regions Op BlockArgsTypesList UserFns)
+              Op)
+          )))
     ) ; end of begin
 
    (export

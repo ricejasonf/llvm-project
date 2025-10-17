@@ -268,10 +268,9 @@ namespace {
   void import_helper(Context& C, ValueRefs Args) {
     if (Pair* P = dyn_cast<Pair>(Args[0])) {
       C.PushCont([](Context& C, ValueRefs) {
-        Value Callee = C.getCapture(0);
-        Value RecurseArgs[] = {C.getCapture(1)};
-        C.Apply(Callee, RecurseArgs);
-      }, CaptureList{C.getCallee(), P->Cdr});
+        Value RecurseArgs = C.getCapture(0);
+        import_helper(C, RecurseArgs);
+      }, CaptureList{P->Cdr});
       C.PushCont([](Context& C, ValueRefs Args) {
         auto* ImpSet = cast<ImportSet>(Args[0]);
         C.Import(ImpSet);
@@ -289,10 +288,10 @@ void import_(Context& C, ValueRefs Args) {
   if (C.OpGen->isLibraryContext()) {
     C.OpGen->WithLibraryEnv(C.CreateLambda([](Context& C, ValueRefs) {
       Value ImportSpecs = C.getCapture(0);
-      C.Apply(C.CreateLambda(import_helper, {}), ImportSpecs);
+      import_helper(C, ImportSpecs);
     }, CaptureList{ImportSpecs}));
   } else {
-    C.Apply(C.CreateLambda(import_helper, {}), ImportSpecs);
+    import_helper(C, ImportSpecs);
   }
 }
 
