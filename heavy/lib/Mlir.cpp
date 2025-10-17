@@ -356,8 +356,8 @@ void add_argument(Context& C, ValueRefs Args) {
   heavy::SourceLocation Loc= Args[2].getSourceLocation();
   if (!Block)
     return C.RaiseError("expecting mlir.block: {}", Args[0]);
-  if (Type)
-    return C.RaiseError("expecting mlir.block: {}", Args[1]);
+  if (!Type)
+    return C.RaiseError("expecting mlir.type: {}", Args[1]);
 
   mlir::OpBuilder* Builder = getCurrentBuilder(C);
   if (!Builder)

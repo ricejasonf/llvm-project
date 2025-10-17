@@ -448,12 +448,12 @@ mlir::FunctionType OpGen::createFunctionType(unsigned Arity,
   mlir::Type ClosureT   = Builder.getType<HeavyContextTy>();
   mlir::Type ValueT     = Builder.getType<HeavyValueTy>();
 
-  llvm::SmallVector<mlir::Type, 16> Types{};
+  llvm::SmallVector<mlir::Type, 16> ArgTypes{};
   // push the closure type
-  Types.push_back(ClosureT);
+  ArgTypes.push_back(ClosureT);
   if (Arity > 0) {
     for (unsigned i = 0; i < Arity - 1; i++) {
-      Types.push_back(ValueT);
+      ArgTypes.push_back(ValueT);
     }
 
     mlir::Type LastParamT;
@@ -468,10 +468,10 @@ mlir::FunctionType OpGen::createFunctionType(unsigned Arity,
       LastParamT = Builder.getType<HeavyValueRefsTy>();
       break;
     }
-    Types.push_back(LastParamT);
+    ArgTypes.push_back(LastParamT);
   }
 
-  return Builder.getFunctionType(Types, ValueT);
+  return Builder.getFunctionType(ArgTypes, /*ResultTypes*/{});
 }
 
 heavy::FuncOp OpGen::createFunction(SourceLocation Loc,
