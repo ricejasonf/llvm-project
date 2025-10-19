@@ -22,6 +22,7 @@
     quote
     set!
     syntax-rules
+    syntax-error
     begin
     cond-expand
     define-library
