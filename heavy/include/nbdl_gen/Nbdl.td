@@ -21,20 +21,20 @@ def Nbdl_Dialect : Dialect {
 def Nbdl_Empty : TypeDef<Nbdl_Dialect, "Empty", []> {
   let mnemonic = "empty";
   let description = [{
-    We define empty_type as a type with no information either
-    compile-time or run-time.
+    We define empty_type as a type whose with no
+    state either compile-time or run-time.
 
-    This serves as the identity element for product types.
+    This serves as the identity element for sum types.
   }];
 }
 
-def Nbdl_Void : TypeDef<Nbdl_Dialect, "Void", []> {
-  let mnemonic = "void";
+def Nbdl_Unit : TypeDef<Nbdl_Dialect, "Unit", []> {
+  let mnemonic = "unit";
   let description = [{
-    We define void_type as a unit type with no run-time information
-    and no run-time instantiation.
+    We define unit_type to have a single possible
+    compile-time and run-time state.
 
-    This serves as the identity element for sum types.
+    This serves as the identity element for product types.
   }];
 }
 
@@ -113,9 +113,9 @@ def Nbdl_Symbol : TypeDef<Nbdl_Dialect, "Symbol"> {
 // Keys are optional, but we are using variadic arguments
 // so we resort to using this sum type.
 def Nbdl_KeyType : AnyTypeOf<[Nbdl_Opaque, Nbdl_Tag,
-                              Nbdl_Symbol, Nbdl_Empty]>;
+                              Nbdl_Symbol, Nbdl_Unit]>;
 
-def Nbdl_Type : AnyTypeOf<[Nbdl_Void, Nbdl_Empty, Nbdl_Opaque,
+def Nbdl_Type : AnyTypeOf<[Nbdl_Unit, Nbdl_Empty, Nbdl_Opaque,
                            Nbdl_Store, Nbdl_Tag]>;
 
 class Nbdl_Op<string mnemonic, list<Trait> traits = []> :
@@ -310,6 +310,15 @@ def Nbdl_EmptyOp : Nbdl_Op<"empty", []> {
 
   let arguments = (ins);
   let results = (outs Nbdl_Empty:$result);
+}
+
+def Nbdl_UnitOp : Nbdl_Op<"unit", []> {
+  let description = [{
+    An operation that produces an object of the unit type.
+  }];
+
+  let arguments = (ins);
+  let results = (outs Nbdl_Unit:$result);
 }
 
 def Nbdl_ApplyOp : Nbdl_Op<"apply", []> {

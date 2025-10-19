@@ -209,7 +209,7 @@ public:
       else if (isa<ConstexprOp>(Op))
         return VisitType(cast<ConstexprOp>(Op));
       else
-        SetError("unhandled operation (VisitType)", Op);
+        SetError("unhandled operation (VisitType): {}", Op);
     } else {
       // Handle mlir::BlockArgument.
       // Arguments cannot be `decltype(auto)`
@@ -285,8 +285,11 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
     else if (isa<FuncOp>(Op))         return Visit(cast<FuncOp>(Op));
     else if (isa<MemberNameOp>(Op))   return Visit(cast<MemberNameOp>(Op));
     else if (isa<ConstexprOp, LiteralOp>(Op)) return;
+    else if (isa<UnitOp>(Op)) return;
+    else if (isa<EmptyOp>(Op))
+      return SetError("empty type does not map to c++", Op);
     else
-      SetError("unhandled operation", Op);
+      return SetError("unhandled operation: {}", Op);
   }
 
   void VisitRegion(mlir::Region& R) {
@@ -342,8 +345,10 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
     } else {
       OS << "nbdl::get(";
       WriteForwardedExpr(Op.getState());
-      OS << ',';
-      WriteForwardedExpr(Op.getKey());
+      if (!isa<nbdl_gen::UnitType>(Op.getKey().getType())) {
+        OS << ", ";
+        WriteForwardedExpr(Op.getKey());
+      }
       OS << ");\n";
     }
   }
@@ -361,8 +366,10 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
   void Visit(MatchOp Op) {
     OS << "nbdl::match(";
     WriteForwardedExpr(Op.getStore());
-    OS << ", ";
-    WriteForwardedExpr(Op.getKey());
+    if (!isa<nbdl_gen::UnitType>(Op.getKey().getType())) {
+      OS << ", ";
+      WriteForwardedExpr(Op.getKey());
+    }
     OS << ", ";
     OS << "\nboost::hana::overload_linearly(";
 
@@ -494,7 +501,7 @@ public:
       return;
     } else {
       mlir::Operation* Irr = Val.getDefiningOp();
-      SetError("unhandled operation", Irr);
+      SetError("unhandled operation: (WriteMemberDecl) {}", Irr);
     }
   }
 
@@ -532,7 +539,6 @@ public:
     auto ContOp = getContOp(Op);
     if (!ContOp)
       return;
-
 
     OS << Op.getName();
     OS << '(';
