@@ -408,6 +408,29 @@ def heavy_MatchTailOp : HeavyOp<"match_tail", []> {
   ];
 }
 
+def heavy_MatchVectorOp : HeavyOp<"match_vector", []> {
+  let description = [{
+    Destructure a vector literal with a single, optional subpattern.
+    The attributes $head and $tail are the number of elements before
+    and after the subpattern P_e. If P_e does not exist then $tail is 0.
+    The number of results are $head + $tail + 1 or $head if $tail is 0.
+    The results are ordered (H... E_e T....) where H and T are the
+    corresponding head and tail elements and E_e is a list of the
+    elements to match against the subpattern.
+  }];
+
+  let arguments = (ins UI32Attr:$head,
+                       UI32Attr:$tail,
+                       HeavyValue:$input);
+  let results   = (outs Variadic<HeavyValue>:$results);
+
+  let builders = [
+    OpBuilder<(ins "uint32_t":$head,
+                   "uint32_t":$tail,
+                   "::mlir::Value":$input)>
+  ];
+}
+
 def heavy_MatchArgsOp : HeavyOp<"match_args"> {
   let description = [{
     Destructure a dynamically lengthed array (ValueRefs) using the type
