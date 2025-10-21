@@ -17,6 +17,7 @@
 #include <llvm/ADT/ScopedHashTable.h>
 #include <llvm/ADT/ScopeExit.h>
 #include <llvm/ADT/Twine.h>
+#include <llvm/ADT/TypeSwitch.h>
 #include <llvm/Support/Casting.h>
 #include <mlir/IR/Value.h>
 #include <mlir/IR/Operation.h>
@@ -169,6 +170,13 @@ public:
   }
 
   void WriteForwardedExpr(mlir::Value V) {
+    assert(V.hasOneUse() &&
+        "expecting exactly one use for forwarding reference");
+    WriteExpr(V, /*IsFwd=*/true);
+  }
+
+  // Special function to denote that we checked for multiple uses.
+  void WriteLastUseForwardedExpr(mlir::Value V) {
     WriteExpr(V, /*IsFwd=*/true);
   }
 
@@ -339,36 +347,36 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
          << SetLocalVarName(Op.getResult(), "get_")
          << " = ";
     if (MemberNameOp) {
-      WriteForwardedExpr(Op.getState());
+      WriteExpr(Op.getState());
       OS << '.' << MemberNameOp.getName()
          << ";\n";
     } else {
       OS << "nbdl::get(";
-      WriteForwardedExpr(Op.getState());
+      WriteExpr(Op.getState());
       if (!isa<nbdl_gen::UnitType>(Op.getKey().getType())) {
         OS << ", ";
-        WriteForwardedExpr(Op.getKey());
+        WriteExpr(Op.getKey());
       }
       OS << ");\n";
     }
   }
 
   void Visit(VisitOp Op) {
-    WriteForwardedExpr(Op.getFn());
+    WriteExpr(Op.getFn());
     OS << '(';
     llvm::interleave(Op.getArgs(), OS,
         [&](mlir::Value V) {
-          WriteForwardedExpr(V);
+          WriteExpr(V);
         }, ",\n");
     OS << ");\n";
   }
 
   void Visit(MatchOp Op) {
     OS << "nbdl::match(";
-    WriteForwardedExpr(Op.getStore());
+    WriteExpr(Op.getStore());
     if (!isa<nbdl_gen::UnitType>(Op.getKey().getType())) {
       OS << ", ";
-      WriteForwardedExpr(Op.getKey());
+      WriteExpr(Op.getKey());
     }
     OS << ", ";
     OS << "\nboost::hana::overload_linearly(";
@@ -386,6 +394,9 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
     mlir::Region& Body = Op.getBody();
     if (Body.empty())
       return;
+    llvm::StringRef TypeStr = Op.getType();
+    if (TypeStr.empty())
+      TypeStr = "auto&&";
     OS << "[&]";
     // Write parameters.
     OS << '(';
@@ -562,10 +573,17 @@ public:
     if (auto StoreOp = Member.getDefiningOp<nbdl_gen::StoreOp>()) {
       llvm::interleaveComma(StoreOp.getArgs(), OS,
         [&](mlir::Value Arg) {
-          WriteForwardedExpr(Arg);
+          // Check for later use or possibly later use
+          // (due to unspecified order of evaluation)
+          if (Arg.hasOneUse() ||
+              (llvm::count(StoreOp.getArgs(), Arg) == 1 &&
+                !findLaterUse(Arg, StoreOp)))
+            WriteLastUseForwardedExpr(Arg);
+          else
+            WriteExpr(Arg);  // Not forwarded
         });
     } else {
-      SetErrorV("unsupported operation arguments", Member);
+      SetErrorV("unsupported operation (WriteInitArgs)", Member);
     }
   }
 
@@ -574,6 +592,49 @@ public:
       OS << "decltype(auto) get_" << GetLocalVal(Value)
         << "() const {\n  return " << GetLocalVal(Value) << ";\n}\n";
     }
+  }
+
+  // Find any use of Arg in subsequent stores composed of Store
+  // (not including Store itself.)
+  StoreOp findLaterUse(mlir::Value Arg, mlir::Value Store) {
+    assert(Store.hasOneUse() && "store result should be used exactly once");
+    mlir::OpOperand StoreUse = *Store.getUsers().begin();
+
+    return llvm::TypeSwitch<mlir::Operation*, StoreOp>(StoreUse.getOwner())
+    .Case<StoreOp>([&](StoreOp S) {
+        return llvm::is_contained(S.getArgs(), Arg) ? S : StoreOp();
+      })
+    .Case<StoreComposeOp>([&](StoreComposeOp SC) {
+        // Check that Arg is not used in LHS.
+        if (SC.getLhs() != Store)
+          if (StoreOp Result = findUse(Arg, SC.getLhs()))
+            return Result;
+        return findLaterUse(Arg, SC.getResult());
+      })
+    .Case<ContOp>([](auto) { return StoreOp(); })
+    .Default([](auto) {
+        llvm_unreachable("unexpected use of store");
+        return StoreOp();
+      });
+  }
+
+  // Find any use of Arg in a Store.
+  StoreOp findUse(mlir::Value Arg, mlir::Value Store) {
+    return llvm::TypeSwitch<mlir::Operation*, StoreOp>(Store.getDefiningOp())
+    .Case<StoreOp>([&](StoreOp S) {
+        return llvm::is_contained(S.getArgs(), Arg) ? S : StoreOp();
+      })
+    .Case<StoreComposeOp>([&](StoreComposeOp SC) {
+        // Check both sides.
+        if (StoreOp Result = findUse(Arg, SC.getLhs()))
+          return Result;
+        else
+          return findUse(Arg, SC.getRhs());
+      })
+    .Default([](auto) {
+        llvm_unreachable("unexpected result for store");
+        return StoreOp();
+      });
   }
 };
 

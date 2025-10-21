@@ -52,6 +52,7 @@
     (build-member (build-member-name 'foo) '::moo::foo_t foo-input)
     (build-member (build-member-name 'bar) '::moo::bar_t)
     (build-member (build-member-name 'baz) '::moo::baz_t BazArg)
+    (build-member (build-member-name 'baz2) '::moo::baz_t BazArg)
     (old-create-op "nbdl.cont"
                (operands parent))
   ))
@@ -68,6 +69,6 @@
 ; CHECK-NEXT: ::moo::bar_t bar;
 ; CHECK-NEXT: ::moo::baz_t baz;
 ; CHECK: my_context(auto&& arg_0)
-; CHECK-NEXT: : foo(42), bar(), baz(static_cast<decltype(arg_0)>(arg_0)
+; CHECK-NEXT: : foo(42), bar(), baz(arg_0), baz2(static_cast<decltype(arg_0)>(arg_0)) 
 (translate-cpp my_context)
 (newline)
