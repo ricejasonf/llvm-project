@@ -401,7 +401,7 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
     // Write parameters.
     OS << '(';
     mlir::BlockArgument& Arg = Body.getArguments().front();
-    OS << Op.getType() << ' ' << SetLocalVarName(Arg, "arg_");
+    OS << TypeStr << ' ' << SetLocalVarName(Arg, "arg_");
     OS << ')';
     OS << "{\n";
     VisitRegion(Body);
