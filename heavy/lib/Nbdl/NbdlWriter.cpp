@@ -401,6 +401,7 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
     // Write parameters.
     OS << '(';
     mlir::BlockArgument& Arg = Body.getArguments().front();
+    // FIXME We need to deduce qualifiers on the argument type.
     OS << TypeStr << ' ' << SetLocalVarName(Arg, "arg_");
     OS << ')';
     OS << "{\n";
@@ -507,6 +508,7 @@ public:
 
     if (auto SCO = Val.getDefiningOp<nbdl_gen::StoreComposeOp>()) {
       WriteMemberDeclRec(SCO);
+      // FIXME EmptyOp should be UnitOp I think since this is a product type.
     } else if (auto EO = Val.getDefiningOp<nbdl_gen::EmptyOp>();
                EO || isa<mlir::BlockArgument>(Val)) {
       return;

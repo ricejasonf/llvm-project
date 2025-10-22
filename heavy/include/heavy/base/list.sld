@@ -30,10 +30,13 @@
     (define (reverse InputList)
       (let Loop ((List InputList)
                  (NewList '()))
-        (if (pair? List)
-          (Loop (cdr List)
-            (cons (car List) NewList))
-          NewList)))
+        (cond
+          ((pair? List)
+           (Loop (cdr List)
+                 (cons (car List) NewList)))
+          ((null? List) NewList)
+          (else (error "expecting a proper list: {}" InputList)))
+        ))
 
     (define (map Proc . InputLists)
       (define (MapFast FastProc List)
