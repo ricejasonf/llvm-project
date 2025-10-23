@@ -288,6 +288,7 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
     else if (isa<GetOp>(Op))          return Visit(cast<GetOp>(Op));
     else if (isa<VisitOp>(Op))        return Visit(cast<VisitOp>(Op));
     else if (isa<MatchOp>(Op))        return Visit(cast<MatchOp>(Op));
+    else if (isa<NoOp>(Op))           return Visit(cast<NoOp>(Op));
     else if (isa<OverloadOp>(Op))     return Visit(cast<OverloadOp>(Op));
     else if (isa<MatchIfOp>(Op))      return Visit(cast<MatchIfOp>(Op));
     else if (isa<FuncOp>(Op))         return Visit(cast<FuncOp>(Op));
@@ -295,7 +296,8 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
     else if (isa<ConstexprOp, LiteralOp>(Op)) return;
     else if (isa<UnitOp>(Op)) return;
     else if (isa<EmptyOp>(Op))
-      return SetError("empty type does not map to c++", Op);
+      return SetError("empty type does not map to c++ "
+                      "because that would be absurd", Op);
     else
       return SetError("unhandled operation: {}", Op);
   }
@@ -371,6 +373,12 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
     OS << ");\n";
   }
 
+  void Visit(NoOp Op) {
+    OS << "(void)";
+    WriteExpr(Op.getArg());
+    OS << ";\n";
+  }
+
   void Visit(MatchOp Op) {
     OS << "nbdl::match(";
     WriteExpr(Op.getStore());
@@ -401,8 +409,8 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
     // Write parameters.
     OS << '(';
     mlir::BlockArgument& Arg = Body.getArguments().front();
-    // FIXME We need to deduce qualifiers on the argument type.
-    OS << TypeStr << ' ' << SetLocalVarName(Arg, "arg_");
+    OS << "nbdl::SameAs<" << TypeStr << "> auto&& "
+       << SetLocalVarName(Arg, "arg_");
     OS << ')';
     OS << "{\n";
     VisitRegion(Body);
@@ -508,8 +516,7 @@ public:
 
     if (auto SCO = Val.getDefiningOp<nbdl_gen::StoreComposeOp>()) {
       WriteMemberDeclRec(SCO);
-      // FIXME EmptyOp should be UnitOp I think since this is a product type.
-    } else if (auto EO = Val.getDefiningOp<nbdl_gen::EmptyOp>();
+    } else if (auto EO = Val.getDefiningOp<nbdl_gen::UnitOp>();
                EO || isa<mlir::BlockArgument>(Val)) {
       return;
     } else {

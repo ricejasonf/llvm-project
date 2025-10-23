@@ -190,9 +190,9 @@ def Nbdl_OverloadOp : Nbdl_Op<"overload", []> {
 
 def Nbdl_NoOp : Nbdl_Op<"noop", [Terminator]> {
   let description = [{
-    NoOp is used primarily for match overloads that do nothing.
+    NoOp visits a store but does nothing except mark it as used.
   }];
-  let arguments = (ins);
+  let arguments = (ins Nbdl_Type:$arg);
   let results = (outs);
 }
 
@@ -305,7 +305,8 @@ def Nbdl_StoreOp : Nbdl_Op<"store", []> {
 
 def Nbdl_EmptyOp : Nbdl_Op<"empty", []> {
   let description = [{
-    An operation that produces an object of the empty type.
+    An operation that produces an object of the empty type
+    which is just absurd.
   }];
 
   let arguments = (ins);

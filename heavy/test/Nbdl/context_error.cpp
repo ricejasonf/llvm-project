@@ -14,7 +14,7 @@ heavy_scheme {
 (define !nbdl.store (type "!nbdl.store"))
 (define !nbdl.tag (type "!nbdl.tag"))
 (define !nbdl.symbol (type "!nbdl.symbol"))
-(define !nbdl.empty (type "!nbdl.empty"))
+(define !nbdl.unit (type "!nbdl.unit"))
 (define i32 (type "i32"))
 
 (define (build-member-name name)
@@ -30,8 +30,8 @@ heavy_scheme {
   (lambda ()
     (define parent
       (result
-        (old-create-op "nbdl.empty"
-                   (result-types !nbdl.empty))))
+        (old-create-op "nbdl.unit"
+                   (result-types !nbdl.unit))))
     (define (build-member key typename . init-args)
       (define store
         (result
