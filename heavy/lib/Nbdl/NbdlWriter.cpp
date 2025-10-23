@@ -403,13 +403,13 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
     if (Body.empty())
       return;
     llvm::StringRef TypeStr = Op.getType();
-    if (TypeStr.empty())
-      TypeStr = "auto&&";
     OS << "[&]";
     // Write parameters.
     OS << '(';
     mlir::BlockArgument& Arg = Body.getArguments().front();
-    OS << "nbdl::SameAs<" << TypeStr << "> auto&& "
+    if (!TypeStr.empty())
+      OS << "nbdl::SameAs<" << TypeStr << "> ";
+    OS << "auto&& "
        << SetLocalVarName(Arg, "arg_");
     OS << ')';
     OS << "{\n";
