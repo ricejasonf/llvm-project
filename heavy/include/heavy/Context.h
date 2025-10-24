@@ -48,6 +48,7 @@ using llvm::dyn_cast;
 using llvm::dyn_cast_or_null;
 using llvm::isa;
 
+class SourceManager;
 class OpGen;
 class Context;
 
@@ -128,6 +129,7 @@ private:
   mlir::Operation* ModuleOp = nullptr;
 
 public:
+  heavy::SourceManager* SourceManager = nullptr;
   heavy::OpGen* OpGen = nullptr;
   heavy::OpEvalPtr OpEval;
 

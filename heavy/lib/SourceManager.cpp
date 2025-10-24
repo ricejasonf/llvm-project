@@ -96,6 +96,7 @@ SourceManager::getClosestLineStart(SourceFile File,
 
 SourceLineContext
 FullSourceLocation::getLineContext() const {
+  assert(isValid() && "expecting valid source location");
   char const* const FileStartPos = File.Buffer.begin();
   char const* const FileEndPos = File.Buffer.end();
   // We could store SourceLineStarts to help with speeding

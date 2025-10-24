@@ -80,6 +80,7 @@ Context::Context()
     EnvStack(Empty()),
     DialectRegistry(std::make_unique<mlir::DialectRegistry>()),
     MLIRContext(std::make_unique<mlir::MLIRContext>(*DialectRegistry)),
+    SourceManager(nullptr),
     OpGen(nullptr)
 {
   NameForImportVar = HEAVY_IMPORT_VAR;
@@ -363,6 +364,13 @@ private:
     OS << "#<Value of Kind:"
        << getKindName(V.getKind())
        << ">";
+  }
+
+  void VisitSourceValue(SourceValue* SV) {
+    heavy::SourceLocation Loc = SV->getSourceLocation();
+    OS << "\n#<SourceValue {"
+       << Loc.getEncoding()
+       << "}>";
   }
 
   void VisitUndefined(Undefined U) {

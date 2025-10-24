@@ -697,6 +697,8 @@ class SourceValue : public ValueBase,
         ValueWithSource(L)
   { }
 
+  using ValueWithSource::getSourceLocation;
+
   static bool classof(Value V) {
     return V.getKind() == ValueKind::SourceValue;
   }

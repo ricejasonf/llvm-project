@@ -60,6 +60,7 @@ void HeavyScheme::ProcessTopLevelCommands(
                               heavy::tok Terminator) {
   auto& Context = getContext();
   auto& SM = getSourceManager();
+  Context.SourceManager = &SM;
   auto ParserPtr = std::make_unique<Parser>(Lexer, Context);
   Parser& Parser = *ParserPtr;
   heavy::Environment* Env = Context.DefaultEnv.get();

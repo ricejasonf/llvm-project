@@ -15,6 +15,7 @@
 #include "heavy/Context.h"
 #include "heavy/Dialect.h"
 #include "heavy/OpGen.h"
+#include "heavy/SourceManager.h"
 #include "heavy/Value.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
@@ -88,6 +89,7 @@ heavy::ExternFunction error;
 heavy::ExternFunction dynamic_wind;
 heavy::ExternFunction load_module;
 heavy::ExternFunction source_loc;
+heavy::ExternFunction dump_source_loc;
 heavy::ExternFunction make_syntactic_closure;
 
 heavy::ExternFunction eval;
@@ -400,6 +402,37 @@ void source_loc(Context& C, ValueRefs Args) {
       break;
   }
   C.Cont(C.CreateSourceValue(Loc));
+}
+
+void dump_source_loc(Context& C, ValueRefs Args) {
+  if (Args.size() != 1)
+    return C.RaiseError("invalid arity");
+  if (!C.SourceManager)
+    return C.RaiseError("source manager not available");
+
+  // TODO
+  // This could be generalize to take an optional message to work with
+  // errors, warnings, notes, etc.
+
+  heavy::SourceLocation Loc = Args[0].getSourceLocation();
+  heavy::FullSourceLocation SL = C.SourceManager->getFullSourceLocation(Loc);
+  if (SL.isValid()) {
+    heavy::SourceLineContext LineContext = SL.getLineContext();
+    llvm::errs() << LineContext.FileName
+                 << ':' << LineContext.LineNumber
+                 << ':' << LineContext.Column
+                 // TODO optional message could go here
+                 << '\n'
+                 << LineContext.LineRange << '\n';
+    // Display the caret pointing to the point of interest.
+    for (unsigned i = 1; i < LineContext.Column; i++) {
+      llvm::errs() << ' ';
+    }
+    llvm::errs() << "^\n";
+  } else {
+    llvm::errs() << "<<INVALID SOURCE LOCATION>>\n";
+  }
+  C.Cont();
 }
 
 } // end of namespace heavy::builtins
@@ -1217,6 +1250,7 @@ void HEAVY_BASE_INIT(heavy::Context& Context) {
 
 
   HEAVY_BASE_VAR(source_loc)      = heavy::builtins::source_loc;
+  HEAVY_BASE_VAR(dump_source_loc) = heavy::builtins::dump_source_loc;
   HEAVY_BASE_VAR(parse_source_file).init(Context);
 
   // functions
@@ -1311,6 +1345,7 @@ void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
       HEAVY_BASE_VAR(include_library_declarations)},
 
     {"source-loc",    HEAVY_BASE_VAR(source_loc)},
+    {"dump-source-loc", HEAVY_BASE_VAR(dump_source_loc)},
     {"parse-source-file",
                       HEAVY_BASE_VAR(parse_source_file).get(Context)},
 
