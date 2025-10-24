@@ -59,6 +59,7 @@
     raise
     string-append
     string-copy
+    string-ref
     string-length
     values
     with-exception-handler

@@ -88,8 +88,8 @@ void InitParseSourceFile(heavy::Context& C, ParseSourceFileFn Fn) {
 namespace heavy::detail {
 // Declare utility functions for iterating UTF-8 characters.
 class Utf8View {
-  llvm::StringRef Range;
 public:
+  llvm::StringRef Range;
   Utf8View(llvm::StringRef StrView)
     : Range(StrView)
   { }

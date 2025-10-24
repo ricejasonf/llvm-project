@@ -1480,11 +1480,7 @@ private:
     Value Cdr = Visit(P->Cdr);
     if (Car == P->Car && Cdr == P->Cdr)
       return P;
-    heavy::SourceLocation Loc = P->getSourceLocation();
-    if (Loc.isValid())
-      return Context.CreatePairWithSource(Car, Cdr, Loc);
-    else
-      return Context.CreatePair(Car, Cdr);
+    return Context.CreatePair(Car, Cdr, P);
   }
 
   Value VisitVector(Vector* V) {

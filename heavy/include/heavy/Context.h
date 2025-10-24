@@ -342,6 +342,14 @@ public:
   Pair*       CreatePair(Value V1) {
     return new (*this) Pair(V1, CreateEmpty());
   }
+  Pair*       CreatePair(Value V1, Value V2, Pair* SourcePair) {
+    heavy::SourceLocation Loc = SourcePair->getSourceLocation();
+    // Try to preserve source locations.
+    if (Loc.isValid())
+      return CreatePairWithSource(V1, V2, Loc);
+    else
+      return CreatePair(V1, V2);
+  }
   PairWithSource* CreatePairWithSource(Value V1, Value V2,
                                        SourceLocation Loc) {
     return new (*this) PairWithSource(V1, V2, Loc);

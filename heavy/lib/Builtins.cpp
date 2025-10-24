@@ -74,6 +74,7 @@ heavy::ExternFunction newline;
 heavy::ExternFunction string_append;
 heavy::ExternFunction string_copy;
 heavy::ExternFunction string_length;
+heavy::ExternFunction string_ref;
 heavy::ExternFunction number_to_string;
 heavy::ExternFunction eq;
 heavy::ExternFunction equal;
@@ -518,8 +519,41 @@ void string_append(Context& C, ValueRefs Args) {
 void string_length(Context& C, ValueRefs Args) {
   if (Args.size() != 1 || !isa<String, Symbol>(Args[0]))
     return C.RaiseError("expecting string-like object");
-  int Size = static_cast<int>(Args[0].getStringRef().size());
+
+  auto Utf8View = detail::Utf8View(Args[0].getStringRef());
+
+  int Size = 0;
+  while (Utf8View.drop_front())
+    ++Size;
+
   return C.Cont(Int(Size));
+}
+
+void string_ref(Context& C, ValueRefs Args) {
+  size_t K = 0;
+  if (Args.size() != 2)
+    return C.RaiseError("invalid arity");
+  if (!isa<String, Symbol>(Args[0]))
+    return C.RaiseError("expecting string-like object");
+  if (Args.size() == 2) {
+    if (isa<Int>(Args[1]) && cast<Int>(Args[1]) >= 0)
+      K = static_cast<size_t>(cast<Int>(Args[1]));
+    else
+      return C.RaiseError("expecting positive integer");
+  }
+
+  auto Utf8View = detail::Utf8View(Args[0].getStringRef());
+
+  Value V;
+  for (size_t I = 0; I <= K; ++I) {
+    V = Utf8View.drop_front();
+    if (!V) {
+      return C.RaiseError("invalid index for string: {0} {1}",
+                          {Args[1], Args[0]});
+    }
+  }
+
+  return C.Cont(V);
 }
 
 void string_copy(Context& C, ValueRefs Args) {
@@ -532,20 +566,31 @@ void string_copy(Context& C, ValueRefs Args) {
   size_t EndPos = ~size_t(0);  // npos
 
   if (Args.size() >= 2) {
-    if (isa<Int>(Args[1]))
+    if (isa<Int>(Args[1]) && cast<Int>(Args[1]) >= 0)
       StartPos = static_cast<size_t>(cast<Int>(Args[1]));
     else
-      return C.RaiseError("expecting integer");
+      return C.RaiseError("expecting positive integer");
   }
   if (Args.size() == 3) {
-    if (isa<Int>(Args[2]))
+    if (isa<Int>(Args[2]) && cast<Int>(Args[2]) >= 0)
       EndPos = static_cast<size_t>(cast<Int>(Args[2]));
     else
-      return C.RaiseError("expecting integer");
+      return C.RaiseError("expecting positive integer");
   }
 
-  llvm::StringRef Substr = Args[0].getStringRef().slice(StartPos, EndPos);
-  return C.Cont(C.CreateString(Substr));
+  auto View = detail::Utf8View(Args[0].getStringRef());
+  size_t I = 0;
+  for (; I < StartPos; ++I)
+    View.drop_front();
+  auto Back = View;
+  llvm::StringRef ViewStr = View.Range;
+  if (EndPos != ~size_t(0)) {
+    for (; I < EndPos; ++I)
+      Back.drop_front();
+    ViewStr = ViewStr.drop_back(Back.Range.size());
+  }
+
+  return C.Cont(C.CreateString(ViewStr));
 }
 
 void number_to_string(Context& C, ValueRefs Args) {
@@ -742,7 +787,7 @@ Value append_rec(Context& C, Value List, Value Cdr) {
     return Cdr;
   if (Pair* P = dyn_cast<Pair>(List)) {
     if (Value V = append_rec(C, P->Cdr, Cdr))
-      return C.CreatePair(P->Car, V);
+      return C.CreatePair(P->Car, V, P);
   }
   return Value();
 };
@@ -1201,6 +1246,7 @@ void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(string_append) = heavy::builtins::string_append;
   HEAVY_BASE_VAR(string_copy) = heavy::builtins::string_copy;
   HEAVY_BASE_VAR(string_length) = heavy::builtins::string_length;
+  HEAVY_BASE_VAR(string_ref) = heavy::builtins::string_ref;
   HEAVY_BASE_VAR(number_to_string) = heavy::builtins::number_to_string;
   HEAVY_BASE_VAR(eq)      = heavy::builtins::eqv;
   HEAVY_BASE_VAR(equal)   = heavy::builtins::equal;
@@ -1295,6 +1341,7 @@ void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"string-append", HEAVY_BASE_VAR(string_append)},
     {"string-copy", HEAVY_BASE_VAR(string_copy)},
     {"string-length", HEAVY_BASE_VAR(string_length)},
+    {"string-ref", HEAVY_BASE_VAR(string_ref)},
     {"number->string", HEAVY_BASE_VAR(number_to_string)},
     {"eq?",     HEAVY_BASE_VAR(eq)},
     {"equal?",  HEAVY_BASE_VAR(equal)},

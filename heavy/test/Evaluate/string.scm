@@ -9,12 +9,15 @@
              (string? ())))
 (newline)
 
-; CHECK-NEXT: (0 1 3 3 13)
+; CHECK-NEXT: (0 1 3 3 13 1 3 9)
 (write (list (string-length "")
              (string-length "f")
              (string-length "foo")
              (string-length 'foo)
-             (string-length "Hello, world!")))
+             (string-length "Hello, world!")
+             (string-length "λ")
+             (string-length "ΣλΣ")
+             (string-length "ΣλΣfooΣλΣ")))
 (newline)
 
 ; CHECK-NEXT: ""
@@ -28,6 +31,9 @@
 
 ; CHECK-NEXT: "Hello, world!"
 (write (string-append 'Hello ", world" '!))(newline)
+
+; CHECK-NEXT: "λΣλΣbarΣλΣfooΣλΣ"
+(write (string-append "λ" "ΣλΣ" "bar" "ΣλΣfooΣλΣ"))(newline)
 
 ; CHECK-NEXT: "Hello, world!"
 (write (string-copy "Hello, world!"))(newline)
@@ -58,6 +64,29 @@
 
 ; CHECK-NEXT: ""
 (write (string-copy "Hello, world!" 13 5))(newline)
+
+; CHECK-NEXT: #\Σ
+(write (string-ref "ΣλΣfooΣλΣ" 0))(newline)
+
+; CHECK-NEXT: #\λ
+(write (string-ref "ΣλΣfooΣλΣ" 1))(newline)
+
+; CHECK-NEXT: #\f
+(write (string-ref "ΣλΣfooΣλΣ" 3))(newline)
+
+; CHECK: "λ"
+(write (string-copy "λ"))(newline)
+; CHECK: "ΣλΣ"
+(write (string-copy "ΣλΣ"))(newline)
+; CHECK: "ΣλΣfooΣλΣ"
+(write (string-copy "ΣλΣfooΣλΣ"))(newline)
+
+; CHECK: ""
+(write (string-copy "λ" 1))(newline)
+; CHECK: "λΣ"
+(write (string-copy "ΣλΣ" 1))(newline)
+; CHECK: "fooΣ"
+(write (string-copy "ΣλΣfooΣλΣ" 3 7))(newline)
 
 ; CHECK-NEXT: "0"
 (write (number->string 0))(newline)
