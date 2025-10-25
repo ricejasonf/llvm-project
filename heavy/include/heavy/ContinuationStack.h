@@ -266,11 +266,8 @@ public:
         break;
       }
       default:
-        String* Msg = Context.CreateString(
-          "invalid operator for call expression: ",
-          getKindName(Callee.getKind())
-        );
-        Context.RaiseError(Msg, Callee);
+        Context.RaiseError(
+            "invalid operator for call expression: {}", Callee);
       }
 
       // This means a C++ function was not written correctly.

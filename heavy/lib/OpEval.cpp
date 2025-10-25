@@ -85,6 +85,13 @@ class OpEvalImpl {
     return V;
   }
 
+  // Get a value for pattern matching
+  // that can ignore syntax closures
+  // (which does not include symbols.)
+  heavy::Value getPatternValue(mlir::Value M) {
+    return Context.UnwrapSyntaxClosure(getValue(M));
+  }
+
   static heavy::SourceLocation getSourceLocation(mlir::Location Loc) {
     return heavy::SourceLocation(mlir::OpaqueLoc
       ::getUnderlyingLocationOrNull<heavy::SourceLocationEncoding*>(Loc));
@@ -674,7 +681,7 @@ private:
 
   BlockItrTy Visit(MatchOp Op) {
     heavy::Value P = Op.getVal().getValue(Context);
-    heavy::Value E = getValue(Op.getInput());
+    heavy::Value E = getPatternValue(Op.getInput());
     heavy::EnvEntry Entry;
     if (isIdentifier(E) && isIdentifier(P)) {
       // If the symbol is in the environment we can skip
@@ -699,7 +706,7 @@ private:
   }
 
   BlockItrTy Visit(MatchPairOp Op) {
-    heavy::Value E = getValue(Op.getInput());
+    heavy::Value E = getPatternValue(Op.getInput());
     if (auto* Pair = dyn_cast<heavy::Pair>(E)) {
       setValue(Op.getCar(), Pair->Car);
       setValue(Op.getCdr(), Pair->Cdr);
@@ -712,7 +719,7 @@ private:
   BlockItrTy Visit(MatchTailOp Op) {
     // Here we include the last cdr in the length
     // of a list proper or improper.
-    heavy::Value E = getValue(Op.getInput());
+    heavy::Value E = getPatternValue(Op.getInput());
     uint32_t TargetLen = Op.getLength();
     assert(TargetLen >= 1 && "expecting positive length");
     uint32_t TotalLen = 1;
@@ -828,7 +835,7 @@ private:
         break;
       auto Scope = ValueMapScope(ValueMap);
       BlockItrTy Itr = Op.getBody().front().begin();
-      setValue(BodyArg, Pair->Car);
+      setValue(BodyArg, Pair);
       while (Itr != BlockItrTy() && Itr != BlockItrTy(Op))
         Itr = Visit(&*Itr);
       // Check subpattern failure.
@@ -846,6 +853,7 @@ private:
   }
 
   BlockItrTy Visit(ResolveOp Op) {
+    heavy::SourceLocation Loc = getSourceLocation(Op.getLoc());
     if (auto ParentOp = dyn_cast<SubpatternOp>(Op->getParentOp())) {
       // We are at the terminator of a subpattern body region.
       assert(ParentOp.getPacks().size() ==
@@ -856,7 +864,7 @@ private:
       // Construct each pack as a reversed ordered list.
       for (unsigned i = 0; i < ResolveArgs.size(); i++) {
         Value Pack = Context.CreatePair(getValue(ResolveArgs[i]),
-                                        getValue(MResults[i]));
+                                        getValue(MResults[i]), Loc);
         setValueParentScope(MResults[i], Pack);
       }
       return BlockItrTy();
@@ -866,7 +874,8 @@ private:
     assert(Op.getArgs().size() == 1 && "expecting single result");
     heavy::Value CurrentResult = getValue(Op.getArgs().front());
     heavy::Value Result = Context.CreatePair(CurrentResult,
-                                      getValue(ExpandPacksOp.getResult()));
+                                      getValue(ExpandPacksOp.getResult()),
+                                      Loc);
     setValueParentScope(ExpandPacksOp.getResult(), Result);
     return BlockItrTy();
   }
@@ -882,9 +891,11 @@ private:
 
   BlockItrTy Visit(SyntaxClosureOp Op) {
     // Create a SyntaxClosure with the provided env argument.
+    heavy::Value SourceVal = getValue(Op.getSourceVal());
+    heavy::SourceLocation Loc = SourceVal.getSourceLocation();
     heavy::Value Input = getValue(Op.getInput());
     heavy::Value Env = getValue(Op.getEnv());
-    Value SC = Context.CreateSyntaxClosure(Context.getLoc(), Input, Env);
+    Value SC = Context.CreateSyntaxClosure(Loc, Input, Env);
     setValue(Op.getResult(), SC);
 
     return next(Op);
@@ -921,7 +932,8 @@ private:
   }
 
   BlockItrTy Visit(SourceLocOp Op) {
-    heavy::SourceLocation Loc = getSourceLocation(Op.getLoc());
+    heavy::Value Arg = getValue(Op.getArg());
+    heavy::SourceLocation Loc = Arg.getSourceLocation();
     heavy::Value V = Context.CreateSourceValue(Loc);
     setValue(Op.getResult(), V);
     return next(Op);

@@ -58,6 +58,7 @@ heavy::ExternFunction is_zero;
 heavy::ExternFunction list;
 heavy::ExternFunction length;
 heavy::ExternFunction cons;
+heavy::ExternFunction source_cons;
 heavy::ExternFunction car;
 heavy::ExternFunction cdr;
 heavy::ExternFunction append;
@@ -795,6 +796,15 @@ void cons(Context& C, ValueRefs Args) {
   C.Cont(C.CreatePair(Args[0], Args[1]));
 }
 
+// (source-cons car cdr src)
+// Where `src` can be any value that might
+// have a valid source location.
+void source_cons(Context& C, ValueRefs Args) {
+  if (Args.size() != 3)
+    return C.RaiseError("invalid arity");
+  C.Cont(C.CreatePair(Args[0], Args[1], Args[2]));
+}
+
 void car(Context& C, ValueRefs Args) {
   if (Args.size() != 1)
     return C.RaiseError("invalid arity");
@@ -1263,6 +1273,7 @@ void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(list)    = heavy::builtins::list;
   HEAVY_BASE_VAR(length)  = heavy::builtins::length;
   HEAVY_BASE_VAR(cons)    = heavy::builtins::cons;
+  HEAVY_BASE_VAR(source_cons) = heavy::builtins::source_cons;
   HEAVY_BASE_VAR(car)     = heavy::builtins::car;
   HEAVY_BASE_VAR(cdr)     = heavy::builtins::cdr;
   HEAVY_BASE_VAR(append)  = heavy::builtins::append;
@@ -1359,6 +1370,7 @@ void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"list",    HEAVY_BASE_VAR(list)},
     {"length",  HEAVY_BASE_VAR(length)},
     {"cons",    HEAVY_BASE_VAR(cons)},
+    {"source-cons", HEAVY_BASE_VAR(source_cons)},
     {"car",     HEAVY_BASE_VAR(car)},
     {"cdr",     HEAVY_BASE_VAR(cdr)},
     {"append",  HEAVY_BASE_VAR(append)},

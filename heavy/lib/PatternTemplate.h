@@ -101,9 +101,17 @@ public:
       OpGen.SetError(
         "pattern variable name appears in pattern multiple times", S);
     }
+
+    // Use any containing pair to carry source location information.
+    mlir::Value SourceVal;
+    if (auto MatchPairOp = E.getDefiningOp<heavy::MatchPairOp>())
+      SourceVal = MatchPairOp.getInput();
+    else
+      SourceVal = E;
+
     // Create a local variable with a SyntaxClosure of E as the initializer.
     heavy::SourceLocation Loc = S->getSourceLocation();
-    auto SynClo = OpGen.create<SyntaxClosureOp>(Loc, E, EnvArg);
+    auto SynClo = OpGen.create<SyntaxClosureOp>(Loc, SourceVal, E, EnvArg);
     heavy::Context& C = OpGen.getContext();
     Binding* B = C.CreateBinding(S, SynClo.getOperation());
     C.PushLocalBinding(B);
@@ -152,8 +160,10 @@ public:
       OpGen.Builder.setInsertionPointToStart(&Block);
       mlir::Type HeavyValueT = OpGen.Builder.getType<HeavyValueTy>();
       mlir::Location MLoc = createLoc(Loc);
+      // The block argument is the current pair from the input.
       mlir::Value BodyArg = Block.addArgument(HeavyValueT, MLoc);
-      Visit(P, BodyArg);
+      auto PairVal = OpGen.create<MatchPairOp>(Loc, BodyArg);
+      Visit(P, PairVal.getCar());
 
       // Create range for pack values by finding the
       // SyntaxClosureOps in the Body region.

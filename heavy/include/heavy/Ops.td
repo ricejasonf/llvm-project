@@ -580,17 +580,18 @@ def heavy_RenameEnvOp : HeavyOp<"rename_env"> {
 def heavy_SourceLocOp : HeavyOp<"source-loc"> {
   let summary = "source-loc";
   let description = [{
-    Encode a source location that is specific
-    to an instance of a SourceManager. Serialization
-    should not save this encoding.
-    This is used to allow passing source locations of
-    syntax as values.
+    Get the source location from a HeavyValue object.
+    This is primarily used to propagate source locations
+    of the inputs to pattern variables.
   }];
 
-  let arguments = (ins);
+  let arguments = (ins HeavyValue:$arg);
   let results   = (outs HeavyValue:$result);
-  let builders  = [OpBuilder<(ins)>];
+  let builders = [
+    OpBuilder<(ins "::mlir::Value":$arg)>
+  ];
 }
+
 def heavy_SetOp : HeavyOp<"set"> {
   let summary = "set";
   let description = [{
@@ -629,10 +630,12 @@ def heavy_SyntaxClosureOp : HeavyOp<"syntax_closure"> {
     macro expansion.
   }];
 
-  let arguments = (ins HeavyValue:$input, HeavyValue:$env);
+  let arguments = (ins HeavyValue:$sourceVal, HeavyValue:$input,
+                       HeavyValue:$env);
   let results   = (outs HeavyValue:$result);
   let builders  = [
-    OpBuilder<(ins "::mlir::Value":$input, "::mlir::Value":$env)>
+    OpBuilder<(ins "::mlir::Value":$sourceVal, "::mlir::Value":$input,
+                   "::mlir::Value":$env)>
   ];
 }
 

@@ -48,8 +48,6 @@
         ((do "step" x y)
          y)))
 
-    ; FIXME cond should be in the environment within syntax body.
-    ;       (this applies to all define-syntax)
     (define-syntax cond
       (syntax-rules (else =>)
         ((cond (else result1 result2 ...))

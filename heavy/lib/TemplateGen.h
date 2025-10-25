@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "TemplateBase.h"
+#include <heavy/Builtins.h>
 #include <heavy/Context.h>
 #include <heavy/OpGen.h>
 #include <heavy/Value.h>
@@ -113,9 +114,23 @@ private:
 
   TemplateResult VisitPair(Pair* P) {
     heavy::SourceLocation Loc = P->getSourceLocation();
-    if (auto* P2 = dyn_cast<Pair>(P->Cdr);
-        P2 && isEllipsis(P2->Car)) {
+    auto* P2 = dyn_cast<Pair>(P->Cdr);
+    if (P2 && isEllipsis(P2->Car)) {
       return ExpandPack(Loc, P->Car, P2->Cdr);
+    } else if (isSymbol(P->Car, "syntax-source-loc")) {
+      // Check for syntax-source-loc auxiliary
+      // syntax as an unbound literal.
+      heavy::Context& Context = OpGen.getContext();
+      auto* S = cast<Symbol>(P->Car);
+      if (!Context.Lookup(S)) {
+        auto* VarName = dyn_cast_or_null<Symbol>(P2->Car);
+        if (VarName && PatternVarNames.contains(VarName->getString())) {
+          mlir::Value SC = GetPatternVar(VarName);
+          return OpGen.create<SourceLocOp>(Loc, SC);
+        } else {
+          return OpGen.SetError("expecting pattern variable: {}", VarName);
+        }
+      }
     }
 
     return TemplateBase::VisitPair(P);

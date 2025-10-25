@@ -29,6 +29,8 @@
 #define HEAVY_BASE_VAR(NAME)          ::heavy::builtins_var::NAME
 #define HEAVY_BASE_VAR_STR(NAME)      HEAVY_BASE_VAR_STR__##NAME
 #define HEAVY_BASE_VAR_STR__error     HEAVY_BASE_LIB_STR "V5Serror"
+#define HEAVY_BASE_VAR_STR__source_loc \
+  HEAVY_BASE_LIB_STR "V6Ssourcemi3Sloc"
 
 // Forward declare vars that are used in the C++ codebase.
 namespace heavy::builtins_var {

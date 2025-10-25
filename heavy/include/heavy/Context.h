@@ -344,13 +344,16 @@ public:
   Pair*       CreatePair(Value V1) {
     return new (*this) Pair(V1, CreateEmpty());
   }
-  Pair*       CreatePair(Value V1, Value V2, Pair* SourcePair) {
-    heavy::SourceLocation Loc = SourcePair->getSourceLocation();
+  Pair* CreatePair(Value V1, Value V2, heavy::SourceLocation MaybeLoc) {
     // Try to preserve source locations.
-    if (Loc.isValid())
-      return CreatePairWithSource(V1, V2, Loc);
+    if (MaybeLoc.isValid())
+      return CreatePairWithSource(V1, V2, MaybeLoc);
     else
       return CreatePair(V1, V2);
+  }
+  Pair* CreatePair(Value V1, Value V2, Value MaybeSource) {
+    heavy::SourceLocation Loc = MaybeSource.getSourceLocation();
+    return CreatePair(V1, V2, Loc);
   }
   PairWithSource* CreatePairWithSource(Value V1, Value V2,
                                        SourceLocation Loc) {
@@ -419,6 +422,7 @@ public:
   Value CreateSyntaxClosure(SourceLocation Loc, Value Node, Value Env);
   SyntaxClosure* CreateSyntaxClosure(SourceLocation Loc, Symbol* S,
                                      Value Env);
+  Value UnwrapSyntaxClosure(Value V);
 
   SourceValue* CreateSourceValue(SourceLocation Loc) {
     return new (*this) SourceValue(Loc);

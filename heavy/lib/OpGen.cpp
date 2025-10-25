@@ -524,6 +524,7 @@ mlir::Value OpGen::createLambda(Value Formals, Value Body,
 std::pair<heavy::FuncOp, heavy::EnvFrame*>
 OpGen::createLambdaFunction(Value Formals, SourceLocation Loc,
                             llvm::StringRef Name) {
+  Formals = Context.UnwrapSyntaxClosure(Formals);
   // Flush any internal definitions from containing body if any.
   if (IsLocalDefineAllowed)
     FinishLocalDefines();
@@ -1188,7 +1189,13 @@ mlir::Value OpGen::VisitExternName(ExternName* EN) {
 }
 
 mlir::Value OpGen::VisitSyntaxClosure(SyntaxClosure* SC) {
-  return VisitSymbol(cast<Symbol>(SC->Node), SC->Env);
+  // A SyntaxClosure wraps either a Symbol or a rebuilt expression that
+  // substitutes all symbols as SyntaxClosures so we can simply unwrap
+  // the latter.
+  if (auto* S = dyn_cast<Symbol>(SC->Node))
+    return VisitSymbol(S, SC->Env);
+  else
+    return Visit(SC->Node);
 }
 
 mlir::Value OpGen::VisitSymbol(Symbol* S, Value ClosedEnv) {

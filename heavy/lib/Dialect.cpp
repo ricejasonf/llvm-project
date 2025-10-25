@@ -240,9 +240,10 @@ void SpliceOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
 }
 
 void SyntaxClosureOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
-                            mlir::Value Input, mlir::Value Env) {
+                            mlir::Value SourceVal, mlir::Value Input,
+                            mlir::Value Env) {
   mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
-  SyntaxClosureOp::build(B, OpState, HeavyValueT, Input, Env);
+  SyntaxClosureOp::build(B, OpState, HeavyValueT, SourceVal, Input, Env);
 }
 
 void SyntaxOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
@@ -273,9 +274,10 @@ void UndefinedOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState) {
   UndefinedOp::build(B, OpState, B.getType<HeavyValueTy>());
 }
 
-void SourceLocOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState) {
+void SourceLocOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                        mlir::Value Arg) {
   mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
-  SourceLocOp::build(B, OpState, HeavyValueT);
+  SourceLocOp::build(B, OpState, HeavyValueT, Arg);
 }
 
 using namespace mlir;

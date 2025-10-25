@@ -146,6 +146,7 @@ protected:
     return OpGen.create<SpliceOp>(Loc, ValX, ValY);
   }
 
+  // Specifying ProvidedVal forces the value into the "rename environment".
   mlir::Value createRename(Symbol* P, mlir::Value ProvidedVal = nullptr) {
     // Since RenameOps are memoized, every operation
     // inserted in this function needs to have the FuncOp
@@ -169,10 +170,12 @@ protected:
     OpGen.Builder.setInsertionPointAfter(RenameEnv);
 
     mlir::Value CaptureVal = ProvidedVal ? ProvidedVal : createLiteral(P);
+    mlir::Value SourceVal = CaptureVal;
     mlir::Value SC;
     {
       if (!isa<HeavySyntaxTy>(CaptureVal.getType()))
-        SC = OpGen.create<SyntaxClosureOp>(Loc, CaptureVal, RenameEnv);
+        SC = OpGen.create<SyntaxClosureOp>(Loc, SourceVal, CaptureVal,
+                                           RenameEnv);
     }
 
     if (ProvidedVal) {
@@ -230,7 +233,8 @@ protected:
 
     heavy::SourceLocation Loc = SC->Node.getSourceLocation();
     mlir::Value Node = createLiteral(SC->Node);
-    return OpGen.create<SyntaxClosureOp>(Loc, Node, EnvVal);
+    mlir::Value SourceVal = Node;
+    return OpGen.create<SyntaxClosureOp>(Loc, SourceVal, Node, EnvVal);
   }
 
   TemplateResult VisitPair(Pair* P) {

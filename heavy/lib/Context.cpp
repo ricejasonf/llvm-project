@@ -368,7 +368,7 @@ private:
 
   void VisitSourceValue(SourceValue* SV) {
     heavy::SourceLocation Loc = SV->getSourceLocation();
-    OS << "\n#<SourceValue {"
+    OS << "#<SourceValue {"
        << Loc.getEncoding()
        << "}>";
   }
@@ -1310,10 +1310,8 @@ void Context::Raise(Value Obj) {
 
 void Context::RaiseError(String* Msg, llvm::ArrayRef<Value> IrrArgs) {
   Value IrrList = Empty();
-  for (Value Irr : llvm::reverse(IrrArgs)) {
-    setLoc(Irr.getSourceLocation());
+  for (Value Irr : llvm::reverse(IrrArgs))
     IrrList = CreatePair(Irr, IrrList);
-  }
   Value Error = CreateError(this->Loc, Msg, IrrList);
   Raise(Error);
 }
@@ -1672,12 +1670,28 @@ EnvFrame* Context::CreateEnvFrame(llvm::ArrayRef<Value> Ids, bool IsLambdaScope)
 // Create syntax with Symbols rebuilt as SyntaxClosures.
 Value Context::CreateSyntaxClosure(SourceLocation Loc, Value Node,
                                                        Value Env) {
-  return RebuildLiteral(Node, Env);
+  // Substitute all nested symbols with a SyntaxClosure;
+  Value Rebuilt = RebuildLiteral(Node, Env);
+  // Prevent directly nesting syntax closures.
+  if (isa<SyntaxClosure>(Rebuilt))
+    return Rebuilt;
+
+  // Wrap in a SyntaxClosure to keep the Loc available.
+  return new (*this) SyntaxClosure(Loc, Env, Rebuilt);
 }
 
 SyntaxClosure* Context::CreateSyntaxClosure(SourceLocation Loc, Symbol* S,
                                             Value Env) {
   return new (*this) SyntaxClosure(Loc, Env, Value(S));
+}
+
+// Unwrap any SyntaxClosure that is not an Identifier.
+// (We only keep these around for the SourceLocation.)
+Value Context::UnwrapSyntaxClosure(Value V) {
+  if (auto* SC = dyn_cast<SyntaxClosure>(V);
+      SC && !isa<Symbol>(SC->Node))
+    return SC->Node;
+  return V;
 }
 
 EnvEntry Context::GetSyntax(EnvEntry Entry) {

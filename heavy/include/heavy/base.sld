@@ -47,6 +47,7 @@
     car
     cdr
     cons
+    source-cons
     dump
     dynamic-wind
     eq?
