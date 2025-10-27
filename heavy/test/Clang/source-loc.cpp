@@ -16,5 +16,10 @@ heavy_scheme {
 (diag-warning "this is a foo" (source-loc foo))
 (diag-error "this is still a foo" (source-loc bar foo))
 (diag-note "this is a bar in a list" (source-loc (cdr baz) bar foo))
+
+(if (source-loc-valid "strings don't have source locations")
+  (error "expecting an invalid source location"))
+(if (eq? #f (source-loc-valid 'SymbolsDo))
+  (error "expecting a valid source location"))
 }
 }

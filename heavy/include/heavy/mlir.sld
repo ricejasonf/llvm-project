@@ -31,7 +31,7 @@
                       RegionBody1 RegionBodyN ...) ...)
            (let ((Op
                     (old-create-op Name
-                      (loc Loc)
+                      (loc (source-loc Loc (syntax-source-loc Name)))
                       (operands Operands ...)
                       (attributes (list 'AttrName Attr) ...)
                       (result-types ResultTypes ...)

@@ -31,6 +31,7 @@
     include-ci
     include-library-declarations
     source-loc
+    source-loc-valid
     dump-source-loc
     parse-source-file
     +

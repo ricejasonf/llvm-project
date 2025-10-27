@@ -90,6 +90,7 @@ heavy::ExternFunction error;
 heavy::ExternFunction dynamic_wind;
 heavy::ExternFunction load_module;
 heavy::ExternFunction source_loc;
+heavy::ExternFunction source_loc_valid;
 heavy::ExternFunction dump_source_loc;
 heavy::ExternFunction make_syntactic_closure;
 
@@ -394,6 +395,8 @@ void parse_source_file(Context& C, ValueRefs Args) {
   C.RaiseError("parse-source-file is undefined");
 }
 
+// Return the first valid source location or
+// an invalid source location if none exists.
 void source_loc(Context& C, ValueRefs Args) {
   heavy::SourceLocation Loc;
   // Take the first valid source location.
@@ -402,6 +405,21 @@ void source_loc(Context& C, ValueRefs Args) {
     if (Loc.isValid())
       break;
   }
+  C.Cont(C.CreateSourceValue(Loc));
+}
+
+// Return the first valid source location or
+// #f if none exists.
+void source_loc_valid(Context& C, ValueRefs Args) {
+  heavy::SourceLocation Loc;
+  // Take the first valid source location.
+  for (heavy::Value Arg : Args) {
+    Loc = Arg.getSourceLocation();
+    if (Loc.isValid())
+      break;
+  }
+  if (!Loc.isValid())
+    return C.Cont(Bool(false));
   C.Cont(C.CreateSourceValue(Loc));
 }
 
@@ -1260,6 +1278,7 @@ void HEAVY_BASE_INIT(heavy::Context& Context) {
 
 
   HEAVY_BASE_VAR(source_loc)      = heavy::builtins::source_loc;
+  HEAVY_BASE_VAR(source_loc_valid) = heavy::builtins::source_loc_valid;
   HEAVY_BASE_VAR(dump_source_loc) = heavy::builtins::dump_source_loc;
   HEAVY_BASE_VAR(parse_source_file).init(Context);
 
@@ -1356,6 +1375,7 @@ void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
       HEAVY_BASE_VAR(include_library_declarations)},
 
     {"source-loc",    HEAVY_BASE_VAR(source_loc)},
+    {"source-loc-valid", HEAVY_BASE_VAR(source_loc_valid)},
     {"dump-source-loc", HEAVY_BASE_VAR(dump_source_loc)},
     {"parse-source-file",
                       HEAVY_BASE_VAR(parse_source_file).get(Context)},
