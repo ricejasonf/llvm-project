@@ -64,11 +64,56 @@ public:
       OS(OutputBuffer)
   { }
 
+  class LocRAII {
+    NbdlWriter& NW;
+    heavy::SourceLocation PrevLoc;
+
+  public:
+    LocRAII(NbdlWriter& NW, mlir::Location NewLoc)
+      : NW(NW),
+        PrevLoc(NW.CurLoc)
+    {
+      NW.SetLoc(NewLoc);
+    }
+
+    LocRAII(NbdlWriter& NW, mlir::Value V)
+      : NW(NW),
+        PrevLoc(NW.CurLoc)
+    {
+      NW.SetLocFromValue(V);
+    }
+
+    ~LocRAII() {
+      NW.CurLoc = PrevLoc;
+      NW.Flush();
+    }
+  };
+
+  LocRAII MakeLocRAII(mlir::Location MLoc) {
+    return LocRAII(*this, MLoc);
+  }
+
+  LocRAII MakeLocRAII(mlir::Value V) {
+    return LocRAII(*this, V);
+  }
+
   void SetLoc(mlir::Location MLoc) {
     auto Loc = heavy::SourceLocation(mlir::OpaqueLoc
       ::getUnderlyingLocationOrNull<heavy::SourceLocationEncoding*>(MLoc));
     assert(Loc.isValid() && "expecting valid source location");
     CurLoc = Loc;
+  }
+
+  void SetLocFromValue(mlir::Value V) {
+    mlir::Operation* Op;
+    if (mlir::Operation* DefOp = V.getDefiningOp()) {
+      Op = DefOp;
+    } else if (auto BlockArg = dyn_cast<mlir::BlockArgument>(V)) {
+      if (mlir::Block* Block = BlockArg.getOwner())
+        Op = Block->getParentOp();
+    }
+    assert(Op && "expecting value attached to operation");
+    SetLoc(Op->getLoc());
   }
 
   void Flush() {
@@ -125,6 +170,14 @@ public:
     return Name;
   }
 
+  // Stream the value with the source location from
+  // a corresponding operation.
+  void PrintLocalVal(mlir::Value V) {
+    auto LocScope = MakeLocRAII(V);
+    SetLocFromValue(V);
+    OS << GetLocalVal(V);
+  }
+
   llvm::StringRef SetLocalVal(mlir::Value V, llvm::Twine Twine) {
     llvm::SmallString<128> NameTemp;
     Twine.toVector(NameTemp);
@@ -158,13 +211,14 @@ public:
     } else if (auto Op = V.getDefiningOp<ConstexprOp>()) {
       WriteExpr(Op);
     } else {
-      llvm::StringRef Expr = GetLocalVal(V);
       if (IsFwd) {
-        OS << "static_cast<decltype(" << Expr << ")>("
-           << Expr
-           << ")";
+        OS << "static_cast<decltype(";
+        PrintLocalVal(V);
+        OS << ")>(";
+        PrintLocalVal(V);
+        OS << ")";
       } else {
-        OS << Expr;
+        PrintLocalVal(V);
       }
     }
   }
@@ -181,6 +235,7 @@ public:
   }
 
   void WriteExpr(ConstexprOp Op) {
+    auto LocScope = MakeLocRAII(Op.getLoc());
     llvm::StringRef Expr = Op.getExpr();
     if (Expr.empty())
       SetError("expecting expr", Op);
@@ -188,6 +243,7 @@ public:
   }
 
   void WriteExpr(LiteralOp Op) {
+    auto LocScope = MakeLocRAII(Op.getLoc());
     mlir::Attribute Attr = Op.getValue();
     if (auto IA = dyn_cast<mlir::IntegerAttr>(Attr);
         IA &&
@@ -205,6 +261,7 @@ public:
    ************************************/
 
   void VisitType(mlir::Value Val) {
+    auto LocScope = MakeLocRAII(Val);
     if (mlir::Operation* Op = Val.getDefiningOp()) {
       if (isa<ContextOp>(Op))
         return VisitType(cast<ContextOp>(Op));
@@ -275,14 +332,8 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
 
   void Visit(mlir::Operation* Op) {
     Flush();
-    heavy::SourceLocation PrevLoc = CurLoc;
-    SetLoc(Op->getLoc());
-
     if (CheckError()) return;
-    auto ScopeExit = llvm::make_scope_exit([this, PrevLoc] {
-        Flush();
-        CurLoc = PrevLoc;
-      });
+    auto LocScope = MakeLocRAII(Op->getLoc());
 
          if (isa<ApplyOp>(Op))        return Visit(cast<ApplyOp>(Op));
     else if (isa<GetOp>(Op))          return Visit(cast<GetOp>(Op));
@@ -487,7 +538,6 @@ public:
     OS << Op.getName() << '(' << Op.getName() << " const&) = delete;\n";
     OS << Op.getName() << '(' << Op.getName() << "&) = delete;\n";
     WriteConstructor(Op);
-    WriteAccessors();
     OS << "};\n";
     Flush();
   }
@@ -564,13 +614,14 @@ public:
     OS << '(';
     llvm::interleaveComma(Op.getBody().getArguments(), OS,
         [&](mlir::BlockArgument const& Arg) {
-          OS << "auto&& " << GetLocalVal(Arg);
+          OS << "auto&& ";
+          PrintLocalVal(Arg);
         });
     OS << ") \n: ";
 
     llvm::interleaveComma(Members, OS,
         [&](mlir::Value M) {
-          OS << GetLocalVal(M);
+          PrintLocalVal(M);
           OS << '(';
           WriteInitArgs(M);
           OS << ')';
@@ -593,13 +644,6 @@ public:
         });
     } else {
       SetErrorV("unsupported operation (WriteInitArgs)", Member);
-    }
-  }
-
-  void WriteAccessors() {
-    for (mlir::Value Value : Members) {
-      OS << "decltype(auto) get_" << GetLocalVal(Value)
-        << "() const {\n  return " << GetLocalVal(Value) << ";\n}\n";
     }
   }
 
