@@ -41,3 +41,9 @@ void nbdl_gen::NbdlDialect::initialize() {
       >();
 
 }
+
+void nbdl_gen::ScopeOp::build(::mlir::OpBuilder&,
+                              ::mlir::OperationState& odsState,
+                              std::unique_ptr<::mlir::Region> body) {
+  odsState.addRegion(std::move(body));
+}

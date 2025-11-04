@@ -29,6 +29,7 @@ translate_cpp(heavy::LexerWriterFnRef FnRef, mlir::Operation* Op);
 namespace heavy::nbdl_bind_var {
 heavy::ContextLocal current_nbdl_module;
 heavy::ExternFunction translate_cpp;
+heavy::ExternFunction close_previous_scope;
 heavy::ExternFunction build_match_params_impl;
 heavy::ExternFunction build_overload_impl;
 heavy::ExternFunction build_match_if_impl;
@@ -95,7 +96,7 @@ void build_match_params_impl(Context& C, ValueRefs Args) {
     InputTypes.push_back(Builder.getType<nbdl_gen::StoreType>());
 
   // Push the visitor fn argument.
-  InputTypes.push_back(Builder.getType<nbdl_gen::OpaqueType>());
+  InputTypes.push_back(Builder.getType<nbdl_gen::StoreType>());
 
   mlir::FunctionType FT = Builder.getFunctionType(InputTypes,
                                                   /*ResultTypes*/{});
@@ -113,6 +114,9 @@ void build_match_params_impl(Context& C, ValueRefs Args) {
       BlockArgs.push_back(V);
     }
 
+    C.PushCont([FuncOp](Context& C, ValueRefs) mutable {
+      C.Cont(FuncOp.getOperation());
+    }, CaptureList{});
     C.Apply(Callback, BlockArgs);
   }, CaptureList{Callback});
 
@@ -156,7 +160,7 @@ void build_overload_impl(Context& C, ValueRefs Args) {
       mlir::Region& Body = OverloadOp.getBody();
       mlir::Location MLoc = OverloadOp.getLoc();
       mlir::Type Type = mlir::OpBuilder(OverloadOp)
-        .getType<nbdl_gen::OpaqueType>();
+        .getType<nbdl_gen::StoreType>();
       mlir::BlockArgument BlockArg = Body.addArgument(Type, MLoc);
       heavy::Value V = C.CreateAny(mlir::Value(BlockArg));
       C.Apply(Callback, V);
@@ -203,6 +207,8 @@ void build_match_if_impl(Context& C, ValueRefs Args) {
 
 // Translate a nbdl dialect operation to C++.
 // (translate-cpp op port)
+// The parameter `op` may be an mlir::Operation* or a StringLike
+// which will be used to look up the name in the module.
 // Currently the "port" has to be a tagged llvm::raw_ostream.
 void translate_cpp(Context& C, ValueRefs Args) {
   if (Args.size() != 2 && Args.size() != 1)
@@ -249,6 +255,35 @@ void translate_cpp(Context& C, ValueRefs Args) {
   C.Cont();
 }
 
+// If the current block has a terminator, wrap the
+// entire block in a nbdl.scope. This supports the
+// convention that only terminators may perform an
+// operation that may invalidate child stores.
+void close_previous_scope(Context& C, ValueRefs Args) {
+  if (Args.size() != 0)
+    return C.RaiseError("invalid arity");
+  mlir::OpBuilder* Builder = mlir_helper::getCurrentBuilder(C);
+  if (!Builder)
+    return;  // error is already raised by getCurrentBuilder
+  mlir::Block* Block = Builder->getBlock();
+  assert(Block && isa<mlir::func::FuncOp>(Block->getParentOp())
+      && "expecting func insertion point");
+  if (Block->empty() || !Block->back().hasTrait<mlir::OpTrait::IsTerminator>())
+    return C.Cont();
+
+  mlir::Location Loc = Block->back().getLoc();
+
+  // Create new Region for ScopeOp.
+  auto ScopeBody = std::make_unique<mlir::Region>();
+  mlir::Block& NewBlock = ScopeBody->emplaceBlock();
+  while (!Block->empty())
+    Block->front().moveBefore(&NewBlock, NewBlock.end());
+  mlir::Operation* ScopeOp = Builder->create<nbdl_gen::ScopeOp>(Loc, std::move(ScopeBody));
+  Builder->setInsertionPointAfter(ScopeOp);
+
+  C.Cont();
+}
+
 void build_context_impl(Context& C, ValueRefs Args) {
   if (Args.size() != 3)
     return C.RaiseError("invalid arity");
@@ -282,9 +317,9 @@ void build_context_impl(Context& C, ValueRefs Args) {
   mlir::Block& EntryBlock = ContextOp.getBody().emplaceBlock();
 
   // Create the arguments.
-  auto OpaqueTy = Builder.getType<nbdl_gen::OpaqueType>();
+  auto StoreTy = Builder.getType<nbdl_gen::StoreType>();
   for (int32_t i = 0; i < NumParams; i++)
-    EntryBlock.addArgument(OpaqueTy, MLoc);
+    EntryBlock.addArgument(StoreTy, MLoc);
 
   heavy::Value Thunk = C.CreateLambda([ContextOp](Context& C,
                                                   ValueRefs) mutable {
@@ -324,6 +359,8 @@ void HEAVY_NBDL_INIT(heavy::Context& C) {
 
   heavy::nbdl_bind_var::current_nbdl_module.init(C, ModuleOp.getOperation());
   heavy::nbdl_bind_var::translate_cpp = heavy::nbdl_bind::translate_cpp;
+  heavy::nbdl_bind_var::close_previous_scope
+    = heavy::nbdl_bind::close_previous_scope;
   heavy::nbdl_bind_var::build_match_params_impl
     = heavy::nbdl_bind::build_match_params_impl;
   heavy::nbdl_bind_var::build_overload_impl
@@ -341,6 +378,8 @@ void HEAVY_NBDL_LOAD_MODULE(heavy::Context& C) {
   heavy::initModuleNames(C, HEAVY_NBDL_LIB_STR, {
     {"current-nbdl-module", heavy::nbdl_bind_var::current_nbdl_module.get(C)},
     {"translate-cpp", heavy::nbdl_bind_var::translate_cpp},
+    {"close-previous-scope",
+                  heavy::nbdl_bind_var::close_previous_scope},
     {"%build-match-params", heavy::nbdl_bind_var::build_match_params_impl},
     {"%build-overload", heavy::nbdl_bind_var::build_overload_impl},
     {"%build-match-if", heavy::nbdl_bind_var::build_match_if_impl},

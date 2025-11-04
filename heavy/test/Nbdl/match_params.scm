@@ -7,7 +7,6 @@
 (load-dialect "heavy")
 (load-dialect "nbdl")
 
-(define !nbdl.opaque (type "!nbdl.opaque"))
 (define !nbdl.store (type "!nbdl.store"))
 (define !nbdl.tag (type "!nbdl.tag"))
 (define !nbdl.symbol (type "!nbdl.symbol"))
@@ -34,7 +33,7 @@
         (old-create-op "nbdl.literal"
                    (attributes
                      `("value", (attr "42" i32)))
-                   (result-types !nbdl.opaque))))
+                   (result-types !nbdl.store))))
     (define foo
       (result
         (old-create-op "nbdl.get"
@@ -49,9 +48,9 @@
       (old-create-op "nbdl.match"
                  (regions 1)
                  (operands value key3)))
-    (if (value? "!nbdl.opaque" key3)
+    (if (value? "!nbdl.store" key3)
       'ok
-      (error "key should be a an opaque type"))
+      (error "key should be a an !nbdl.store type"))
     (if (value? !nbdl.store foo)
       'ok
       (error "foo should be a nbdl store"))
@@ -63,39 +62,41 @@
         (at-block-begin (entry-block the-match-op))
         (%build-overload 'loc "::my::first_t const&"
           (lambda (my-first)
-            (old-create-op "nbdl.visit" (operands fn my-first))))
+            (old-create-op "nbdl.resolve" (operands fn my-first))))
         (%build-overload 'loc "uint32_t"
           (lambda (input)
             (define pred1 (result
                 (old-create-op "nbdl.constexpr"
                          (attributes
                            `("expr", (string-attr "::my::greater_than{42}")))
-                         (result-types !nbdl.opaque))))
+                         (result-types !nbdl.store))))
             (define pred2 (result
               (old-create-op "nbdl.constexpr"
                          (attributes
                            `("expr", (string-attr "::my::greater_than{5}")))
-                         (result-types !nbdl.opaque))))
+                         (result-types !nbdl.store))))
             (%build-match-if
               'loc input pred1
-              (lambda() (old-create-op "nbdl.visit" (operands fn input)))
+              (lambda() (old-create-op "nbdl.resolve" (operands fn input)))
               (lambda()
                 (%build-match-if
                   'loc input pred2
-                  (lambda () (old-create-op "nbdl.visit" (operands fn input)))
+                  (lambda () (old-create-op "nbdl.resolve"
+                                            (operands fn input)))
                   (lambda ()
                     (define some-fn (result
                         (old-create-op
                           "nbdl.constexpr"
                           (attributes
                             `("expr", (string-attr "::my::some_fn")))
-                          (result-types !nbdl.opaque))))
+                          (result-types !nbdl.store))))
                     (define some-fn-result
                       (result
-                        (old-create-op "nbdl.apply"
+                        (old-create-op "nbdl.visit"
                                    (operands some-fn input)
-                                   (result-types !nbdl.opaque))))
-                      (old-create-op "nbdl.visit" (operands fn some-fn-result))))))))
+                                   (result-types !nbdl.store))))
+                      (old-create-op "nbdl.resolve"
+                                     (operands fn some-fn-result))))))))
         (%build-overload 'loc "")
         ))))
 

@@ -1,5 +1,5 @@
 ; RUN: heavy-scheme -module-path=%heavy_module_path %s 2>&1 | FileCheck %s
-(import (heavy builtins)
+(import (heavy base)
         (heavy mlir)
         (nbdl comp))
 
@@ -7,7 +7,6 @@
 (load-dialect "heavy")
 (load-dialect "nbdl")
 
-(define !nbdl.opaque (type "!nbdl.opaque"))
 (define !nbdl.store (type "!nbdl.store"))
 (define !nbdl.tag (type "!nbdl.tag"))
 (define !nbdl.symbol (type "!nbdl.symbol"))
@@ -47,7 +46,7 @@
         (old-create-op "nbdl.literal"
                    (attributes
                      `("value", (attr "42" i32)))
-                   (result-types !nbdl.opaque))))
+                   (result-types !nbdl.store))))
 
     (build-member (build-member-name 'foo) '::moo::foo_t foo-input)
     (build-member (build-member-name 'bar) '::moo::bar_t)
@@ -56,14 +55,15 @@
     (old-create-op "nbdl.cont"
                (operands parent))
   ))
-(dump current-nbdl-module)
-(verify current-nbdl-module)
 
 ; FIXME Should the symbol name be fully qualified?
 ; CHECK: #op{module @nbdl_gen_module {
 ; CHECK: "nbdl.context"() <{sym_name = "my_context"
 (define my_context
   (module-lookup current-nbdl-module "my_context"))
+(dump current-nbdl-module)
+(unless (verify current-nbdl-module)
+  (error "mlir verification failed"))
 
 ; CHECK: ::moo::foo_t foo;
 ; CHECK-NEXT: ::moo::bar_t bar;

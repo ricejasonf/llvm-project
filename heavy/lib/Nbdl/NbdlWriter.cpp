@@ -210,6 +210,8 @@ public:
       WriteExpr(Op);
     } else if (auto Op = V.getDefiningOp<ConstexprOp>()) {
       WriteExpr(Op);
+    } else if (auto Op = V.getDefiningOp<ConstOp>()) {
+      WriteExpr(Op);
     } else {
       if (IsFwd) {
         OS << "static_cast<decltype(";
@@ -223,13 +225,18 @@ public:
     }
   }
 
-  void WriteForwardedExpr(mlir::Value V) {
-    assert(V.hasOneUse() &&
-        "expecting exactly one use for forwarding reference");
-    WriteExpr(V, /*IsFwd=*/true);
+  // Write the name expr possibly as a forwarded expr.
+  void WriteNameExpr(mlir::Value V) {
+    if (V.hasOneUse())
+      return WriteExpr(V, /*IsFwd=*/true);
+
+    // TODO
+    // Check that V has exactly one use that is not borrowed
+    // and that it appears last in... the block??
+    WriteExpr(V, /*IsFwd=*/false);
   }
 
-  // Special function to denote that we checked for multiple uses.
+  // Special function to denote that we already checked for multiple uses.
   void WriteLastUseForwardedExpr(mlir::Value V) {
     WriteExpr(V, /*IsFwd=*/true);
   }
@@ -254,6 +261,13 @@ public:
     } else {
       SetError("unknown literal type", Op);
     }
+  }
+
+  void WriteExpr(ConstOp Op) {
+    auto LocScope = MakeLocRAII(Op.getLoc());
+    OS << "::std::as_const(";
+    WriteExpr(Op.getArg());
+    OS << ")";
   }
 
   /************************************
@@ -295,7 +309,7 @@ public:
   }
 
   void VisitType(VariantOp Op) {
-    OS << "nbdl::variant<";
+    OS << "::nbdl::variant<";
     llvm::interleaveComma(Op.getOperands(), OS,
         [&](mlir::Value const& Val) {
           mlir::Value V = Val;
@@ -305,7 +319,7 @@ public:
   }
 
   void VisitType(StoreComposeOp Op) {
-    OS << "nbdl::store_composite<";
+    OS << "::nbdl::store_composite<";
     VisitType(Op.getKey());
     OS << ", ";
     VisitType(Op.getLhs());
@@ -335,15 +349,19 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
     if (CheckError()) return;
     auto LocScope = MakeLocRAII(Op->getLoc());
 
-         if (isa<ApplyOp>(Op))        return Visit(cast<ApplyOp>(Op));
-    else if (isa<GetOp>(Op))          return Visit(cast<GetOp>(Op));
-    else if (isa<VisitOp>(Op))        return Visit(cast<VisitOp>(Op));
-    else if (isa<MatchOp>(Op))        return Visit(cast<MatchOp>(Op));
-    else if (isa<NoOp>(Op))           return Visit(cast<NoOp>(Op));
+         if (isa<MatchOp>(Op))        return Visit(cast<MatchOp>(Op));
     else if (isa<OverloadOp>(Op))     return Visit(cast<OverloadOp>(Op));
+    else if (isa<MemberNameOp>(Op))   return Visit(cast<MemberNameOp>(Op));
+    else if (isa<GetOp>(Op))          return Visit(cast<GetOp>(Op));
+    else if (isa<ResolveOp>(Op))      return Visit(cast<ResolveOp>(Op));
+    else if (isa<VisitOp>(Op))        return Visit(cast<VisitOp>(Op));
+    else if (isa<NoOp>(Op))           return Visit(cast<NoOp>(Op));
     else if (isa<MatchIfOp>(Op))      return Visit(cast<MatchIfOp>(Op));
     else if (isa<FuncOp>(Op))         return Visit(cast<FuncOp>(Op));
-    else if (isa<MemberNameOp>(Op))   return Visit(cast<MemberNameOp>(Op));
+    else if (isa<StoreComposeOp>(Op)) return Visit(cast<StoreComposeOp>(Op));
+    else if (isa<ApplyActionOp>(Op))  return Visit(cast<ApplyActionOp>(Op));
+    else if (isa<ScopeOp>(Op))
+      return VisitRegion(cast<ScopeOp>(Op).getBody());
     else if (isa<ConstexprOp, LiteralOp>(Op)) return;
     else if (isa<UnitOp>(Op)) return;
     else if (isa<EmptyOp>(Op))
@@ -396,15 +414,15 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
 
   void Visit(GetOp Op) {
     auto MemberNameOp = Op.getKey().getDefiningOp<nbdl_gen::MemberNameOp>();
-      OS << "auto&& "
-         << SetLocalVarName(Op.getResult(), "get_")
-         << " = ";
+    OS << "auto&& "
+       << SetLocalVarName(Op.getResult(), "get_")
+       << " = ";
     if (MemberNameOp) {
       WriteExpr(Op.getState());
       OS << '.' << MemberNameOp.getName()
          << ";\n";
     } else {
-      OS << "nbdl::get(";
+      OS << "::nbdl::get(";
       WriteExpr(Op.getState());
       if (!isa<nbdl_gen::UnitType>(Op.getKey().getType())) {
         OS << ", ";
@@ -415,12 +433,54 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
   }
 
   void Visit(VisitOp Op) {
+    // If the return type is not the unit type assign
+    // the result to a variable.
+    if (!isa<nbdl_gen::UnitType>(Op.getResult().getType())) {
+      OS << "auto&& "
+         << SetLocalVarName(Op.getResult(), "result_")
+         << " = ";
+    }
+
     WriteExpr(Op.getFn());
     OS << '(';
     llvm::interleave(Op.getArgs(), OS,
         [&](mlir::Value V) {
           WriteExpr(V);
         }, ",\n");
+    OS << ");\n";
+  }
+
+  void Visit(ResolveOp Op) {
+    WriteExpr(Op.getFn());
+    OS << '(';
+    llvm::interleave(Op.getArgs(), OS,
+        [&](mlir::Value V) {
+          WriteExpr(V);
+        }, ",\n");
+    OS << ");\n";
+  }
+
+  void Visit(ApplyActionOp Op) {
+    OS << "::nbdl::apply_action(";
+    WriteExpr(Op.getLhs());
+    OS << ", ";
+    llvm::interleave(Op.getArgs(), OS,
+        [&](mlir::Value V) {
+          WriteExpr(V);
+        }, ",\n");
+    OS << ");\n";
+  }
+
+  void Visit(StoreComposeOp Op) {
+    // Note the C++ function does (Key, Rhs, Lhs) for some reason.
+    OS << "auto ";
+    OS << SetLocalVarName(Op.getResult(), "result_");
+    OS << " = ::nbdl::store_compose(";
+    WriteExpr(Op.getKey());
+    OS << ",";
+    WriteExpr(Op.getRhs());
+    OS << ",";
+    WriteExpr(Op.getLhs());
     OS << ");\n";
   }
 
@@ -431,7 +491,7 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
   }
 
   void Visit(MatchOp Op) {
-    OS << "nbdl::match(";
+    OS << "::nbdl::match(";
     WriteExpr(Op.getStore());
     if (!isa<nbdl_gen::UnitType>(Op.getKey().getType())) {
       OS << ", ";
@@ -459,7 +519,7 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
     OS << '(';
     mlir::BlockArgument& Arg = Body.getArguments().front();
     if (!TypeStr.empty())
-      OS << "nbdl::SameAs<" << TypeStr << "> ";
+      OS << "::nbdl::SameAs<" << TypeStr << "> ";
     OS << "auto&& "
        << SetLocalVarName(Arg, "arg_");
     OS << ')';
@@ -488,20 +548,6 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
       VisitRegion(Op.getElseRegion());
       OS << "}\n";
     }
-  }
-
-  void Visit(ApplyOp Op) {
-    OS << "auto&& "
-       << SetLocalVarName(Op.getResult(), "apply_")
-       << " = ";
-    // No forwarding stuff here
-    WriteExpr(Op.getFn());
-    OS << '(';
-    llvm::interleaveComma(Op.getArgs(), OS,
-        [&](mlir::Value Val) {
-          WriteExpr(Val);
-        });
-    OS << ");\n";
   }
 
   void Visit(MemberNameOp Op) {

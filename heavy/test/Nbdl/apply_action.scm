@@ -1,0 +1,82 @@
+; RUN: heavy-scheme --module-path=%heavy_module_path %s 2>&1 | FileCheck %s
+(import (heavy base)
+        (heavy mlir)
+        (nbdl comp))
+
+(load-dialect "func")
+(load-dialect "heavy")
+(load-dialect "nbdl")
+
+(define !nbdl.store (type "!nbdl.store"))
+(define !nbdl.unit (type "!nbdl.unit"))
+(define !nbdl.symbol (type "!nbdl.symbol"))
+(define i32 (type "i32"))
+
+(define my_match_params
+  (%build-match-params
+    'my_match_params
+    1 ; num-params
+    (lambda (Store Fn)
+      (define UnitKey
+        (result
+          (create-op "nbdl.unit"
+            (loc: 0)
+            (operands:)
+            (attributes:)
+            (result-types: !nbdl.unit))))
+      (define Num42
+        (result
+          (create-op "nbdl.literal"
+            (loc: 0)
+            (operands:)
+            (attributes:
+              ("value" (attr "42" i32)))
+            (result-types: !nbdl.store))))
+      (define Foo
+        (result
+          (create-op "nbdl.get"
+            (loc: 0)
+            (operands: Store Num42)
+            (attributes:)
+            (result-types: !nbdl.store))))
+      (create-op "nbdl.match"
+        (loc: 0)
+        (operands: Store UnitKey)
+        (attributes:)
+        (result-types:)
+        (region: "overloads" ()
+          (create-op "nbdl.overload"
+            (loc: 0)
+            (operands:)
+            (attributes:
+              ("type" (string-attr "std::string")))
+            (result-types:)
+            (region: "body" ((MatchedStore : !nbdl.store))
+              (create-op "nbdl.apply_action"
+                (loc: 0)
+                (operands: MatchedStore Foo)
+                (attributes:)
+                (result-types:))))))
+      ; Foo is not allowed after this (because it could be invalidated.)
+      (close-previous-scope)
+      (let ((SomeTag (result
+                        (create-op "nbdl.constexpr"
+                          (loc: 0)
+                          (operands:)
+                          (attributes:
+                            ("expr" (string-attr "::some_tag{}")))
+                          (result-types: !nbdl.store)))))
+        (create-op "nbdl.apply_action"
+          (loc: 0)
+          (operands: Store SomeTag)
+          (attributes:)
+          (result-types:))))))
+
+(unless (verify current-nbdl-module)
+  (error "verification failed {}" my_match_params))
+
+; TODO Handle perfect forwarding.
+; CHECK: nbdl::apply_action(arg_3, get_2)
+; CHECK: nbdl::apply_action(arg_0, ::some_tag{})
+(translate-cpp my_match_params)
+(newline)

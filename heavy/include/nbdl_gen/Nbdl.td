@@ -49,6 +49,7 @@ class Nbdl_TypeBase<string name, string type_mnemonic,
   let assemblyFormat = "`<` $cpp_typename `>`";
 }
 
+// DEPRECATED (I think)
 def Nbdl_Opaque : TypeDef<Nbdl_Dialect, "Opaque", []> {
   let mnemonic = "opaque";
   let description = [{
@@ -70,29 +71,12 @@ def Nbdl_Store : TypeDef<Nbdl_Dialect, "Store", []> {
   }];
 }
 
-/* FIXME Types should only be based on corresponding concepts in nbdl.
-def Nbdl_Struct : Nbdl_TypeBase<"Struct", "struct"> {
-  let summary = "C++ semiregular aggregate type";
-  let description = [{
-    Represent C++ struct types whose members
-    are accessed by their name.
-  }];
-}
-
-def Nbdl_State : TypeDef<Nbdl_Dialect, "State", []> {
-  let mnemonic = "state";
-  let description = [{
-    A type satisfying the nbdl::State concept
-  }];
-}
-
 def Nbdl_Variant : TypeDef<Nbdl_Dialect, "Variant", []> {
   let mnemonic = "variant";
   let description = [{
     A type satisfying the nbdl::Variant concept
   }];
 }
-*/
 
 def Nbdl_Tag : TypeDef<Nbdl_Dialect, "Tag", []> {
   let mnemonic = "tag";
@@ -112,10 +96,10 @@ def Nbdl_Symbol : TypeDef<Nbdl_Dialect, "Symbol"> {
 
 // Keys are optional, but we are using variadic arguments
 // so we resort to using this sum type.
-def Nbdl_KeyType : AnyTypeOf<[Nbdl_Opaque, Nbdl_Tag,
+def Nbdl_KeyType : AnyTypeOf<[Nbdl_Store, Nbdl_Tag,
                               Nbdl_Symbol, Nbdl_Unit]>;
 
-def Nbdl_Type : AnyTypeOf<[Nbdl_Unit, Nbdl_Empty, Nbdl_Opaque,
+def Nbdl_Type : AnyTypeOf<[Nbdl_Unit, Nbdl_Empty,
                            Nbdl_Store, Nbdl_Tag]>;
 
 class Nbdl_Op<string mnemonic, list<Trait> traits = []> :
@@ -141,9 +125,12 @@ def Nbdl_GetOp : Nbdl_Op<"get", []> {
   let results   = (outs Nbdl_Type:$result);
 }
 
-def Nbdl_VisitOp : Nbdl_Op<"visit", [Terminator]> {
+def Nbdl_ResolveOp : Nbdl_Op<"resolve", [Terminator]> {
   let description = [{
-    Visit matched results with a function object.
+    Finalize resolving stores by invoking the callback
+    provided in the definition of a visit function.
+    This is similar to nbdl.visit except it does not return
+    a value and terminates the block.
   }];
 
   let arguments = (ins Nbdl_Type:$fn, Variadic<Nbdl_Type>:$args);
@@ -202,7 +189,7 @@ def Nbdl_MatchIfOp : Nbdl_Op<"match_if", [Terminator]> {
     like an if/else statement.
   }];
 
-  let arguments = (ins Nbdl_Type:$input, Nbdl_Opaque:$pred);
+  let arguments = (ins Nbdl_Type:$input, Nbdl_Type:$pred);
   let regions   = (region SizedRegion<1>:$thenRegion,
                           SizedRegion<1>:$elseRegion);
 }
@@ -322,13 +309,24 @@ def Nbdl_UnitOp : Nbdl_Op<"unit", []> {
   let results = (outs Nbdl_Unit:$result);
 }
 
-def Nbdl_ApplyOp : Nbdl_Op<"apply", []> {
+def Nbdl_VisitOp : Nbdl_Op<"visit", []> {
   let description = [{
-    Apply a function.
+    Call a function with resolved stores as arguments
+    returning a result. This is analogous to std::visit
+    except only one function is generated.
   }];
-  let arguments = (ins Nbdl_Opaque:$fn,
+  let arguments = (ins Nbdl_Type:$fn,
                        Variadic<Nbdl_Type>:$args);
-  let results = (outs Nbdl_Opaque:$result);
+  let results = (outs Nbdl_Type:$result);
+}
+
+def Nbdl_ApplyActionOp : Nbdl_Op<"apply_action", [Terminator]> {
+  let description = [{
+    Create a call to nbdl::apply_action which is dispatched
+    by the type of the LHS in C++.
+  }];
+  let arguments = (ins Nbdl_Type:$lhs, Variadic<Nbdl_Type>:$args);
+  let results = (outs);
 }
 
 def Nbdl_ConsumerOp : Nbdl_Op<"consumer", []> {
@@ -343,6 +341,40 @@ def Nbdl_ConsumerOp : Nbdl_Op<"consumer", []> {
     FlatSymbolRefAttr:$name,
     AnyType:$matchFn);
   let results = (outs Nbdl_Type:$result);
+}
+
+def Nbdl_ConstOp : Nbdl_Op<"const", []> {
+  let description = [{
+    Cast an object to const likely using std::as_const.
+
+    Notes:
+    We don't modify the type in IR land but rely on C++
+    to manage underlying types. This is analogous to an
+    immutable borrow I think.
+    We generally only allow mutation to occur to the operands
+    of nbdl.apply_action or nbdl.resolve.
+  }];
+
+  let arguments = (ins Nbdl_Type:$arg);
+  let results = (outs Nbdl_Type:$result);
+}
+
+def Nbdl_ScopeOp : Nbdl_Op<"scope", []> {
+  let description = [{
+    Terminating operations in a function may mutate a store
+    thus invalidating any matched store with that object as
+    a node in its root path.  We can nest intermediate operations
+    in a nbdl.scope region to prevent subsequent uses of such
+    objects.
+  }];
+
+  let arguments = (ins);
+  let results = (outs);
+  let regions = (region SizedRegion<1>:$body);
+
+  let builders = [
+    OpBuilder<(ins "std::unique_ptr<::mlir::Region>":$body)>
+  ];
 }
 
 #endif
