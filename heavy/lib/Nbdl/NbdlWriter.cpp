@@ -571,9 +571,9 @@ public:
     OS << "class " << ClassName << " : nbdl::context_alias<";
     OS << ImplName;
     OS << ", /*is_moveable=*/false> {\n"
-          "using Base = ";
+          "using Base = nbdl::context_alias<";
     OS << ImplName;
-    OS << ";\n using Base::Base;\n";
+    OS << ">;\n using Base::Base;\n";
     OS << "};\n";
     Flush();
   }
@@ -619,9 +619,9 @@ public:
     OS << "class " << Name << " : public nbdl::strong_alias<";
     VisitType(V);
     OS << "> {\n"
-          "using Base = ";
+          "using Base = nbdl::strong_alias<";
     VisitType(V);
-    OS << ";\n using Base::Base;\n";
+    OS << ">;\n using Base::Base;\n";
     OS << "};\n";
   }
 

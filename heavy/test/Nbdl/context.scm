@@ -110,8 +110,6 @@
 (unless (verify current-nbdl-module)
   (error "mlir verification failed"))
 
-(translate-cpp my_context)
-
 ; CHECK: class my_store {
 ; CHECK: ::moo::foo_t foo;
 ; CHECK-NEXT: ::moo::bar_t bar;
@@ -119,4 +117,6 @@
 ; CHECK: my_store(auto&& arg_0)
 ; CHECK-NEXT: : foo(42), bar(), baz(arg_0), baz2(static_cast<decltype(arg_0)>(arg_0)) 
 (translate-cpp my_store)
+(translate-cpp my_context)
+
 (newline)
