@@ -71,19 +71,27 @@ def Nbdl_Store : TypeDef<Nbdl_Dialect, "Store", []> {
   }];
 }
 
-def Nbdl_Variant : TypeDef<Nbdl_Dialect, "Variant", []> {
-  let mnemonic = "variant";
-  let description = [{
-    A type satisfying the nbdl::Variant concept
-  }];
-}
-
 def Nbdl_Tag : TypeDef<Nbdl_Dialect, "Tag", []> {
   let mnemonic = "tag";
   let description = [{
     An empty type that only carries information
     at compile-time is called a tag type.
   }];
+}
+
+def Nbdl_Variant : TypeDef<Nbdl_Dialect, "Variant", []> {
+  let mnemonic = "variant";
+  let description = [{
+    A type satisfying the nbdl::Variant concept
+  }];
+
+/*
+  // TODO Eventually it would be nice to specify the alternatives
+  //      Also some parameterization for knowing the key => 
+  let parameters = (ins Variadic<AnyTypeOf<[Nbdl_Store, Nbdl_Tag,
+                                            Nbdl_Unit>:$alts);
+  let assemblyFormat = "`<`$alts`>`";
+*/
 }
 
 def Nbdl_Symbol : TypeDef<Nbdl_Dialect, "Symbol"> {
@@ -236,7 +244,7 @@ def Nbdl_VariantOp : Nbdl_Op<"variant", []> {
   let results = (outs Nbdl_Type:$result);
 }
 
-def Nbdl_ContextOp : Nbdl_Op<"context", [Symbol, IsolatedFromAbove]> {
+def Nbdl_DefineStoreOp : Nbdl_Op<"define_store", [Symbol, IsolatedFromAbove]> {
   let description = [{
     Define a store object, and expose its interface (type) to the user.
 
@@ -256,6 +264,33 @@ def Nbdl_ContextOp : Nbdl_Op<"context", [Symbol, IsolatedFromAbove]> {
   let extraClassDeclaration = [{
     bool isExternal() { return getBody().empty(); }
 
+    // Get the fully qualified name.
+    // This is needed for defining template specializations.
+    llvm::StringRef getFullName() { return getSymName(); }
+
+    // Get the unqualified name.
+    llvm::StringRef getName() {
+      llvm::StringRef SymName = getSymName();
+      return SymName.take_back(SymName.rfind(':'));
+    }
+  }];
+}
+
+def Nbdl_ContextOp : Nbdl_Op<"context", [Symbol]> {
+  let description = [{
+    Encapsulate a store object to serve as a root node in a state tree.
+
+    Nested objects are still accessible via `match` and `get`,
+    but the context wrapper supports the convention that the root
+    node cannot be a non-root member of a path.
+
+    An instance can be created with nbdl.store.
+  }];
+
+  let arguments = (ins StrAttr:$sym_name, FlatSymbolRefAttr:$implName);
+  let results = (outs);
+
+  let extraClassDeclaration = [{
     // Get the fully qualified name.
     // This is needed for defining template specializations.
     llvm::StringRef getFullName() { return getSymName(); }

@@ -727,6 +727,8 @@ bool eqv_slow(Value V1, Value V2) {
   case ValueKind::Float:
     return cast<Float>(V1)->getVal() ==
               cast<Float>(V2)->getVal();
+  case ValueKind::Any:
+    return cast<Any>(V1)->equal(cast<Any>(V2));
   default:
       return false;
   }

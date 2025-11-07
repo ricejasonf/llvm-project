@@ -215,7 +215,7 @@ void translate_cpp(Context& C, ValueRefs Args) {
     return C.RaiseError("invalid arity");
   auto* Op = dyn_cast<mlir::Operation>(Args[0]);
   if (!Op)
-    return C.RaiseError("expecting mlir.operation");
+    return C.RaiseError("expecting mlir.operation: {}", Args[0]);
 
   llvm::raw_ostream* OS = nullptr;
 
@@ -285,6 +285,8 @@ void close_previous_scope(Context& C, ValueRefs Args) {
 }
 
 void build_context_impl(Context& C, ValueRefs Args) {
+  return C.RaiseError("deprecated");
+#if 0
   if (Args.size() != 3)
     return C.RaiseError("invalid arity");
 
@@ -337,6 +339,7 @@ void build_context_impl(Context& C, ValueRefs Args) {
   // Call the thunk with a Builder at the entry point.
   Builder = mlir::OpBuilder(ContextOp.getBody());
   mlir_helper::with_builder_impl(C, Builder, Thunk);
+#endif
 }
 
 

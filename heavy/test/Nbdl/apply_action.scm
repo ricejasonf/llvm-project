@@ -39,6 +39,7 @@
             (operands: Store Num42)
             (attributes:)
             (result-types: !nbdl.store))))
+      (close-previous-scope) ; Should do nothing.
       (create-op "nbdl.match"
         (loc: 0)
         (operands: Store UnitKey)
@@ -59,6 +60,7 @@
                 (result-types:))))))
       ; Foo is not allowed after this (because it could be invalidated.)
       (close-previous-scope)
+      (close-previous-scope) ; Should do nothing.
       (let ((SomeTag (result
                         (create-op "nbdl.constexpr"
                           (loc: 0)

@@ -301,7 +301,7 @@ public:
   }
 
   void VisitType(ContextOp Op) {
-    OS << Op.getName();
+    OS << Op.getSymName();
   }
 
   void VisitType(StoreOp Op) {
@@ -560,35 +560,84 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
 
 class ContextWriter : public NbdlWriter<ContextWriter> {
 public:
-  // Record the values for each member in order.
-  llvm::SmallVector<mlir::Value, 8> Members;
-
   using NbdlWriter<ContextWriter>::NbdlWriter;
 
   void VisitContext(ContextOp Op) {
     SetLoc(Op.getLoc());
+
+    llvm::StringRef ClassName = Op.getName();
+    llvm::StringRef ImplName = Op.getImplName();
+
+    OS << "class " << ClassName << " : nbdl::context_alias<";
+    OS << ImplName;
+    OS << ", /*is_moveable=*/false> {\n"
+          "using Base = ";
+    OS << ImplName;
+    OS << ";\n using Base::Base;\n";
+    OS << "};\n";
+    Flush();
+  }
+};
+
+class DefineStoreWriter : public NbdlWriter<DefineStoreWriter> {
+public:
+  // Record the values for each member in order.
+  llvm::SmallVector<mlir::Value, 8> Members;
+
+  using NbdlWriter<DefineStoreWriter>::NbdlWriter;
+
+  void VisitDefineStore(DefineStoreOp Op) {
     // Skip externally defined stores.
     if (Op.isExternal())
       return;
 
+    SetLoc(Op.getLoc());
     ValueMapScope Scope(ValueMap);
 
     // Set the arg names first.
     for (mlir::BlockArgument BlockArg : Op.getBody().getArguments())
       SetLocalVarName(BlockArg, "arg_");
 
-    // Delete both copy constructors to support subsumption with `auto&&`.
-    OS << "class " << Op.getName() << " {\n";
+    auto ContOp = getContOp(Op);
+    llvm::TypeSwitch<mlir::Operation*>(ContOp.getArg().getDefiningOp())
+      .Case<UnitOp>([&, this](auto) {
+          this->CreateTag(Op.getName());
+        })
+      .Case<StoreOp, VariantOp>([&, this](auto ResultOp) {
+          this->CreateStrongAlias(Op.getName(), ResultOp.getResult());
+        })
+      .Case<StoreComposeOp>([&, this](auto) {
+          this->CreateClass(Op);
+        });
+  }
+
+  void CreateTag(llvm::StringRef Name) {
+    OS << "struct " << Name << " { };\n";
+  }
+
+  void CreateStrongAlias(llvm::StringRef Name, mlir::Value V) {
+    OS << "class " << Name << " : public nbdl::strong_alias<";
+    VisitType(V);
+    OS << "> {\n"
+          "using Base = ";
+    VisitType(V);
+    OS << ";\n using Base::Base;\n";
+    OS << "};\n";
+  }
+
+  void CreateClass(DefineStoreOp Op) {
+    llvm::StringRef Name = Op.getName();
+    OS << "class " << Name << " {\n";
     OS << "public:\n";
     WriteMemberDecls(Op);
-    OS << Op.getName() << '(' << Op.getName() << " const&) = delete;\n";
-    OS << Op.getName() << '(' << Op.getName() << "&) = delete;\n";
+    OS << Name << "(" << Name << " const&) = default;\n";
+    OS << Name << "(" << Name << "&&) = default;\n";
     WriteConstructor(Op);
     OS << "};\n";
     Flush();
   }
 
-  nbdl_gen::ContOp getContOp(ContextOp Op) {
+  nbdl_gen::ContOp getContOp(DefineStoreOp Op) {
     mlir::Operation* Terminator = Op.getBody().front().getTerminator();
     auto ContOp = dyn_cast<nbdl_gen::ContOp>(Terminator);
     if (!ContOp)
@@ -596,7 +645,7 @@ public:
     return ContOp;
   }
 
-  void WriteMemberDecls(ContextOp Op) {
+  void WriteMemberDecls(DefineStoreOp Op) {
     // Get the ContOp and work backwards
     // saving the member names as we go.
     auto ContOp = getContOp(Op);
@@ -651,12 +700,12 @@ public:
     CurLoc = PrevLoc;
   }
 
-  void WriteConstructor(ContextOp Op) {
+  void WriteConstructor(DefineStoreOp Op) {
     auto ContOp = getContOp(Op);
     if (!ContOp)
       return;
 
-    OS << Op.getName();
+    OS << "explicit " << Op.getName();
     OS << '(';
     llvm::interleaveComma(Op.getBody().getArguments(), OS,
         [&](mlir::BlockArgument const& Arg) {
@@ -746,6 +795,11 @@ translate_cpp(heavy::LexerWriterFnRef LexerWriter, mlir::Operation* Op) {
   if (auto FuncOp = dyn_cast<mlir::func::FuncOp>(Op)) {
     FuncWriter Writer(LexerWriter);
     Writer.Visit(Op);
+    return std::make_tuple(std::move(Writer.ErrMsg),
+                           Writer.ErrLoc, Writer.Irritant);
+  } else if (auto DefineStoreOp = dyn_cast<nbdl_gen::DefineStoreOp>(Op)) {
+    DefineStoreWriter Writer(LexerWriter);
+    Writer.VisitDefineStore(DefineStoreOp);
     return std::make_tuple(std::move(Writer.ErrMsg),
                            Writer.ErrLoc, Writer.Irritant);
   } else if (auto ContextOp = dyn_cast<nbdl_gen::ContextOp>(Op)) {

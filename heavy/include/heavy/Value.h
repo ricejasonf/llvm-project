@@ -1399,9 +1399,16 @@ public:
 
   // Note that for stored pointers, this will return a pointer to a pointer.
   void* getOpaquePtr() { return getTrailingObjects<char>(); }
+
   llvm::StringRef getObjData() {
     return llvm::StringRef(static_cast<char*>(getOpaquePtr()), getObjectSize());
   };
+
+  bool equal(Any* Other) {
+    return TypeId == Other->TypeId &&
+           StorageLen == Other->StorageLen &&
+           getObjData() == Other->getObjData();
+  }
 
   template <typename T>
   bool isa() {
