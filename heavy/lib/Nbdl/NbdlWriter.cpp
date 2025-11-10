@@ -591,6 +591,7 @@ public:
       .Case<StoreComposeOp>([&, this](auto) {
           this->CreateClass(Op);
         });
+    Flush();
   }
 
   void CreateTag(llvm::StringRef Name) {
