@@ -10,7 +10,23 @@
 (define !nbdl.store (type "!nbdl.store"))
 (define !nbdl.unit (type "!nbdl.unit"))
 (define !nbdl.symbol (type "!nbdl.symbol"))
+(define !nbdl.unit (type "!nbdl.unit"))
 (define i32 (type "i32"))
+
+(define (resolve . args)
+  (define Result
+    (result
+      (create-op "nbdl.visit"
+                 (loc: 0)
+                 (operands: args)
+                 (attributes:)
+                 (result-types: !nbdl.unit)
+                 )))
+  (create-op "nbdl.discard"
+             (loc: 0)
+             (operands: Result)
+             (attributes:)
+             (result-types:)))
 
 (define my_match_params
   (%build-match-params
@@ -53,11 +69,8 @@
               ("type" (string-attr "std::string")))
             (result-types:)
             (region: "body" ((MatchedStore : !nbdl.store))
-              (create-op "nbdl.apply_action"
-                (loc: 0)
-                (operands: MatchedStore Foo)
-                (attributes:)
-                (result-types:))))))
+              (resolve MatchedStore Foo)
+                ))))
       ; Foo is not allowed after this (because it could be invalidated.)
       (close-previous-scope)
       (close-previous-scope) ; Should do nothing.
@@ -68,17 +81,14 @@
                           (attributes:
                             ("expr" (string-attr "::some_tag{}")))
                           (result-types: !nbdl.store)))))
-        (create-op "nbdl.apply_action"
-          (loc: 0)
-          (operands: Store SomeTag)
-          (attributes:)
-          (result-types:))))))
+        (resolve
+          Store SomeTag)))))
 
 (unless (verify current-nbdl-module)
   (error "verification failed {}" my_match_params))
 
 ; TODO Handle perfect forwarding.
-; CHECK: nbdl::apply_action(arg_3, get_2)
-; CHECK: nbdl::apply_action(arg_0, ::some_tag{})
+; CHECK: arg_3(get_2);
+; CHECK: arg_0(::some_tag{});
 (translate-cpp my_match_params)
 (newline)

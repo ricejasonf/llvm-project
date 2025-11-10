@@ -358,15 +358,6 @@ def Nbdl_VisitOp : Nbdl_Op<"visit", []> {
   let results = (outs Nbdl_Type:$result);
 }
 
-def Nbdl_ApplyActionOp : Nbdl_Op<"apply_action", [Terminator]> {
-  let description = [{
-    Create a call to nbdl::apply_action which is dispatched
-    by the type of the LHS in C++.
-  }];
-  let arguments = (ins Nbdl_Type:$lhs, Variadic<Nbdl_Type>:$args);
-  let results = (outs);
-}
-
 def Nbdl_ConsumerOp : Nbdl_Op<"consumer", []> {
   let description = [{
     A consumer is an object provided with an object
@@ -389,8 +380,6 @@ def Nbdl_ConstOp : Nbdl_Op<"const", []> {
     We don't modify the type in IR land but rely on C++
     to manage underlying types. This is analogous to an
     immutable borrow I think.
-    We generally only allow mutation to occur to the operands
-    of nbdl.apply_action or nbdl.resolve.
   }];
 
   let arguments = (ins Nbdl_Type:$arg);

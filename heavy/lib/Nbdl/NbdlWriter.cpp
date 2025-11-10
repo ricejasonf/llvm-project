@@ -359,7 +359,6 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
     else if (isa<MatchIfOp>(Op))      return Visit(cast<MatchIfOp>(Op));
     else if (isa<FuncOp>(Op))         return Visit(cast<FuncOp>(Op));
     else if (isa<StoreComposeOp>(Op)) return Visit(cast<StoreComposeOp>(Op));
-    else if (isa<ApplyActionOp>(Op))  return Visit(cast<ApplyActionOp>(Op));
     else if (isa<ScopeOp>(Op))
       return VisitRegion(cast<ScopeOp>(Op).getBody());
     else if (isa<ConstexprOp, LiteralOp>(Op)) return;
@@ -452,17 +451,6 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
 
   void Visit(DiscardOp Op) {
     // Do nothing.
-  }
-
-  void Visit(ApplyActionOp Op) {
-    OS << "::nbdl::apply_action(";
-    WriteExpr(Op.getLhs());
-    OS << ", ";
-    llvm::interleave(Op.getArgs(), OS,
-        [&](mlir::Value V) {
-          WriteExpr(V);
-        }, ",\n");
-    OS << ");\n";
   }
 
   void Visit(StoreComposeOp Op) {
