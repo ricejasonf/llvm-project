@@ -353,7 +353,7 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
     else if (isa<OverloadOp>(Op))     return Visit(cast<OverloadOp>(Op));
     else if (isa<MemberNameOp>(Op))   return Visit(cast<MemberNameOp>(Op));
     else if (isa<GetOp>(Op))          return Visit(cast<GetOp>(Op));
-    else if (isa<ResolveOp>(Op))      return Visit(cast<ResolveOp>(Op));
+    else if (isa<DiscardOp>(Op))      return Visit(cast<DiscardOp>(Op));
     else if (isa<VisitOp>(Op))        return Visit(cast<VisitOp>(Op));
     else if (isa<NoOp>(Op))           return Visit(cast<NoOp>(Op));
     else if (isa<MatchIfOp>(Op))      return Visit(cast<MatchIfOp>(Op));
@@ -450,14 +450,8 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
     OS << ");\n";
   }
 
-  void Visit(ResolveOp Op) {
-    WriteExpr(Op.getFn());
-    OS << '(';
-    llvm::interleave(Op.getArgs(), OS,
-        [&](mlir::Value V) {
-          WriteExpr(V);
-        }, ",\n");
-    OS << ");\n";
+  void Visit(DiscardOp Op) {
+    // Do nothing.
   }
 
   void Visit(ApplyActionOp Op) {

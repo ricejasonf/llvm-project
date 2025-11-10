@@ -133,18 +133,6 @@ def Nbdl_GetOp : Nbdl_Op<"get", []> {
   let results   = (outs Nbdl_Type:$result);
 }
 
-def Nbdl_ResolveOp : Nbdl_Op<"resolve", [Terminator]> {
-  let description = [{
-    Finalize resolving stores by invoking the callback
-    provided in the definition of a visit function.
-    This is similar to nbdl.visit except it does not return
-    a value and terminates the block.
-  }];
-
-  let arguments = (ins Nbdl_Type:$fn, Variadic<Nbdl_Type>:$args);
-  let results   = (outs);
-}
-
 def Nbdl_MatchOp : Nbdl_Op<"match", [Terminator, NoTerminator]> {
   let summary = "match";
   let description = [{
@@ -342,6 +330,21 @@ def Nbdl_UnitOp : Nbdl_Op<"unit", []> {
 
   let arguments = (ins);
   let results = (outs Nbdl_Unit:$result);
+}
+
+def Nbdl_DiscardOp : Nbdl_Op<"discard", [Terminator]> {
+  let description = [{
+    Discard the result of a nbdl.visit call.
+
+    Note:
+    This is really only used to terminate the block
+    and is the most command case for nbdl.visit.
+    I don't know that we will ever want to "return"
+    a value.
+  }];
+
+  let arguments = (ins Nbdl_Type:$arg);
+  let results   = (outs);
 }
 
 def Nbdl_VisitOp : Nbdl_Op<"visit", []> {

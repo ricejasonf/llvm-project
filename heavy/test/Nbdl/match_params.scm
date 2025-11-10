@@ -10,7 +10,23 @@
 (define !nbdl.store (type "!nbdl.store"))
 (define !nbdl.tag (type "!nbdl.tag"))
 (define !nbdl.symbol (type "!nbdl.symbol"))
+(define !nbdl.unit (type "!nbdl.unit"))
 (define i32 (type "i32"))
+
+(define (resolve . args)
+  (define Result
+    (result
+      (create-op "nbdl.visit"
+                 (loc: 0)
+                 (operands: args)
+                 (attributes:)
+                 (result-types: !nbdl.unit)
+                 )))
+  (create-op "nbdl.discard"
+             (loc: 0)
+             (operands: Result)
+             (attributes:)
+             (result-types:)))
 
 (%build-match-params
   'my_match_params
@@ -62,7 +78,7 @@
         (at-block-begin (entry-block the-match-op))
         (%build-overload 'loc "::my::first_t const&"
           (lambda (my-first)
-            (old-create-op "nbdl.resolve" (operands fn my-first))))
+            (resolve fn my-first)))
         (%build-overload 'loc "uint32_t"
           (lambda (input)
             (define pred1 (result
@@ -77,12 +93,13 @@
                          (result-types !nbdl.store))))
             (%build-match-if
               'loc input pred1
-              (lambda() (old-create-op "nbdl.resolve" (operands fn input)))
+              (lambda()
+                (resolve fn input))
               (lambda()
                 (%build-match-if
                   'loc input pred2
-                  (lambda () (old-create-op "nbdl.resolve"
-                                            (operands fn input)))
+                  (lambda()
+                    (resolve fn input))
                   (lambda ()
                     (define some-fn (result
                         (old-create-op
@@ -91,12 +108,14 @@
                             `("expr", (string-attr "::my::some_fn")))
                           (result-types !nbdl.store))))
                     (define some-fn-result
+                      ; Intermediate visit call with result as operand
+                      ; to "resolving" visit/discard.
                       (result
                         (old-create-op "nbdl.visit"
-                                   (operands some-fn input)
-                                   (result-types !nbdl.store))))
-                      (old-create-op "nbdl.resolve"
-                                     (operands fn some-fn-result))))))))
+                                       (operands some-fn input)
+                                       (result-types !nbdl.store))))
+                    (resolve fn some-fn-result)
+                    ))))))
         (%build-overload 'loc "")
         ))))
 
