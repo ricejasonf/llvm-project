@@ -9,7 +9,7 @@
 
 (define !nbdl.store (type "!nbdl.store"))
 (define !nbdl.tag (type "!nbdl.tag"))
-(define !nbdl.symbol (type "!nbdl.symbol"))
+(define !nbdl.member_name (type "!nbdl.member_name"))
 (define !nbdl.unit (type "!nbdl.unit"))
 (define i32 (type "i32"))
 
@@ -20,7 +20,7 @@
       (operands:)
       (attributes:
         ("name" (string-attr name)))
-      (result-types: !nbdl.symbol))))
+      (result-types: !nbdl.member_name))))
 
 (define my_store
   (with-builder

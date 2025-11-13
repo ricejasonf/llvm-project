@@ -320,7 +320,9 @@ public:
 
   void VisitType(StoreComposeOp Op) {
     OS << "::nbdl::store_composite<";
-    VisitType(Op.getKey());
+    assert(!Op.hasUnitKey() &&
+      "unit key for store compose currently not supported");
+    VisitTypeOrUnitType(Op.getKey());
     OS << ", ";
     VisitType(Op.getLhs());
     OS << ", ";
@@ -329,14 +331,19 @@ public:
   }
 
   void VisitType(ConstexprOp Op) {
-    VisitType(Op.getResult());
+    VisitType(Op.getLoc(), Op.getResult().getType());
+  }
+
+  void VisitTypeOrUnitType(mlir::Value V) {
+    assert(V && isa<nbdl_gen::UnitType>(V.getType())
+        && "printing unit type currently not supported");
+
+    if (!V || !isa<nbdl_gen::UnitType>(V.getType()))
+      VisitType(V);
   }
 
   void VisitType(mlir::Location Loc, mlir::Type Type) {
-    if (auto OpaqueType = dyn_cast<nbdl_gen::OpaqueType>(Type))
-      OS << "decltype(auto)";
-    else
-      SetError(Loc, "unsupported type");
+    OS << "auto&&";
   }
 };
 
@@ -412,7 +419,11 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
   }
 
   void Visit(GetOp Op) {
-    auto MemberNameOp = Op.getKey().getDefiningOp<nbdl_gen::MemberNameOp>();
+    bool HasUnitKey = Op.hasUnitKey();
+    nbdl_gen::MemberNameOp MemberNameOp;
+    if (!HasUnitKey)
+      MemberNameOp = Op.getKey().getDefiningOp<nbdl_gen::MemberNameOp>();
+
     OS << "auto&& "
        << SetLocalVarName(Op.getResult(), "get_")
        << " = ";
@@ -423,7 +434,7 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
     } else {
       OS << "::nbdl::get(";
       WriteExpr(Op.getState());
-      if (!isa<nbdl_gen::UnitType>(Op.getKey().getType())) {
+      if (!HasUnitKey) {
         OS << ", ";
         WriteExpr(Op.getKey());
       }
@@ -440,7 +451,20 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
          << " = ";
     }
 
-    WriteExpr(Op.getFn());
+    mlir::Value Fn = Op.getFn();
+    mlir::OperandRange Args = Op.getArgs();
+
+    if (auto MemberNameOp = Fn.getDefiningOp<nbdl_gen::MemberNameOp>()) {
+      if (Args.empty()) {
+        SetError("member literal callee expects at least one argument", Op);
+        return;
+      }
+      WriteExpr(Args.front());
+      OS << '.' << MemberNameOp.getName();
+      Args = Args.drop_front();
+    } else {
+      WriteExpr(Op.getFn());
+    }
     OS << '(';
     llvm::interleave(Op.getArgs(), OS,
         [&](mlir::Value V) {
@@ -458,8 +482,10 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
     OS << "auto ";
     OS << SetLocalVarName(Op.getResult(), "result_");
     OS << " = ::nbdl::store_compose(";
-    WriteExpr(Op.getKey());
-    OS << ",";
+    if (!Op.hasUnitKey()) {
+      WriteExpr(Op.getKey());
+      OS << ",";
+    }
     WriteExpr(Op.getRhs());
     OS << ",";
     WriteExpr(Op.getLhs());
@@ -475,7 +501,7 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
   void Visit(MatchOp Op) {
     OS << "::nbdl::match(";
     WriteExpr(Op.getStore());
-    if (!isa<nbdl_gen::UnitType>(Op.getKey().getType())) {
+    if (!Op.hasUnitKey()) {
       OS << ", ";
       WriteExpr(Op.getKey());
     }
@@ -659,11 +685,12 @@ public:
     heavy::SourceLocation PrevLoc = CurLoc;
     SetLoc(Op.getLoc());
 
-    mlir::Value Key = Op.getKey();
+    mlir::Value Key = Op.getKey();  // Could be mlir::Value().
     mlir::Value Lhs = Op.getLhs();
     llvm::StringRef Name;
 
-    if (auto MemberNameOp = Key.getDefiningOp<nbdl_gen::MemberNameOp>()) {
+    if (Key && Key.getDefiningOp<nbdl_gen::MemberNameOp>()) {
+      auto MemberNameOp = Key.getDefiningOp<nbdl_gen::MemberNameOp>();
       // It would be more consistent with our definition of StoreCompose
       // to support shadowing here, but since it is more work to check
       // and very suboptimal for the C++ compiler

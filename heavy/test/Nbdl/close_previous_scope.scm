@@ -9,7 +9,7 @@
 
 (define !nbdl.store (type "!nbdl.store"))
 (define !nbdl.unit (type "!nbdl.unit"))
-(define !nbdl.symbol (type "!nbdl.symbol"))
+(define !nbdl.member_name (type "!nbdl.member_name"))
 (define !nbdl.unit (type "!nbdl.unit"))
 (define i32 (type "i32"))
 

@@ -94,21 +94,28 @@ def Nbdl_Variant : TypeDef<Nbdl_Dialect, "Variant", []> {
 */
 }
 
-def Nbdl_Symbol : TypeDef<Nbdl_Dialect, "Symbol"> {
-  let mnemonic = "symbol";
+def Nbdl_MemberName : TypeDef<Nbdl_Dialect, "member_name"> {
+  let mnemonic = "member_name";
   let description = [{
     Represent a string that is a valid C++ identifier.
     The intended primary use case is to specify a member of a Struct.
   }];
 }
 
-// Keys are optional, but we are using variadic arguments
-// so we resort to using this sum type.
-def Nbdl_KeyType : AnyTypeOf<[Nbdl_Store, Nbdl_Tag,
-                              Nbdl_Symbol, Nbdl_Unit]>;
+// TODO Eventually add more specific constraints like variant<...>.
+def Nbdl_Type : AnyTypeOf<[Nbdl_Store,
+                           Nbdl_Unit,
+                           Nbdl_Tag]>;
 
-def Nbdl_Type : AnyTypeOf<[Nbdl_Unit, Nbdl_Empty,
-                           Nbdl_Store, Nbdl_Tag]>;
+// TypePlus is for keys callable objects which allow member names
+// used for accessing members or calling member functions.
+def Nbdl_TypePlus : AnyTypeOf<[Nbdl_Store,
+                               Nbdl_Unit,
+                               Nbdl_Tag,
+                               Nbdl_MemberName]>;
+
+// Implicitly default to the unit type for keys.
+def Nbdl_Key : Optional<Nbdl_TypePlus>;
 
 class Nbdl_Op<string mnemonic, list<Trait> traits = []> :
     Op<Nbdl_Dialect, mnemonic, traits>;
@@ -129,8 +136,14 @@ def Nbdl_GetOp : Nbdl_Op<"get", []> {
   let description = [{
   }];
   let arguments = (ins Nbdl_Type:$state,
-                       Nbdl_KeyType:$key);
+                       Nbdl_Key:$key);
   let results   = (outs Nbdl_Type:$result);
+  let extraClassDeclaration = [{
+    bool hasUnitKey() {
+      return !getKey() ||
+        ::llvm::isa<::nbdl_gen::UnitType>(getKey().getType());
+    }
+  }];
 }
 
 def Nbdl_MatchOp : Nbdl_Op<"match", [Terminator, NoTerminator]> {
@@ -154,9 +167,15 @@ def Nbdl_MatchOp : Nbdl_Op<"match", [Terminator, NoTerminator]> {
   }];
 
   let arguments = (ins Nbdl_Type:$store,
-                       Nbdl_KeyType:$key);
+                       Nbdl_Key:$key);
   let results = (outs);
   let regions = (region SizedRegion<1>:$overloads);
+  let extraClassDeclaration = [{
+    bool hasUnitKey() {
+      return !getKey() ||
+        ::llvm::isa<::nbdl_gen::UnitType>(getKey().getType());
+    }
+  }];
 }
 
 def Nbdl_OverloadOp : Nbdl_Op<"overload", []> {
@@ -204,7 +223,7 @@ def Nbdl_MemberNameOp : Nbdl_Op<"member_name", []> {
   }];
 
   let arguments = (ins StrAttr:$name);
-  let results = (outs Nbdl_Symbol:$result);
+  let results = (outs Nbdl_MemberName:$result);
 }
 
 def Nbdl_StoreComposeOp : Nbdl_Op<"store_compose", []> {
@@ -218,10 +237,16 @@ def Nbdl_StoreComposeOp : Nbdl_Op<"store_compose", []> {
   }];
 
   let arguments = (ins
-    Nbdl_KeyType:$key,
+    Nbdl_Key:$key,
     Nbdl_Type:$lhs,
     Nbdl_Type:$rhs);
   let results = (outs Nbdl_Type:$result);
+  let extraClassDeclaration = [{
+    bool hasUnitKey() {
+      return !getKey() ||
+        ::llvm::isa<::nbdl_gen::UnitType>(getKey().getType());
+    }
+  }];
 }
 
 def Nbdl_VariantOp : Nbdl_Op<"variant", []> {
@@ -353,7 +378,7 @@ def Nbdl_VisitOp : Nbdl_Op<"visit", []> {
     returning a result. This is analogous to std::visit
     except only one function is generated.
   }];
-  let arguments = (ins Nbdl_Type:$fn,
+  let arguments = (ins Nbdl_TypePlus:$fn,
                        Variadic<Nbdl_Type>:$args);
   let results = (outs Nbdl_Type:$result);
 }

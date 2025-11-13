@@ -9,7 +9,7 @@
 
 (define !nbdl.store (type "!nbdl.store"))
 (define !nbdl.tag (type "!nbdl.tag"))
-(define !nbdl.symbol (type "!nbdl.symbol"))
+(define !nbdl.member_name (type "!nbdl.member_name"))
 (define !nbdl.unit (type "!nbdl.unit"))
 (define i32 (type "i32"))
 
@@ -43,7 +43,7 @@
         (old-create-op "nbdl.member_name"
                    (attributes
                      `("name", (string-attr "bar")))
-                   (result-types !nbdl.symbol))))
+                   (result-types !nbdl.member_name))))
     (define key3
       (result
         (old-create-op "nbdl.literal"
