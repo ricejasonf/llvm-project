@@ -647,7 +647,8 @@ public:
     OS << "class " << Name << " {\n";
     OS << "public:\n";
     WriteMemberDecls(Op);
-    OS << Name << "() = default;\n";
+    if (!Op.getBody().getArguments().empty())
+      OS << Name << "() = default;\n";
     WriteConstructor(Op);
     OS << "};\n";
     Flush();
