@@ -529,7 +529,7 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
     llvm::StringRef TypeStr = Op.getType();
     OS << "[&]";
     // Write parameters.
-    OS << '(';
+    OS << "([[maybe_unused]] ";
     mlir::BlockArgument& Arg = Body.getArguments().front();
     if (!TypeStr.empty())
       OS << "::nbdl::SameAs<" << TypeStr << "> ";
@@ -633,6 +633,7 @@ public:
     OS << "class " << Name << " : public nbdl::strong_alias<";
     VisitType(V);
     OS << "> {\n"
+          "public:\n"
           "using Base = nbdl::strong_alias<";
     VisitType(V);
     OS << ">;\n";
