@@ -647,8 +647,7 @@ public:
     OS << "class " << Name << " {\n";
     OS << "public:\n";
     WriteMemberDecls(Op);
-    OS << Name << "(" << Name << " const&) = default;\n";
-    OS << Name << "(" << Name << "&&) = default;\n";
+    OS << Name << "() = default;\n";
     WriteConstructor(Op);
     OS << "};\n";
     Flush();
