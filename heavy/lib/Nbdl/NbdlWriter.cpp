@@ -506,15 +506,20 @@ class FuncWriter : public NbdlWriter<FuncWriter> {
       WriteExpr(Op.getKey());
     }
     OS << ", ";
-    OS << "\nboost::hana::overload_linearly(";
 
     auto& Ops = Op.getOverloads().front().getOperations();
-    llvm::interleave(Ops, OS,
-        [&](mlir::Operation const& OverloadOp) {
-          Visit(const_cast<mlir::Operation*>(&OverloadOp));
-        }, ",\n");
+    if (Ops.size() == 1) {
+      Visit(const_cast<mlir::Operation*>(&Ops.front()));
+    } else {
+      OS << "boost::hana::overload(";
+      llvm::interleave(Ops, OS,
+          [&](mlir::Operation const& OverloadOp) {
+            Visit(const_cast<mlir::Operation*>(&OverloadOp));
+          }, ",\n");
+      OS << ")";
+    }
 
-    OS << "));\n";
+    OS << ");\n";
   }
 
   void Visit(OverloadOp Op) {
@@ -630,7 +635,9 @@ public:
     OS << "> {\n"
           "using Base = nbdl::strong_alias<";
     VisitType(V);
-    OS << ">;\n using Base::Base;\n";
+    OS << ">;\n";
+    OS << "using Base::Base;\n";
+    OS << "using Base::operator=;\n";
     OS << "};\n";
   }
 
