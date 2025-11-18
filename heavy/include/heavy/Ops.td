@@ -45,6 +45,11 @@ def HeavyValueRefs : HeavyValueBase<"ValueRefs">; // For arguments array.
 def HeavyRest : HeavyValueBase<"Rest">; // For rest arguments.
 def HeavyPair : HeavyValueBase<"Pair">;
 def HeavySyntax : HeavyValueBase<"Syntax">;
+def HeavyProcedure : HeavyValueBase<"Procedure">;
+
+def HeavyType : AnyTypeOf<[HeavyValue,
+                           HeavyPair,
+                           HeavyProcedure]>;
 
 // If !heavy.value_refs is a function argument, the arguments should
 // only be (!heavy.context, !heavy.value_refs).
@@ -67,7 +72,7 @@ def heavy_ApplyOp : HeavyOp<"apply", [Terminator]> {
     of the current call arguments with arguments in that position.
   }];
 
-  let arguments = (ins HeavyValue:$fn,
+  let arguments = (ins AnyTypeOf<[HeavyValue, HeavyProcedure]>:$fn,
     Variadic<AnyTypeOf<[HeavyValue, HeavyRest, HeavyValueRefs]>>:$args);
   let results   = (outs);
 }
@@ -435,6 +440,17 @@ def heavy_MatchArgsOp : HeavyOp<"match_args"> {
     OpBuilder<(ins "::mlir::FunctionType":$functionType,
                    "::mlir::Value":$valueRefs)>
   ];
+}
+
+def heavy_MatchTypeOp : HeavyOp<"match_type", []> {
+  let description = [{
+    Perform dynamic cast resulting in a value with a specified type.
+    Like other Match operations this will raise an error unless it
+    appears in the body of a PatternOp.
+  }];
+
+  let arguments = (ins HeavyValue:$arg);
+  let results   = (outs HeavyType:$result);
 }
 
 def heavy_SubpatternOp : HeavyOp<"subpattern", []> {

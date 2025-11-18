@@ -198,6 +198,7 @@ private:
     else if (isa<MatchPairOp>(Op))    return Visit(cast<MatchPairOp>(Op));
     else if (isa<MatchTailOp>(Op))    return Visit(cast<MatchTailOp>(Op));
     else if (isa<MatchArgsOp>(Op))    return Visit(cast<MatchArgsOp>(Op));
+    else if (isa<MatchTypeOp>(Op))    return Visit(cast<MatchTypeOp>(Op));
     else if (isa<SubpatternOp>(Op))   return Visit(cast<SubpatternOp>(Op));
     else if (isa<ExpandPacksOp>(Op))  return Visit(cast<ExpandPacksOp>(Op));
     else if (isa<ResolveOp>(Op))      return Visit(cast<ResolveOp>(Op));
@@ -656,7 +657,7 @@ private:
   BlockItrTy patternFail(mlir::Operation* Op, llvm::StringRef ErrMsg,
                          llvm::ArrayRef<heavy::Value> Irr) {
     assert((isa<MatchOp, MatchPairOp, MatchTailOp, MatchArgsOp,
-                MatchIdOp, SubpatternOp>(Op)) &&
+                MatchTypeOp, MatchIdOp, SubpatternOp>(Op)) &&
         "Operation must be a pattern matcher");
 
     mlir::Operation* ParentOp = Op->getParentOp();
@@ -773,6 +774,34 @@ private:
       return patternFail(Op, "invalid arity", {Context.getCallee()});
     else
       return next(Op);
+  }
+
+  BlockItrTy Visit(MatchTypeOp Op) {
+    mlir::Type Type = Op.getResult().getType();
+    heavy::Value Arg = getValue(Op.getArg());
+    bool Result;
+    switch (Arg.getKind()) {
+      case ValueKind::Lambda:
+      case ValueKind::Builtin:
+        Result = isa<HeavyProcedureTy>(Type);
+        break;
+      case ValueKind::Pair:
+        Result = isa<HeavyPairTy>(Type);
+        break;
+      default:
+        Result = false;
+    }
+
+    if (!Result) {
+      std::string Str;
+      llvm::raw_string_ostream Stream(Str);
+      Type.print(Stream);
+      Symbol* TypeStr = Context.CreateSymbol(Str);
+      return patternFail(Op, "expecting object with type {}: {}",
+                         {TypeStr, Arg});
+    }
+    setValue(Op.getResult(), Arg);
+    return next(Op);
   }
 
   BlockItrTy Visit(ExpandPacksOp Op) {

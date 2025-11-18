@@ -125,6 +125,7 @@ Heavy##NAME##Ty, mlir::Type, mlir::TypeStorage> { \
 } \
 
 HEAVY_TYPE(Pair, "heavy.pair", "pair");
+HEAVY_TYPE(Procedure, "heavy.procedure", "procedure");
 
 HEAVY_TYPE(Syntax, "heavy.syntax", "syntax");
 HEAVY_TYPE(OpGen, "heavy.opgen", "opgen");

@@ -31,6 +31,7 @@ Dialect::Dialect(mlir::MLIRContext* Ctx)
   addTypes<HeavyValueRefsTy>();
   addTypes<HeavyRestTy>();
   addTypes<HeavyPairTy>();
+  addTypes<HeavyProcedureTy>();
 
   addTypes<HeavySyntaxTy>();
   addTypes<HeavyOpGenTy>();
@@ -97,6 +98,8 @@ void Dialect::printType(mlir::Type Type,
     Name = "rest";
   } else if (mlir::isa<HeavyPairTy>(Type)) {
     Name = "pair";
+  } else if (mlir::isa<HeavyProcedureTy>(Type)) {
+    Name = "procedure";
   } else if (mlir::isa<HeavySyntaxTy>(Type)) {
     Name = "syntax";
   } else if (mlir::isa<HeavyOpGenTy>(Type)) {

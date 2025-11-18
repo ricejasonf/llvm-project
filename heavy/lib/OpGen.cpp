@@ -185,6 +185,12 @@ mlir::Value OpGen::GetSingleResult(heavy::Value V) {
   return LocalizeValue(Result);
 }
 
+// Insert a check to assert the type of a value.
+mlir::Value OpGen::CheckType(heavy::SourceLocation Loc, mlir::Value V,
+                             mlir::Type Type) {
+  return create<MatchTypeOp>(Loc, Type, V);
+}
+
 // WithLibraryEnv - Call a thunk within the library environment
 //                  for <library spec>. (ie begin, import, export)
 void OpGen::WithLibraryEnv(Value Thunk) {
@@ -1258,6 +1264,9 @@ mlir::Value OpGen::HandleCall(Pair* P, heavy::EnvEntry FnEnvEntry) {
       Fn = VisitEnvEntry(Loc, FnEnvEntry);
     else
       Fn = GetSingleResult(P->Car);
+
+    // Insert the check that Fn is a procedure.
+    Fn = CheckType(Loc, Fn, Builder.getType<HeavyProcedureTy>());
 
     if (CheckError())
       return Error();

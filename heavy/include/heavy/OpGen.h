@@ -184,6 +184,9 @@ public:
 
 
   mlir::ModuleOp getModuleOp();
+  
+  mlir::Value CheckType(heavy::SourceLocation Loc, mlir::Value V,
+                        mlir::Type Type);
 
   // GetSingleResult
   //  - visits a node expecting a single result
