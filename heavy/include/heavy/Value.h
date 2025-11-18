@@ -1840,20 +1840,7 @@ public:
 
   static BuiltinSyntax* getImportSyntax();
 
-  // ImportValue returns false if the name already exists
-  // and points to a different location.
-  bool ImportValue(EnvBucket X) {
-    assert(X.first && "name should point to a string in identifier table");
-    assert(X.second && "import requires external name");
-    String*& MangledName = EnvMap[X.first];
-    if (MangledName == nullptr) {
-      // Result of `insert` is pair<iterator, bool>
-      MangledName = X.second;
-      return true;
-    }
-    // Do nothing if the value is the same "location".
-    return X.second == MangledName;
-  }
+  bool ImportValue(String* Name, String* MangledName);
 
   // Add a named location or syntax keyword.
   void Insert(Symbol* S, String* MangledName) {

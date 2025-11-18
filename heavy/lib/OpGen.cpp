@@ -22,6 +22,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Verifier.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
@@ -994,7 +995,7 @@ mlir::Value OpGen::createTopLevelDefine(Value Id, Value DefineArgs,
     S = cast<Symbol>(Id);
     Env = Context.GetTopLevelEnvironment();
   }
-    
+
   assert(Env && "expecting top level environment");
 
   // If EnvStack isn't an Environment then there is local
@@ -1009,7 +1010,6 @@ mlir::Value OpGen::createTopLevelDefine(Value Id, Value DefineArgs,
 
   // If the name already exists in the current module
   // then it behaves like `set!`
-  //auto* Binding = dyn_cast_or_null<heavy::Binding>(Entry.Value);
   if (Entry.MangledName) {
     llvm::StringRef MangledName = Entry.MangledName->getStringRef();
     TailPosScope TPS(*this);
@@ -1025,6 +1025,13 @@ mlir::Value OpGen::createTopLevelDefine(Value Id, Value DefineArgs,
   std::string MangledName = Mangler.mangleVariable(getModulePrefix(), S);
   if (MangledName.empty())
     return Error();
+  String* MangledNameId = Context.CreateIdTableEntry(MangledName);
+
+  // Update any existing export.
+  UpdateExports(S->getString(), MangledNameId);
+  if (CheckError())
+    return Error();
+
   // It is possible someone used a variable name not in scope
   // so we created a global and they are defining it now.
   auto GlobalOp = dyn_cast_or_null<heavy::GlobalOp>(
@@ -1045,7 +1052,7 @@ mlir::Value OpGen::createTopLevelDefine(Value Id, Value DefineArgs,
     Builder.setInsertionPointToStart(&Block);
 
     // Insert into the module level scope
-    Env->Insert(S, Context.CreateIdTableEntry(MangledName));
+    Env->Insert(S, MangledNameId);
     if (mlir::Value Init = VisitDefineArgs(DefineArgs)) {
       create<ContOp>(DefineLoc, Init);
     }
@@ -1452,32 +1459,12 @@ mlir::Operation* OpGen::LookupSymbol(llvm::StringRef MangledName) {
 }
 
 void OpGen::Export(Value NameList) {
-  // FIXME Map names to ExportIdOp to check for lazily
-  //       imported/defined variables.
-  //       (ie instead of NameSet)
-
-  // Iterate existing ExportIdOp nodes and load them into NameSet
-  llvm::SmallSet<llvm::StringRef, 8> NameSet;
-  auto& Ops = getModuleOp().getBody()->getOperations();
-  for (auto& Op : Ops) {
-    auto ExportIdOp = dyn_cast<heavy::ExportIdOp>(Op);
-    if (!ExportIdOp) continue;
-    auto Result = NameSet.insert(ExportIdOp.getId());
-    if (!Result.second) {
-      // This is an error in the IR.
-      SetError("export has duplicate name");
-      return;
-    }
-  }
-
-  // Now iterate the names and add ExportIdOps.
-
-  Value V = NameList;
-  while (Pair* P = dyn_cast<Pair>(V)) {
-    Symbol* Source = dyn_cast<Symbol>(P->Car);
+  // Iterate the names and add ExportIdOps.
+  for (auto [Loc, Value] : WithSource(NameList)) {
+    Symbol* Source = dyn_cast<Symbol>(Value);
     Symbol* Target = Source;
     if (!Target) {
-      if (Pair* P2 = dyn_cast<Pair>(P->Car)) {
+      if (Pair* P2 = dyn_cast<Pair>(Value)) {
         if (isSymbol(P2->Car, "rename") && isa<Pair>(P2->Cdr)) {
           Pair* P3 = cast<Pair>(P2->Cdr);
           Source = dyn_cast<Symbol>(P3->Car);
@@ -1500,16 +1487,12 @@ void OpGen::Export(Value NameList) {
       }
     }
     if (!Source || !Target) {
-      SetError("expecting export spec", P);
+      SetError(Loc, "expecting export spec", Value);
       return;
     }
 
-    // Check that Target is not a duplicate.
-    auto Result = NameSet.insert(Target->getView());
-    if (!Result.second) {
-      SetError("export has duplicate name", Target);
-      return;
-    }
+    // Op may be default constructed.
+    ExportIdOp& Op = Exports[Target->getString()];
 
     // If the variable or syntax does not exist yet
     // leave out the symbolName to allow binding later.
@@ -1519,17 +1502,84 @@ void OpGen::Export(Value NameList) {
                                 ? Entry.MangledName->getStringRef()
                                 : llvm::StringRef();
 
-    createHelper<ExportIdOp>(ModuleBuilder, Target->getSourceLocation(),
-                             MangledName, Target->getView());
+    if (Op && !Op.getSymbolName().empty() &&
+        Op.getSymbolName() != MangledName) {
+      SetError(Loc, "previous export incompatible definition: {}",
+               {Target});
+      return;
+    } else if (Op) {
+      Op.setSymbolName(MangledName);
+    } else if (!Op) {
+      Op = createHelper<ExportIdOp>(ModuleBuilder, Target->getSourceLocation(),
+                                    MangledName, Target->getView());
+    }
 
-    // Next
-    V = P->Cdr;
+    // Register renames to create ExportIdOps upon
+    // importing or defining the name.
+    if (MangledName.empty() && Source != Target)
+      RenameExports.push_back({Source->getString(), Target->getString()});
   }
-  if (!isa<Empty>(V)) {
-    SetError("expecting proper list");
+
+  return Context.Cont();
+}
+
+void OpGen::Import(heavy::ImportSet* ImportSet) {
+  Environment* Env = Context.GetTopLevelEnvironment();
+  if (!Env) {
+    // Import doesn't work in local scope.
+    SetError("unexpected import", ImportSet);
     return;
   }
-  return Context.Cont();
+
+  // FIXME This whole ImportSet::Iterator junk prevents
+  //       multiple renames of the same name.
+
+  llvm::sort(RenameExports);
+  for (auto&& [Name, MangledName] : *ImportSet) {
+    // If there is no name just skip it (it was filtered out).
+    if (!Name) continue;
+    ImportValue(Env, Name, MangledName);
+    if (CheckError())
+      return;
+  }
+}
+
+void OpGen::ImportValue(Environment* Env, String* Name, String* MangledName) {
+  if (!Env->ImportValue(Name, MangledName)) {
+    SetError("imported name already exists: {}", Name);
+    return;
+  }
+  UpdateExports(Name, MangledName);
+}
+
+void OpGen::UpdateExports(String* Name, String* MangledName) {
+  auto maybeUpdateExport = [&](heavy::String* Name, ExportIdOp Export) {
+    llvm::StringRef ExportMangledName = Export.getSymbolName();
+    if (ExportMangledName.empty())
+      Export.setSymbolName(MangledName->getStringRef());
+    else if (ExportMangledName != MangledName->getStringRef())
+      SetError("name overwrites previous define or import: {}", Name);
+  };
+  auto isRename = [&](auto Pair) {
+      auto [EnvName, ExportName] = Pair;
+      return EnvName == Name;
+    };
+
+  // Update export if any.
+  if (ExportIdOp Export = Exports.lookup(Name))
+    maybeUpdateExport(Name, Export);
+
+  if (!RenameExports.empty()) {
+    auto Range = llvm::make_filter_range(RenameExports, isRename);
+    for (auto [EnvName, ExportName] : Range) {
+      if (ExportIdOp Export = Exports.lookup(ExportName)) {
+        maybeUpdateExport(ExportName, Export);
+        if (CheckError())
+          return;
+      }
+    }
+    llvm::remove_if(RenameExports, isRename);
+  }
 }
 
 heavy::EnvEntry OpGen::LookupEnv(Value Id, Value ClosedEnv) {

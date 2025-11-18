@@ -104,6 +104,11 @@ class OpGen : public ValueVisitor<OpGen, mlir::Value> {
   BindingScopeTable BindingTable;
   std::deque<LambdaScopeNode> LambdaScopes;
 
+  // Map an export target symbol name to an ExportIdOp.
+  llvm::DenseMap<heavy::String*, heavy::ExportIdOp> Exports;
+  // Map environment name to renamed exported name.
+  std::vector<std::pair<heavy::String*, heavy::String*>> RenameExports;
+
   // ModuleOp is the current output module for a Program/Library
   // It is always nested within the topmost module which also
   // contains top-level operations imported from Scheme modules.
@@ -191,7 +196,11 @@ public:
     return ModulePrefix->getStringRef();
   }
 
+  void UpdateExports(String* Name, String* MangledName);
   void Export(Value NameList);
+  void Import(ImportSet*);
+  void ImportValue(Environment* Env, String* Id,
+                   String* MangledName);
   void VisitLibrary(heavy::SourceLocation Loc, heavy::Symbol* MangledName,
                     heavy::Value LibraryDecls);
   void VisitTopLevel(Value V);

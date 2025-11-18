@@ -120,28 +120,9 @@ Module* Context::RegisterModule(llvm::StringRef MangledName,
 }
 
 void Context::Import(heavy::ImportSet* ImportSet) {
-  Environment* Env = GetTopLevelEnvironment();
-  if (!Env) {
-    // Import doesn't work in local scope.
-    OpGen->SetError("unexpected import", ImportSet);
+  OpGen->Import(ImportSet);
+  if (OpGen->CheckError())
     return;
-  }
-
-  // FIXME This whole ImportSet::Iterator junk prevents
-  //       multiple renames of the same name.
-
-  // This should probably be recursive scheme calls.
-  for (EnvBucket ImportVal : *ImportSet) {
-    String* Name = ImportVal.first;
-    // If there is no name just skip it (it was filtered out).
-    if (!Name) continue;
-    if (!Env->ImportValue(ImportVal)) {
-      String* ErrMsg = CreateString("imported name already exists: ",
-                                    Name->getView());
-      OpGen->SetError(ErrMsg, ImportSet);
-      return;
-    }
-  }
 
   Cont();
 }
@@ -742,6 +723,20 @@ void Context::EmitStackSpaceError() {
   RaiseError("insufficient stack space");
 }
 
+// ImportValue returns false if the name already exists
+// and points to a different location.
+bool Environment::ImportValue(String* Name, String* MangledName) {
+  assert(Name && "name should point to a string in identifier table");
+  assert(MangledName && "import requires external name");
+  String*& MangledNameEntry = EnvMap[Name];
+  if (MangledNameEntry == nullptr) {
+    MangledNameEntry = MangledName;
+    return true;
+  }
+  // Do nothing if the value is the same "location".
+  return MangledName == MangledNameEntry;
+}
+
 EnvEntry Environment::Lookup(heavy::Context& C, Symbol* S) {
   String* MangledName = EnvMap.lookup(S->getString());
   if (!MangledName)
@@ -1154,7 +1149,7 @@ void Context::IncludeModuleFile(heavy::SourceLocation Loc,
     String* Id = CreateIdTableEntry(Name);
     EnvEntry Entry = Base->Lookup(*this, Id);
     if (Entry.MangledName != nullptr)
-      Env->ImportValue(EnvBucket{Id, Entry.MangledName});
+      Env->ImportValue(Id, Entry.MangledName);
   }
 
   PushCont([](heavy::Context& C, ValueRefs) {

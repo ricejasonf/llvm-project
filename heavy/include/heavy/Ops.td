@@ -319,24 +319,11 @@ def heavy_LoadModuleOp : HeavyOp<"load_module"> {
   ];
 }
 
-def heavy_ExportOp : HeavyOp<"export", [Symbol, IsolatedFromAbove,
-                                        NoTerminator]> {
-  let summary = "export";
-  let description = [{
-    Hold ExportIdOp mappings of variable names to symbol names.
-    This facilitates dynamic loading for a compiling context.
-  }];
-  let regions = (region AnyRegion:$body);
-  let arguments = (ins StrAttr:$sym_name);
-  let results   = (outs);
-}
-
 def heavy_ExportIdOp : HeavyOp<"export-id"> {
   let summary = "export-id";
   let description = [{
-    Provide an identifier to associate with a symbol for a compiling context.
-    All export-id operations are nested in a specially named FuncOp to be called
-    by a compiling context when importing the module.
+    Provide an identifier to associate with a target identifier $id
+    with a mangled name $symbolName.
   }];
   let arguments = (ins FlatSymbolRefAttr:$symbolName, StrAttr:$id);
 }
