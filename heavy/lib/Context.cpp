@@ -1123,6 +1123,7 @@ void Context::IncludeModuleFile(heavy::SourceLocation Loc,
         C.OpGen->SetTopLevelHandler(HEAVY_BASE_VAR(op_eval));
         C.OpGen->VisitTopLevelSequence(Args[0]);
       });
+      // Load and parse the file.
       heavy::Value Parse = HEAVY_BASE_VAR(parse_source_file).get(C);
       heavy::Value SourceVal = C.CreateSourceValue(Loc);
       heavy::Value Filename = C.getCapture(0);

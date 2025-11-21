@@ -19,6 +19,7 @@
 #include "heavy/Value.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/DynamicLibrary.h"
 #include "cassert"
 #include "memory"
 
@@ -93,6 +94,8 @@ heavy::ExternFunction source_loc;
 heavy::ExternFunction source_loc_valid;
 heavy::ExternFunction dump_source_loc;
 heavy::ExternFunction make_syntactic_closure;
+heavy::ExternFunction load_plugin;
+heavy::ExternFunction load_builtin;
 
 heavy::ExternFunction eval;
 heavy::ExternFunction op_eval;
@@ -1250,6 +1253,45 @@ void make_syntactic_closure(Context& C, ValueRefs Args) {
   Value Result = C.CreateSyntaxClosure(Loc, Expr, Env);
   C.Cont(Result);
 }
+
+// Dynamically load a native shared library.
+void load_plugin(Context& C, ValueRefs Args) {
+  if (Args.size() != 1)
+    return C.RaiseError("invalid arity");
+
+  llvm::StringRef Filename = Args.front().getStringRef();
+  if (Filename.empty())
+    return C.RaiseError("expecting nonempty string-like object: {}",
+                        Args.front());
+
+  std::string ErrMsg;
+  if (llvm::sys::DynamicLibrary::LoadLibraryPermanently(Filename.data(),
+                                                        &ErrMsg)) {
+    // TODO Make a "note" with Msg.
+    String* Msg = C.CreateString(ErrMsg);
+    return C.RaiseError("Failed to load plugin: {}\n{}", {Args.front(), Msg});
+  }
+
+  C.Cont();
+}
+
+// Dynamically load a Builtin from a heavy::ValueFn.
+void load_builtin(Context& C, ValueRefs Args) {
+  if (Args.size() != 1)
+    return C.RaiseError("invalid arity");
+
+  llvm::StringRef FuncName = Args.front().getStringRef();
+  if (FuncName.empty())
+    return C.RaiseError("expecting nonempty string-like object: {}",
+                        Args.front());
+
+  void* FuncVoidPtr
+    = llvm::sys::DynamicLibrary::SearchForAddressOfSymbol(FuncName.data());
+  if (FuncVoidPtr == nullptr)
+    return C.RaiseError("unable to load builtin: {}", Args.front());
+  heavy::ValueFn Fn = reinterpret_cast<heavy::ValueFn>(FuncVoidPtr);
+  C.Cont(C.CreateBuiltin(Fn));
+}
 } // end of namespace heavy::builtins
 
 // initialize the module for run-time independent of the compiler
@@ -1346,6 +1388,8 @@ void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(apply) = heavy::builtins::apply;
   HEAVY_BASE_VAR(make_syntactic_closure)
                         = heavy::builtins::make_syntactic_closure;
+  HEAVY_BASE_VAR(load_plugin) = heavy::builtins::load_plugin;
+  HEAVY_BASE_VAR(load_builtin) = heavy::builtins::load_builtin;
 }
 
 // initializes the module and loads lookup information
@@ -1444,6 +1488,8 @@ void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"source-value?", HEAVY_BASE_VAR(is_source_value)},
     {"apply", HEAVY_BASE_VAR(apply)},
     {"make-syntactic-closure", HEAVY_BASE_VAR(make_syntactic_closure)},
+    {"load-plugin", HEAVY_BASE_VAR(load_plugin)},
+    {"load-builtin", HEAVY_BASE_VAR(load_builtin)},
   });
 }
 

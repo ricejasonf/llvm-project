@@ -53,5 +53,6 @@ add_subdirectory(tools/heavy-scheme)
 add_subdirectory(test)
 add_subdirectory(unittests)
 add_subdirectory(include/nbdl_gen)
+add_subdirectory(plugins/HelloWorld)
 
 add_subdirectory(cmake/modules)
