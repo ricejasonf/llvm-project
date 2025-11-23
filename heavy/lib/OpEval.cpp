@@ -17,6 +17,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/DynamicLibrary.h"
 #include <memory>
 #include <stack>
 
@@ -107,7 +108,8 @@ public:
   OpEvalImpl(OpEvalImpl const&) = delete;
 
   void Eval(mlir::Operation* Op) {
-    if (isa<GlobalOp, GlobalSyntaxOp, CommandOp, LoadModuleOp>(Op)) {
+    if (isa<GlobalOp, GlobalBindingOp, GlobalSyntaxOp,
+            CommandOp, LoadModuleOp>(Op)) {
       Visit(Op);
       // "Calling the continuation" is handled during visitation.
     } else if (auto ModuleOp = dyn_cast<mlir::ModuleOp>(Op)) {
@@ -127,7 +129,8 @@ public:
         mlir::Operation* TL = &*i;
         auto G = dyn_cast<GlobalOp>(TL);
         // External GlobalOps are skipped.
-        if ((G && !G.isExternal()) || isa<CommandOp, LoadModuleOp>(TL)) {
+        if ((G && !G.isExternal()) ||
+             isa<CommandOp, LoadModuleOp, GlobalBindingOp>(TL)) {
           Context.PushCont([](heavy::Context& C, ValueRefs) mutable {
             heavy::Value Op = C.getCapture(0);
             Value Args[] = {Op};
@@ -181,6 +184,8 @@ private:
     else if (isa<ApplyOp>(Op))        return Visit(cast<ApplyOp>(Op));
     else if (isa<ContOp>(Op))         return Visit(cast<ContOp>(Op));
     else if (isa<GlobalOp>(Op))       return Visit(cast<GlobalOp>(Op));
+    else if (isa<GlobalBindingOp>(Op))
+                                      return Visit(cast<GlobalBindingOp>(Op));
     else if (isa<GlobalSyntaxOp>(Op)) return Visit(cast<GlobalSyntaxOp>(Op));
     else if (isa<LoadRefOp>(Op))      return Visit(cast<LoadRefOp>(Op));
     else if (isa<LoadGlobalOp>(Op))   return Visit(cast<LoadGlobalOp>(Op));
@@ -509,6 +514,22 @@ private:
     while (Itr != BlockItrTy())
       Itr = Visit(&*Itr);
 
+    return BlockItrTy();
+  }
+
+  BlockItrTy Visit(GlobalBindingOp Op) {
+    llvm::StringRef SymName = Op.getSymName();
+    llvm::StringRef ExtSymName = Op.getExtSymName();
+    void* VoidPtr
+      = llvm::sys::DynamicLibrary::SearchForAddressOfSymbol(ExtSymName.data());
+    if (VoidPtr == nullptr) {
+      String* Name = Context.CreateString(ExtSymName);
+      Context.RaiseError("failed to resolve external symbol: {}", {Name});
+      return BlockItrTy();
+    }
+    auto* CL = reinterpret_cast<heavy::ContextLocal*>(VoidPtr);
+    Context.AddKnownAddress(SymName, CL->getBinding(Context));
+    Context.Cont();
     return BlockItrTy();
   }
 

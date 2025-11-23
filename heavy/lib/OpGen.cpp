@@ -376,7 +376,8 @@ void OpGen::VisitTopLevel(Value V) {
 
 void OpGen::FinishTopLevelOp() {
   assert((TopLevelOp == nullptr ||
-          isa<CommandOp, GlobalOp, GlobalSyntaxOp, LoadModuleOp>(TopLevelOp)) &&
+          isa<CommandOp, GlobalOp, GlobalBindingOp,
+              GlobalSyntaxOp, LoadModuleOp>(TopLevelOp)) &&
       "expecting top level operation");
 
   if (heavy::CommandOp CommandOp =
@@ -979,24 +980,28 @@ mlir::Value OpGen::createDefine(Value Id, Value DefineArgs, Value OrigCall) {
   return BVal;
 }
 
-mlir::Value OpGen::createTopLevelDefine(Value Id, Value DefineArgs,
-                                        Value OrigCall) {
-  SourceLocation DefineLoc = OrigCall.getSourceLocation();
+std::tuple<EnvEntry, Symbol*, String*>
+OpGen::createTopLevelBindingInfo(Value Id) {
+  std::tuple<EnvEntry, Symbol*, String*> Result;
+  auto& [Entry, S, MangledName] = Result;
+
   if (LibraryEnvProc) {
-    return SetError("unexpected define", OrigCall);
+    SetError("unexpected define");
+    return Result;
   }
 
   assert(isTopLevel() && "expecting top level");
   assert(isIdentifier(Id) && "expecting identifier");
 
   Environment* Env = nullptr;
-  Symbol* S = nullptr;
   // Unwrap SyntaxClosures.
   if (auto* SC = dyn_cast<SyntaxClosure>(Id)) {
     S = cast<Symbol>(SC->Node);
     Env = Context.GetTopLevelEnvironment(SC->Env);
-    if (!Env)
-      return SetError("FIXME support top level names in syntax closures");
+    if (!Env) {
+      SetError("FIXME support top level names in syntax closures");
+      return Result;
+    }
   } else {
     S = cast<Symbol>(Id);
     Env = Context.GetTopLevelEnvironment();
@@ -1007,47 +1012,68 @@ mlir::Value OpGen::createTopLevelDefine(Value Id, Value DefineArgs,
   // If EnvStack isn't an Environment then there is local
   // scope information on top of it
 
-  EnvEntry Entry = Env->Lookup(Context, S);
+  Entry = Env->Lookup(Context, S);
   if (Entry.Value && Entry.MangledName) {
     if (Mangler::isExternalVariable(getModulePrefix(),
-                                    Entry.MangledName->getView()))
-      return SetError("define overwrites imported global", S);
+                                    Entry.MangledName->getView())) {
+      SetError("define overwrites imported global", S);
+      return Result;
+    }
   }
+
+  if (Entry.MangledName) {
+    MangledName = Entry.MangledName;
+    return Result;
+  }
+
+  heavy::Mangler Mangler(Context);
+  std::string MangledNameStr = Mangler.mangleVariable(getModulePrefix(), S);
+  if (MangledNameStr.empty())
+    return Result;
+  MangledName = Context.CreateIdTableEntry(MangledNameStr);
+
+  // Update any existing export.
+  UpdateExports(S->getString(), MangledName);
+
+  // Insert into the module level scope
+  Env->Insert(S, MangledName);
+
+  return Result;
+}
+
+mlir::Value OpGen::createTopLevelDefine(Value Id, Value DefineArgs,
+                                        Value OrigCall) {
+  SourceLocation DefineLoc = OrigCall.getSourceLocation();
+  auto&& [Entry, S, MangledName] = createTopLevelBindingInfo(Id);
+  if (CheckError())
+    return Error();
 
   // If the name already exists in the current module
   // then it behaves like `set!`
   if (Entry.MangledName) {
-    llvm::StringRef MangledName = Entry.MangledName->getStringRef();
+    llvm::StringRef MangledNameRef = Entry.MangledName->getStringRef();
     TailPosScope TPS(*this);
     IsTailPos = false;
     mlir::Value Init = VisitDefineArgs(DefineArgs);
     if (!Init)
       return mlir::Value();
-    mlir::Value LocalV = create<LoadGlobalOp>(DefineLoc, MangledName);
+    mlir::Value LocalV = create<LoadGlobalOp>(DefineLoc, MangledNameRef);
     return create<SetOp>(DefineLoc, LocalV, Init);
   }
 
-  heavy::Mangler Mangler(Context);
-  std::string MangledName = Mangler.mangleVariable(getModulePrefix(), S);
-  if (MangledName.empty())
-    return Error();
-  String* MangledNameId = Context.CreateIdTableEntry(MangledName);
-
-  // Update any existing export.
-  UpdateExports(S->getString(), MangledNameId);
-  if (CheckError())
-    return Error();
+  assert(MangledName && !MangledName->getStringRef().empty());
 
   // It is possible someone used a variable name not in scope
   // so we created a global and they are defining it now.
+  llvm::StringRef MangledNameRef = MangledName->getStringRef();
   auto GlobalOp = dyn_cast_or_null<heavy::GlobalOp>(
-      LookupSymbol(MangledName));
+      LookupSymbol(MangledNameRef));
   if (GlobalOp) {
     // Move the GlobalOp to the current ModuleBuilder insert point
     mlir::Operation* Op = GlobalOp.getOperation();
     Op->moveBefore(&Op->getBlock()->back());
   } else {
-    GlobalOp = createTopLevel<heavy::GlobalOp>(DefineLoc, MangledName);
+    GlobalOp = createTopLevel<heavy::GlobalOp>(DefineLoc, MangledNameRef);
   }
   setTopLevelOp(GlobalOp.getOperation());
   mlir::Block& Block = *GlobalOp.addEntryBlock();
@@ -1057,13 +1083,30 @@ mlir::Value OpGen::createTopLevelDefine(Value Id, Value DefineArgs,
     mlir::OpBuilder::InsertionGuard IG(Builder);
     Builder.setInsertionPointToStart(&Block);
 
-    // Insert into the module level scope
-    Env->Insert(S, MangledNameId);
     if (mlir::Value Init = VisitDefineArgs(DefineArgs)) {
       create<ContOp>(DefineLoc, Init);
     }
   }
 
+  return mlir::Value();
+}
+
+mlir::Value OpGen::createExternalBinding(Value Id, Value ExtSymbol) {
+  assert(!ExtSymbol.getStringRef().empty());
+  if (!isTopLevel())
+    return SetError("unexpected define-binding");
+  heavy::SourceLocation Loc = Id.getSourceLocation();
+  auto&& [_, S, MangledName] = createTopLevelBindingInfo(Id);
+  if (CheckError())
+    return Error();
+
+  if (!MangledName || LookupSymbol(MangledName->getStringRef()))
+    return SetError("unable to bind to existing define");
+
+  auto Op = createTopLevel<heavy::GlobalBindingOp>(Loc,
+                                         MangledName->getStringRef(),
+                                         ExtSymbol.getStringRef());
+  setTopLevelOp(Op.getOperation());
   return mlir::Value();
 }
 
@@ -1181,7 +1224,7 @@ mlir::Value OpGen::createGlobal(SourceLocation Loc,
 
   // Wrap the mlir::Operation and use for the lookup.
   auto CanonicalValue = heavy::Value(G);
-  auto GlobalOp = cast<heavy::GlobalOp>(G);
+  auto SymbolOp = cast<mlir::SymbolOpInterface>(G);
 
   // Localize globals by the GlobalOp's Operation*
   mlir::Value LocalV;
@@ -1189,7 +1232,7 @@ mlir::Value OpGen::createGlobal(SourceLocation Loc,
   if (TopLevelOp)
     LocalV = BindingTable.lookup(CanonicalValue);
   if (!LocalV) {
-    LocalV = create<LoadGlobalOp>(Loc, GlobalOp.getName());
+    LocalV = create<LoadGlobalOp>(Loc, SymbolOp.getName());
     BindingTable.insert(CanonicalValue, LocalV);
     return LocalV;
   }

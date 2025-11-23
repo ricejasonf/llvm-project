@@ -841,8 +841,8 @@ void HEAVY_MLIR_INIT(heavy::Context& C) {
   mlir::MLIRContext* MC = C.MLIRContext.get();
   heavy::Value MC_Val = C.CreateAny(MC);
   heavy::Value BuilderVal = C.CreateAny(mlir::OpBuilder(MC));
-  HEAVY_MLIR_VAR(current_context).init(C, C.CreateBinding(MC_Val));
-  HEAVY_MLIR_VAR(current_builder).init(C, C.CreateBinding(BuilderVal));
+  HEAVY_MLIR_VAR(current_context).set(C, MC_Val);
+  HEAVY_MLIR_VAR(current_builder).set(C, BuilderVal);
 
   HEAVY_MLIR_VAR(create_op) = heavy::mlir_bind::create_op;
   HEAVY_MLIR_VAR(create_op_impl) = heavy::mlir_bind::create_op_impl;
@@ -880,7 +880,7 @@ void HEAVY_MLIR_LOAD_MODULE(heavy::Context& C) {
   heavy::initModuleNames(C, HEAVY_MLIR_LIB_STR, {
     {"old-create-op", HEAVY_MLIR_VAR(create_op)},
     {"%create-op", HEAVY_MLIR_VAR(create_op_impl)},
-    {"current-builder", HEAVY_MLIR_VAR(current_builder).get_binding(C)},
+    {"current-builder", HEAVY_MLIR_VAR(current_builder).getBinding(C)},
     {"get-region", HEAVY_MLIR_VAR(get_region)},
     {"entry-block", HEAVY_MLIR_VAR(entry_block)},
     {"add-argument", HEAVY_MLIR_VAR(add_argument)},

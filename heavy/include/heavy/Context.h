@@ -64,7 +64,7 @@ struct OpEvalDeleter {
 using OpEvalPtr = std::unique_ptr<OpEvalImpl, OpEvalDeleter>;
 
 class ContextLocalLookup {
-  friend struct ContextLocal;
+public:
   llvm::DenseMap<uintptr_t, Value> LookupTable;
 };
 

@@ -360,7 +360,7 @@ void HEAVY_NBDL_INIT(heavy::Context& C) {
   mlir::ModuleOp ModuleOp
     = Builder.create<mlir::ModuleOp>(Loc, "nbdl_gen_module");
 
-  heavy::nbdl_bind_var::current_nbdl_module.init(C, ModuleOp.getOperation());
+  heavy::nbdl_bind_var::current_nbdl_module.set(C, ModuleOp.getOperation());
   heavy::nbdl_bind_var::translate_cpp = heavy::nbdl_bind::translate_cpp;
   heavy::nbdl_bind_var::close_previous_scope
     = heavy::nbdl_bind::close_previous_scope;

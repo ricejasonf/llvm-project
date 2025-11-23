@@ -354,6 +354,10 @@ void Context::CollectGarbage() {
     GC.VisitRootNode(DensePair.second);
   }
 
+  // LookupTable
+  for (auto& [_, V] : LookupTable)
+    GC.VisitRootNode(V);
+
   GC.VisitRootNode(Err);
   GC.VisitRootNode(ExceptionHandlers);
 

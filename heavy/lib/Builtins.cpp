@@ -38,6 +38,7 @@ heavy::ContextLocal        parse_source_file;
 
 heavy::ExternBuiltinSyntax cond_expand;
 heavy::ExternBuiltinSyntax define;
+heavy::ExternBuiltinSyntax define_binding;
 heavy::ExternBuiltinSyntax define_syntax;
 heavy::ExternBuiltinSyntax syntax_rules;
 heavy::ExternBuiltinSyntax syntax_fn;
@@ -133,8 +134,8 @@ mlir::Value quasiquote(OpGen& OG, Pair* P);
 void op_eval(Context& C, ValueRefs Args);
 
 mlir::Value define(OpGen& OG, Pair* P) {
-  Pair*   P2    = dyn_cast<Pair>(P->Cdr);
-  Value Id     = nullptr;
+  Pair* P2 = dyn_cast<Pair>(P->Cdr);
+  Value Id;
 
   if (!P2)
     return OG.SetError("invalid syntax for define", P);
@@ -146,6 +147,21 @@ mlir::Value define(OpGen& OG, Pair* P) {
   if (!isIdentifier(Id))
     return OG.SetError("invalid syntax for define", P);
   return OG.createDefine(Id, P2, P);
+}
+
+// Binds a dynamically loaded heavy::ContextLocal.
+mlir::Value define_binding(OpGen& OG, Pair* P) {
+  Pair* P2 = dyn_cast<Pair>(P->Cdr);
+  Value Name;
+  Value ExtName;
+
+  if (P2) {
+    Name = P2->Car;
+    ExtName = P2->Cdr.car();
+  }
+  if (!P2 || !ExtName || !isa<Symbol>(Name) || !isa<Symbol, String>(ExtName))
+    return OG.SetError("invalid syntax for define-binding", P);
+  return OG.createExternalBinding(Name, ExtName);
 }
 
 mlir::Value define_syntax(OpGen& OG, Pair* P) {
@@ -1299,6 +1315,7 @@ void HEAVY_BASE_INIT(heavy::Context& Context) {
   Context.DialectRegistry->insert<heavy::Dialect>();
   // syntax
   HEAVY_BASE_VAR(define)          = heavy::builtins::define;
+  HEAVY_BASE_VAR(define_binding)  = heavy::builtins::define_binding;
   HEAVY_BASE_VAR(define_syntax)   = heavy::builtins::define_syntax;
   HEAVY_BASE_VAR(syntax_rules)    = heavy::builtins::syntax_rules;
   HEAVY_BASE_VAR(syntax_fn)       = heavy::builtins::syntax_fn;
@@ -1322,7 +1339,6 @@ void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(source_loc)      = heavy::builtins::source_loc;
   HEAVY_BASE_VAR(source_loc_valid) = heavy::builtins::source_loc_valid;
   HEAVY_BASE_VAR(dump_source_loc) = heavy::builtins::dump_source_loc;
-  HEAVY_BASE_VAR(parse_source_file).init(Context);
 
   // functions
   HEAVY_BASE_VAR(add)     = heavy::builtins::add;
@@ -1369,7 +1385,6 @@ void HEAVY_BASE_INIT(heavy::Context& Context) {
   HEAVY_BASE_VAR(eval)    = heavy::builtins::eval;
   HEAVY_BASE_VAR(op_eval) = heavy::builtins::op_eval;
   HEAVY_BASE_VAR(compile) = heavy::builtins::compile;
-  HEAVY_BASE_VAR(module_path).init(Context);
 
   HEAVY_BASE_VAR(is_boolean) = heavy::builtins::is_boolean;
   HEAVY_BASE_VAR(is_bytevector) = heavy::builtins::is_bytevector;
@@ -1399,6 +1414,8 @@ void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
   heavy::initModuleNames(Context, HEAVY_BASE_LIB_STR, {
     // syntax
     {"define",        HEAVY_BASE_VAR(define)},
+    {"define-binding",
+                      HEAVY_BASE_VAR(define_binding)},
     {"define-syntax", HEAVY_BASE_VAR(define_syntax)},
     {"if",            HEAVY_BASE_VAR(if_)},
     {"lambda",        HEAVY_BASE_VAR(lambda)},

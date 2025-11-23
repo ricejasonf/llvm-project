@@ -192,8 +192,19 @@ def heavy_GlobalOp : HeavyOp<"global", [Symbol, IsolatedFromAbove]> {
   let arguments = (ins StrAttr:$sym_name);
 }
 
-def heav_GlobalSyntaxOp : HeavyOp<"global_syntax",
-                                  [Symbol, IsolatedFromAbove]> {
+def heavy_GlobalBindingOp : HeavyOp<"global_binding",
+                                    [Symbol, IsolatedFromAbove]> {
+  let description = [{
+    Create a module top level variable and assign it the binding
+    encapsulated by a heavy::ContextLocal object that is dynamically
+    loaded from the provided $ext_sym_name.
+  }];
+
+  let arguments = (ins StrAttr:$sym_name, StrAttr:$ext_sym_name);
+}
+
+def heavy_GlobalSyntaxOp : HeavyOp<"global_syntax",
+                                   [Symbol, IsolatedFromAbove]> {
   let description = [{
     GlobalSyntaxOp denotes a module top level syntax object
     that is initialized at compile time.

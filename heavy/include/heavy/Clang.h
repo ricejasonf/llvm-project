@@ -75,13 +75,13 @@ inline void HEAVY_CLANG_INIT(heavy::Context& Context) {
 inline void HEAVY_CLANG_LOAD_MODULE(heavy::Context& Context) {
   HEAVY_CLANG_INIT(Context);
   heavy::initModuleNames(Context, HEAVY_CLANG_LIB_STR, {
-    {"diag-error",  HEAVY_CLANG_VAR(diag_error).init(Context)},
-    {"diag-warning",  HEAVY_CLANG_VAR(diag_warning).init(Context)},
-    {"diag-note",  HEAVY_CLANG_VAR(diag_note).init(Context)},
-    {"hello-world", HEAVY_CLANG_VAR(hello_world).init(Context)},
-    {"write-lexer", HEAVY_CLANG_VAR(write_lexer).init(Context)},
-    {"lexer-writer",HEAVY_CLANG_VAR(lexer_writer).init(Context)},
-    {"expr-eval",   HEAVY_CLANG_VAR(expr_eval).init(Context)}
+    {"diag-error",  HEAVY_CLANG_VAR(diag_error).get(Context)},
+    {"diag-warning",  HEAVY_CLANG_VAR(diag_warning).get(Context)},
+    {"diag-note",  HEAVY_CLANG_VAR(diag_note).get(Context)},
+    {"hello-world", HEAVY_CLANG_VAR(hello_world).get(Context)},
+    {"write-lexer", HEAVY_CLANG_VAR(write_lexer).get(Context)},
+    {"lexer-writer",HEAVY_CLANG_VAR(lexer_writer).get(Context)},
+    {"expr-eval",   HEAVY_CLANG_VAR(expr_eval).get(Context)}
   });
 }
 }

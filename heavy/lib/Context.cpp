@@ -52,6 +52,13 @@
 #include <memory>
 #include <string>
 
+#if __has_include(<dlfcn.h>)
+#include <dlfcn.h>
+#define HEAVY_HAS_DLADDR 1
+#else
+#define HEAVY_HAS_DLADDR 0
+#endif
+
 using namespace heavy;
 
 void ValueBase::dump() {
@@ -1512,40 +1519,39 @@ Value Context::RebuildLiteral(Value V, Value Env) {
 
 // ContextLocal
 
-heavy::Value ContextLocal::init(heavy::Context& C, heavy::Value Value) {
-  heavy::ContextLocalLookup& CL = C;
-  heavy::Value& Result = CL.LookupTable[key()];
-  // Allow init to be called after the user already called init.
-  if (Result != nullptr && Value == nullptr)
-    return Result;
-  assert(Result == nullptr &&
-      "context local should be initialized only once");
-  Result = Value ? Value : C.CreateBinding(heavy::Undefined());
-  return Result;
-}
-
-void ContextLocal::set(heavy::ContextLocalLookup& C,
-                       heavy::Value Value) {
-  heavy::Value& Result = C.LookupTable[key()];
-  auto* Binding = dyn_cast_or_null<heavy::Binding>(Result);
-  assert(Binding && "context local must be initialized as binding");
+void ContextLocal::set(heavy::Context& C, heavy::Value Value) {
+  heavy::Binding* Binding = getBinding(C);
   Binding->setValue(Value);
 }
 
 // Return the value pointed to by Binding or nullptr.
-heavy::Value ContextLocal::get(heavy::ContextLocalLookup const& C) const {
-  heavy::Value Value = C.LookupTable.lookup(key());
-  if (auto* Binding = dyn_cast<heavy::Binding>(Value))
-    return Binding->getValue();
-  return Value;
+heavy::Value ContextLocal::get(heavy::Context& C) {
+  return getBinding(C)->getValue();
 }
 
-heavy::Value ContextLocal::get_binding(
-      heavy::ContextLocalLookup const& C) const {
-  heavy::Value Value = C.LookupTable.lookup(key());
-  return cast<heavy::Binding>(Value);
+heavy::Binding* ContextLocal::getBinding(heavy::Context& C) {
+  heavy::Value& Result = C.LookupTable[key()];
+  auto* Binding = dyn_cast_or_null<heavy::Binding>(Result);
+  if (!Binding) {
+    Value Name = GetSystemSymbolName(C);
+    heavy::Value Undef = Name ? heavy::Undefined(Name) : heavy::Undefined();
+    Binding = C.CreateBinding(Undef);
+    Result = Binding;
+  }
+  return Binding;
 }
 
+heavy::Value ContextLocal::GetSystemSymbolName(heavy::Context& C) {
+#if HEAVY_HAS_DLADDR
+  Dl_info Info;
+  if (dladdr(this, &Info)) {
+    Symbol* S = C.CreateSymbol(llvm::StringRef(Info.dli_sname));
+    return S;
+  }
+#endif
+
+  return Value();
+}
 
 // Module
 

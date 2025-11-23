@@ -2131,14 +2131,13 @@ struct ExternString : public ExternValue<String::sizeToAlloc(Len)> {
 //    as a key for the map to the context specific value.
 //  - Point to a Binding by default since values are often
 //    loaded lazily.
-struct ContextLocal {
-  // Initializes the variable as a Value or
-  // as a Binding if Value is not provided.
-  heavy::Value init(heavy::Context& C, heavy::Value Value = nullptr);
+class ContextLocal {
+  heavy::Value GetSystemSymbolName(heavy::Context& C);
+public:
   uintptr_t key() const { return reinterpret_cast<uintptr_t>(this); }
-  heavy::Value get(heavy::ContextLocalLookup const& C) const;
-  heavy::Value get_binding(heavy::ContextLocalLookup const& C) const;
-  void set(heavy::ContextLocalLookup& C, heavy::Value Value);
+  heavy::Value get(heavy::Context& C);
+  heavy::Binding* getBinding(heavy::Context& C);
+  void set(heavy::Context& C, heavy::Value Value);
 };
 
 // ListIterator - Provide ForwardIterator for lists

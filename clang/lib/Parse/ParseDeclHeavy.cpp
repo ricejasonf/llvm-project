@@ -319,18 +319,16 @@ bool Parser::ParseHeavyScheme() {
 
     heavy::Context& Context = HeavyScheme->getContext();
     heavy::builtins::InitParseSourceFile(Context, ParseSourceFileFn);
-    HEAVY_CLANG_VAR(diag_error).init(Context,
-                                     Context.CreateLambda(diag_error));
-    HEAVY_CLANG_VAR(diag_warning).init(Context,
-                                       Context.CreateLambda(diag_warning));
-    HEAVY_CLANG_VAR(diag_note).init(Context,
-                                    Context.CreateLambda(diag_note));
-    HEAVY_CLANG_VAR(hello_world).init(Context,
-                                      Context.CreateLambda(hello_world));
-    HEAVY_CLANG_VAR(expr_eval).init(Context,
+    HEAVY_CLANG_VAR(diag_error).set(Context,
+                                    Context.CreateLambda(diag_error));
+    HEAVY_CLANG_VAR(diag_warning).set(Context,
+                                      Context.CreateLambda(diag_warning));
+    HEAVY_CLANG_VAR(diag_note).set(Context,
+                                   Context.CreateLambda(diag_note));
+    HEAVY_CLANG_VAR(hello_world).set(Context,
+                                     Context.CreateLambda(hello_world));
+    HEAVY_CLANG_VAR(expr_eval).set(Context,
                                     Context.CreateLambda(expr_eval));
-    HEAVY_CLANG_VAR(write_lexer).init(Context);
-    HEAVY_CLANG_VAR(lexer_writer).init(Context);
     HeavyScheme->RegisterModule(HEAVY_CLANG_LIB_STR, HEAVY_CLANG_LOAD_MODULE);
   }
 
