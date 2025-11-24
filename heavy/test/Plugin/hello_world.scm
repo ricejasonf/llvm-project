@@ -1,5 +1,5 @@
-; RUN: heavy-scheme %s | FileCheck %s
-(import (heavy builtins))
+; RUN: heavy-scheme --module-path=%heavy_module_path %s | FileCheck %s
+(import (heavy base))
 
 (load-plugin "libheavyHelloWorld.so")
 (define my-write

@@ -12,7 +12,6 @@
         #t #f))
     ) ; end of begin
   (export
-    ; syntax
     define
     define-syntax
     if
@@ -102,8 +101,13 @@
     symbol?
     vector?
 
-    ; Extended types.
+    ; Extended types
     mlir-operation?
     source-value?
+
+    ; Plugin stuff
+    load-plugin
+    load-builtin
+    define-binding
     )
 )
