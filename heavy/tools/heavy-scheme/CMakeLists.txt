@@ -9,3 +9,7 @@ set_target_properties(heavy-scheme PROPERTIES ENABLE_EXPORTS 1)
 add_llvm_install_targets(install-heavy-scheme
   DEPENDS heavy-scheme
   COMPONENT heavy-scheme)
+
+install(TARGETS heavy-scheme
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        COMPONENT heavy-scheme)
