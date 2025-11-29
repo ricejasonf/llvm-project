@@ -198,9 +198,19 @@ void MatchArgsOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
   MatchArgsOp::build(B, OpState, ResultTypes, Input);
 }
 
+void MatchVectorOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
+                          uint32_t Head, uint32_t Tail, mlir::Value Input) {
+  llvm_unreachable("FIXME This is all very untested.");
+  assert(Tail >= Head);
+  unsigned NumResults = Tail - Head;
+  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
+  llvm::SmallVector<mlir::Type, 4> ResultTypes(NumResults, HeavyValueT);
+  MatchVectorOp::build(B, OpState, ResultTypes, Head, Tail, Input);
+}
+
 void SubpatternOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                         mlir::Value Input, mlir::Value Tail,
-                        std::unique_ptr<mlir::Region> Body,
+                        std::unique_ptr<mlir::Region>&& Body,
                         unsigned NumPacks) {
   mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
   llvm::SmallVector<mlir::Type, 4> ResultTypes(NumPacks, HeavyValueT);
@@ -211,7 +221,7 @@ void SubpatternOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
 
 void ExpandPacksOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                         mlir::Value Cdr, mlir::ValueRange Packs,
-                        std::unique_ptr<mlir::Region> Body) {
+                        std::unique_ptr<mlir::Region>&& Body) {
   mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
   OpState.addOperands(Cdr);
   OpState.addOperands(Packs);

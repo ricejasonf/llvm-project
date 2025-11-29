@@ -156,7 +156,7 @@ def heavy_ExpandPacksOp : HeavyOp<"expand_packs", []> {
   let builders = [
     OpBuilder<(ins "::mlir::Value":$cdr,
                    "::mlir::ValueRange":$packs,
-                   "std::unique_ptr<::mlir::Region>":$body)>
+                   "std::unique_ptr<::mlir::Region>&&":$body)>
   ];
 }
 
@@ -370,10 +370,6 @@ def heavy_MatchIdOp : HeavyOp<"match-id", []> {
 
   let arguments = (ins HeavyValue:$val, HeavyValue:$input);
   let results   = (outs);
-
-  let builders = [
-    OpBuilder<(ins "::heavy::Value":$val, "::mlir::Value":$input)>
-  ];
 }
 
 def heavy_MatchPairOp : HeavyOp<"match_pair", []> {
@@ -484,7 +480,7 @@ def heavy_SubpatternOp : HeavyOp<"subpattern", []> {
   let builders = [
     OpBuilder<(ins "::mlir::Value":$input,
                    "::mlir::Value":$tail,
-                   "std::unique_ptr<::mlir::Region>":$body,
+                   "std::unique_ptr<::mlir::Region>&&":$body,
                    "unsigned":$num_packs)>
   ];
 }

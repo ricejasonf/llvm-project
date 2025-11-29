@@ -243,7 +243,7 @@ public:
         "Operation must have insertion point");
     mlir::Location MLoc = mlir::OpaqueLoc::get(Loc.getOpaqueEncoding(),
                                                Builder.getContext());
-    return Builder.create<Op>(MLoc, std::forward<Args>(args)...);
+    return Op::create(Builder, MLoc, std::forward<Args>(args)...);
   }
 
   template <typename Op, typename ...Args>

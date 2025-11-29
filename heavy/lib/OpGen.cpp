@@ -97,7 +97,7 @@ OpGen::OpGen(heavy::Context& C, heavy::Symbol* ModulePrefix)
     assert(!C.ModuleOp && "There should be only one top level module");
     C.MLIRContext->loadDialect<heavy::Dialect, mlir::func::FuncDialect>();
     // Create the module that contains the main module and import modules
-    TopModule = Builder.create<mlir::ModuleOp>(Loc);
+    TopModule = mlir::ModuleOp::create(Builder, Loc);
     C.ModuleOp = TopModule;
     // The first child ModuleOp is the main module. All subsequent
     // modules are imports.
@@ -105,8 +105,8 @@ OpGen::OpGen(heavy::Context& C, heavy::Symbol* ModulePrefix)
     TopModule = cast<mlir::ModuleOp>(C.ModuleOp);
   }
   ImportsBuilder.setInsertionPointToEnd(TopModule.getBody());
-  ModuleOp = ImportsBuilder.create<mlir::ModuleOp>(Loc,
-                                        getModulePrefix());
+  ModuleOp = mlir::ModuleOp::create(ImportsBuilder, Loc,
+                                    getModulePrefix());
 
   ModuleBuilder.setInsertionPointToStart(
       cast<mlir::ModuleOp>(ModuleOp).getBody());
@@ -590,7 +590,7 @@ mlir::Value OpGen::createLambdaBody(SourceLocation Loc,
       if (IsLocalDefineAllowed)
         FinishLocalDefines();
       Result = LocalizeValue(Result);
-      Builder.create<ContOp>(Result.getLoc(), Result);
+      ContOp::create(Builder, Result.getLoc(), Result);
     }
 
     Context.PopEnvFrame(EnvFrame);
@@ -676,7 +676,7 @@ void OpGen::PopContinuationScope() {
                                   .getValue();
   assert(LS.CallOp != nullptr && "a PushContOp should precede a call");
   Builder.setInsertionPoint(LS.CallOp);
-  Builder.create<PushContOp>(Loc, MangledName, LS.Captures);
+  PushContOp::create(Builder, Loc, MangledName, LS.Captures);
   LambdaScopes.pop_back();
 }
 
@@ -757,7 +757,7 @@ mlir::Value OpGen::createSyntaxSpec(Pair* SyntaxSpec, Value OrigCall) {
     // Insert a ContOp for the global that was created.
     TopLevelEnv->Insert(Keyword,
         Context.CreateIdTableEntry(MangledName));
-    Builder.create<ContOp>(Result.getLoc(), Result);
+    ContOp::create(Builder, Result.getLoc(), Result);
     Builder.restoreInsertionPoint(PrevIp);
     // Syntax should be available at compile-time.
     Value GlobalOpVal = SyntaxOp->getParentOp();

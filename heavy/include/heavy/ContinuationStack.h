@@ -165,7 +165,7 @@ private:
     if (Src.getDepth() < Dest.getDepth()) {
       C.PushCont([](Derived& C, ValueRefs) {
         DWind Dest = C.getCapture(0);
-        C.Apply(Dest.getBeforeFn(), std::nullopt);
+        C.ApplyThunk(Value(Dest.getBeforeFn()));
       }, CaptureList{Dest});
       C.TraverseWindings(Src, Dest.getParent());
     } else {
@@ -174,7 +174,7 @@ private:
         DWind Dest = C.getCapture(1);
         C.TraverseWindings(Src.getParent(), Dest);
       }, CaptureList{Src, Dest});
-      C.Apply(Src.getAfterFn(), std::nullopt);
+      C.ApplyThunk(Value(Src.getAfterFn()));
     }
   }
 

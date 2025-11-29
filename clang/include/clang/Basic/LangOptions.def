@@ -37,7 +37,6 @@
      LANGOPT(Name, Bits, Default, Compatibility, Description)
 #endif
 
-<<<<<<< HEAD
 // FIXME: A lot of the Benign options should be Compatible instead.
 LANGOPT(C99               , 1, 0, NotCompatible, "C99")
 LANGOPT(C11               , 1, 0, NotCompatible, "C11")
@@ -88,7 +87,7 @@ LANGOPT(AppleKext         , 1, 0, NotCompatible, "Apple kext support")
 LANGOPT(PascalStrings     , 1, 0, Benign, "Pascal string support")
 LANGOPT(WritableStrings   , 1, 0, NotCompatible, "writable string support")
 LANGOPT(ConstStrings      , 1, 0, NotCompatible, "const-qualified string support")
-LANGOPT(Heavy             , 1, 0, "Heavy")
+LANGOPT(Heavy             , 1, 0, NotCompatible, "Heavy scheme integration")
 ENUM_LANGOPT(LaxVectorConversions, LaxVectorConversionKind, 2,
              LaxVectorConversionKind::All, NotCompatible, "lax vector conversions")
 ENUM_LANGOPT(AltivecSrcCompat, AltivecSrcCompatKind, 2,

@@ -102,7 +102,7 @@ void build_match_params_impl(Context& C, ValueRefs Args) {
                                                   /*ResultTypes*/{});
 
   // Create the function.
-  auto FuncOp = Builder.create<mlir::func::FuncOp>(MLoc, Name, FT);
+  auto FuncOp = mlir::func::FuncOp::create(Builder, MLoc, Name, FT);
   FuncOp.addEntryBlock();
 
   heavy::Value Thunk = C.CreateLambda([FuncOp](Context& C, ValueRefs) mutable {
@@ -147,7 +147,7 @@ void build_overload_impl(Context& C, ValueRefs Args) {
   llvm::StringRef Typename = TypenameArg.getStringRef();
   mlir::Location MLoc = mlir::OpaqueLoc::get(Loc.getOpaqueEncoding(),
                                              Builder->getContext());
-  auto OverloadOp = Builder->create<nbdl_gen::OverloadOp>(MLoc, Typename);
+  auto OverloadOp = nbdl_gen::OverloadOp::create(*Builder, MLoc, Typename);
   if (!Callback)
     return C.Cont();
 
@@ -191,7 +191,7 @@ void build_match_if_impl(Context& C, ValueRefs Args) {
 
   mlir::Location MLoc = mlir::OpaqueLoc::get(Loc.getOpaqueEncoding(),
                                              Builder->getContext());
-  auto MatchIfOp = Builder->create<nbdl_gen::MatchIfOp>(MLoc, Input, Pred);
+  auto MatchIfOp = nbdl_gen::MatchIfOp::create(*Builder, MLoc, Input, Pred);
   MatchIfOp.getThenRegion().emplaceBlock();
   MatchIfOp.getElseRegion().emplaceBlock();
 
@@ -278,7 +278,8 @@ void close_previous_scope(Context& C, ValueRefs Args) {
   mlir::Block& NewBlock = ScopeBody->emplaceBlock();
   while (!Block->empty())
     Block->front().moveBefore(&NewBlock, NewBlock.end());
-  mlir::Operation* ScopeOp = Builder->create<nbdl_gen::ScopeOp>(Loc, std::move(ScopeBody));
+  mlir::Operation* ScopeOp = nbdl_gen::ScopeOp::create(
+                              *Builder, Loc, std::move(ScopeBody));
   Builder->setInsertionPointAfter(ScopeOp);
 
   C.Cont();
@@ -358,7 +359,7 @@ void HEAVY_NBDL_INIT(heavy::Context& C) {
   mlir::OpBuilder Builder(C.MLIRContext.get());
   mlir::Location Loc = Builder.getUnknownLoc();
   mlir::ModuleOp ModuleOp
-    = Builder.create<mlir::ModuleOp>(Loc, "nbdl_gen_module");
+    = mlir::ModuleOp::create(Builder, Loc, "nbdl_gen_module");
 
   heavy::nbdl_bind_var::current_nbdl_module.set(C, ModuleOp.getOperation());
   heavy::nbdl_bind_var::translate_cpp = heavy::nbdl_bind::translate_cpp;

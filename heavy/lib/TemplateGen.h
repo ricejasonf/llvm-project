@@ -34,7 +34,7 @@ class TemplateGen : TemplateBase<TemplateGen> {
   Value Ellipsis;
   NameSet& PatternVarNames;
 
-  // Store the inputs to ExpandPackOp being constructed.
+  // Store the inputs to ExpandPacksOp being constructed.
   using PackCaptureInfoTy = std::pair<mlir::Block*,
                   llvm::SmallVectorImpl<mlir::Value>*>;
   llvm::SmallVector<PackCaptureInfoTy, 4> PackStack;

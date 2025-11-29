@@ -7051,7 +7051,7 @@ private:
   std::unique_ptr<PragmaHandler> MaxTokensHerePragmaHandler;
   std::unique_ptr<PragmaHandler> MaxTokensTotalPragmaHandler;
   std::unique_ptr<PragmaHandler> RISCVPragmaHandler;
-  std::unique_ptr<heavy::Context> HeavySchemeContext;
+  std::unique_ptr<heavy::HeavyScheme> HeavyScheme;
 
   /// Initialize all pragma handlers.
   void initializePragmaHandlers();

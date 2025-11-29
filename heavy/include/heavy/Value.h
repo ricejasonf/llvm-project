@@ -234,7 +234,7 @@ struct StatelessPointerTraitBase {
 
   // all the bits??
   static constexpr int NumLowBitsAvailable =
-      llvm::detail::ConstantLog2<alignof(void*)>::value;
+      llvm::ConstantLog2<alignof(void*)>();
 };
 }}
 
@@ -292,7 +292,7 @@ struct ValueSumType {
     }
 
     static constexpr int NumLowBitsAvailable =
-      llvm::detail::ConstantLog2<alignof(void*)>::value;
+      llvm::ConstantLog2<alignof(void*)>();
   };
 
   struct ContArgTraits {
@@ -304,7 +304,7 @@ struct ValueSumType {
     }
 
     static constexpr int NumLowBitsAvailable =
-      llvm::detail::ConstantLog2<alignof(void*)>::value;
+      llvm::ConstantLog2<alignof(void*)>();
   };
 
   using type = llvm::PointerSumType<SumKind,
@@ -866,18 +866,18 @@ public:
     : ValueBase(ValueKind::String),
       Len(Length)
   {
-    std::memset(getTrailingObjects<char>(), InitChar, Len);
+    std::memset(getTrailingObjects(), InitChar, Len);
     // Set trailing null byte.
-    *(getTrailingObjects<char>() + Len) = '\0';
+    *(getTrailingObjects() + Len) = '\0';
   }
 
   String(llvm::StringRef S)
     : ValueBase(ValueKind::String),
       Len(S.size())
   {
-    std::memcpy(getTrailingObjects<char>(), S.data(), S.size());
+    std::memcpy(getTrailingObjects(), S.data(), S.size());
     // Set trailing null byte.
-    *(getTrailingObjects<char>() + Len) = '\0';
+    *(getTrailingObjects() + Len) = '\0';
   }
 
   template <typename ...StringRefs>
@@ -886,13 +886,13 @@ public:
       Len(TotalLen)
   {
     std::array<llvm::StringRef, sizeof...(Ss)> Arr = {Ss...};
-    char* StrData = getTrailingObjects<char>();
+    char* StrData = getTrailingObjects();
     for (llvm::StringRef S : Arr) {
       std::memcpy(StrData, S.data(), S.size());
       StrData += S.size();
     }
     // Set trailing null byte.
-    *(getTrailingObjects<char>() + Len) = '\0';
+    *(getTrailingObjects() + Len) = '\0';
   }
 
   static constexpr size_t sizeToAlloc(unsigned Length) {
@@ -903,11 +903,11 @@ public:
   unsigned size() const { return Len; }
 
   llvm::StringRef getView() const {
-    return llvm::StringRef(getTrailingObjects<char>(), Len);
+    return llvm::StringRef(getTrailingObjects(), Len);
   }
 
   llvm::MutableArrayRef<char> getMutableView() {
-    return llvm::MutableArrayRef(getTrailingObjects<char>(), Len);
+    return llvm::MutableArrayRef(getTrailingObjects(), Len);
   }
 
   bool Equiv(String* S) const {
@@ -1202,7 +1202,7 @@ class Syntax final
   OpaqueFnPtrTy FnPtr;
   unsigned StorageLen;
 
-  void* getStoragePtr() { return getTrailingObjects<char>(); }
+  void* getStoragePtr() { return getTrailingObjects(); }
 
 public:
   Syntax(OpaqueFn FnData)
@@ -1302,7 +1302,7 @@ public:
     : ValueBase(ValueKind::Vector),
       Len(Vs.size())
   {
-    std::memcpy(getTrailingObjects<Value>(), Vs.data(),
+    std::memcpy(getTrailingObjects(), Vs.data(),
                 Len * sizeof(Value));
   }
 
@@ -1310,7 +1310,7 @@ public:
     : ValueBase(ValueKind::Vector),
       Len(N)
   {
-    Value* Xs = getTrailingObjects<Value>();
+    Value* Xs = getTrailingObjects();
     for (unsigned i = 0; i < Len; ++i) {
       Xs[i] = V;
     }
@@ -1333,17 +1333,17 @@ public:
 
   Value& get(unsigned I) {
     assert(I < Len && "invalid index for vector");
-    return *(getTrailingObjects<Value>() + I);
+    return *(getTrailingObjects() + I);
   }
 
   llvm::ArrayRef<Value> getElements() const {
     return llvm::ArrayRef<Value>(
-        getTrailingObjects<Value>(), Len);
+        getTrailingObjects(), Len);
   }
 
   llvm::MutableArrayRef<Value> getElements() {
     return llvm::MutableArrayRef<Value>(
-        getTrailingObjects<Value>(), Len);
+        getTrailingObjects(), Len);
   }
 
   static bool classof(Value V) {
@@ -1398,7 +1398,7 @@ public:
   }
 
   // Note that for stored pointers, this will return a pointer to a pointer.
-  void* getOpaquePtr() { return getTrailingObjects<char>(); }
+  void* getOpaquePtr() { return getTrailingObjects(); }
 
   llvm::StringRef getObjData() {
     return llvm::StringRef(static_cast<char*>(getOpaquePtr()), getObjectSize());
@@ -1556,12 +1556,12 @@ public:
 
   llvm::ArrayRef<Binding*> getBindings() const {
     return llvm::ArrayRef<Binding*>(
-        getTrailingObjects<Binding*>(), NumBindings);
+        getTrailingObjects(), NumBindings);
   }
 
   llvm::MutableArrayRef<Binding*> getBindings() {
     return llvm::MutableArrayRef<Binding*>(
-        getTrailingObjects<Binding*>(), NumBindings);
+        getTrailingObjects(), NumBindings);
   }
 
   Value getLocalStack() const { return LocalStack; }
