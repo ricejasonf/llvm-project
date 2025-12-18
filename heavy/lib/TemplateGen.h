@@ -99,7 +99,7 @@ private:
       TemplateResult Last = Visit(Car);
       if (OpGen.CheckError())
         return OpGen.createUndefined();
-      if (std::holds_alternative<heavy::Value>(Last))
+      if (Packs.empty())
         return OpGen.SetError("expansion template should contain pack");
       OpGen.create<ResolveOp>(Loc, createValue(Last));
     }
