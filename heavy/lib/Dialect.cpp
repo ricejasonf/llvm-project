@@ -18,33 +18,35 @@
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include <string>
 
 using namespace heavy;
 
-Dialect::Dialect(mlir::MLIRContext* Ctx)
-  : mlir::Dialect("heavy", Ctx, mlir::TypeID::get<Dialect>()) {
-  addTypes<HeavyValueTy>();
-  addAttributes<HeavyValueAttr>();
+#include "heavy/HeavyDialect.cpp.inc"
 
-  addTypes<HeavyContextTy>();
-  addTypes<HeavyValueRefsTy>();
-  addTypes<HeavyRestTy>();
-  addTypes<HeavyPairTy>();
-  addTypes<HeavyProcedureTy>();
+void HeavyDialect::initialize() {
+  //addTypes<HeavyOpGenType>();
+  //addTypes<HeavyMlirValueType>();
 
-  addTypes<HeavySyntaxTy>();
-  addTypes<HeavyOpGenTy>();
-  addTypes<HeavyMlirValueTy>();
+  addTypes<
+#define GET_TYPEDEF_LIST
+#include "heavy/HeavyTypes.cpp.inc"
+    >();
+
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "heavy/HeavyAttrs.cpp.inc"
+      >();
 
   addOperations<
 #define GET_OP_LIST
-#include "heavy/Ops.cpp.inc"
+#include "heavy/HeavyOps.cpp.inc"
     >();
 }
 
-mlir::Attribute Dialect::parseAttribute(mlir::DialectAsmParser& P,
-                                        mlir::Type type) const {
+mlir::Attribute HeavyDialect::parseAttribute(mlir::DialectAsmParser& P,
+                                             mlir::Type type) const {
   // Parse HeavyValueAttr.
   std::string string;
   if (P.parseString(&string))
@@ -54,110 +56,55 @@ mlir::Attribute Dialect::parseAttribute(mlir::DialectAsmParser& P,
   return HeavyValueAttr::get(MlirCtx, StringAttr);
 }
 
-mlir::Type Dialect::parseType(mlir::DialectAsmParser& P) const {
-  llvm::StringRef Name;
-  if (mlir::failed(P.parseKeyword(&Name)))
-    return nullptr;
-  mlir::Builder B = P.getBuilder();
-  if (Name == HeavyValueTy::getMnemonic())
-    return B.getType<HeavyValueTy>();
-  if (Name == HeavyContextTy::getMnemonic())
-    return B.getType<HeavyContextTy>();
-  if (Name == HeavyValueRefsTy::getMnemonic())
-    return B.getType<HeavyValueRefsTy>();
-  if (Name == HeavyRestTy::getMnemonic())
-    return B.getType<HeavyRestTy>();
-  if (Name == HeavySyntaxTy::getMnemonic())
-    return B.getType<HeavySyntaxTy>();
-  if (Name == HeavyPairTy::getMnemonic())
-    return B.getType<HeavyPairTy>();
-  if (Name == HeavyOpGenTy::getMnemonic())
-    return B.getType<HeavyOpGenTy>();
-  if (Name == HeavyMlirValueTy::getMnemonic())
-    return B.getType<HeavyMlirValueTy>();
-  llvm_unreachable("unhandled type");
-}
-
-void Dialect::printAttribute(
+void HeavyDialect::printAttribute(
                         mlir::Attribute Attr,
                         mlir::DialectAsmPrinter& P) const {
   // All attributes are HeavyValueAttr
   P.printAttribute(mlir::cast<HeavyValueAttr>(Attr).getExpr());
 }
 
-void Dialect::printType(mlir::Type Type,
-                        mlir::DialectAsmPrinter& P) const {
-  char const* Name;
-  if (mlir::isa<HeavyValueTy>(Type)) {
-    Name = "value";
-  } else if (mlir::isa<HeavyContextTy>(Type)) {
-    Name = "context";
-  } else if (mlir::isa<HeavyValueRefsTy>(Type)) {
-    Name = "value_refs";
-  } else if (mlir::isa<HeavyRestTy>(Type)) {
-    Name = "rest";
-  } else if (mlir::isa<HeavyPairTy>(Type)) {
-    Name = "pair";
-  } else if (mlir::isa<HeavyProcedureTy>(Type)) {
-    Name = "procedure";
-  } else if (mlir::isa<HeavySyntaxTy>(Type)) {
-    Name = "syntax";
-  } else if (mlir::isa<HeavyOpGenTy>(Type)) {
-    Name = "OpGen&";
-  } else if (mlir::isa<HeavyMlirValueTy>(Type)) {
-    Name = "MlirValue";
-  } else {
-    llvm_unreachable("no other types in dialect");
-  }
-
-  P.getStream() << Name;
-}
-
 void BindingOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                       mlir::Value Input) {
-  BindingOp::build(B, OpState, B.getType<HeavyValueTy>(), Input);
+  BindingOp::build(B, OpState, B.getType<HeavyValueType>(), Input);
 }
 
 void ConsOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                    mlir::Value X, mlir::Value Y) {
-  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
-  // TODO return type should be Pair
-  ConsOp::build(B, OpState, HeavyValueT, X, Y);
+  mlir::Type ResultType = B.getType<HeavyPairType>();
+  ConsOp::build(B, OpState, ResultType, X, Y);
 }
 
 void IfOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                  mlir::Value Input) {
-  IfOp::build(B, OpState, B.getType<HeavyValueTy>(), Input);
+  IfOp::build(B, OpState, B.getType<HeavyValueType>(), Input);
 }
 
 void LambdaOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                      llvm::StringRef Name,
                      llvm::ArrayRef<mlir::Value> Captures) {
-  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
-
-  LambdaOp::build(B, OpState, HeavyValueT,
-                  Name, Captures);
+  mlir::Type ResultType = B.getType<HeavyProcedureType>();
+  LambdaOp::build(B, OpState, ResultType, Name, Captures);
 }
 
 void LiteralOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                       heavy::Value V) {
   assert(!isa<SyntaxClosure>(V));
   // create a HeavyValueAttr from heavy::Value
-  LiteralOp::build(B, OpState, B.getType<HeavyValueTy>(),
+  LiteralOp::build(B, OpState, B.getType<HeavyValueType>(),
                    HeavyValueAttr::get(B.getContext(), V));
 }
 
 void LoadRefOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                           mlir::Value ValueRefs, uint32_t Index) {
-  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
-  LoadRefOp::build(B, OpState, HeavyValueT, ValueRefs,
+  mlir::Type ResultType = B.getType<HeavyValueType>();
+  LoadRefOp::build(B, OpState, ResultType, ValueRefs,
                        B.getUI32IntegerAttr(Index));
 }
 
 void LoadGlobalOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                          llvm::StringRef SymName) {
-  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
-  LoadGlobalOp::build(B, OpState, HeavyValueT, SymName);
+  mlir::Type ResultType = B.getType<HeavyValueType>();
+  LoadGlobalOp::build(B, OpState, ResultType, SymName);
 }
 
 void LoadModuleOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
@@ -174,24 +121,24 @@ void MatchOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
 
 void MatchPairOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                         mlir::Value input) {
-  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
+  mlir::Type ResultType = B.getType<HeavyValueType>();
   MatchPairOp::build(B, OpState,
-                     /*car=*/HeavyValueT,
-                     /*cdr=*/HeavyValueT,
+                     /*car=*/ResultType,
+                     /*cdr=*/ResultType,
                      input);
 }
 
 void MatchTailOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                         uint32_t Length, mlir::Value Input) {
-  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
-  MatchTailOp::build(B, OpState, HeavyValueT,
+  mlir::Type ResultType = B.getType<HeavyValueType>();
+  MatchTailOp::build(B, OpState, ResultType,
                      Length, Input);
 }
 
 void MatchArgsOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                         mlir::FunctionType FT, mlir::Value Input) {
   assert((!FT.getInputs().empty() &&
-          isa<HeavyContextTy>(FT.getInputs().front())) &&
+          isa<HeavyContextType>(FT.getInputs().front())) &&
     "expecting heavy-scheme function type");
   // Drop the context argument.
   auto ResultTypes = FT.getInputs().drop_front();
@@ -203,8 +150,8 @@ void MatchVectorOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
   llvm_unreachable("FIXME This is all very untested.");
   assert(Tail >= Head);
   unsigned NumResults = Tail - Head;
-  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
-  llvm::SmallVector<mlir::Type, 4> ResultTypes(NumResults, HeavyValueT);
+  mlir::Type ResultType = B.getType<HeavyValueType>();
+  llvm::SmallVector<mlir::Type, 4> ResultTypes(NumResults, ResultType);
   MatchVectorOp::build(B, OpState, ResultTypes, Head, Tail, Input);
 }
 
@@ -212,8 +159,8 @@ void SubpatternOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                         mlir::Value Input, mlir::Value Tail,
                         std::unique_ptr<mlir::Region>&& Body,
                         unsigned NumPacks) {
-  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
-  llvm::SmallVector<mlir::Type, 4> ResultTypes(NumPacks, HeavyValueT);
+  mlir::Type ResultType = B.getType<HeavyValueType>();
+  llvm::SmallVector<mlir::Type, 4> ResultTypes(NumPacks, ResultType);
   OpState.addOperands({Input, Tail});
   OpState.addRegion(std::move(Body));
   OpState.addTypes(std::move(ResultTypes));
@@ -222,108 +169,124 @@ void SubpatternOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
 void ExpandPacksOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                         mlir::Value Cdr, mlir::ValueRange Packs,
                         std::unique_ptr<mlir::Region>&& Body) {
-  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
+  mlir::Type ResultType = B.getType<HeavyValueType>();
   OpState.addOperands(Cdr);
   OpState.addOperands(Packs);
   OpState.addRegion(std::move(Body));
-  OpState.addTypes(HeavyValueT);
+  OpState.addTypes(ResultType);
 }
 
 void RenameOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                      llvm::StringRef Id, mlir::Value Capture) {
-  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
-  RenameOp::build(B, OpState, HeavyValueT, Id, Capture);
+  mlir::Type ResultType = B.getType<HeavyValueType>();
+  RenameOp::build(B, OpState, ResultType, Id, Capture);
 }
 
 void RenameGlobalOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                      llvm::StringRef Id, llvm::StringRef Sym) {
-  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
-  RenameGlobalOp::build(B, OpState, HeavyValueT, Id, Sym);
+  mlir::Type ResultType = B.getType<HeavyValueType>();
+  RenameGlobalOp::build(B, OpState, ResultType, Id, Sym);
 }
 
 void SetOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                      mlir::Value Binding, mlir::Value Input) {
-  SetOp::build(B, OpState, B.getType<HeavyValueTy>(), Binding, Input);
+  SetOp::build(B, OpState, B.getType<HeavyValueType>(), Binding, Input);
 }
 
 void SpliceOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                    mlir::Value X, mlir::Value Y) {
-  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
-  SpliceOp::build(B, OpState, HeavyValueT, X, Y);
+  mlir::Type ResultType = B.getType<HeavyValueType>();
+  SpliceOp::build(B, OpState, ResultType, X, Y);
 }
 
 void SyntaxClosureOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                             mlir::Value SourceVal, mlir::Value Input,
                             mlir::Value Env) {
-  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
-  SyntaxClosureOp::build(B, OpState, HeavyValueT, SourceVal, Input, Env);
+  mlir::Type ResultType = B.getType<HeavyValueType>();
+  SyntaxClosureOp::build(B, OpState, ResultType, SourceVal, Input, Env);
 }
 
 void SyntaxOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                     llvm::StringRef MangledName) {
-  mlir::Type HeavySyntaxT = B.getType<HeavySyntaxTy>();
+  mlir::Type HeavySyntaxT = B.getType<HeavySyntaxType>();
   SyntaxOp::build(B, OpState, HeavySyntaxT, MangledName);
 }
 
 void ToVectorOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                             mlir::Value input) {
-  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
-  ToVectorOp::build(B, OpState, HeavyValueT, input);
+  mlir::Type ResultType = B.getType<HeavyVectorType>();
+  ToVectorOp::build(B, OpState, ResultType, input);
 }
 
 void VectorOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                             llvm::ArrayRef<mlir::Value> args) {
-  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
-  VectorOp::build(B, OpState, HeavyValueT, args);
+  mlir::Type ResultType = B.getType<HeavyVectorType>();
+  VectorOp::build(B, OpState, ResultType, args);
 }
 
 void RenameEnvOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                     mlir::Value Env, llvm::ArrayRef<mlir::Value> Bindings) {
-  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
-  RenameEnvOp::build(B, OpState, HeavyValueT, Env, Bindings);
+  mlir::Type ResultType = B.getType<HeavyValueType>();
+  RenameEnvOp::build(B, OpState, ResultType, Env, Bindings);
 }
 
 void UndefinedOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState) {
-  UndefinedOp::build(B, OpState, B.getType<HeavyValueTy>());
+  UndefinedOp::build(B, OpState, B.getType<HeavyUndefinedType>());
 }
 
 void SourceLocOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                         mlir::Value Arg) {
-  mlir::Type HeavyValueT = B.getType<HeavyValueTy>();
-  SourceLocOp::build(B, OpState, HeavyValueT, Arg);
+  mlir::Type ResultType = B.getType<HeavyValueType>();
+  SourceLocOp::build(B, OpState, ResultType, Arg);
 }
 
 using namespace mlir;
 #define GET_OP_CLASSES
-#include "heavy/Ops.cpp.inc"
+#include "heavy/HeavyOps.cpp.inc"
 
 #define GET_ATTRDEF_CLASSES
-#include "heavy/Attrs.cpp.inc"
+#include "heavy/HeavyAttrs.cpp.inc"
 
-namespace heavy {
+#define GET_TYPEDEF_CLASSES
+#include "heavy/HeavyTypes.cpp.inc"
+
+namespace heavy::detail {
 // Manually define HeavyValueAttrStorage to cache the parsed
 // scheme expression.
-struct HeavyValueAttrStorage : public detail::HeavyValueAttrStorage {
+struct HeavyValueAttrStorage : mlir::AttributeStorage {
+  using KeyTy = std::tuple<StringAttr>;
+  HeavyValueAttrStorage(StringAttr expr) : expr(std::move(expr)) {}
+
+  KeyTy getAsKey() const {
+    return KeyTy(expr);
+  }
+
+  bool operator==(const KeyTy &tblgenKey) const {
+    return (expr == std::get<0>(tblgenKey));
+  }
+
+  static ::llvm::hash_code hashKey(const KeyTy &tblgenKey) {
+    return ::llvm::hash_combine(std::get<0>(tblgenKey));
+  }
+
+  static HeavyValueAttrStorage *construct(
+      mlir::AttributeStorageAllocator &allocator, KeyTy &&tblgenKey) {
+    auto expr = std::move(std::get<0>(tblgenKey));
+    return new (allocator.allocate<HeavyValueAttrStorage>())
+               HeavyValueAttrStorage(std::move(expr));
+  }
+
+  StringAttr expr;
+
   // Cache the result of parsing the expr.
   // This requires visitation by the garbage collector.
   heavy::Value Val = nullptr;
-
-  HeavyValueAttrStorage(StringAttr expr)
-    : detail::HeavyValueAttrStorage(std::move(expr))
-  { }
-
-  static HeavyValueAttrStorage *construct(mlir::AttributeStorageAllocator &allocator,
-                                          KeyTy &&tblgenKey) {
-    auto expr = std::move(std::get<0>(tblgenKey));
-    return new (allocator.allocate<HeavyValueAttrStorage>()) HeavyValueAttrStorage(std::move(expr));
-  }
 };
-}  // namespace heavy
+}  // namespace heavy::detail
 
-heavy::StringAttr HeavyValueAttr::getExpr() const {
+mlir::StringAttr HeavyValueAttr::getExpr() const {
   return getImpl()->expr;
 }
-
 heavy::Value& HeavyValueAttr::getCachedValue() {
   return getImpl()->Val;
 }

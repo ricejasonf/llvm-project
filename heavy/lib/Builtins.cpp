@@ -1312,7 +1312,7 @@ void load_builtin(Context& C, ValueRefs Args) {
 
 // initialize the module for run-time independent of the compiler
 void HEAVY_BASE_INIT(heavy::Context& Context) {
-  Context.DialectRegistry->insert<heavy::Dialect>();
+  Context.DialectRegistry->insert<heavy::HeavyDialect>();
   // syntax
   HEAVY_BASE_VAR(define)          = heavy::builtins::define;
   HEAVY_BASE_VAR(define_binding)  = heavy::builtins::define_binding;

@@ -9,8 +9,8 @@
 //  Defines operations for HeavyScheme dialect of MLIR
 //
 //===----------------------------------------------------------------------===//
-#ifndef LLVM_HEAVY_OPS_TD
-#define LLVM_HEAVY_OPS_TD
+#ifndef HEAVY_DIALECT_TD
+#define HEAVY_DIALECT_TD
 
 include "mlir/IR/OpBase.td"
 include "mlir/IR/RegionKindInterface.td"
@@ -18,51 +18,50 @@ include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
-def HeavyDialect : Dialect {
+def Heavy_Dialect : Dialect {
   let name = "heavy";
+  let useDefaultTypePrinterParser = 1;
+  let extraClassDeclaration = [{
+    mlir::Attribute parseAttribute(mlir::DialectAsmParser& P,
+                                   mlir::Type type) const override;
+    void printAttribute(mlir::Attribute Attr,
+                        mlir::DialectAsmPrinter& P) const override;
+  }];
 }
+include "heavy/HeavyDialectTypes.td"
 
-// HeavyValueBase - Use for any type that is an alternative
+// Heavy_ValueBase - Use for any type that is an alternative
 //                  of Value and derives from ValueBase which
 //                  implies the need for garbage collection.
-class HeavyValueBase<string name> : Type<
+class Heavy_ValueBase<string name> : Type<
   CPred<!strconcat("mlir::isa<::heavy::Heavy", name, "Ty>($_self)")>,
   name, !strconcat("::heavy::Heavy", name, "Ty")>;
 
-def HeavyValue : Type<CPred<"mlir::isa<::heavy::HeavyValueTy>($_self)">,
-                  "value", "::heavy::HeavyValueTy">;
-
-def HeavyValueAttr : AttrDef<HeavyDialect, "HeavyValue"> {
+def Heavy_ValueAttr : AttrDef<Heavy_Dialect, "HeavyValue"> {
   let attrName = "heavy.value_attr";
-  let storageType = "::heavy::HeavyValueAttr";
   let parameters = (ins "StringAttr":$expr);
-  let genAccessors = 0;
+  let genStorageClass = 0;
+  let extraClassDeclaration = [{
+    static HeavyValueAttr get(mlir::MLIRContext*, heavy::Value Val);
+    // getCachedValue - For garbage collector access.
+    heavy::Value& getCachedValue();
+    heavy::Value getValue(heavy::Context& C) const;
+  }];
 }
 
-// Additional Types
-def HeavyContext : HeavyValueBase<"Context">;
-def HeavyValueRefs : HeavyValueBase<"ValueRefs">; // For arguments array.
-def HeavyRest : HeavyValueBase<"Rest">; // For rest arguments.
-def HeavyPair : HeavyValueBase<"Pair">;
-def HeavySyntax : HeavyValueBase<"Syntax">;
-def HeavyProcedure : HeavyValueBase<"Procedure">;
-
-def HeavyType : AnyTypeOf<[HeavyValue,
-                           HeavyPair,
-                           HeavyProcedure]>;
-
-// If !heavy.value_refs is a function argument, the arguments should
-// only be (!heavy.context, !heavy.value_refs).
-
-def HeavyOpGen : Type<CPred<"mlir::isa<::heavy::HeavyOpGenTy>($_self)">,
-                  "OpGen", "::heavy::OpGen&">;
-def HeavyMlirValue : Type<CPred<"mlir::isa<::heavy::HeavyMlirValueTy>($_self)">,
-                  "MlirValue", "::mlir::Value">;
+// All valid run-time values (ie not Syntax)
+def Heavy_Type : AnyTypeOf<[
+  Heavy_Pair,
+  Heavy_Procedure,
+  Heavy_Undefined,
+  Heavy_Value,
+  Heavy_Vector,
+  ]>;
 
 class HeavyOp<string mnemonic, list<Trait> traits = []> :
-    Op<HeavyDialect, mnemonic, traits>;
+    Op<Heavy_Dialect, mnemonic, traits>;
 
-def heavy_ApplyOp : HeavyOp<"apply", [Terminator]> {
+def Heavy_ApplyOp : HeavyOp<"apply", [Terminator]> {
   let summary = "apply";
   let description = [{
     ApplyOp represents a function call whose results are passed to
@@ -72,12 +71,12 @@ def heavy_ApplyOp : HeavyOp<"apply", [Terminator]> {
     of the current call arguments with arguments in that position.
   }];
 
-  let arguments = (ins AnyTypeOf<[HeavyValue, HeavyProcedure]>:$fn,
-    Variadic<AnyTypeOf<[HeavyValue, HeavyRest, HeavyValueRefs]>>:$args);
+  let arguments = (ins AnyTypeOf<[Heavy_Value, Heavy_Procedure]>:$fn,
+    Variadic<AnyTypeOf<[Heavy_Value, Heavy_Rest, Heavy_ValueRefs]>>:$args);
   let results   = (outs);
 }
 
-def heavy_BindingOp : HeavyOp<"binding"> {
+def Heavy_BindingOp : HeavyOp<"binding"> {
   let summary = "binding";
   let description = [{
     BindingOp creates a value wrapper (heavy::Binding) that allows
@@ -86,13 +85,13 @@ def heavy_BindingOp : HeavyOp<"binding"> {
     elided and the result can refer directly to the enclosed value.
   }];
 
-  let arguments = (ins Optional<AnyTypeOf<[HeavyValue,
-                                          HeavyRest]>>:$input);
-  let results   = (outs HeavyValue:$result);
+  let arguments = (ins Optional<AnyTypeOf<[Heavy_Type,
+                                           Heavy_Rest]>>:$input);
+  let results   = (outs Heavy_Value:$result);
   let builders  = [OpBuilder<(ins "::mlir::Value":$input)>];
 }
 
-def heavy_CommandOp : HeavyOp<"command", [IsolatedFromAbove]> {
+def Heavy_CommandOp : HeavyOp<"command", [IsolatedFromAbove]> {
   let summary = "command";
   let description = [{
     Command is a node in a sequence that represents
@@ -116,20 +115,20 @@ def heavy_CommandOp : HeavyOp<"command", [IsolatedFromAbove]> {
   let results   = (outs /*none*/);
 }
 
-def heavy_ConsOp : HeavyOp<"cons"> {
+def Heavy_ConsOp : HeavyOp<"cons"> {
   let summary = "cons";
   let description = [{
     ConsOp constructs a pair from two values. That's it.
   }];
 
-  let arguments = (ins HeavyValue:$a, HeavyValue:$b);
-  let results   = (outs HeavyValue:$result);
+  let arguments = (ins Heavy_Type:$a, Heavy_Type:$b);
+  let results   = (outs Heavy_Pair:$result);
   let builders = [
     OpBuilder<(ins "::mlir::Value":$a, "::mlir::Value":$b)>
   ];
 }
 
-def heavy_ContOp : HeavyOp<"cont", [ReturnLike, Terminator]> {
+def Heavy_ContOp : HeavyOp<"cont", [ReturnLike, Terminator]> {
   let summary = "cont";
   let description = [{
     ContOp models calling the current continuation. It can take
@@ -137,11 +136,11 @@ def heavy_ContOp : HeavyOp<"cont", [ReturnLike, Terminator]> {
     an expression.
   }];
 
-  let arguments = (ins Variadic<AnyTypeOf<[HeavyValue, HeavySyntax]>>:$args);
+  let arguments = (ins Variadic<AnyTypeOf<[Heavy_Type, Heavy_Syntax]>>:$args);
   let results   = (outs); // no result
 }
 
-def heavy_ExpandPacksOp : HeavyOp<"expand_packs", []> {
+def Heavy_ExpandPacksOp : HeavyOp<"expand_packs", []> {
   let description = [{
     Expand a list of packs from one or more subpatterns.
     This is equivalent to calling `map` on a list of packs
@@ -149,8 +148,8 @@ def heavy_ExpandPacksOp : HeavyOp<"expand_packs", []> {
     as a list.
   }];
 
-  let arguments = (ins HeavyValue:$cdr, Variadic<HeavyValue>:$packs);
-  let results = (outs HeavyValue:$result);
+  let arguments = (ins Heavy_Type:$cdr, Variadic<Heavy_Type>:$packs);
+  let results = (outs Heavy_Value:$result);
   let regions = (region SizedRegion<1>:$body);
 
   let builders = [
@@ -160,18 +159,18 @@ def heavy_ExpandPacksOp : HeavyOp<"expand_packs", []> {
   ];
 }
 
-def heavy_OpGenOp : HeavyOp<"opgen", [Terminator]> {
+def Heavy_OpGenOp : HeavyOp<"opgen", [Terminator]> {
   let summary = "opgen";
   let description = [{
     OpGenOp compiles scheme into the HeavyScheme MLIR dialect.
     This operation is used for syntax code generation.
   }];
 
-  let arguments = (ins HeavyValue:$input);
+  let arguments = (ins Heavy_Type:$input);
   let results   = (outs);
 }
 
-def heavy_GlobalOp : HeavyOp<"global", [Symbol, IsolatedFromAbove]> {
+def Heavy_GlobalOp : HeavyOp<"global", [Symbol, IsolatedFromAbove]> {
   let summary = "global";
   let description = [{
     This indicates a module top level variable providing
@@ -192,7 +191,7 @@ def heavy_GlobalOp : HeavyOp<"global", [Symbol, IsolatedFromAbove]> {
   let arguments = (ins StrAttr:$sym_name);
 }
 
-def heavy_GlobalBindingOp : HeavyOp<"global_binding",
+def Heavy_GlobalBindingOp : HeavyOp<"global_binding",
                                     [Symbol, IsolatedFromAbove]> {
   let description = [{
     Create a module top level variable and assign it the binding
@@ -203,7 +202,7 @@ def heavy_GlobalBindingOp : HeavyOp<"global_binding",
   let arguments = (ins StrAttr:$sym_name, StrAttr:$ext_sym_name);
 }
 
-def heavy_GlobalSyntaxOp : HeavyOp<"global_syntax",
+def Heavy_GlobalSyntaxOp : HeavyOp<"global_syntax",
                                    [Symbol, IsolatedFromAbove]> {
   let description = [{
     GlobalSyntaxOp denotes a module top level syntax object
@@ -225,7 +224,7 @@ def heavy_GlobalSyntaxOp : HeavyOp<"global_syntax",
   let arguments = (ins StrAttr:$sym_name);
 }
 
-def heavy_IfOp : HeavyOp<"if", []> {
+def Heavy_IfOp : HeavyOp<"if", []> {
   let summary = "if";
   let description = [{
     IfOp handles branching to one of two regions based on an
@@ -234,13 +233,13 @@ def heavy_IfOp : HeavyOp<"if", []> {
 
   let regions   = (region SizedRegion<1>:$thenRegion,
                           SizedRegion<1>:$elseRegion);
-  let arguments = (ins HeavyValue:$input);
-  let results   = (outs HeavyValue:$result);
+  let arguments = (ins Heavy_Type:$input);
+  let results   = (outs Heavy_Type:$result);
 
   let builders  = [OpBuilder<(ins "::mlir::Value":$input)>];
 }
 
-def heavy_IfContOp : HeavyOp<"if_cont", [ReturnLike, Terminator]> {
+def Heavy_IfContOp : HeavyOp<"if_cont", [ReturnLike, Terminator]> {
   let summary = "if_cont";
   let description = [{
     IfContOp represents branching where one or more of the branches
@@ -249,12 +248,12 @@ def heavy_IfContOp : HeavyOp<"if_cont", [ReturnLike, Terminator]> {
 
   let regions   = (region SizedRegion<1>:$thenRegion,
                           SizedRegion<1>:$elseRegion);
-  let arguments = (ins HeavyValue:$input);
+  let arguments = (ins Heavy_Type:$input);
   let results   = (outs);
 }
 
 
-def heavy_LambdaOp : HeavyOp<"lambda"> {
+def Heavy_LambdaOp : HeavyOp<"lambda"> {
   let summary = "lambda";
   let description = [{
     Lambdas represent a closure. They take the name of a function
@@ -262,8 +261,8 @@ def heavy_LambdaOp : HeavyOp<"lambda"> {
   }];
 
   let arguments = (ins StrAttr:$name,
-                       Variadic<HeavyValue>:$captures);
-  let results = (outs HeavyValue:$result);
+                       Variadic<Heavy_Type>:$captures);
+  let results = (outs Heavy_Procedure:$result);
 
   let builders = [
     OpBuilder<(ins "::llvm::StringRef":$name,
@@ -271,7 +270,7 @@ def heavy_LambdaOp : HeavyOp<"lambda"> {
   ];
 }
 
-def heavy_LiteralOp : HeavyOp<"literal", [Pure]> {
+def Heavy_LiteralOp : HeavyOp<"literal", [Pure]> {
   let summary = "literal";
   let description = [{
     Literals in scheme can be primitives or quoted scheme values that are
@@ -281,14 +280,14 @@ def heavy_LiteralOp : HeavyOp<"literal", [Pure]> {
     run-time heavy::Value.
   }];
 
-  let arguments = (ins HeavyValueAttr:$input);
-  let results   = (outs HeavyValue:$result);
+  let arguments = (ins Heavy_ValueAttr:$input);
+  let results   = (outs Heavy_Type:$result);
   let builders = [
     OpBuilder<(ins "::heavy::Value":$input)>
   ];
 }
 
-def heavy_LoadRefOp : HeavyOp<"load_ref"> {
+def Heavy_LoadRefOp : HeavyOp<"load_ref"> {
   let summary = "load_ref";
   let description = [{
     Read an element from a ValueRefs object which can be
@@ -296,30 +295,30 @@ def heavy_LoadRefOp : HeavyOp<"load_ref"> {
     list which is primarily used for continuations.
   }];
 
-  let arguments = (ins AnyTypeOf<[HeavyContext, HeavyValueRefs]>:$value_refs,
+  let arguments = (ins AnyTypeOf<[Heavy_Context, Heavy_ValueRefs]>:$value_refs,
                        UI32Attr:$index);
-  let results   = (outs HeavyValue:$result);
+  let results   = (outs Heavy_Value:$result);
 
   let builders = [
     OpBuilder<(ins "::mlir::Value":$closure, "uint32_t":$index)>
   ];
 }
 
-def heavy_LoadGlobalOp : HeavyOp<"load_global"> {
+def Heavy_LoadGlobalOp : HeavyOp<"load_global"> {
   let summary = "load_global";
   let description = [{
     Read the value from a global.
   }];
 
   let arguments = (ins FlatSymbolRefAttr:$name);
-  let results   = (outs HeavyValue:$result);
+  let results   = (outs Heavy_Type:$result);
 
   let builders = [
     OpBuilder<(ins "::llvm::StringRef":$name)>
   ];
 }
 
-def heavy_LoadModuleOp : HeavyOp<"load_module"> {
+def Heavy_LoadModuleOp : HeavyOp<"load_module"> {
   let summary = "load_module";
   let description = [{
     Load a module by its mangled name and initialize it.
@@ -335,7 +334,7 @@ def heavy_LoadModuleOp : HeavyOp<"load_module"> {
   ];
 }
 
-def heavy_ExportIdOp : HeavyOp<"export-id"> {
+def Heavy_ExportIdOp : HeavyOp<"export-id"> {
   let summary = "export-id";
   let description = [{
     Provide an identifier to associate with a target identifier $id
@@ -344,7 +343,7 @@ def heavy_ExportIdOp : HeavyOp<"export-id"> {
   let arguments = (ins FlatSymbolRefAttr:$symbolName, StrAttr:$id);
 }
 
-def heavy_MatchOp : HeavyOp<"match", []> {
+def Heavy_MatchOp : HeavyOp<"match", []> {
   let summary = "match";
   let description = [{
     As a component of pattern matching, this checks if a value
@@ -352,7 +351,7 @@ def heavy_MatchOp : HeavyOp<"match", []> {
     The attribute should be a leaf constant value.
   }];
 
-  let arguments = (ins HeavyValueAttr:$val, HeavyValue:$input);
+  let arguments = (ins Heavy_ValueAttr:$val, Heavy_Type:$input);
   let results   = (outs);
 
   let builders = [
@@ -360,7 +359,7 @@ def heavy_MatchOp : HeavyOp<"match", []> {
   ];
 }
 
-def heavy_MatchIdOp : HeavyOp<"match-id", []> {
+def Heavy_MatchIdOp : HeavyOp<"match-id", []> {
   let summary = "match-id";
   let description = [{
     Perform matching of a non-literal value and input value such that they
@@ -368,26 +367,26 @@ def heavy_MatchIdOp : HeavyOp<"match-id", []> {
     (Id means identifier.)
   }];
 
-  let arguments = (ins HeavyValue:$val, HeavyValue:$input);
+  let arguments = (ins Heavy_Type:$val, Heavy_Type:$input);
   let results   = (outs);
 }
 
-def heavy_MatchPairOp : HeavyOp<"match_pair", []> {
+def Heavy_MatchPairOp : HeavyOp<"match_pair", []> {
   let summary = "match_pair";
   let description = [{
     As a component of pattern matching, this checks if a value
     is a pair and destructures it.
   }];
 
-  let arguments = (ins HeavyValue:$input);
-  let results   = (outs HeavyValue:$car, HeavyValue:$cdr);
+  let arguments = (ins Heavy_Type:$input);
+  let results   = (outs Heavy_Type:$car, Heavy_Type:$cdr);
 
   let builders = [
     OpBuilder<(ins "::mlir::Value":$input)>
   ];
 }
 
-def heavy_MatchTailOp : HeavyOp<"match_tail", []> {
+def Heavy_MatchTailOp : HeavyOp<"match_tail", []> {
   let description = [{
     Destructure the last N lengthed list of the tail of the input list.
     The last cdr is counted in the length.
@@ -398,8 +397,8 @@ def heavy_MatchTailOp : HeavyOp<"match_tail", []> {
   }];
 
   let arguments = (ins UI32Attr:$length,
-                       HeavyValue:$input);
-  let results   = (outs HeavyValue:$tail);
+                       Heavy_Type:$input);
+  let results   = (outs Heavy_Type:$tail);
 
   let builders = [
     OpBuilder<(ins "uint32_t":$length,
@@ -407,7 +406,7 @@ def heavy_MatchTailOp : HeavyOp<"match_tail", []> {
   ];
 }
 
-def heavy_MatchVectorOp : HeavyOp<"match_vector", []> {
+def Heavy_MatchVectorOp : HeavyOp<"match_vector", []> {
   let description = [{
     Destructure a vector literal with a single, optional subpattern.
     The attributes $head and $tail are the number of elements before
@@ -420,8 +419,8 @@ def heavy_MatchVectorOp : HeavyOp<"match_vector", []> {
 
   let arguments = (ins UI32Attr:$head,
                        UI32Attr:$tail,
-                       HeavyValue:$input);
-  let results   = (outs Variadic<HeavyValue>:$results);
+                       Heavy_Type:$input);
+  let results   = (outs Variadic<Heavy_Type>:$results);
 
   let builders = [
     OpBuilder<(ins "uint32_t":$head,
@@ -430,7 +429,7 @@ def heavy_MatchVectorOp : HeavyOp<"match_vector", []> {
   ];
 }
 
-def heavy_MatchArgsOp : HeavyOp<"match_args"> {
+def Heavy_MatchArgsOp : HeavyOp<"match_args"> {
   let description = [{
     Destructure a dynamically lengthed array (ValueRefs) using the type
     of a function. This matches arity and types of its arguments
@@ -439,9 +438,9 @@ def heavy_MatchArgsOp : HeavyOp<"match_args"> {
     (Use for implementing case-lambda.)
   }];
 
-  let arguments = (ins HeavyValueRefs:$valueRefs);
-  let results   = (outs Variadic<AnyTypeOf<[HeavyValue,
-                                            HeavyRest]>>:$results);
+  let arguments = (ins Heavy_ValueRefs:$valueRefs);
+  let results   = (outs Variadic<AnyTypeOf<[Heavy_Type,
+                                            Heavy_Rest]>>:$results);
 
   let builders = [
     OpBuilder<(ins "::mlir::FunctionType":$functionType,
@@ -449,18 +448,18 @@ def heavy_MatchArgsOp : HeavyOp<"match_args"> {
   ];
 }
 
-def heavy_MatchTypeOp : HeavyOp<"match_type", []> {
+def Heavy_MatchTypeOp : HeavyOp<"match_type", []> {
   let description = [{
     Perform dynamic cast resulting in a value with a specified type.
     Like other Match operations this will raise an error unless it
     appears in the body of a PatternOp.
   }];
 
-  let arguments = (ins HeavyValue:$arg);
-  let results   = (outs HeavyType:$result);
+  let arguments = (ins Heavy_Type:$arg);
+  let results   = (outs Heavy_Type:$result);
 }
 
-def heavy_SubpatternOp : HeavyOp<"subpattern", []> {
+def Heavy_SubpatternOp : HeavyOp<"subpattern", []> {
   let description = [{
     Match a list of elements over a subpattern that
     precedes the `...` ellipsis. Each pattern variable within
@@ -473,8 +472,8 @@ def heavy_SubpatternOp : HeavyOp<"subpattern", []> {
     not a pair.
   }];
 
-  let arguments = (ins HeavyValue:$input, HeavyValue:$tail);
-  let results   = (outs Variadic<HeavyValue>:$packs);
+  let arguments = (ins Heavy_Type:$input, Heavy_Type:$tail);
+  let results   = (outs Variadic<Heavy_Type>:$packs);
   let regions   = (region SizedRegion<1>:$body);
 
   let builders = [
@@ -485,7 +484,7 @@ def heavy_SubpatternOp : HeavyOp<"subpattern", []> {
   ];
 }
 
-def heavy_ResolveOp : HeavyOp<"resolve", [Terminator]> {
+def Heavy_ResolveOp : HeavyOp<"resolve", [Terminator]> {
   let description = [{
     Terminate the region of a SubpatternOp or ExpandPacksOp.
     SubpatternOp takes the created pattern variables as $args.
@@ -493,11 +492,11 @@ def heavy_ResolveOp : HeavyOp<"resolve", [Terminator]> {
     argument.
   }];
 
-  let arguments = (ins Variadic<HeavyValue>:$args);
+  let arguments = (ins Variadic<Heavy_Type>:$args);
   let results   = (outs);
 }
 
-def heavy_PatternOp : HeavyOp<"pattern", []> {
+def Heavy_PatternOp : HeavyOp<"pattern", []> {
   let description = [{
     PatternOp represents a pattern/template pair as part of the
     syntax-rules transform specifier. Operations in its region are
@@ -516,7 +515,7 @@ def heavy_PatternOp : HeavyOp<"pattern", []> {
   let regions   = (region SizedRegion<1>:$region);
 }
 
-def heavy_PushContOp : HeavyOp<"push_cont", []> {
+def Heavy_PushContOp : HeavyOp<"push_cont", []> {
   let summary = "push_cont";
   let description = [{
     Creates a closure for a continuation object to be
@@ -525,11 +524,11 @@ def heavy_PushContOp : HeavyOp<"push_cont", []> {
   }];
 
   let arguments = (ins StrAttr:$name,
-                       Variadic<HeavyValue>:$captures);
+                       Variadic<Heavy_Type>:$captures);
   let results   = (outs);
 }
 
-def heavy_RenameOp : HeavyOp<"rename"> {
+def Heavy_RenameOp : HeavyOp<"rename"> {
   let summary = "rename";
   let description = [{
     Capture a value and "rename" it using an identifier to use in the
@@ -542,14 +541,14 @@ def heavy_RenameOp : HeavyOp<"rename"> {
   }];
 
   let arguments = (ins StrAttr:$id,
-        AnyTypeOf<[HeavyValue, HeavySyntax]>:$capture);
-  let results   = (outs HeavyValue:$result);
+        AnyTypeOf<[Heavy_Type, Heavy_Syntax]>:$capture);
+  let results   = (outs Heavy_Type:$result);
   let builders = [
     OpBuilder<(ins "::llvm::StringRef":$id, "::mlir::Value":$capture)>
   ];
 }
 
-def heavy_RenameGlobalOp : HeavyOp<"rename_global"> {
+def Heavy_RenameGlobalOp : HeavyOp<"rename_global"> {
   let summary = "rename_global";
   let description = [{
     Similar to RenameOp, this RenameGlobalOp represents the possibility of
@@ -562,13 +561,13 @@ def heavy_RenameGlobalOp : HeavyOp<"rename_global"> {
   }];
 
   let arguments = (ins StrAttr:$id, StrAttr:$sym);
-  let results   = (outs HeavyValue:$result);
+  let results   = (outs Heavy_Type:$result);
   let builders = [
     OpBuilder<(ins "::llvm::StringRef":$id, "::llvm::StringRef":$sym)>
   ];
 }
 
-def heavy_RenameEnvOp : HeavyOp<"rename_env"> {
+def Heavy_RenameEnvOp : HeavyOp<"rename_env"> {
   let description = [{
     RenameEnvOp creates a new EnvFrame with $bindings
     which serves as the tail of a new environment stack
@@ -579,30 +578,30 @@ def heavy_RenameEnvOp : HeavyOp<"rename_env"> {
     or EnvFrames automatically.
   }];
 
-  let arguments = (ins HeavyValue:$env, Variadic<HeavyValue>:$bindings);
-  let results   = (outs HeavyValue: $result);
+  let arguments = (ins Heavy_Type:$env, Variadic<Heavy_Type>:$bindings);
+  let results   = (outs Heavy_Type: $result);
   let builders = [
     OpBuilder<(ins "::mlir::Value":$env,
                    "::llvm::ArrayRef<::mlir::Value>":$args)>
   ];
 }
 
-def heavy_SourceLocOp : HeavyOp<"source-loc"> {
+def Heavy_SourceLocOp : HeavyOp<"source-loc"> {
   let summary = "source-loc";
   let description = [{
-    Get the source location from a HeavyValue object.
+    Get the source location from a Heavy_Type object.
     This is primarily used to propagate source locations
     of the inputs to pattern variables.
   }];
 
-  let arguments = (ins HeavyValue:$arg);
-  let results   = (outs HeavyValue:$result);
+  let arguments = (ins Heavy_Type:$arg);
+  let results   = (outs Heavy_Type:$result);
   let builders = [
     OpBuilder<(ins "::mlir::Value":$arg)>
   ];
 }
 
-def heavy_SetOp : HeavyOp<"set"> {
+def Heavy_SetOp : HeavyOp<"set"> {
   let summary = "set";
   let description = [{
     SetOp sets the enclosed value of a binding. This is used
@@ -610,14 +609,14 @@ def heavy_SetOp : HeavyOp<"set"> {
     variables needed by `letrec` and similar binding constructs.
   }];
 
-  let arguments = (ins HeavyValue:$binding, HeavyValue:$input);
-  let results   = (outs HeavyValue:$result);
+  let arguments = (ins Heavy_Type:$binding, Heavy_Type:$input);
+  let results   = (outs Heavy_Type:$result);
   let builders = [
     OpBuilder<(ins "::mlir::Value":$binding, "::mlir::Value":$input)>
   ];
 }
 
-def heavy_SpliceOp : HeavyOp<"splice"> {
+def Heavy_SpliceOp : HeavyOp<"splice"> {
   let summary = "splice";
   let description = [{
     SpliceOp splices two lists or vectors. The result type
@@ -625,14 +624,14 @@ def heavy_SpliceOp : HeavyOp<"splice"> {
     TODO Vectors and types are not supported yet.
   }];
 
-  let arguments = (ins HeavyValue:$a, HeavyValue:$b);
-  let results   = (outs HeavyValue:$result);
+  let arguments = (ins Heavy_Type:$a, Heavy_Type:$b);
+  let results   = (outs Heavy_Type:$result);
   let builders = [
     OpBuilder<(ins "::mlir::Value":$a, "::mlir::Value":$b)>
   ];
 }
 
-def heavy_SyntaxClosureOp : HeavyOp<"syntax_closure"> {
+def Heavy_SyntaxClosureOp : HeavyOp<"syntax_closure"> {
   let summary = "syntax_closure";
   let description = [{
     SyntaxClosureOp captures a syntax node with the given
@@ -640,16 +639,16 @@ def heavy_SyntaxClosureOp : HeavyOp<"syntax_closure"> {
     macro expansion.
   }];
 
-  let arguments = (ins HeavyValue:$sourceVal, HeavyValue:$input,
-                       HeavyValue:$env);
-  let results   = (outs HeavyValue:$result);
+  let arguments = (ins Heavy_Type:$sourceVal, Heavy_Type:$input,
+                       Heavy_Type:$env);
+  let results   = (outs Heavy_Type:$result);
   let builders  = [
     OpBuilder<(ins "::mlir::Value":$sourceVal, "::mlir::Value":$input,
                    "::mlir::Value":$env)>
   ];
 }
 
-def heavy_SyntaxOp: HeavyOp<"syntax", []> {
+def Heavy_SyntaxOp: HeavyOp<"syntax", []> {
   let summary = "syntax";
   let description = [{
     SyntaxOp creates a syntax function object that is callable like
@@ -660,14 +659,14 @@ def heavy_SyntaxOp: HeavyOp<"syntax", []> {
   }];
 
   let arguments = (ins StrAttr:$name);
-  let results = (outs HeavySyntax:$result);
+  let results = (outs Heavy_Syntax:$result);
 
   let builders = [
     OpBuilder<(ins "::llvm::StringRef":$name)>
   ];
 }
 
-def heavy_ToVectorOp : HeavyOp<"to_vector"> {
+def Heavy_ToVectorOp : HeavyOp<"to_vector"> {
   let summary = "to_vector";
   let description = [{
     ToVectorOp converts a list into a vector.
@@ -675,37 +674,37 @@ def heavy_ToVectorOp : HeavyOp<"to_vector"> {
     of vector literals.
   }];
 
-  let arguments = (ins HeavyValue:$input);
-  let results   = (outs HeavyValue:$result);
+  let arguments = (ins Heavy_Type:$input);
+  let results   = (outs Heavy_Vector:$result);
   let builders = [
     OpBuilder<(ins "::mlir::Value":$input)>
   ];
 }
 
-def heavy_VectorOp : HeavyOp<"vector"> {
+def Heavy_VectorOp : HeavyOp<"vector"> {
   let summary = "vector";
   let description = [{
     VectorOp creates a heavy::Vector from its arguments.
   }];
 
-  let arguments = (ins Variadic<HeavyValue>:$args);
-  let results   = (outs HeavyValue: $result);
+  let arguments = (ins Variadic<Heavy_Type>:$args);
+  let results   = (outs Heavy_Vector: $result);
   let builders = [
     OpBuilder<(ins "::llvm::ArrayRef<::mlir::Value>":$args)>
   ];
 }
 
-def heavy_UndefinedOp : HeavyOp<"undefined", [Pure]> {
+def Heavy_UndefinedOp : HeavyOp<"undefined", [Pure]> {
   let summary = "undefined";
   let description = [{
     This is a singleton literal for heavy::Undefined
   }];
 
   let arguments = (ins);
-  let results   = (outs HeavyValue:$result);
+  let results   = (outs Heavy_Undefined:$result);
   let builders = [
     OpBuilder<(ins)>
   ];
 }
 
-#endif
+#endif // HEAVY_DIALECT_TD

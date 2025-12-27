@@ -173,7 +173,7 @@ protected:
     mlir::Value SourceVal = CaptureVal;
     mlir::Value SC;
     {
-      if (!isa<HeavySyntaxTy>(CaptureVal.getType()))
+      if (!isa<HeavySyntaxType>(CaptureVal.getType()))
         SC = OpGen.create<SyntaxClosureOp>(Loc, SourceVal, CaptureVal,
                                            RenameEnv);
     }

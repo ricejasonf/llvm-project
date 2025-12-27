@@ -158,7 +158,7 @@ public:
     {
       mlir::OpBuilder::InsertionGuard IG(OpGen.Builder);
       OpGen.Builder.setInsertionPointToStart(&Block);
-      mlir::Type HeavyValueT = OpGen.Builder.getType<HeavyValueTy>();
+      mlir::Type HeavyValueT = OpGen.Builder.getType<HeavyValueType>();
       mlir::Location MLoc = createLoc(Loc);
       // The block argument is the current pair from the input.
       mlir::Value BodyArg = Block.addArgument(HeavyValueT, MLoc);

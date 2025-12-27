@@ -95,7 +95,7 @@ OpGen::OpGen(heavy::Context& C, heavy::Symbol* ModulePrefix)
   mlir::ModuleOp TopModule;
   if (!C.OpGen) {
     assert(!C.ModuleOp && "There should be only one top level module");
-    C.MLIRContext->loadDialect<heavy::Dialect, mlir::func::FuncDialect>();
+    C.MLIRContext->loadDialect<heavy::HeavyDialect, mlir::func::FuncDialect>();
     // Create the module that contains the main module and import modules
     TopModule = mlir::ModuleOp::create(Builder, Loc);
     C.ModuleOp = TopModule;
@@ -170,7 +170,7 @@ mlir::Value OpGen::GetSingleResult(heavy::Value V) {
   // TODO Use MatchArgsOp to destructure ValueRefs to a single
   //      argument (or raise an error.)
   // Take the first continuation arg.
-  if (Result && isa<HeavyValueRefsTy>(Result.getType()))
+  if (Result && isa<HeavyValueRefsType>(Result.getType()))
     Result = create<LoadRefOp>(heavy::SourceLocation(), Result, /*Index*/0);
 
   if (CheckError())
@@ -453,8 +453,8 @@ mlir::Value OpGen::createUndefined() {
 
 mlir::FunctionType OpGen::createFunctionType(unsigned Arity,
                                              RestParamKind RPK) {
-  mlir::Type ClosureT   = Builder.getType<HeavyContextTy>();
-  mlir::Type ValueT     = Builder.getType<HeavyValueTy>();
+  mlir::Type ClosureT   = Builder.getType<HeavyContextType>();
+  mlir::Type ValueT     = Builder.getType<HeavyValueType>();
 
   llvm::SmallVector<mlir::Type, 16> ArgTypes{};
   // push the closure type
@@ -470,10 +470,10 @@ mlir::FunctionType OpGen::createFunctionType(unsigned Arity,
       LastParamT = ValueT;
       break;
     case RestParamKind::List:
-      LastParamT = Builder.getType<HeavyRestTy>();
+      LastParamT = Builder.getType<HeavyRestType>();
       break;
     case RestParamKind::ValueRefs:
-      LastParamT = Builder.getType<HeavyValueRefsTy>();
+      LastParamT = Builder.getType<HeavyValueRefsType>();
       break;
     }
     ArgTypes.push_back(LastParamT);
@@ -503,7 +503,7 @@ mlir::Value OpGen::createLambda(Value Formals, Value Body,
     return Error();
   mlir::FunctionType FT = FuncOp.getFunctionType();
 
-  if (isa<HeavyRestTy>(FT.getInputs().back())) {
+  if (isa<HeavyRestType>(FT.getInputs().back())) {
     // Create a wrapper function that binds the arguments from ValueRefs.
     mlir::FunctionType WFT = createFunctionType(/*Arity=*/1,
                                                 RestParamKind::ValueRefs);
@@ -1199,7 +1199,7 @@ mlir::Value OpGen::VisitDefineArgs(Value Args) {
 
   // TODO Use MatchArgsOp to destructure ValueRefs to a single
   //      argument (or raise an error.)
-  if (Result && isa<HeavyValueRefsTy>(Result.getType()))
+  if (Result && isa<HeavyValueRefsType>(Result.getType()))
     Result = create<LoadRefOp>(heavy::SourceLocation(), Result, /*Index*/0);
 
   return Result;
@@ -1309,7 +1309,7 @@ mlir::Value OpGen::HandleCall(Pair* P, heavy::EnvEntry FnEnvEntry) {
       Fn = GetSingleResult(P->Car);
 
     // Insert the check that Fn is a procedure.
-    Fn = CheckType(Loc, Fn, Builder.getType<HeavyProcedureTy>());
+    Fn = CheckType(Loc, Fn, Builder.getType<HeavyProcedureType>());
 
     if (CheckError())
       return Error();

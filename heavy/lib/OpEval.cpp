@@ -250,7 +250,7 @@ private:
     bool IsValidArity = true;
     if (OpArgs.empty() && !Args.empty())
       IsValidArity = false;
-    if (!OpArgs.empty() && !isa<HeavyValueRefsTy>(OpArgs.front().getType())) {
+    if (!OpArgs.empty() && !isa<HeavyValueRefsType>(OpArgs.front().getType())) {
       if (OpArgs.size() != Args.size()) {
         IsValidArity = false;
       } else {
@@ -432,11 +432,11 @@ private:
     mlir::Type RefsType = Op.getValueRefs().getType();
     heavy::ValueRefs ValueRefs;
 
-    if (isa<HeavyContextTy>(RefsType)) {
+    if (isa<HeavyContextType>(RefsType)) {
       // Assume we always use the current context object.
       auto* Callee = cast<Lambda>(Context.getCallee());
       ValueRefs = Callee->getCaptures();
-    } else if (isa<HeavyValueRefsTy>(RefsType)) {
+    } else if (isa<HeavyValueRefsType>(RefsType)) {
       ValueRefs = Context.getCallArgs();
     }
 
@@ -771,8 +771,8 @@ private:
 
     bool IsValidArity = true;
     for (mlir::Value Result : Results) {
-      if (isa<HeavyRestTy>(Result.getType())) {
-        // HeavyRestTy matches any remaining amount of CallArgs.
+      if (isa<HeavyRestType>(Result.getType())) {
+        // HeavyRestType matches any remaining amount of CallArgs.
         // The value should only be used as an argument to ApplyOp.
         Value RestList = Context.CreateList(CallArgs);
         setValue(Result, RestList);
@@ -804,10 +804,10 @@ private:
     switch (Arg.getKind()) {
       case ValueKind::Lambda:
       case ValueKind::Builtin:
-        Result = isa<HeavyProcedureTy>(Type);
+        Result = isa<HeavyProcedureType>(Type);
         break;
       case ValueKind::Pair:
-        Result = isa<HeavyPairTy>(Type);
+        Result = isa<HeavyPairType>(Type);
         break;
       default:
         Result = false;

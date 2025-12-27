@@ -30,112 +30,29 @@ static_assert(llvm::PointerLikeTypeTraits<heavy::Operation*>::NumLowBitsAvailabl
               heavy::ValueSumType::OperationTraits::NumLowBitsAvailable,
               "mlir::Operation* must have 8 byte alignment to fit in heavy::Value");
 
+
 namespace heavy {
 using mlir::func::FuncOp;
 using StringAttr = mlir::StringAttr;
-
-struct Dialect : public mlir::Dialect {
-  explicit Dialect(mlir::MLIRContext* Ctx);
-  static llvm::StringRef getDialectNamespace() { return "heavy"; }
-
-#if 0
-  mlir::Attribute parseAttribute(mlir::DialectAsmParser& P,
-                                 mlir::Type type) const override;
-#endif
-  mlir::Type parseType(mlir::DialectAsmParser& P) const override;
-
-  mlir::Attribute parseAttribute(mlir::DialectAsmParser& P,
-                                 mlir::Type Type) const override;
-  void printAttribute(mlir::Attribute Attr,
-                      mlir::DialectAsmPrinter& P) const override;
-  void printType(mlir::Type, mlir::DialectAsmPrinter&) const override;
-};
-
-struct HeavyContextTy : public mlir::Type::TypeBase<
-                            HeavyContextTy,
-                            mlir::Type,
-                            mlir::TypeStorage> {
-  static constexpr llvm::StringLiteral name = "heavy.context";
-  static constexpr llvm::StringRef getMnemonic() { return "context"; }
-  using Base::Base;
-};
-
-struct HeavyValueTy : public mlir::Type::TypeBase<
-                            HeavyValueTy,
-                            mlir::Type,
-                            mlir::TypeStorage> {
-  static constexpr llvm::StringLiteral name = "heavy.value";
-  static constexpr llvm::StringRef getMnemonic() { return "value"; }
-  using Base::Base;
-};
-
-// Represent a variadiac array of arguments for use with
-// continuation arguments.
-struct HeavyValueRefsTy : public mlir::Type::TypeBase<
-                            HeavyValueRefsTy,
-                            mlir::Type,
-                            mlir::TypeStorage> {
-  static constexpr llvm::StringLiteral name = "heavy.value_refs";
-  static constexpr llvm::StringRef getMnemonic() { return "value_refs"; }
-  using Base::Base;
-};
-
-// Represent a variadic list of arguments which are provided
-// as a scheme linked list.
-struct HeavyRestTy : public mlir::Type::TypeBase<
-                            HeavyRestTy,
-                            mlir::Type,
-                            mlir::TypeStorage> {
-  static constexpr llvm::StringLiteral name = "heavy.rest";
-  static constexpr llvm::StringRef getMnemonic() { return "rest"; }
-  using Base::Base;
-};
-
-struct HeavyValueAttrStorage;
-
-// Declare HeavyValueAttr manually.
-class HeavyValueAttr : public mlir::Attribute::AttrBase<
-                            HeavyValueAttr,
-                            mlir::Attribute,
-                            HeavyValueAttrStorage> {
-  using Base::Base;
-
-public:
-  static constexpr llvm::StringLiteral name = "heavy.value_attr";
-
-  static HeavyValueAttr get(mlir::MLIRContext*, StringAttr expr);
-  static HeavyValueAttr get(mlir::MLIRContext*, heavy::Value Val);
-
-  // getCachedValue - For garbage collector access.
-  heavy::Value& getCachedValue();
-  heavy::Value getValue(heavy::Context& C) const;
-  heavy::StringAttr getExpr() const;
-};
-} //  namespace heavy
-MLIR_DECLARE_EXPLICIT_TYPE_ID(heavy::HeavyValueAttr)
-
-namespace heavy {
-// Additional Types
-#define HEAVY_TYPE(NAME, PRINT_NAME, MNEMONIC) \
-struct Heavy##NAME##Ty : public mlir::Type::TypeBase< \
-Heavy##NAME##Ty, mlir::Type, mlir::TypeStorage> { \
-  static constexpr llvm::StringLiteral name = PRINT_NAME; \
-  static constexpr llvm::StringRef getMnemonic() { return MNEMONIC; } \
-  using Base::Base; \
-} \
-
-HEAVY_TYPE(Pair, "heavy.pair", "pair");
-HEAVY_TYPE(Procedure, "heavy.procedure", "procedure");
-
-HEAVY_TYPE(Syntax, "heavy.syntax", "syntax");
-HEAVY_TYPE(OpGen, "heavy.opgen", "opgen");
-HEAVY_TYPE(MlirValue, "heavy.mlir_value", "mlir_value");
-
-
-#undef HEAVY_TYPE
 }
 
+namespace heavy::detail {
+struct HeavyValueAttrStorage;
+}
+
+// #pragma clang diagnostic push
+// #pragma clang diagnostic ignored "-Wunused-parameter"
+
+#include "heavy/HeavyDialect.h.inc"
+
+#define GET_TYPEDEF_CLASSES
+#include "heavy/HeavyTypes.h.inc"
+
+#define GET_ATTRDEF_CLASSES
+#include "heavy/HeavyAttrs.h.inc"
+
 #define GET_OP_CLASSES
-#include "heavy/Ops.h.inc"
+#include "heavy/HeavyOps.h.inc"
+// #pragma clang diagnostic pop
 
 #endif

@@ -38,7 +38,7 @@ add_heavy_library(heavy
     MLIRTransforms
 
   DEPENDS
-    HeavyOpsIncGen
+    HeavyDialectIncGen
     NbdlOpsIncGen
     MLIRFuncOpsIncGen
   )

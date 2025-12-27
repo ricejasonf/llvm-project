@@ -190,7 +190,7 @@ private:
         Result = Block->getArgument(std::distance(Itr, CP->begin()));
       } else {
         CP->push_back(Result);
-        mlir::Type HeavyValueT = OpGen.Builder.getType<HeavyValueTy>();
+        mlir::Type HeavyValueT = OpGen.Builder.getType<HeavyValueType>();
         mlir::Location MLoc = createLoc(Loc);
         Result = Block->addArgument(HeavyValueT, MLoc);
       }
