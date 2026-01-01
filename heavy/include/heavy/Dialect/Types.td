@@ -1,4 +1,4 @@
-// HeavyDialectTypes.td - MLIR Dialect Type Definitions for HeavyScheme
+// Dialect/Types.td - MLIR Dialect Type Definitions for HeavyScheme
 //
 // Copyright Jason Rice 2025
 //

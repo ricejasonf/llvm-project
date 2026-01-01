@@ -43,16 +43,16 @@ struct HeavyValueAttrStorage;
 // #pragma clang diagnostic push
 // #pragma clang diagnostic ignored "-Wunused-parameter"
 
-#include "heavy/HeavyDialect.h.inc"
+#include "heavy/Dialect/HeavyDialect.h.inc"
 
 #define GET_TYPEDEF_CLASSES
-#include "heavy/HeavyTypes.h.inc"
+#include "heavy/Dialect/HeavyTypes.h.inc"
 
 #define GET_ATTRDEF_CLASSES
-#include "heavy/HeavyAttrs.h.inc"
+#include "heavy/Dialect/HeavyAttrs.h.inc"
 
 #define GET_OP_CLASSES
-#include "heavy/HeavyOps.h.inc"
+#include "heavy/Dialect/HeavyOps.h.inc"
 // #pragma clang diagnostic pop
 
 #endif

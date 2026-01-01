@@ -47,7 +47,7 @@ add_llvm_install_targets(install-heavy-scheme-libs
 
 add_custom_target(heavy-scheme-libs)
 
-add_subdirectory(include/heavy)
+add_subdirectory(include/heavy/Dialect)
 add_subdirectory(lib)
 add_subdirectory(tools/heavy-scheme)
 add_subdirectory(tools/heavy-opt)

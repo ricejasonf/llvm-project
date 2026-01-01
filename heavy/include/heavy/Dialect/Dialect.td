@@ -28,7 +28,7 @@ def Heavy_Dialect : Dialect {
                         mlir::DialectAsmPrinter& P) const override;
   }];
 }
-include "heavy/HeavyDialectTypes.td"
+include "heavy/Dialect/Types.td"
 
 def Heavy_ValueAttr : AttrDef<Heavy_Dialect, "HeavyValue"> {
   let attrName = "heavy.value_attr";

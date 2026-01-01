@@ -1,4 +1,4 @@
-set(LLVM_TARGET_DEFINITIONS HeavyDialect.td)
+set(LLVM_TARGET_DEFINITIONS Dialect.td)
 mlir_tablegen(HeavyOps.h.inc -gen-op-decls)
 mlir_tablegen(HeavyOps.cpp.inc -gen-op-defs)
 mlir_tablegen(HeavyAttrs.h.inc -gen-attrdef-decls)

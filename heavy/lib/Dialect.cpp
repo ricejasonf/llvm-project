@@ -23,7 +23,7 @@
 
 using namespace heavy;
 
-#include "heavy/HeavyDialect.cpp.inc"
+#include "heavy/Dialect/HeavyDialect.cpp.inc"
 
 void HeavyDialect::initialize() {
   //addTypes<HeavyOpGenType>();
@@ -31,17 +31,17 @@ void HeavyDialect::initialize() {
 
   addTypes<
 #define GET_TYPEDEF_LIST
-#include "heavy/HeavyTypes.cpp.inc"
+#include "heavy/Dialect/HeavyTypes.cpp.inc"
     >();
 
   addAttributes<
 #define GET_ATTRDEF_LIST
-#include "heavy/HeavyAttrs.cpp.inc"
+#include "heavy/Dialect/HeavyAttrs.cpp.inc"
       >();
 
   addOperations<
 #define GET_OP_LIST
-#include "heavy/HeavyOps.cpp.inc"
+#include "heavy/Dialect/HeavyOps.cpp.inc"
     >();
 }
 
@@ -242,13 +242,13 @@ void SourceLocOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
 
 using namespace mlir;
 #define GET_OP_CLASSES
-#include "heavy/HeavyOps.cpp.inc"
+#include "heavy/Dialect/HeavyOps.cpp.inc"
 
 #define GET_ATTRDEF_CLASSES
-#include "heavy/HeavyAttrs.cpp.inc"
+#include "heavy/Dialect/HeavyAttrs.cpp.inc"
 
 #define GET_TYPEDEF_CLASSES
-#include "heavy/HeavyTypes.cpp.inc"
+#include "heavy/Dialect/HeavyTypes.cpp.inc"
 
 namespace heavy::detail {
 // Manually define HeavyValueAttrStorage to cache the parsed
