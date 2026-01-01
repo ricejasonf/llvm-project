@@ -297,8 +297,8 @@ EnvEntry Context::Lookup(Value Id, Value Stack) {
 mlir::Operation* Context::getModuleOp() {
   return ModuleOp;
 }
-void Context::dumpModuleOp() {
-  return cast<mlir::ModuleOp>(ModuleOp).dump();
+void Context::printModuleOp() {
+  return cast<mlir::ModuleOp>(ModuleOp).print(llvm::outs());
 }
 
 void Context::verifyModule() {

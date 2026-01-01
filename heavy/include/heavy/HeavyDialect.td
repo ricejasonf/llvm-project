@@ -30,13 +30,6 @@ def Heavy_Dialect : Dialect {
 }
 include "heavy/HeavyDialectTypes.td"
 
-// Heavy_ValueBase - Use for any type that is an alternative
-//                  of Value and derives from ValueBase which
-//                  implies the need for garbage collection.
-class Heavy_ValueBase<string name> : Type<
-  CPred<!strconcat("mlir::isa<::heavy::Heavy", name, "Ty>($_self)")>,
-  name, !strconcat("::heavy::Heavy", name, "Ty")>;
-
 def Heavy_ValueAttr : AttrDef<Heavy_Dialect, "HeavyValue"> {
   let attrName = "heavy.value_attr";
   let parameters = (ins "StringAttr":$expr);

@@ -138,7 +138,7 @@ int main(int argc, char const** argv) {
 
   if (InputMode.getValue() == ExecutionMode::mlir) {
     HeavyScheme.getContext().verifyModule();
-    HeavyScheme.getContext().dumpModuleOp();
+    HeavyScheme.getContext().printModuleOp();
   }
   if (HasErrors) std::exit(1);
 }
