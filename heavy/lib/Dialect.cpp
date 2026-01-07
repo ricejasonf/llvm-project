@@ -103,7 +103,7 @@ void LoadRefOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
 
 void LoadGlobalOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                          llvm::StringRef SymName) {
-  mlir::Type ResultType = B.getType<HeavyBindingType>();
+  mlir::Type ResultType = B.getType<HeavyUnknownType>();
   LoadGlobalOp::build(B, OpState, ResultType, SymName);
 }
 

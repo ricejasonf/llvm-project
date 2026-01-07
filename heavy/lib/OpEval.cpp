@@ -318,10 +318,20 @@ private:
 
   BlockItrTy Visit(UnboxOp Op) {
     heavy::Value V = getBindingOrValue(Op.getBinding());
-    if (auto* B = dyn_cast<Binding>(V))
+    if (auto* B = dyn_cast<Binding>(V)) {
       setValue(Op.getResult(), B->getValue());
-    else
+    } else {
+      if (!isa<HeavyUnknownType>(Op.getBinding().getType())) {
+        llvm::errs() << "WOOF: ";
+        V.dump();
+        Op.getBinding().dump();
+      }
+      /*
+      assert(isa<HeavyUnknownType>(Op.getBinding().getType()) &&
+          "bindings should be bindings");
+          */
       setValue(Op.getResult(), V);
+    }
 
     return next(Op);
   }

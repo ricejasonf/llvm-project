@@ -187,19 +187,12 @@ mlir::Value OpGen::GetSingleResultOrBinding(heavy::Value V) {
 
 mlir::Value OpGen::GetSingleResult(heavy::Value V) {
   mlir::Value Result = GetSingleResultOrBinding(V);
-  if (isa<HeavyBindingType>(Result.getType()))
-    Result = create<UnboxOp>(heavy::SourceLocation(),
-                             Builder.getType<HeavyValueType>(),
-                             Result);
-  return Result;
+  return UnwrapBinding(Result);
 }
 
 // Insert a check to assert the type of a value.
 mlir::Value OpGen::CheckType(heavy::SourceLocation Loc, mlir::Value V,
                              mlir::Type Type) {
-  // Unwrap any binding.
-  if (isa<HeavyBindingType>(V.getType()))
-    V = create<UnboxOp>(Loc, Builder.getType<HeavyValueType>(), V);
   return create<MatchTypeOp>(Loc, Type, V);
 }
 
@@ -1273,11 +1266,11 @@ mlir::Value OpGen::createGlobal(SourceLocation Loc,
   if (TopLevelOp)
     LocalV = BindingTable.lookup(CanonicalValue);
   if (!LocalV) {
-    // Try to get the type of the global defaulting to binding.
+    // Try to get the type of the global defaulting to !heavy.unknown.
     heavy::Value KnownVal = Context.GetKnownValue(SymbolOp.getName());
     mlir::Type Type = KnownVal
       ? getValueType(Context.MLIRContext.get(), KnownVal)
-      : HeavyBindingType::get(Context.MLIRContext.get());
+      : HeavyUnknownType::get(Context.MLIRContext.get());
     LocalV = create<LoadGlobalOp>(Loc, Type, SymbolOp.getName());
     BindingTable.insert(CanonicalValue, LocalV);
     return LocalV;
@@ -1502,11 +1495,15 @@ mlir::Value OpGen::VisitVector(Vector* V) {
 //
 mlir::Value OpGen::LocalizeValue(mlir::Value V, heavy::Value B) {
   mlir::Value Result = LocalizeValueOrBinding(V, B);
-  if (isa<HeavyBindingType>(Result.getType()))
-    Result = create<UnboxOp>(heavy::SourceLocation(),
-                             Builder.getType<HeavyValueType>(),
-                             Result);
-  return Result;
+  return UnwrapBinding(Result);
+}
+
+mlir::Value OpGen::UnwrapBinding(mlir::Value MV) {
+  if (isa<HeavyBindingType, HeavyUnknownType>(MV.getType()))
+    MV = create<UnboxOp>(heavy::SourceLocation(),
+                         Builder.getType<HeavyValueType>(),
+                         MV);
+  return MV;
 }
 
 mlir::Value OpGen::LocalizeValueOrBinding(mlir::Value V, heavy::Value B) {

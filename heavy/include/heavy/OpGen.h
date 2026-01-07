@@ -194,6 +194,8 @@ public:
   // Localize and unwrap a single result.
   mlir::Value GetSingleResult(heavy::Value V);
 
+  mlir::Value UnwrapBinding(mlir::Value MV);
+
   llvm::StringRef getModulePrefix() {
     if (!ModulePrefix || ModulePrefix->getStringRef().empty()) {
       return heavy::Mangler::getManglePrefix();

@@ -607,7 +607,8 @@ def Heavy_SetOp : HeavyOp<"set"> {
     variables needed by `letrec` and similar binding constructs.
   }];
 
-  let arguments = (ins Heavy_Binding:$binding, Heavy_Type:$input);
+  let arguments = (ins AnyTypeOf<[Heavy_Binding, Heavy_Unknown]>:$binding,
+                                  Heavy_Type:$input);
   let results   = (outs Heavy_Type:$result);
   let builders = [
     OpBuilder<(ins "::mlir::Value":$binding, "::mlir::Value":$input)>
@@ -710,7 +711,7 @@ def Heavy_UnboxOp : HeavyOp<"unbox", [Pure]> {
     Convert a reference to its referenced value.
   }];
 
-  let arguments = (ins Heavy_Binding:$binding);
+  let arguments = (ins AnyTypeOf<[Heavy_Binding, Heavy_Unknown]>:$binding);
   let results   = (outs Heavy_Value:$result);
 }
 
