@@ -7,11 +7,28 @@
 
 include "mlir/IR/AttrTypeBase.td"
 
-// Opaque value type.
+def Heavy_Unknown : TypeDef<Heavy_Dialect, "HeavyUnknown", []> {
+  let mnemonic = "unknown";
+  let description = [{
+    Define the opaquest of types.
+
+    This is primarily used for datums when constructing syntax.
+  }];
+}
+
+// Opaque value type that is not syntax or binding.
 def Heavy_Value : TypeDef<Heavy_Dialect, "HeavyValue", []> {
   let mnemonic = "value";
   let description = [{
-    Define the opaque value type.
+    Define the opaque value type that is not a binding or syntax.
+  }];
+}
+
+def Heavy_Empty : TypeDef<Heavy_Dialect, "HeavyEmpty", []> {
+  let mnemonic = "empty";
+  let description = [{
+    The empty list type analogous to heavy::Empty.
+    In scheme it is known by `null?`.
   }];
 }
 
@@ -74,6 +91,14 @@ def Heavy_Syntax : TypeDef<Heavy_Dialect, "HeavySyntax", []> {
   let description = [{
     Represent a syntax object that can appear as a callee
     in a syntax.
+  }];
+}
+
+def Heavy_Binding : TypeDef<Heavy_Dialect, "HeavyBinding", []> {
+  let mnemonic = "binding";
+  let description = [{
+    A binding is an indirection on a value that must be "unboxed"
+    for use as a normal scheme value.
   }];
 }
 

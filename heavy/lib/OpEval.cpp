@@ -34,6 +34,8 @@ class OpEvalImpl {
   void setValue(mlir::Value M, heavy::Value H) {
     assert(M && "must be set to a valid value");
     assert(H && "must be set to a valid value");
+    assert(OpGen::validateType(M.getType(), H) && "type must be valid");
+
     ValueMap.insert(M, H);
   }
 
@@ -80,9 +82,8 @@ class OpEvalImpl {
 
   heavy::Value getValue(mlir::Value M) {
     heavy::Value V = getBindingOrValue(M);
-    if (Binding* B = dyn_cast<Binding>(V)) {
-      V = B->getValue();
-    }
+    assert(!isa<Binding>(V) && "restrict bindings here");
+
     return V;
   }
 
@@ -180,6 +181,7 @@ private:
 
   BlockItrTy Visit(mlir::Operation* Op) {
          if (isa<BindingOp>(Op))      return Visit(cast<BindingOp>(Op));
+         if (isa<UnboxOp>(Op))        return Visit(cast<UnboxOp>(Op));
     else if (isa<LiteralOp>(Op))      return Visit(cast<LiteralOp>(Op));
     else if (isa<ApplyOp>(Op))        return Visit(cast<ApplyOp>(Op));
     else if (isa<ContOp>(Op))         return Visit(cast<ContOp>(Op));
@@ -314,6 +316,16 @@ private:
     return next(Op);
   }
 
+  BlockItrTy Visit(UnboxOp Op) {
+    heavy::Value V = getBindingOrValue(Op.getBinding());
+    if (auto* B = dyn_cast<Binding>(V))
+      setValue(Op.getResult(), B->getValue());
+    else
+      setValue(Op.getResult(), V);
+
+    return next(Op);
+  }
+
   BlockItrTy Visit(ConsOp Op) {
     heavy::Value A = getValue(Op.getA());
     heavy::Value B = getValue(Op.getB());
@@ -328,7 +340,7 @@ private:
     llvm::SmallVector<heavy::Value, 1> ContValues(ContArgs.size(),
                                                   nullptr);
     for (unsigned i = 0; i < ContArgs.size(); ++i)
-      ContValues[i] = getValue(ContArgs[i]);
+      ContValues[i] = getBindingOrValue(ContArgs[i]);
 
 
     Context.Cont(ContValues);
@@ -502,9 +514,8 @@ private:
 
     Context.PushCont([Op](heavy::Context& C, ValueRefs Args) mutable {
       assert(Args.size() == 1 && "invalid continuation arity");
-      assert(!isa<Syntax>(Args[0]) && "not expecting syntax in GlobalOp");
-      // Mutable globals must be wrapped with a binding
-      Value Result = C.CreateBinding(Args[0]);
+      heavy::Value Result = Args[0];
+      assert(!isa<Syntax>(Result) && "not expecting syntax in GlobalOp");
       C.AddKnownAddress(Op.getSymName(), Result);
       C.Cont();
     }, ValueRefs());
@@ -799,7 +810,12 @@ private:
 
   BlockItrTy Visit(MatchTypeOp Op) {
     mlir::Type Type = Op.getResult().getType();
-    heavy::Value Arg = getValue(Op.getArg());
+    heavy::Value Arg = getBindingOrValue(Op.getArg());
+    // Unwrap any binding.
+    if (isa<HeavyBindingType, HeavyUnknownType>(Op.getArg().getType())) {
+      if (Binding* B = dyn_cast<Binding>(Arg))
+        Arg = B->getValue();
+    }
     bool Result;
     switch (Arg.getKind()) {
       case ValueKind::Lambda:

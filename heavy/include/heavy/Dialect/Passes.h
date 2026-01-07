@@ -1,0 +1,20 @@
+//===------------------------ Passes.h --------------------------*- C++ -*-===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef HEAVY_DIALECT_PASSES_H
+#define HEAVY_DIALECT_PASSES_H
+
+namespace heavy {
+#define GEN_PASS_DECL
+#include "heavy/Dialect/HeavyPasses.h.inc"
+
+#define GEN_PASS_REGISTRATION
+#include "heavy/Dialect/HeavyPasses.h.inc"
+}  // namespace heavy
+
+#endif  // HEAVY_DIALECT_PASSES_H

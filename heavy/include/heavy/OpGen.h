@@ -189,8 +189,9 @@ public:
   mlir::Value CheckType(heavy::SourceLocation Loc, mlir::Value V,
                         mlir::Type Type);
 
-  // GetSingleResult
-  //  - visits a node expecting a single result
+  // Visit a node expecting a single result
+  mlir::Value GetSingleResultOrBinding(heavy::Value V);
+  // Localize and unwrap a single result.
   mlir::Value GetSingleResult(heavy::Value V);
 
   llvm::StringRef getModulePrefix() {
@@ -385,6 +386,7 @@ public:
   }
 
   mlir::Value LocalizeValue(mlir::Value V, heavy::Value B = nullptr);
+  mlir::Value LocalizeValueOrBinding(mlir::Value V, heavy::Value B = nullptr);
   mlir::Value VisitEnvEntry(heavy::SourceLocation Loc, EnvEntry Entry);
 
   mlir::Value LocalizeRec(heavy::Value B,
@@ -435,6 +437,53 @@ public:
   mlir::Operation* LookupSymbol(llvm::StringRef MangledName);
 
   heavy::EnvEntry LookupEnv(heavy::Value Id, heavy::Value ClosedEnv = nullptr);
+
+  // Try to get a suitable type for a known value.
+  static mlir::Type getValueType(mlir::MLIRContext* MC, heavy::Value V) {
+    switch (V.getKind()) {
+    case ValueKind::Binding:
+      return HeavyBindingType::get(MC);
+    case ValueKind::Syntax:
+      return HeavySyntaxType::get(MC);
+    case ValueKind::Undefined:
+      return HeavyUndefinedType::get(MC);
+    case ValueKind::Lambda:
+    case ValueKind::Builtin:
+      return HeavyProcedureType::get(MC);
+    case ValueKind::Pair:
+      return HeavyPairType::get(MC);
+    default:
+      return HeavyValueType::get(MC);
+    }
+  }
+
+  // Attempt to validate the type of a heavy::Value.
+  static bool validateType(mlir::Type T, heavy::Value H) {
+    // The opaquest type
+    return
+      isa<HeavyUnknownType>(T) ||
+      // The types we just do not check
+      isa<HeavyValueRefsType>(T) ||
+      // The types that cannot be !heavy.value
+      // Binding => !heavy.binding
+      ((!isa<heavy::Binding>(H) || isa<HeavyBindingType>(T)) &&
+      // Syntax => !heavy.syntax
+      (!isa<HeavySyntaxType>(T) || isa<heavy::Syntax>(H)) &&
+      // The types that can be !heavy.value but are more strict
+      // !heavy.procedure => Lambda | Builtin
+      (!isa<HeavyProcedureType>(T) || isa<heavy::Lambda, heavy::Builtin>(H)) &&
+      // !heavy.undefined => Undefined
+      (!isa<HeavyUndefinedType>(T) || isa<heavy::Undefined>(H)) &&
+      // !heavy.pair => Pair
+      (!isa<HeavyPairType>(T) || isa<heavy::Pair>(H)) &&
+      // !heavy.empty => Empty
+      (!isa<HeavyEmptyType>(T) || isa<heavy::Empty>(H)) &&
+      // !heavy.rest => Pair | Empty
+      (!isa<HeavyRestType>(T) || isa<heavy::Pair, heavy::Empty>(H)) &&
+      // !heavy.vector => Vector
+      (!isa<HeavyVectorType>(T) || isa<heavy::Vector>(H)));
+  }
+
 private:
   mlir::Value CallSyntax(Value Operator, Pair* P);
   mlir::Value HandleCall(Pair* P, heavy::EnvEntry FnEnvEntry);

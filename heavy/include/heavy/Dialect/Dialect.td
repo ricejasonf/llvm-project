@@ -44,6 +44,7 @@ def Heavy_ValueAttr : AttrDef<Heavy_Dialect, "HeavyValue"> {
 
 // All valid run-time values (ie not Syntax)
 def Heavy_Type : AnyTypeOf<[
+  Heavy_Empty,
   Heavy_Pair,
   Heavy_Procedure,
   Heavy_Undefined,
@@ -65,7 +66,7 @@ def Heavy_ApplyOp : HeavyOp<"apply", [Terminator]> {
   }];
 
   let arguments = (ins AnyTypeOf<[Heavy_Value, Heavy_Procedure]>:$fn,
-    Variadic<AnyTypeOf<[Heavy_Value, Heavy_Rest, Heavy_ValueRefs]>>:$args);
+    Variadic<AnyTypeOf<[Heavy_Type, Heavy_Rest, Heavy_ValueRefs]>>:$args);
   let results   = (outs);
 }
 
@@ -80,7 +81,7 @@ def Heavy_BindingOp : HeavyOp<"binding"> {
 
   let arguments = (ins Optional<AnyTypeOf<[Heavy_Type,
                                            Heavy_Rest]>>:$input);
-  let results   = (outs Heavy_Value:$result);
+  let results   = (outs Heavy_Binding:$result);
   let builders  = [OpBuilder<(ins "::mlir::Value":$input)>];
 }
 
@@ -129,7 +130,9 @@ def Heavy_ContOp : HeavyOp<"cont", [ReturnLike, Terminator]> {
     an expression.
   }];
 
-  let arguments = (ins Variadic<AnyTypeOf<[Heavy_Type, Heavy_Syntax]>>:$args);
+  let arguments = (ins Variadic<AnyTypeOf<[Heavy_Type,
+                                           Heavy_Syntax,
+                                           Heavy_Binding]>>:$args);
   let results   = (outs); // no result
 }
 
@@ -254,7 +257,8 @@ def Heavy_LambdaOp : HeavyOp<"lambda"> {
   }];
 
   let arguments = (ins StrAttr:$name,
-                       Variadic<Heavy_Type>:$captures);
+                       Variadic<AnyTypeOf<[Heavy_Type,
+                                           Heavy_Binding]>>:$captures);
   let results = (outs Heavy_Procedure:$result);
 
   let builders = [
@@ -290,7 +294,7 @@ def Heavy_LoadRefOp : HeavyOp<"load_ref"> {
 
   let arguments = (ins AnyTypeOf<[Heavy_Context, Heavy_ValueRefs]>:$value_refs,
                        UI32Attr:$index);
-  let results   = (outs Heavy_Value:$result);
+  let results   = (outs AnyTypeOf<[Heavy_Binding, Heavy_Type]>:$result);
 
   let builders = [
     OpBuilder<(ins "::mlir::Value":$closure, "uint32_t":$index)>
@@ -304,7 +308,7 @@ def Heavy_LoadGlobalOp : HeavyOp<"load_global"> {
   }];
 
   let arguments = (ins FlatSymbolRefAttr:$name);
-  let results   = (outs Heavy_Type:$result);
+  let results   = (outs AnyTypeOf<[Heavy_Binding, Heavy_Type]>:$result);
 
   let builders = [
     OpBuilder<(ins "::llvm::StringRef":$name)>
@@ -517,7 +521,8 @@ def Heavy_PushContOp : HeavyOp<"push_cont", []> {
   }];
 
   let arguments = (ins StrAttr:$name,
-                       Variadic<Heavy_Type>:$captures);
+                       Variadic<AnyTypeOf<[Heavy_Type,
+                                           Heavy_Binding]>>:$captures);
   let results   = (outs);
 }
 
@@ -602,7 +607,7 @@ def Heavy_SetOp : HeavyOp<"set"> {
     variables needed by `letrec` and similar binding constructs.
   }];
 
-  let arguments = (ins Heavy_Type:$binding, Heavy_Type:$input);
+  let arguments = (ins Heavy_Binding:$binding, Heavy_Type:$input);
   let results   = (outs Heavy_Type:$result);
   let builders = [
     OpBuilder<(ins "::mlir::Value":$binding, "::mlir::Value":$input)>
@@ -698,6 +703,15 @@ def Heavy_UndefinedOp : HeavyOp<"undefined", [Pure]> {
   let builders = [
     OpBuilder<(ins)>
   ];
+}
+
+def Heavy_UnboxOp : HeavyOp<"unbox", [Pure]> {
+  let description = [{
+    Convert a reference to its referenced value.
+  }];
+
+  let arguments = (ins Heavy_Binding:$binding);
+  let results   = (outs Heavy_Value:$result);
 }
 
 #endif // HEAVY_DIALECT_TD

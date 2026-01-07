@@ -5,8 +5,16 @@
 #ifndef HEAVY_DIALECT_PASSES_TD
 #define HEAVY_DIALECT_PASSES_TD
 
-#include "mlir/Pass/PassBase.td"
+include "mlir/Pass/PassBase.td"
 
-def HeavyInline... oof
+def MarkImmutableGlobalsPass : Pass<"heavy-mark-immutable-globals-pass"> {
+  let summary = "Mark mutability of all globals";
+  let description = [{
+    Discern the mutability of all globals in a scheme module by
+    finding any uses of set!.
+  }];
 
-#endif
+  let dependentDialects = ["heavy::HeavyDialect"];
+}
+
+#endif  // HEAVY_DIALECT_PASSES_TD

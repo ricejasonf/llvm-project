@@ -8,3 +8,7 @@ mlir_tablegen(HeavyTypes.cpp.inc -gen-typedef-defs)
 mlir_tablegen(HeavyDialect.h.inc -gen-dialect-decls)
 mlir_tablegen(HeavyDialect.cpp.inc -gen-dialect-defs)
 add_public_tablegen_target(HeavyDialectIncGen)
+
+set(LLVM_TARGET_DEFINITIONS Passes.td)
+mlir_tablegen(HeavyPasses.h.inc -gen-pass-decls -name Heavy)
+add_public_tablegen_target(HeavyPassesIncGen)

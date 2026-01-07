@@ -155,7 +155,7 @@ void OpGen::createLoadModule(heavy::SourceLocation Loc,
                                     MangledName->getStringRef());
 }
 
-mlir::Value OpGen::GetSingleResult(heavy::Value V) {
+mlir::Value OpGen::GetSingleResultOrBinding(heavy::Value V) {
   // Ensure we are no longer top level.
   if (!TopLevelOp)
     InsertTopLevelCommandOp(Context.getLoc());
@@ -167,27 +167,39 @@ mlir::Value OpGen::GetSingleResult(heavy::Value V) {
   IsTailPos = false;
   mlir::Value Result = Visit(V);
 
+  if (CheckError())
+    return Error();
+
+  // mlir::Value() is only returned for expressions in tail position
+  //               or syntax that should not be used outside proper
+  //               context such as `import`, `define-syntax`, etc.
+  if (!Result)
+      return SetError("expecting expression", V);
+
   // TODO Use MatchArgsOp to destructure ValueRefs to a single
   //      argument (or raise an error.)
   // Take the first continuation arg.
   if (Result && isa<HeavyValueRefsType>(Result.getType()))
     Result = create<LoadRefOp>(heavy::SourceLocation(), Result, /*Index*/0);
 
-  if (CheckError())
-    return Error();
-  // mlir::Value() is only returned for expressions in tail position
-  //               or syntax that should not be used outside proper
-  //               context such as `import`, `define-syntax`, etc.
-  if (!Result) {
-      return SetError("expecting expression", V);
-  }
+  return LocalizeValueOrBinding(Result);
+}
 
-  return LocalizeValue(Result);
+mlir::Value OpGen::GetSingleResult(heavy::Value V) {
+  mlir::Value Result = GetSingleResultOrBinding(V);
+  if (isa<HeavyBindingType>(Result.getType()))
+    Result = create<UnboxOp>(heavy::SourceLocation(),
+                             Builder.getType<HeavyValueType>(),
+                             Result);
+  return Result;
 }
 
 // Insert a check to assert the type of a value.
 mlir::Value OpGen::CheckType(heavy::SourceLocation Loc, mlir::Value V,
                              mlir::Type Type) {
+  // Unwrap any binding.
+  if (isa<HeavyBindingType>(V.getType()))
+    V = create<UnboxOp>(Loc, Builder.getType<HeavyValueType>(), V);
   return create<MatchTypeOp>(Loc, Type, V);
 }
 
@@ -399,6 +411,29 @@ void OpGen::FinishTopLevelOp() {
       mlir::OpBuilder::InsertionGuard IG(Builder);
       Builder.setInsertionPointToEnd(&Block);
       create<ContOp>(heavy::SourceLocation(), createUndefined());
+    }
+  } else if (heavy::GlobalOp GlobalOp =
+              dyn_cast_or_null<heavy::GlobalOp>(TopLevelOp)) {
+    // Wrap the result in a binding.
+    mlir::Block* Block = nullptr;
+    if (auto F = dyn_cast_or_null<FuncOp>(LambdaScopes.back().Op))
+      Block = &F.getBody().back();
+    else
+      Block = &GlobalOp.getInitializer().back();
+    mlir::Operation* TermOp = &Block->back();
+    if (auto ContOp = dyn_cast<heavy::ContOp>(TermOp)) {
+      assert(ContOp.getArgs().size() == 1 &&
+             isa<HeavyBindingType>(ContOp.getArgs().front().getType()));
+    } else {
+      mlir::Value Results = createContinuation(TermOp);
+      // TODO Use MatchArgsOp to destructure ValueRefs to a single
+      //      argument (or raise an error.)
+      // Take the first continuation arg.
+      mlir::Value Result = create<LoadRefOp>(heavy::SourceLocation(),
+                                             Results, /*Index*/0);
+      mlir::Value BVal = createHelper<BindingOp>(Builder,
+          heavy::SourceLocation(), Result);
+      heavy::ContOp::create(Builder, GlobalOp.getLoc(), BVal);
     }
   }
 
@@ -922,12 +957,14 @@ bool OpGen::WalkDefineInits(Value Env, IdSet& LocalIds) {
   SyntaxClosureScope SCScope(*this, SC);
   if (SC)
     DefineArgs = SC->Node;
-  mlir::Value Init = VisitDefineArgs(DefineArgs);
-  mlir::Value BVal = LocalizeValue(BindingTable.lookup(B), B);
   SourceLocation Loc = DefineArgs.getSourceLocation();
-  assert(BVal && "BindingTable should have an entry for local define");
+  mlir::Value Init = VisitDefineArgs(DefineArgs);
+  mlir::Value BVal = LocalizeValueOrBinding(BindingTable.lookup(B), B);
+  assert(BVal && isa<HeavyBindingType>(BVal.getType()) &&
+         "BindingTable should have an entry for local define");
   if (!Init)
     return true;
+  Init = LocalizeValue(Init);  // Unwrap any binding.
   create<SetOp>(Loc, BVal, Init);
   return false;
 }
@@ -1084,7 +1121,9 @@ mlir::Value OpGen::createTopLevelDefine(Value Id, Value DefineArgs,
     Builder.setInsertionPointToStart(&Block);
 
     if (mlir::Value Init = VisitDefineArgs(DefineArgs)) {
-      create<ContOp>(DefineLoc, Init);
+      mlir::Value BVal = create<BindingOp>(DefineLoc, Init);
+      // This is the only place ContOp should accept a !heavy.binding.
+      create<ContOp>(DefineLoc, BVal);
     }
   }
 
@@ -1146,6 +1185,7 @@ mlir::Value OpGen::createIf(SourceLocation Loc, Value Cond, Value Then,
       if (Result) {
         assert(Block->empty() ||
           !Block->back().hasTrait<mlir::OpTrait::IsTerminator>());
+        Result = LocalizeValue(Result);  // Unwrap any binding.
         create<ContOp>(Loc, Result);
       }
     };
@@ -1170,7 +1210,8 @@ mlir::Value OpGen::createSet(SourceLocation Loc, Value LHS,
   // ExprVal must be evaluated first so
   // the Binding will be in the continuation scope
   mlir::Value ExprVal = GetSingleResult(RHS);
-  mlir::Value BVal = GetSingleResult(LHS);
+  mlir::Value BVal = GetSingleResultOrBinding(LHS);
+  assert(isa<HeavyBindingType>(BVal.getType()));
   return create<SetOp>(Loc, BVal, ExprVal);
 }
 
@@ -1232,12 +1273,17 @@ mlir::Value OpGen::createGlobal(SourceLocation Loc,
   if (TopLevelOp)
     LocalV = BindingTable.lookup(CanonicalValue);
   if (!LocalV) {
-    LocalV = create<LoadGlobalOp>(Loc, SymbolOp.getName());
+    // Try to get the type of the global defaulting to binding.
+    heavy::Value KnownVal = Context.GetKnownValue(SymbolOp.getName());
+    mlir::Type Type = KnownVal
+      ? getValueType(Context.MLIRContext.get(), KnownVal)
+      : HeavyBindingType::get(Context.MLIRContext.get());
+    LocalV = create<LoadGlobalOp>(Loc, Type, SymbolOp.getName());
     BindingTable.insert(CanonicalValue, LocalV);
     return LocalV;
   }
 
-  return LocalizeValue(LocalV, CanonicalValue);
+  return LocalizeValueOrBinding(LocalV, CanonicalValue);
 }
 
 mlir::Value OpGen::VisitExternName(ExternName* EN) {
@@ -1281,7 +1327,7 @@ mlir::Value OpGen::VisitEnvEntry(heavy::SourceLocation Loc, EnvEntry Entry) {
     return createGlobal(Loc, MangledName);
   }
 
-  return GetSingleResult(Entry.Value);
+  return GetSingleResultOrBinding(Entry.Value);
 }
 
 mlir::Value OpGen::VisitBinding(Binding* B) {
@@ -1290,7 +1336,7 @@ mlir::Value OpGen::VisitBinding(Binding* B) {
 
   mlir::Value V = BindingTable.lookup(B);
   assert(V && "binding must map to a mlir.value");
-  return LocalizeValue(V, B);
+  return LocalizeValueOrBinding(V, B);
 }
 
 mlir::Value OpGen::HandleCall(Pair* P, heavy::EnvEntry FnEnvEntry) {
@@ -1351,7 +1397,9 @@ mlir::Value OpGen::createCall(heavy::SourceLocation Loc, mlir::Value Fn,
 mlir::Value OpGen::createError(heavy::SourceLocation Loc,
                                llvm::MutableArrayRef<mlir::Value> Args) {
   // We defer localizing values until instantiation.
-  mlir::Value ErrorFn = create<LoadGlobalOp>(Loc, HEAVY_BASE_VAR_STR(error));
+  mlir::Type HeavyValueTy = Builder.getType<HeavyValueType>();
+  mlir::Value ErrorFn = create<LoadGlobalOp>(Loc, HeavyValueTy,
+      HEAVY_BASE_VAR_STR(error));
   create<ApplyOp>(Loc, ErrorFn, Args);
   return mlir::Value();
 }
@@ -1453,6 +1501,15 @@ mlir::Value OpGen::VisitVector(Vector* V) {
 //                 here too.
 //
 mlir::Value OpGen::LocalizeValue(mlir::Value V, heavy::Value B) {
+  mlir::Value Result = LocalizeValueOrBinding(V, B);
+  if (isa<HeavyBindingType>(Result.getType()))
+    Result = create<UnboxOp>(heavy::SourceLocation(),
+                             Builder.getType<HeavyValueType>(),
+                             Result);
+  return Result;
+}
+
+mlir::Value OpGen::LocalizeValueOrBinding(mlir::Value V, heavy::Value B) {
   mlir::Operation* Owner;
   LambdaScopeIterator LSI = LambdaScopes.rbegin();
 
@@ -1491,7 +1548,8 @@ mlir::Value OpGen::LocalizeRec(heavy::Value B,
   LS.Captures.push_back(ParentLocal);
   uint32_t Index = LS.Captures.size() - 1;
   mlir::Value Closure = Block.getArguments().front();
-  mlir::Value NewVal = create<LoadRefOp>(Loc, Closure, Index);
+  mlir::Value NewVal = create<LoadRefOp>(Loc, ParentLocal.getType(),
+                                         Closure, Index);
 
   if (B) {
     BindingTable.insertIntoScope(&LS.BindingScope_, B, NewVal);

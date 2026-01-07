@@ -449,6 +449,7 @@ public:
   }
 
   Binding* CreateBinding(Value Id, Value V) {
+    assert(!isa<Binding>(V) && "restrict nested bindings");
     return new (*this) Binding(Id, V);
   }
 

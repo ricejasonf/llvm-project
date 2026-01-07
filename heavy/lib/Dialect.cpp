@@ -65,7 +65,7 @@ void HeavyDialect::printAttribute(
 
 void BindingOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                       mlir::Value Input) {
-  BindingOp::build(B, OpState, B.getType<HeavyValueType>(), Input);
+  BindingOp::build(B, OpState, B.getType<HeavyBindingType>(), Input);
 }
 
 void ConsOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
@@ -103,7 +103,7 @@ void LoadRefOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
 
 void LoadGlobalOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                          llvm::StringRef SymName) {
-  mlir::Type ResultType = B.getType<HeavyValueType>();
+  mlir::Type ResultType = B.getType<HeavyBindingType>();
   LoadGlobalOp::build(B, OpState, ResultType, SymName);
 }
 
@@ -178,13 +178,13 @@ void ExpandPacksOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
 
 void RenameOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                      llvm::StringRef Id, mlir::Value Capture) {
-  mlir::Type ResultType = B.getType<HeavyValueType>();
+  mlir::Type ResultType = B.getType<HeavyBindingType>();
   RenameOp::build(B, OpState, ResultType, Id, Capture);
 }
 
 void RenameGlobalOp::build(mlir::OpBuilder& B, mlir::OperationState& OpState,
                      llvm::StringRef Id, llvm::StringRef Sym) {
-  mlir::Type ResultType = B.getType<HeavyValueType>();
+  mlir::Type ResultType = B.getType<HeavyUnknownType>();
   RenameGlobalOp::build(B, OpState, ResultType, Id, Sym);
 }
 
