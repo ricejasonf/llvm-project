@@ -1204,7 +1204,7 @@ mlir::Value OpGen::createSet(SourceLocation Loc, Value LHS,
   // the Binding will be in the continuation scope
   mlir::Value ExprVal = GetSingleResult(RHS);
   mlir::Value BVal = GetSingleResultOrBinding(LHS);
-  assert(isa<HeavyBindingType>(BVal.getType()));
+  assert((isa<HeavyBindingType, HeavyUnknownType>(BVal.getType())));
   return create<SetOp>(Loc, BVal, ExprVal);
 }
 
