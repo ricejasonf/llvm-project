@@ -9,6 +9,8 @@
 #ifndef HEAVY_DIALECT_PASSES_H
 #define HEAVY_DIALECT_PASSES_H
 
+#include <mlir/Pass/Pass.h>
+
 namespace heavy {
 #define GEN_PASS_DECL
 #include "heavy/Dialect/HeavyPasses.h.inc"

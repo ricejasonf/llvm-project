@@ -52,6 +52,12 @@ def Heavy_Type : AnyTypeOf<[
   Heavy_Vector,
   ]>;
 
+def Heavy_ValueOrBinding : AnyTypeOf<[
+  Heavy_Binding,
+  Heavy_Type,
+  Heavy_Unknown,
+  ]>;
+
 class HeavyOp<string mnemonic, list<Trait> traits = []> :
     Op<Heavy_Dialect, mnemonic, traits>;
 
@@ -294,7 +300,7 @@ def Heavy_LoadRefOp : HeavyOp<"load_ref"> {
 
   let arguments = (ins AnyTypeOf<[Heavy_Context, Heavy_ValueRefs]>:$value_refs,
                        UI32Attr:$index);
-  let results   = (outs AnyTypeOf<[Heavy_Binding, Heavy_Type]>:$result);
+  let results   = (outs Heavy_ValueOrBinding:$result);
 
   let builders = [
     OpBuilder<(ins "::mlir::Value":$closure, "uint32_t":$index)>
@@ -308,7 +314,7 @@ def Heavy_LoadGlobalOp : HeavyOp<"load_global"> {
   }];
 
   let arguments = (ins FlatSymbolRefAttr:$name);
-  let results   = (outs AnyTypeOf<[Heavy_Binding, Heavy_Type]>:$result);
+  let results   = (outs Heavy_ValueOrBinding:$result);
 
   let builders = [
     OpBuilder<(ins "::llvm::StringRef":$name)>
@@ -448,11 +454,11 @@ def Heavy_MatchArgsOp : HeavyOp<"match_args"> {
 def Heavy_MatchTypeOp : HeavyOp<"match_type", []> {
   let description = [{
     Perform dynamic cast resulting in a value with a specified type.
-    Like other Match operations this will raise an error unless it
-    appears in the body of a PatternOp.
+    Like other Match operations this will raise an error if the match
+    fails unless it is in the body of a PatternOp.
   }];
 
-  let arguments = (ins Heavy_Type:$arg);
+  let arguments = (ins Heavy_ValueOrBinding:$arg);
   let results   = (outs Heavy_Type:$result);
 }
 
@@ -521,8 +527,7 @@ def Heavy_PushContOp : HeavyOp<"push_cont", []> {
   }];
 
   let arguments = (ins StrAttr:$name,
-                       Variadic<AnyTypeOf<[Heavy_Type,
-                                           Heavy_Binding]>>:$captures);
+                       Variadic<Heavy_ValueOrBinding>:$captures);
   let results   = (outs);
 }
 
@@ -539,8 +544,11 @@ def Heavy_RenameOp : HeavyOp<"rename"> {
   }];
 
   let arguments = (ins StrAttr:$id,
-        AnyTypeOf<[Heavy_Type, Heavy_Syntax]>:$capture);
-  let results   = (outs Heavy_Type:$result);
+        AnyTypeOf<[Heavy_ValueOrBinding,
+                   Heavy_Syntax]>:$capture);
+  let results   = (outs
+        AnyTypeOf<[Heavy_ValueOrBinding,
+                   Heavy_Syntax]>:$result);
   let builders = [
     OpBuilder<(ins "::llvm::StringRef":$id, "::mlir::Value":$capture)>
   ];
@@ -559,7 +567,7 @@ def Heavy_RenameGlobalOp : HeavyOp<"rename_global"> {
   }];
 
   let arguments = (ins StrAttr:$id, StrAttr:$sym);
-  let results   = (outs Heavy_Type:$result);
+  let results   = (outs Heavy_ValueOrBinding:$result);
   let builders = [
     OpBuilder<(ins "::llvm::StringRef":$id, "::llvm::StringRef":$sym)>
   ];
@@ -576,8 +584,8 @@ def Heavy_RenameEnvOp : HeavyOp<"rename_env"> {
     or EnvFrames automatically.
   }];
 
-  let arguments = (ins Heavy_Type:$env, Variadic<Heavy_Type>:$bindings);
-  let results   = (outs Heavy_Type: $result);
+  let arguments = (ins Heavy_Type:$env, Variadic<Heavy_ValueOrBinding>:$bindings);
+  let results   = (outs Heavy_Type:$result);
   let builders = [
     OpBuilder<(ins "::mlir::Value":$env,
                    "::llvm::ArrayRef<::mlir::Value>":$args)>

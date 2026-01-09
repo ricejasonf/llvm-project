@@ -551,10 +551,17 @@ mlir::Value OpGen::createLambda(Value Formals, Value Body,
       create<ApplyOp>(Loc, InnerLambda, MA.getResults());
       Captures = std::move(LS.Node.Captures);
     }
-    return create<LambdaOp>(Loc, WFuncOp.getSymName(), Captures);
+    return createLambda(Loc, WFuncOp.getSymName(), Captures);
   } else {
     return createLambdaBody(Loc, Body, FuncOp, EnvFrame);
   }
+}
+mlir::Value OpGen::createLambda(heavy::SourceLocation Loc,
+                                llvm::StringRef Name,
+                                llvm::MutableArrayRef<mlir::Value> Captures) {
+  for (mlir::Value& Capture : Captures)
+    Capture = UnwrapBinding(Capture);
+  return create<LambdaOp>(Loc, Name, Captures);
 }
 
 std::pair<heavy::FuncOp, heavy::EnvFrame*>
@@ -625,7 +632,7 @@ mlir::Value OpGen::createLambdaBody(SourceLocation Loc,
     Captures = std::move(LS.Node.Captures);
   }
 
-  return create<LambdaOp>(Loc, FuncOp.getSymName(), Captures);
+  return createLambda(Loc, FuncOp.getSymName(), Captures);
 }
 
 mlir::Value OpGen::createCaseLambda(Pair* FullExpr) {
@@ -691,7 +698,7 @@ mlir::Value OpGen::createCaseLambda(Pair* FullExpr) {
     Captures = std::move(LS.Node.Captures);
   }
 
-  return create<LambdaOp>(Loc, WFuncOp.getSymName(), Captures);
+  return createLambda(Loc, WFuncOp.getSymName(), Captures);
 }
 
 void OpGen::PopContinuationScope() {

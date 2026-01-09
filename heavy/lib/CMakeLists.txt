@@ -4,6 +4,7 @@ add_heavy_library(heavy
   Builtins.cpp
   Context.cpp
   Dialect.cpp
+  Dialect/Passes.cpp
   Heap.cpp
   HeavyScheme.cpp
   Lexer.cpp

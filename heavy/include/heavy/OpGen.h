@@ -324,6 +324,9 @@ public:
   mlir::Value createLambda(Value Formals, Value Body,
                            SourceLocation Loc,
                            llvm::StringRef Name = {});
+  mlir::Value createLambda(heavy::SourceLocation Loc,
+                           llvm::StringRef Name,
+                           llvm::MutableArrayRef<mlir::Value> Captures);
   std::pair<heavy::FuncOp, EnvFrame*>
   createLambdaFunction(Value Formals, SourceLocation Loc,
                        llvm::StringRef Name = {});

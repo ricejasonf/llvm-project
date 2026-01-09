@@ -7,7 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include <heavy/Dialect.h>
-// #include <heavy/DialectPasses.h> // TODO
+#include <heavy/Dialect/Passes.h>
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include <string>
 
@@ -15,6 +15,8 @@ int main(int argc, char ** argv) {
   mlir::DialectRegistry DialectRegistry;
   DialectRegistry.insert<heavy::HeavyDialect>();
   DialectRegistry.insert<mlir::func::FuncDialect>();
+
+  heavy::registerStripGlobalBindingsPass();
 
   return mlir::asMainReturnCode(mlir::MlirOptMain(
       argc, argv, "heavy-scheme optimizer driver\n", DialectRegistry));
