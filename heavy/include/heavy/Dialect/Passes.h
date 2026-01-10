@@ -9,8 +9,23 @@
 #ifndef HEAVY_DIALECT_PASSES_H
 #define HEAVY_DIALECT_PASSES_H
 
+#include <heavy/Dialect.h>
 #include <mlir/Pass/Pass.h>
 
+namespace heavy {
+// Base class for passes need to chase continuation
+// and lambda functions within a module.
+class HeavyModulePass : public mlir::OperationPass<mlir::ModuleOp> {
+  using Base = mlir::OperationPass<mlir::ModuleOp>;
+
+public:
+  using Base::OperationPass;
+  mlir::Value getCapture(mlir::OpOperand Operand);
+  heavy::FuncOp lookupCapturingFunction(mlir::Operation* Op);
+};
+}
+
+// Generated stuff
 namespace heavy {
 #define GEN_PASS_DECL
 #include "heavy/Dialect/HeavyPasses.h.inc"
