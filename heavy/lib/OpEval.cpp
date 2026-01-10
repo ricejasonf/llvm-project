@@ -216,6 +216,7 @@ private:
     else if (isa<RenameEnvOp>(Op))    return Visit(cast<RenameEnvOp>(Op));
     else if (isa<ToVectorOp>(Op))     return Visit(cast<ToVectorOp>(Op));
     else if (isa<VectorOp>(Op))       return Visit(cast<VectorOp>(Op));
+    else if (isa<InitGlobalOp>(Op))   return Visit(cast<InitGlobalOp>(Op));
     else if (isa<LoadModuleOp>(Op))   return Visit(cast<LoadModuleOp>(Op));
     else if (isa<SyntaxClosureOp>(Op))
       return Visit(cast<SyntaxClosureOp>(Op));
@@ -517,11 +518,18 @@ private:
     return next(Op);
   }
 
+  BlockItrTy Visit(InitGlobalOp Op) {
+    heavy::Value Value = getBindingOrValue(Op.getVar());
+    Context.AddKnownAddress(Op.getName(), Value);
+    return next(Op);
+  }
+
   BlockItrTy Visit(GlobalOp Op) {
     // Skip external global ops.
     if (Op.isExternal())
       return BlockItrTy();
 
+#if 0 // TODO Replace with InitGlobalOp
     Context.PushCont([Op](heavy::Context& C, ValueRefs Args) mutable {
       assert(Args.size() == 1 && "invalid continuation arity");
       heavy::Value Result = Args[0];
@@ -529,6 +537,7 @@ private:
       C.AddKnownAddress(Op.getSymName(), Result);
       C.Cont();
     }, ValueRefs());
+#endif
 
     auto Scope = ValueMapScope(ValueMap);
     BlockItrTy Itr = Op.getInitializer().front().begin();

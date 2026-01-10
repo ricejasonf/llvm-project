@@ -136,9 +136,7 @@ def Heavy_ContOp : HeavyOp<"cont", [ReturnLike, Terminator]> {
     an expression.
   }];
 
-  let arguments = (ins Variadic<AnyTypeOf<[Heavy_Type,
-                                           Heavy_Syntax,
-                                           Heavy_Binding]>>:$args);
+  let arguments = (ins Variadic<AnyTypeOf<[Heavy_Type, Heavy_Syntax]>>:$args);
   let results   = (outs); // no result
 }
 
@@ -721,6 +719,16 @@ def Heavy_UnboxOp : HeavyOp<"unbox", [Pure]> {
 
   let arguments = (ins AnyTypeOf<[Heavy_Binding, Heavy_Unknown]>:$binding);
   let results   = (outs Heavy_Value:$result);
+}
+
+def Heavy_InitGlobalOp : HeavyOp<"init_global", []> {
+  let description = [{
+    Register a global variable with a binding or initial value.
+  }];
+
+  let arguments = (ins FlatSymbolRefAttr:$name,
+                       AnyTypeOf<[Heavy_Binding, Heavy_Type]>:$var);
+  let results   = (outs);
 }
 
 #endif // HEAVY_DIALECT_TD

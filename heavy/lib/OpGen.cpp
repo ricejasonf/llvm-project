@@ -417,6 +417,14 @@ void OpGen::FinishTopLevelOp() {
     if (auto ContOp = dyn_cast<heavy::ContOp>(TermOp)) {
       assert(ContOp.getArgs().size() == 1 &&
              isa<HeavyBindingType>(ContOp.getArgs().front().getType()));
+      mlir::Value BVal = ContOp.getArgs().front();
+      mlir::OpBuilder::InsertionGuard IG(Builder);
+      Builder.setInsertionPoint(ContOp);
+      heavy::InitGlobalOp::create(Builder, GlobalOp.getLoc(),
+                                  GlobalOp.getSymName(), BVal);
+      mlir::Value Undefined = heavy::UndefinedOp::create(Builder,
+                                                  GlobalOp.getLoc());
+      ContOp.getArgsMutable().assign(Undefined);
     } else {
       mlir::Value Results = createContinuation(TermOp);
       // TODO Use MatchArgsOp to destructure ValueRefs to a single
@@ -426,7 +434,11 @@ void OpGen::FinishTopLevelOp() {
                                              Results, /*Index*/0);
       mlir::Value BVal = createHelper<BindingOp>(Builder,
           heavy::SourceLocation(), Result);
-      heavy::ContOp::create(Builder, GlobalOp.getLoc(), BVal);
+      heavy::InitGlobalOp::create(Builder, GlobalOp.getLoc(),
+                                  GlobalOp.getSymName(), BVal);
+      mlir::Value Undefined = heavy::UndefinedOp::create(Builder,
+                                                  GlobalOp.getLoc());
+      heavy::ContOp::create(Builder, GlobalOp.getLoc(), Undefined);
     }
   }
 
@@ -559,8 +571,9 @@ mlir::Value OpGen::createLambda(Value Formals, Value Body,
 mlir::Value OpGen::createLambda(heavy::SourceLocation Loc,
                                 llvm::StringRef Name,
                                 llvm::MutableArrayRef<mlir::Value> Captures) {
-  for (mlir::Value& Capture : Captures)
-    Capture = UnwrapBinding(Capture);
+  // Note: This function was originally broken out to
+  //       unwrap captures which would prevent mutable captures.
+  // Do not unwrap captures.
   return create<LambdaOp>(Loc, Name, Captures);
 }
 
@@ -964,7 +977,7 @@ bool OpGen::WalkDefineInits(Value Env, IdSet& LocalIds) {
          "BindingTable should have an entry for local define");
   if (!Init)
     return true;
-  Init = LocalizeValue(Init);  // Unwrap any binding.
+  Init = UnwrapBinding(Init);
   create<SetOp>(Loc, BVal, Init);
   return false;
 }
@@ -1185,7 +1198,7 @@ mlir::Value OpGen::createIf(SourceLocation Loc, Value Cond, Value Then,
       if (Result) {
         assert(Block->empty() ||
           !Block->back().hasTrait<mlir::OpTrait::IsTerminator>());
-        Result = LocalizeValue(Result);  // Unwrap any binding.
+        Result = UnwrapBinding(Result);
         create<ContOp>(Loc, Result);
       }
     };

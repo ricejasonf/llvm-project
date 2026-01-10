@@ -102,10 +102,8 @@ heavy::FuncOp HeavyModulePass::lookupCapturingFunction(mlir::Operation* Op) {
   llvm::StringRef FuncName;
   if (auto PC = dyn_cast<heavy::PushContOp>(Op))
     FuncName = PC.getName();
-#if 0  // This should not happen
   else if (auto L = dyn_cast<heavy::LambdaOp>(Op))
     FuncName = L.getName();
-#endif
 
   if (FuncName.empty())  // Not a capture
     return heavy::FuncOp();
