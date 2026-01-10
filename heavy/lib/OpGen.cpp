@@ -1123,7 +1123,8 @@ mlir::Value OpGen::createTopLevelDefine(Value Id, Value DefineArgs,
     mlir::Operation* Op = GlobalOp.getOperation();
     Op->moveBefore(&Op->getBlock()->back());
   } else {
-    GlobalOp = createTopLevel<heavy::GlobalOp>(DefineLoc, MangledNameRef);
+    GlobalOp = createTopLevel<heavy::GlobalOp>(DefineLoc, MangledNameRef,
+        Builder.getType<HeavyBindingType>());
   }
   setTopLevelOp(GlobalOp.getOperation());
   mlir::Block& Block = *GlobalOp.addEntryBlock();
@@ -1267,12 +1268,18 @@ mlir::Value OpGen::createGlobal(SourceLocation Loc,
   Operation* G = LookupSymbol(MangledName);
 
   if (!G) {
-    // Lazily insert extern GlobalOps
+    // Lazily insert external GlobalOp
     // at the beginning of the module.
     // Note that OpEval will never visit these.
+
+    // Try to get the type of the global defaulting to !heavy.unknown.
+    heavy::Value KnownVal = Context.GetKnownValue(MangledName);
+    mlir::Type Type = KnownVal
+      ? getValueType(Context.MLIRContext.get(), KnownVal)
+      : HeavyUnknownType::get(Context.MLIRContext.get());
     mlir::OpBuilder::InsertionGuard IG(ModuleBuilder);
     ModuleBuilder.setInsertionPointToStart(M.getBody());
-    G = createTopLevel<GlobalOp>(Loc, MangledName)
+    G = createTopLevel<GlobalOp>(Loc, MangledName, Type)
       .getOperation();
   }
 
@@ -1286,10 +1293,8 @@ mlir::Value OpGen::createGlobal(SourceLocation Loc,
   if (TopLevelOp)
     LocalV = BindingTable.lookup(CanonicalValue);
   if (!LocalV) {
-    // Try to get the type of the global defaulting to !heavy.unknown.
-    heavy::Value KnownVal = Context.GetKnownValue(SymbolOp.getName());
-    mlir::Type Type = KnownVal
-      ? getValueType(Context.MLIRContext.get(), KnownVal)
+    mlir::Type Type = isa<heavy::GlobalOp>(G)  // Could be GlobalBindingOp
+      ? cast<GlobalOp>(G).getType()
       : HeavyUnknownType::get(Context.MLIRContext.get());
     LocalV = create<LoadGlobalOp>(Loc, Type, SymbolOp.getName());
     BindingTable.insert(CanonicalValue, LocalV);

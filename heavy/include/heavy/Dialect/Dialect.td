@@ -188,7 +188,7 @@ def Heavy_GlobalOp : HeavyOp<"global", [Symbol, IsolatedFromAbove]> {
     }
   }];
 
-  let arguments = (ins StrAttr:$sym_name);
+  let arguments = (ins SymbolNameAttr:$sym_name, TypeAttr:$type);
 }
 
 def Heavy_GlobalBindingOp : HeavyOp<"global_binding",
