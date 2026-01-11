@@ -25,6 +25,32 @@ struct StripGlobalBindingsPass
   void runOnOperation() override;
   bool isSetFound(mlir::Value OpResult);
 };
+
+// Strip any heavy.unbox whose input is
+// no longer possibly a binding.
+// (which is invalid.)
+void stripUnboxes(mlir::ModuleOp Op) {
+  Op->walk([](heavy::UnboxOp UnboxOp) {
+      mlir::Value Input = UnboxOp.getBinding();
+      if (!isa<HeavyBindingType, HeavyUnknownType>(Input.getType())) {
+        UnboxOp.getResult().replaceAllUsesWith(Input);
+        UnboxOp.erase();
+      }
+      return mlir::WalkResult::advance();
+    });
+}
+
+// Strip heavy.match_type that maps to the same type.
+void stripMatchTypes(mlir::ModuleOp Op) {
+  Op->walk([](heavy::MatchTypeOp MatchTypeOp) {
+      mlir::Value Input = MatchTypeOp.getArg();
+      if (Input.getType() == MatchTypeOp.getResult().getType()) {
+        MatchTypeOp.getResult().replaceAllUsesWith(Input);
+        MatchTypeOp.erase();
+      }
+      return mlir::WalkResult::advance();
+    });
+}
 }  // namespace
 
 
@@ -32,13 +58,9 @@ void StripGlobalBindingsPass::runOnOperation() {
   mlir::ModuleOp ModuleOp = getOperation();
   for (mlir::Operation& TopLevelOp : ModuleOp.getBody()->getOperations()) {
     if (auto GlobalOp = dyn_cast<heavy::GlobalOp>(&TopLevelOp)) {
-      if (GlobalOp.isExternal())
-        continue;
-      mlir::Block& InitBlock = GlobalOp.getInitializer().front();
-      auto ContOp = dyn_cast<heavy::ContOp>(InitBlock.back());
-      if (!ContOp || ContOp.getArgs().empty())
-        continue;
-      if (!isa<heavy::HeavyBindingType>(ContOp.getArgs().front().getType()))
+      mlir::Type Type = GlobalOp.getType();
+      if (GlobalOp.isExternal() ||
+          !isa<heavy::HeavyBindingType>(Type))
         continue;
 
       bool IsSetFound = false;
@@ -50,21 +72,52 @@ void StripGlobalBindingsPass::runOnOperation() {
         });
 
       // Find any SetOp that uses the result of said LoadGlobalOp.
-      if (!IsSetFound)
-        llvm::errs() << "Found global binding to be stripped: "
-                     << GlobalOp.getSymName() << "\n";
+      if (IsSetFound)
+        continue;
+
+      // Strip the binding.
+      GlobalOp->walk([&](heavy::InitGlobalOp IG) -> mlir::WalkResult {
+          if (auto B = IG.getVar().getDefiningOp<heavy::BindingOp>()) {
+            Type = B.getInput().getType();
+            IG.setOperand(B.getInput());
+            B.erase();
+          } else {
+            IG->emitOpError("heavy.init_global input type did not match "
+                            "annotated type of heavy.global_op");
+          }
+          // There should be only one InitGlobalOp.
+          return mlir::WalkResult::interrupt();
+        });
+
+      // Update the GlobalOp annotated type.
+      GlobalOp.setType(Type);
+
+      // Update the type of the heavy.load_globals.
+      ModuleOp->walk([&](heavy::LoadGlobalOp LG) -> mlir::WalkResult {
+          if (LG.getName() == GlobalOp.getSymName()) {
+            LG.getResult().setType(Type);
+            // Update any captures. (Yes, capturing globals is useful.)
+            updateCaptureTypes(LG.getResult());
+          }
+          return mlir::WalkResult::advance();
+        });
+
+      stripUnboxes(ModuleOp);
+      stripMatchTypes(ModuleOp);
     }
   }
 }
 
 // Recursively chase operation results to see if we find a "use" by a SetOp.
 bool StripGlobalBindingsPass::isSetFound(mlir::Value OpResult) {
+  assert(OpResult);
   // Because globals can be loaded anywhere, any SetOp requires
   // the variable to exist as a binding.
   for (mlir::OpOperand& Use : OpResult.getUses()) {
+    assert(Use.getOwner());
     if (isa<heavy::SetOp>(Use.getOwner()))
       return true;
-    if (mlir::Value Capture = getCapture(Use.getOwner())) {
+    if (mlir::Value Capture = getCapture(Use)) {
       if (isSetFound(Capture))
         return true;
     }
@@ -75,7 +128,8 @@ bool StripGlobalBindingsPass::isSetFound(mlir::Value OpResult) {
 // If Operand is being captured, get the result of the
 // LoadRefOp that loads the captured Operand.
 // Otherwise, return mlir::Value().
-mlir::Value HeavyModulePass::getCapture(mlir::OpOperand Operand) {
+mlir::Value HeavyModulePass::getCapture(mlir::OpOperand& Operand) {
+  assert(Operand.get());
   mlir::Operation* Op = Operand.getOwner();
   unsigned Index = Operand.getOperandNumber();
 
@@ -84,16 +138,31 @@ mlir::Value HeavyModulePass::getCapture(mlir::OpOperand Operand) {
     return mlir::Value();
 
   // Find the LoadRefOp with the corresponding Index.
-  for (mlir::Operation& Op : FuncOp.getBody().front()) {
-    if (auto LoadRefOp = dyn_cast<heavy::LoadRefOp>(&Op)) {
-      if (LoadRefOp.getIndex() == Index)
-        return LoadRefOp.getResult();
+  mlir::Value Result;
+  FuncOp->walk([&](heavy::LoadRefOp LoadRefOp) {
+      if (LoadRefOp.getIndex() == Index) {
+        Result = LoadRefOp.getResult();
+        return mlir::WalkResult::interrupt();
+      }
+      return mlir::WalkResult::advance();
+    });
+
+  if (!Result)
+    Op->emitOpError("capture operand #") << Index <<
+                    "does not have corresponding heavy.load_ref";
+  return Result;
+}
+
+// Recursively, chase captures of a value updating the type
+// the corresponding heavy.load_refs.
+void HeavyModulePass::updateCaptureTypes(mlir::Value Value) {
+  for (mlir::OpOperand& Use : Value.getUses()) {
+    assert(Use.getOwner());
+    if (mlir::Value Capture = getCapture(Use)) {
+      Capture.setType(Value.getType());
+      updateCaptureTypes(Capture);
     }
   }
-
-  Op->emitOpError("capture operation does not have "
-                  "corresponding heavy.load_ref");
-  return mlir::Value();
 }
 
 // If Op is a capturing operation, then get the function name

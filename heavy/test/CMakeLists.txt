@@ -7,5 +7,5 @@ configure_lit_site_cfg(
 
 add_lit_testsuite(check-heavy "Running Heavy tests"
   ${CMAKE_CURRENT_SOURCE_DIR}
-  DEPENDS heavy-scheme FileCheck
+  DEPENDS heavy-scheme heavy-opt FileCheck
 )

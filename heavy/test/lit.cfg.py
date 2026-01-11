@@ -6,7 +6,7 @@ from lit.llvm import llvm_config
 config.name = 'heavy'
 config.test_source_root = os.path.dirname(__file__)
 config.test_format = lit.formats.ShTest()
-config.suffixes = ['.scm', '.cpp']
+config.suffixes = ['.scm', '.cpp', '.mlir']
 config.excludes = [
     "Inputs",
     "CMakeLists.txt",

@@ -20,8 +20,9 @@ class HeavyModulePass : public mlir::OperationPass<mlir::ModuleOp> {
 
 public:
   using Base::OperationPass;
-  mlir::Value getCapture(mlir::OpOperand Operand);
+  mlir::Value getCapture(mlir::OpOperand& Operand);
   heavy::FuncOp lookupCapturingFunction(mlir::Operation* Op);
+  void updateCaptureTypes(mlir::Value);
 };
 }
 
