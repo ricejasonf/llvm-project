@@ -40,6 +40,7 @@ add_heavy_library(heavy
 
   DEPENDS
     HeavyDialectIncGen
+    HeavyPassesIncGen
     NbdlOpsIncGen
     MLIRFuncOpsIncGen
   )

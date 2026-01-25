@@ -870,7 +870,7 @@ Value append_rec(Context& C, Value List, Value Cdr) {
       return C.CreatePair(P->Car, V, P);
   }
   return Value();
-};
+}
 }
 
 void append(Context& C, ValueRefs Args) {

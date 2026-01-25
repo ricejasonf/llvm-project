@@ -958,7 +958,7 @@ namespace {
   bool checkPortableFilename(llvm::StringRef Filename) {
     for (char c : Filename) {
       if ((c < 'a' || c > 'z') &&
-          (c < '0' && c > '9') &&
+          (c < '0' || c > '9') &&
           (c != '.') &&
           (c != '_') &&
           (c != '-'))

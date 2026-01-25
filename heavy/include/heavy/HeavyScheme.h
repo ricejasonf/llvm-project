@@ -25,7 +25,6 @@ class Context;
 class SourceFileStorage;
 class SourceManager;
 class Value;
-struct Undefined;
 class Environment;
 class FullSourceLocation;
 using ModuleLoadNamesFn = void(heavy::Context&);

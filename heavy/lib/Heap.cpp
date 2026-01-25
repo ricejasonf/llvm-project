@@ -363,7 +363,7 @@ void Context::CollectGarbage() {
 
   // Visit ModuleOp (for contained LiteralOps, MatchOps)
   if (ModuleOp) {
-    auto WalkerFn = [&GC](mlir::Operation* Op) {
+    auto WalkerFn = [](mlir::Operation* Op) {
       heavy::HeavyValueAttr ValAttr;
       if (auto LiteralOp = dyn_cast<heavy::LiteralOp>(Op))
         ValAttr = LiteralOp.getInputAttr();
