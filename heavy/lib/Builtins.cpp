@@ -101,7 +101,7 @@ heavy::ExternFunction load_builtin;
 heavy::ExternFunction eval;
 heavy::ExternFunction op_eval;
 heavy::ExternFunction compile;
-heavy::ContextLocal   module_path;
+heavy::ContextLocal   include_paths;
 
 
 // Type predicates
@@ -1485,7 +1485,7 @@ void HEAVY_BASE_LOAD_MODULE(heavy::Context& Context) {
     {"eval",    HEAVY_BASE_VAR(eval)},
     {"op-eval", HEAVY_BASE_VAR(op_eval)},
     {"compile", HEAVY_BASE_VAR(compile)},
-    {"module-path", HEAVY_BASE_VAR(module_path).get(Context)},
+    {"include-paths", HEAVY_BASE_VAR(include_paths).get(Context)},
 
     // Type predicates
     {"boolean?", HEAVY_BASE_VAR(is_boolean)},

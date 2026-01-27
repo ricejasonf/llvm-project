@@ -1,10 +1,10 @@
-; RUN: heavy-scheme --module-path=%S/Inputs %s | FileCheck %s
-; RUN: heavy-scheme --module-path=%S/../Evaluate/Inputs %s | FileCheck %s
+; RUN: heavy-scheme --module-path=%heavy_module_path --module-path=%S/Inputs %s | FileCheck %s
+; RUN: heavy-scheme --module-path=%heavy_module_path --module-path=%S/../Evaluate/Inputs %s | FileCheck %s
 
 ; CHECK: "end of module"
 ; CHECK-NEXT: "end of init"
 (import (my lib))
-(import (only (heavy builtins)
+(import (only (heavy base)
               write newline lambda
               + define
               ))

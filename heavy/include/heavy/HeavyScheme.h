@@ -88,7 +88,7 @@ class HeavyScheme {
                                char const* BufferEnd,
                                char const* BufferPos);
   void InitSourceFileStorage();
-  void SetModulePath(llvm::StringRef ModulePath);
+  void SetIncludePaths(heavy::Value IncludePaths);
 
   using ErrorHandlerFn = void(llvm::StringRef,
                               heavy::FullSourceLocation const&);

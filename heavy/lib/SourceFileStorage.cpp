@@ -17,6 +17,7 @@
 #include "heavy/SourceManager.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 
 namespace heavy {
@@ -60,6 +61,28 @@ void HeavyScheme::ProcessTopLevelCommands(llvm::StringRef Filename,
   ProcessTopLevelCommands(Lexer, ExprHandler, ErrorHandler, tok::eof);
 }
 
+// Indicate an error was raised by returning an empty string.
+static std::string SearchIncludePath(heavy::Context& C,
+                                     llvm::StringRef Filename) {
+  heavy::Value IncludePaths = HEAVY_BASE_VAR(include_paths).get(C);
+  for (heavy::Value Path : IncludePaths) {
+    llvm::StringRef PathStr = Path.getStringRef();
+    if (PathStr.empty()) {
+      C.RaiseError(
+          "expecting nonempty string-like object in include-paths: {}", Path);
+      return std::string();
+    }
+    llvm::Twine T2(Filename);
+    llvm::Twine T1(PathStr, "/");
+    if (llvm::sys::fs::exists(T1.concat(T2)))
+      return T1.concat(T2).str();
+  }
+
+  C.RaiseError("file not found using include-paths: {}",
+      Value(C.CreateString(Filename)));
+  return std::string();
+}
+
 // This overload provides the default file system
 // access for opening source files.
 // The user must call InitSourceFileStorage.
@@ -67,10 +90,15 @@ heavy::Value HeavyScheme::ParseSourceFile(heavy::SourceLocation Loc,
                                           llvm::StringRef Filename) {
   assert(SourceFileStoragePtr &&
       "source file storage not initialized");
+
+  std::string FullPath = SearchIncludePath(getContext(), Filename);
+  if (FullPath.empty())
+    return Undefined();
+
   std::string ErrorMessage;
   llvm::ErrorOr<heavy::SourceFile>
     FileResult = SourceFileStoragePtr->Open(getSourceManager(), Loc,
-                                            Filename, ErrorMessage);
+                                            FullPath, ErrorMessage);
   if (!FileResult) {
     heavy::Context& C = getContext();
     C.RaiseError(ErrorMessage);

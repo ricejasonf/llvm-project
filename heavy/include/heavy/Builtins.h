@@ -34,7 +34,7 @@
 
 // Forward declare vars that are used in the C++ codebase.
 namespace heavy::builtins_var {
-extern heavy::ContextLocal module_path;
+extern heavy::ContextLocal include_paths;
 extern heavy::ContextLocal parse_source_file;
 extern heavy::ExternFunction compile;
 extern heavy::ExternFunction eval;

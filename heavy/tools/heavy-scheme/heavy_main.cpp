@@ -15,6 +15,7 @@
 #include <heavy/Parser.h>
 #include <heavy/HeavyScheme.h>
 #include <heavy/SourceManager.h>
+#include <llvm/ADT/SmallString.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/Path.h>
@@ -50,9 +51,11 @@ static cl::opt<ExecutionMode> InputMode(
                         "verify and output mlir code to stderr"}),
   cl::init(ExecutionMode::none));
 
-static cl::opt<std::string> InputModulePath(
-  "module-path", cl::desc("Specify the path used for prebuilt modules."),
-  cl::init(".heavy_modules"));
+static cl::list<std::string> InputIncludePaths(
+  "module-path", cl::desc("Specify a path used for file lookup."));
+
+static cl::alias InputModulePathAlias(
+  "I", cl::desc("Alias for -module-path"), cl::aliasopt(InputIncludePaths));
 
 static cl::opt<std::string> InputExportModule(
   "export-module", cl::desc("Specify a library by its mangled name to export"
@@ -79,10 +82,16 @@ void ProcessTopLevelExpr(heavy::Context& Context, heavy::ValueRefs Values) {
   }
 }
 
-void SetModulePath(heavy::HeavyScheme& HeavyScheme) {
-  llvm::SmallString<64> Path = llvm::StringRef(InputModulePath.getValue());
-  llvm::sys::fs::make_absolute(Path);
-  HeavyScheme.SetModulePath(llvm::StringRef(Path));
+void SetIncludePaths(heavy::HeavyScheme& HeavyScheme) {
+  heavy::Context& C = HeavyScheme.getContext();
+  llvm::SmallVector<heavy::Value, 4> Paths;
+  for (std::string const& Str : InputIncludePaths) {
+    auto AbsPath = llvm::SmallString<128>(llvm::StringRef(Str));
+    llvm::sys::fs::make_absolute(AbsPath);
+    Paths.push_back(C.CreateString(AbsPath.str()));
+  }
+  heavy::Value PathList = C.CreateList(Paths);
+  HeavyScheme.SetIncludePaths(PathList);
 }
 
 int main(int argc, char const** argv) {
@@ -96,7 +105,7 @@ int main(int argc, char const** argv) {
   HeavyScheme.InitSourceFileStorage();
   cl::ParseCommandLineOptions(argc, argv);
 
-  SetModulePath(HeavyScheme);
+  SetIncludePaths(HeavyScheme);
 
   // Create error handler.
   bool HasErrors = false;
@@ -124,17 +133,6 @@ int main(int argc, char const** argv) {
   HeavyScheme.ProcessTopLevelCommands(InputFilename,
                                       ProcessTopLevelExpr,
                                       OnError);
-
-  if (!InputExportModule.empty()) {
-    llvm::errs() << "error: TODO Export a bytecode "
-                    "file of modules when specified.";
-    // If module-path is unspecified we output to the current directory.
-    std::string ModulePath = InputModulePath.getValue();
-    std::string ModuleName = InputExportModule.getValue();
-    if (!HeavyScheme.getContext().OutputModule(ModuleName, ModulePath)) {
-      llvm::errs() << "error: module output failed " << ModuleName << "\n\n";
-    }
-  }
 
   if (InputMode.getValue() == ExecutionMode::mlir) {
     HeavyScheme.getContext().verifyModule();

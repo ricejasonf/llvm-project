@@ -967,13 +967,15 @@ namespace {
     return true;
   }
 
-  // Append to Output the path to a module sans any file extension.
+  // Append to Output the relative path to a module sans any file extension.
   void getModulePath(heavy::Context& C, llvm::StringRef MangledName,
                      llvm::SmallVectorImpl<char>& Output) {
+#if 0 // TODO REMOVE
     llvm::StringRef ModulePath =
         HEAVY_BASE_VAR(module_path).get(C).getStringRef();
     if (!ModulePath.empty())
       llvm::Twine(ModulePath, "/").toVector(Output);
+#endif
 
     llvm::StringRef Input = MangledName;
     Input.consume_front(Mangler::getManglePrefix());
@@ -1173,6 +1175,8 @@ void Context::IncludeModuleFile(heavy::SourceLocation Loc,
   WithEnv(std::move(Env), Thunk);
 }
 
+// TODO Remove the appended '.bc' suffix and specify the
+//      filename the command line.
 bool Context::TryLoadPrebuiltModule(heavy::SourceLocation Loc,
                                     heavy::String* Filename) {
   std::unique_ptr<llvm::MemoryBuffer> FileBuffer = nullptr;
@@ -1720,7 +1724,7 @@ EnvEntry Context::GetSyntax(EnvEntry Entry) {
 
 bool Context::OutputModule(llvm::StringRef MangledName,
                            llvm::StringRef ModulePath) {
-#if 0
+#if 0 // TODO Rework this to specify an output path (I think)
   mlir::ModuleOp TopOp = cast<mlir::ModuleOp>(ModuleOp);
   if (mlir::Operation* Op = TopOp.lookupSymbol(MangledName)) {
     std::string ErrorMessage;
