@@ -341,7 +341,8 @@ def Heavy_ExportIdOp : HeavyOp<"export-id"> {
     Provide an identifier to associate with a target identifier $id
     with a mangled name $symbolName.
   }];
-  let arguments = (ins FlatSymbolRefAttr:$symbolName, StrAttr:$id);
+  let arguments = (ins FlatSymbolRefAttr:$symbolName, StrAttr:$id,
+                   StrAttr:$origId);
 }
 
 def Heavy_MatchOp : HeavyOp<"match", []> {

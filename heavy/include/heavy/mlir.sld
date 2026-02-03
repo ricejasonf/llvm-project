@@ -4,21 +4,21 @@
   (import (heavy base)
           (heavy mlir builtins))
     (begin
-      (define (init-regions Op BlockArgTypesList UserFns)
+      (define (init-regions Op BlockArgLocList BlockArgTypesList UserFns)
         (define Is (range (length BlockArgTypesList)))
-        (define (InitRegion RegionIndex BlockArgTypes UserFn)
+        (define (InitRegion RegionIndex BlockArgTypes BlockArgLocs UserFn)
           (with-builder
             (lambda ()
               (define Region (get-region Op RegionIndex))
               (define Block (entry-block Region))
               (define Args
                 (let ()
-                  (define (Proc BlockArgType)
-                    (add-argument Block BlockArgType Loc))
-                  (map Proc BlockArgTypes)))
+                  (define (Proc BlockArgType BlockArgLoc)
+                    (add-argument Block BlockArgType BlockArgLoc))
+                  (map Proc BlockArgTypes BlockArgLocs)))
               (at-block-begin Block)
               (apply UserFn Args))))
-        (map InitRegion Is BlockArgTypesList UserFns))
+        (map InitRegion Is BlockArgTypesList BlockArgLocList UserFns))
 
       (define-syntax create-op
         (syntax-rules (: loc: attributes: operands: result-types: region:)
@@ -37,10 +37,11 @@
                       (result-types ResultTypes ...)
                       (regions (length '(RegionName ...)))
                       ))
-                  (BlockArgsTypesList (list (list BlockArgType ...) ...))
+                  (BlockArgLocList (list (list (syntax-source-loc BlockArg) ...) ...))
+                  (BlockArgTypesList (list (list BlockArgType ...) ...))
                   (UserFns (list (lambda (BlockArg ...)
                                        RegionBody1 RegionBodyN ...) ...)))
-              (init-regions Op BlockArgsTypesList UserFns)
+              (init-regions Op BlockArgLocList BlockArgTypesList UserFns)
               Op)
           )))
     ) ; end of begin

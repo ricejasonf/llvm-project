@@ -71,6 +71,11 @@ void Value::dump() {
   llvm::errs() << '\n';
 }
 
+heavy::SourceLocation Value::getSourceLocation(mlir::Operation* Op) {
+  return heavy::SourceLocation(mlir::OpaqueLoc
+    ::getUnderlyingLocationOrNull<heavy::SourceLocationEncoding*>(Op->getLoc()));
+}
+
 // NameForImportVar - Because we use String* for storing mangled
 //                    names, we need to create one for "import"
 //                    which is special. We also give it a relatively

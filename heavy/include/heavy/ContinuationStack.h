@@ -128,7 +128,7 @@ public:
   }
 
 private:
-  void ApplyHelper(Value Callee, ValueRefs Args) {
+  void ApplyHelper(Value Callee, llvm::ArrayRef<Value> Args) {
     assert(!DidCallContinuation &&
         "continuation should be specified only once");
     assert(Callee && "Callee must not be null");
@@ -311,7 +311,7 @@ public:
   //    - Prepares a call without affecting the stack
   //    - This can be used for tail calls or, when used
   //      in conjunction with PushCont, non-tail calls
-  void Apply(Value Callee, ValueRefs Args) {
+  void Apply(Value Callee, llvm::ArrayRef<Value> Args) {
     ApplyHelper(Callee, Args);
   }
 
@@ -322,10 +322,10 @@ public:
   // Cont
   //    - Prepares a call to the topmost continuation
   //    - Args should not include the callee
-  void Cont(ValueRefs Args) {
+  void Cont(llvm::ArrayRef<Value> Args) {
     ApplyHelper(PopCont(), Args);
   }
-  void Cont(Value Arg) { Cont(ValueRefs(Arg)); }
+  void Cont(Value Arg) { Cont(llvm::ArrayRef<Value>(Arg)); }
   void Cont() { Cont(Undefined()); }
 
   // ClearStack

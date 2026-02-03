@@ -254,6 +254,7 @@ void OpGen::VisitLibrary(heavy::SourceLocation Loc,
       C.SaveEscapeProc(LibraryEnvProc, [](heavy::Context& C, ValueRefs Args) {
         // Handle the sequence from `begin` from within the lib environment.
         Binding* HandleLibraryDecls = cast<Binding>(C.getCapture(0));
+        Binding* LibraryEnvProc = cast<Binding>(C.getCapture(1));
         if (isa<Lambda>(HandleLibraryDecls->getValue())) {
           C.PushCont(HandleLibraryDecls->getValue());
           C.PushCont([](heavy::Context& C, ValueRefs Args) {
@@ -262,11 +263,10 @@ void OpGen::VisitLibrary(heavy::SourceLocation Loc,
           });
           C.Cont(Args[0]);
         } else {
-          // If the escape proc is cleared then let this proc
-          // complete so it deletes the environment.
-          C.Cont();
+          LibraryEnvProc->setValue(Empty());
+          C.OpGen->FinishLibrary();
         }
-      }, CaptureList{HandleLibraryDecls});
+      }, CaptureList{HandleLibraryDecls, LibraryEnvProc});
     }, CaptureList{HandleLibraryDecls, LibraryEnvProc});
     // Taking ownership of EnvPtr
     auto EnvPtr = std::make_unique<heavy::Environment>(C, MangledName);
@@ -302,8 +302,10 @@ void OpGen::VisitLibrary(heavy::SourceLocation Loc,
         // The library is done.
         // Unset stuff so the cleanups will run.
         cast<Binding>(HandleLibraryDecls)->setValue(Empty());
-        C.OpGen->LibraryEnvProc->setValue(Empty());
-        C.Cont();
+        //C.OpGen->LibraryEnvProc->setValue(Empty());
+        //C.Cont();
+        C.Apply(C.OpGen->LibraryEnvProc->getValue(), Value(Empty()));
+        C.PushCont(HandleLibraryDecls->getValue());
       } else {
         C.OpGen->SetError("expected proper list for library declarations",
                           LibraryDecls->getValue());
@@ -336,6 +338,47 @@ void OpGen::VisitLibrarySpec(Value LibSpec) {
 
     C.Cont();
   }, CaptureList{LibSpec});
+  Context.Cont();
+}
+
+void OpGen::FinishLibrary() {
+  auto M = cast<mlir::ModuleOp>(this->ModuleOp);
+
+  // Check symbols of export-ids.
+  for (mlir::Operation& Op : *M.getBody()) {
+    if (auto E = dyn_cast<heavy::ExportIdOp>(&Op)) {
+      if (E.getSymbolName().empty()) {
+        // Try looking up the name.
+        EnvEntry Entry = LookupEnv(Context.CreateSymbol(E.getOrigId()));
+        if (!Entry.MangledName) {
+          this->Context.setLoc(heavy::Value::getSourceLocation(E));
+          this->Context.RaiseError(
+              "export name must reference a defined global value or syntax");
+          return;
+        }
+        E.setSymbolName(Entry.MangledName->getStringRef());
+      }
+    } else if (auto G = dyn_cast<heavy::GlobalOp>(&Op)) {
+
+      if (G.isExternal() && !Mangler::isExternalVariable(getModulePrefix(),
+                                                         G.getSymName())) {
+        // Find a LoadGlobalOp referencing this to get a source location.
+        heavy::SourceLocation Loc;
+        M->walk([&](heavy::LoadGlobalOp LG) {
+            if (LG.getName() == G.getSymName()) {
+              Loc = heavy::Value::getSourceLocation(LG);
+              return mlir::WalkResult::interrupt();
+            }
+            return mlir::WalkResult::advance();
+          });
+        this->Context.setLoc(Loc);
+        this->Context.RaiseError(
+            "variable name is referenced but never defined");
+        return;
+      }
+    }
+  }
+
   Context.Cont();
 }
 
@@ -1643,7 +1686,8 @@ void OpGen::Export(Value NameList) {
       Op.setSymbolName(MangledName);
     } else if (!Op) {
       Op = createHelper<ExportIdOp>(ModuleBuilder, Target->getSourceLocation(),
-                                    MangledName, Target->getView());
+                                    MangledName, Target->getStringRef(),
+                                    Source->getStringRef());
     }
 
     // Register renames to create ExportIdOps upon

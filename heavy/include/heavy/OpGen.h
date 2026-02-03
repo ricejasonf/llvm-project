@@ -210,6 +210,7 @@ public:
                    String* MangledName);
   void VisitLibrary(heavy::SourceLocation Loc, heavy::Symbol* MangledName,
                     heavy::Value LibraryDecls);
+  void FinishLibrary();
   void VisitTopLevel(Value V);
   void FinishTopLevelOp();
   void VisitTopLevelSequence(Value List);

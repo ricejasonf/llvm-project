@@ -447,9 +447,13 @@ public:
     if (is<ValueSumType::ValueBase>()) {
       return get<ValueSumType::ValueBase>()
         ->getSourceLocation();
+    } else if (is<ValueSumType::Operation>()) {
+      return getSourceLocation(get<ValueSumType::Operation>());
     }
     return SourceLocation();
   }
+
+  static SourceLocation getSourceLocation(mlir::Operation* Op);
 
   llvm::StringRef getStringRef() const {
     if (is<ValueSumType::ValueBase>()) {

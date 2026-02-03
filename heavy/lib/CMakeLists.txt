@@ -34,9 +34,17 @@ add_heavy_library(heavy
     MLIRFuncDialect
     MLIRIR
     MLIRParser
+    MLIRPass
     MLIRSideEffectInterfaces
     MLIRSupport
     MLIRTransforms
+
+    MLIRRegisterAllDialects
+    MLIRRegisterAllPasses
+    MLIRRegisterAllExtensions
+    ${MLIR_DIALECT_LIBS}
+    ${MLIR_CONVERSION_LIBS}
+    ${MLIR_EXTENSION_LIBS}
 
   DEPENDS
     HeavyDialectIncGen

@@ -84,7 +84,6 @@
     ; eval stuff
     compile
     eval
-    module-path
     op-eval
 
     ; Type predicates
