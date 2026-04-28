@@ -51,7 +51,6 @@
 #include "clang/Lex/ScratchBuffer.h"
 #include "clang/Lex/Token.h"
 #include "clang/Lex/TokenLexer.h"
-#include "heavy/Lexer.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -1718,7 +1717,7 @@ void NoTrivialPPDirectiveTracer::MacroExpands(const Token &MacroNameTok,
 
 void Preprocessor::InitEmbeddedLexer(
           llvm::function_ref<EmbeddedLexerInitFn> InitFn) {
-  assert(IsFileLexer() && "cannot embed scheme in macro expansion");
+  assert(IsFileLexer() && "cannot embed lexer in macro expansion");
   InitFn(CurLexer->getFileLoc(),
          getSourceManager().getFilename(CurLexer->getFileLoc()),
          CurLexer->BufferStart,
@@ -1733,10 +1732,6 @@ void Preprocessor::FinishEmbeddedLexer(unsigned Offset) {
   CachedTokens.clear();
   CachedLexPos = 0;
 
-  // Revert to the file lexer.
-  //while (!IsFileLexer()) {
-   // RemoveTopOfLexerStack();
-  //}
   // Have the CurLexer resume on the char
   // immediately after the last char lexed
   // by the the embedded lexer (specified by Offset)

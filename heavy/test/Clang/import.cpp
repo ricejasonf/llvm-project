@@ -1,10 +1,11 @@
-// RUN: clang++ -I %S/Inputs -I %heavy_module_path -fsyntax-only -Xclang -fheavy -Xclang -verify %s
+// RUN: clang++ -I %S/Inputs -I %heavy_module_path -fsyntax-only -fplugin=HeavyClang.so -Xclang -verify %s
 
 #include <type_traits>
 
 namespace foo {
-// expected-error@+7{{expected unqualified-id}}
-heavy_scheme {
+// expected-error@+8{{expected unqualified-id}}
+#pragma heavy_scheme
+{
 ;// The scheme environment is orthogonal to namespaces.
 (import (my lib))
 (import (heavy base))
@@ -19,7 +20,8 @@ heavy_scheme {
 static_assert(std::is_empty_v<foo::woof>);
 
 namespace bar {
-heavy_scheme {
+#pragma heavy_scheme
+{
 (write hello-foo)
 (if (is-empty 'foo::woof)
   (lol-trait 'bark)

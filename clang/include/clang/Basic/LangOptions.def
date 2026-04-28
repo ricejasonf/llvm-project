@@ -87,7 +87,6 @@ LANGOPT(AppleKext         , 1, 0, NotCompatible, "Apple kext support")
 LANGOPT(PascalStrings     , 1, 0, Benign, "Pascal string support")
 LANGOPT(WritableStrings   , 1, 0, NotCompatible, "writable string support")
 LANGOPT(ConstStrings      , 1, 0, NotCompatible, "const-qualified string support")
-LANGOPT(Heavy             , 1, 0, NotCompatible, "Heavy scheme integration")
 ENUM_LANGOPT(LaxVectorConversions, LaxVectorConversionKind, 2,
              LaxVectorConversionKind::All, NotCompatible, "lax vector conversions")
 ENUM_LANGOPT(AltivecSrcCompat, AltivecSrcCompatKind, 2,

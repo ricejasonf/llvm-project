@@ -1,36 +1,17 @@
-//===--- ParseDeclHeavy.cpp - HeavyScheme Declaration Parsing ---*- C++ -*-===//
-//
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
-//
-//===----------------------------------------------------------------------===//
-//
-//  This file implements the Heavy Declaration portions of the Parser interfaces.
-//
-//===----------------------------------------------------------------------===//
+// Copyright Jason Rice 2025
 
-#include "heavy/Builtins.h"
-#include "heavy/Clang.h"
-#include "heavy/Context.h"
-#include "heavy/HeavyScheme.h"
-#include "heavy/Value.h"
-#include "clang/Parse/Parser.h"
-#include "clang/AST/Expr.h"
-#include "clang/AST/Decl.h"
-#include "clang/AST/PrettyDeclStackTrace.h"
-#include "clang/Basic/CharInfo.h"
-#include "clang/Basic/TargetInfo.h"
-#include "clang/Parse/RAIIObjectsForParser.h"
-#include "clang/Sema/Scope.h"
-#include "clang/Sema/SemaDiagnostic.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/STLExtras.h"  // function_ref
+#include <heavy/Builtins.h>
+#include <heavy/Clang.h>
+#include <heavy/Context.h>
+#include <heavy/HeavyScheme.h>
+#include <heavy/Value.h>
+#include <clang/AST/Expr.h>
+#include <clang/Basic/Diagnostic.h>
+#include <clang/Basic/SourceManager.h>
+#include <clang/Lex/Preprocessor.h>
+#include <clang/Parse/Parser.h>
+#include <utility>
 
-using namespace clang;
-
-bool HEAVY_CLANG_IS_LOADED = false;
 heavy::ContextLocal HEAVY_CLANG_VAR(diag_error);
 heavy::ContextLocal HEAVY_CLANG_VAR(diag_warning);
 heavy::ContextLocal HEAVY_CLANG_VAR(diag_note);
@@ -40,6 +21,10 @@ heavy::ContextLocal HEAVY_CLANG_VAR(lexer_writer);
 heavy::ContextLocal HEAVY_CLANG_VAR(expr_eval);
 
 namespace {
+using Pair = std::pair<clang::Parser*, std::unique_ptr<heavy::HeavyScheme>>;
+
+static auto Instance = Pair();
+
 // Convert to a clang::SourceLocation or an invalid location if it
 // is not external.
 clang::SourceLocation getSourceLocation(heavy::FullSourceLocation Loc) {
@@ -49,16 +34,40 @@ clang::SourceLocation getSourceLocation(heavy::FullSourceLocation Loc) {
      .getLocWithOffset(Loc.getOffset());
 }
 
-clang::SourceLocation getSourceLocation(heavy::HeavyScheme& HS,
-                                        heavy::SourceLocation Loc) {
-  heavy::FullSourceLocation FullLoc = HS.getFullSourceLocation(Loc);
-  return getSourceLocation(FullLoc);
-}
+template <clang::DiagnosticsEngine::Level Level>
+struct DiagReport {
+  void operator()(heavy::HeavyScheme& HS,
+                  heavy::SourceLocation Loc,
+                  clang::DiagnosticsEngine& Diags,
+                  llvm::StringRef ErrMsg) const {
+    heavy::FullSourceLocation FullLoc = HS.getFullSourceLocation(Loc);
+    this->operator()(HS, FullLoc, Diags, ErrMsg);
+  }
+
+  void operator()(heavy::HeavyScheme& HS,
+                  heavy::FullSourceLocation HSLoc,
+                  clang::DiagnosticsEngine& Diags,
+                  llvm::StringRef ErrMsg) const {
+    // Create a custom DiagId once for our instance.
+    static heavy::ContextLocal CustomDiagId;
+    heavy::Context& Context = HS.getContext();
+    heavy::Binding* DiagIdBinding = CustomDiagId.getBinding(Context);
+    if (heavy::isa<heavy::Undefined>(DiagIdBinding->getValue())) {
+      unsigned Id = Diags.getCustomDiagID(Level, "(heavy_scheme) %0");
+      DiagIdBinding->setValue(heavy::Int(static_cast<int32_t>(Id)));
+    }
+    unsigned DiagId = static_cast<unsigned>(
+        heavy::cast<heavy::Int>(DiagIdBinding->getValue()));
+    clang::SourceLocation Loc = getSourceLocation(HSLoc);
+    Diags.Report(Loc, DiagId) << ErrMsg;
+  }
+};
 
 // It is complicated to keep the TokenBuffer alive
 // for the Preprocessor, so we use an array to give
 // ownership via the EnterTokenStream overload.
 class LexerWriter {
+  using Token = clang::Token;
   clang::Parser& Parser;
   llvm::BumpPtrAllocator& LexerSpellings;
   std::unique_ptr<Token[]> TokenBuffer;
@@ -115,12 +124,12 @@ public:
       Lexer.LexFromRawLexer(Tok);
 
       // Raw identifiers need to be looked up.
-      if (Tok.is(tok::raw_identifier))
+      if (Tok.is(clang::tok::raw_identifier))
         Parser.getPreprocessor().LookUpIdentifierInfo(Tok);
 
       Tok.setLocation(Loc);
 
-      if (Tok.is(tok::eof)) break;
+      if (Tok.is(clang::tok::eof)) break;
       push_back(Tok);
     }
   }
@@ -136,23 +145,28 @@ public:
   }
 };
 
-} // end anon namespace
 
-bool Parser::ParseHeavyScheme() {
-  if (!HeavyScheme) {
+class HeavySchemePragmaHandler : public clang::ParserPragmaHandler {
+public:
+  HeavySchemePragmaHandler()
+    : ParserPragmaHandler("heavy_scheme")
+  { }
+
+  void CreateInst(clang::Parser& P, Pair& Inst) {
+    auto& [ParserPtr, HeavyScheme] = Inst;
+    ParserPtr = &P;
     HeavyScheme = std::make_unique<heavy::HeavyScheme>();
     HeavyScheme->LexerSpellings = std::make_unique<llvm::BumpPtrAllocator>();
     // Load the static builtin module.
-    Parser& P = *this;
     heavy::HeavyScheme& HS = *HeavyScheme;
-    auto diag_gen = [&](auto DiagKind) {
-      return [&, DiagKind](heavy::Context& C, heavy::ValueRefs Args) {
+    auto diag_gen = [&](auto DiagReportFn) {
+      return [&, DiagReportFn](heavy::Context& C, heavy::ValueRefs Args) {
         if (Args.size() < 1 || Args.size() > 2) {
           C.RaiseError("invalid arity to function", C.getCallee());
           return;
         }
 
-        if (!isa<heavy::String, heavy::Symbol>(Args[0])) {
+        if (!heavy::isa<heavy::String, heavy::Symbol>(Args[0])) {
           C.RaiseError("expecting string or identifier", C.getCallee());
           return;
         }
@@ -162,14 +176,18 @@ bool Parser::ParseHeavyScheme() {
         if (Args.size() > 1)
           Loc = Args[1].getSourceLocation();
 
-        clang::SourceLocation CLoc = getSourceLocation(HS, Loc);
-        P.Diag(CLoc, DiagKind) << Err;
+        auto& Diags = P.getPreprocessor().getDiagnostics();
+        DiagReportFn(HS, Loc, Diags, Err);
         C.Cont();
       };
     };
-    auto diag_error = diag_gen(diag::err_heavy_scheme);
-    auto diag_warning = diag_gen(diag::warn_heavy_scheme);
-    auto diag_note = diag_gen(diag::note_heavy_scheme);
+
+    auto diag_error = diag_gen(
+        DiagReport<clang::DiagnosticsEngine::Level::Error>{});
+    auto diag_warning = diag_gen(
+        DiagReport<clang::DiagnosticsEngine::Level::Warning>{});
+    auto diag_note = diag_gen(
+        DiagReport<clang::DiagnosticsEngine::Level::Note>{});
 
     auto hello_world = [](heavy::Context& C, heavy::ValueRefs Args) {
       llvm::errs() << "hello world (from clang)\n";
@@ -188,7 +206,7 @@ bool Parser::ParseHeavyScheme() {
       } else {
         return C.RaiseError("invalid arity");
       }
-      if (!isa<heavy::String, heavy::Symbol>(Input)) {
+      if (!heavy::isa<heavy::String, heavy::Symbol>(Input)) {
         C.RaiseError("expecting string or identifier", C.getCallee());
         return;
       }
@@ -198,8 +216,9 @@ bool Parser::ParseHeavyScheme() {
       if (!Loc.isValid())
         Loc = C.getLoc();
 
+      // FIXME Check to see if we ever need this TentativeParsingAction.
       // Prepare to revert Parser.
-      TentativeParsingAction ParseReverter(P);
+      //clang::Parser::TempExposedTentativeParsingAction ParseReverter(P);
 
       // Lex and expand.
       LexerWriter TheLexerWriter(P, *HS.LexerSpellings);
@@ -212,7 +231,7 @@ bool Parser::ParseHeavyScheme() {
       clang::ExprResult ExprResult = P.ParseExpression();
 
       // Revert the lexer position so we don't keep moving forward.
-      ParseReverter.Revert();
+      //ParseReverter.Revert();
 
       // Process the parsing result if any.
       if (ExprResult.isInvalid()) {
@@ -236,6 +255,7 @@ bool Parser::ParseHeavyScheme() {
 
       // Convert EvalResult/APValue to Scheme value.
       heavy::Value Result;
+      using APValue = clang::APValue;
       switch (EvalResult.Val.getKind()) {
         case APValue::None:
         case APValue::Indeterminate: {
@@ -280,13 +300,14 @@ bool Parser::ParseHeavyScheme() {
 
     // This is a special system specific function so we can
     // use Clang's file search and source locations.
-    auto ParseSourceFileFn = [this](heavy::Context& C,
+    auto ParseSourceFileFn = [&P, &HS](heavy::Context& C,
                                     heavy::SourceLocation Loc,
                                     heavy::String* RequestedFilename) {
+      clang::Preprocessor& PP = P.getPreprocessor();
       heavy::FullSourceLocation
-        FullLoc = this->HeavyScheme->getFullSourceLocation(Loc);
+        FullLoc = HS.getFullSourceLocation(Loc);
       clang::SourceLocation ClangLoc = getSourceLocation(FullLoc);
-      OptionalFileEntryRef File = this->PP.LookupFile(
+      clang::OptionalFileEntryRef File = PP.LookupFile(
           ClangLoc, RequestedFilename->getView(),
           false, nullptr, nullptr, nullptr, nullptr, nullptr,
           nullptr, nullptr, nullptr);
@@ -296,25 +317,24 @@ bool Parser::ParseHeavyScheme() {
         return C.RaiseError(ErrMsg, heavy::Value(RequestedFilename));
       }
       // Determine if file is a system file... as if!
-      SrcMgr::CharacteristicKind FileChar = 
-        this->PP.getHeaderSearchInfo()
+      clang::SrcMgr::CharacteristicKind FileChar = 
+        PP.getHeaderSearchInfo()
           .getFileDirFlavor(*File);
-      FileID FileId = 
-        this->PP.getSourceManager().createFileID(*File, ClangLoc, FileChar);
+      clang::FileID FileId = 
+        PP.getSourceManager().createFileID(*File, ClangLoc, FileChar);
       clang::SourceLocation StartLoc =
-        this->PP.getSourceManager().getLocForStartOfFile(FileId);
+        PP.getSourceManager().getLocForStartOfFile(FileId);
       std::optional<llvm::MemoryBufferRef> Buffer =
-        this->PP.getSourceManager().getBufferOrNone(FileId, ClangLoc);
+        PP.getSourceManager().getBufferOrNone(FileId, ClangLoc);
       if (!Buffer)
         return C.RaiseError("error opening file buffer",
                             heavy::Value(RequestedFilename));
       // Is it over yet?
-      C.Cont(this->HeavyScheme->ParseSourceFile(
-                                          StartLoc.getRawEncoding(),
-                                          File->getName(),
-                                          Buffer->getBufferStart(),
-                                          Buffer->getBufferEnd(),
-                                          Buffer->getBufferStart()));
+      C.Cont(HS.ParseSourceFile(StartLoc.getRawEncoding(),
+                                File->getName(),
+                                Buffer->getBufferStart(),
+                                Buffer->getBufferEnd(),
+                                Buffer->getBufferStart()));
     };
 
     heavy::Context& Context = HeavyScheme->getContext();
@@ -332,88 +352,105 @@ bool Parser::ParseHeavyScheme() {
     HeavyScheme->RegisterModule(HEAVY_CLANG_LIB_STR, HEAVY_CLANG_LOAD_MODULE);
   }
 
-  heavy::Lexer SchemeLexer;
-  auto LexerInitFn = [&](clang::SourceLocation Loc,
-                         llvm::StringRef Name,
-                         char const* BufferStart,
-                         char const* BufferEnd,
-                         char const* BufferPtr) {
-    SchemeLexer = HeavyScheme->createEmbeddedLexer(
-                        Loc.getRawEncoding(), Name,
-                        BufferStart, BufferEnd, BufferPtr);
-  };
+  void HandleParseExternalDeclaration(
+                    clang::Parser& P,
+                    clang::Token& Tok,
+                    clang::DeclGroupRef&) override {
+    auto& [ParserPtr, HeavyScheme] = Instance;
+    // Only supporting one instance.
+    if (ParserPtr == nullptr)
+      CreateInst(P, Instance);
+    else if (&P != ParserPtr)
+      return;
 
-  PP.InitEmbeddedLexer(LexerInitFn);
+    heavy::Lexer SchemeLexer;
+    auto LexerInitFn = [&](clang::SourceLocation Loc,
+                           llvm::StringRef Name,
+                           char const* BufferStart,
+                           char const* BufferEnd,
+                           char const* BufferPtr) {
+      SchemeLexer = HeavyScheme->createEmbeddedLexer(
+                          Loc.getRawEncoding(), Name,
+                          BufferStart, BufferEnd, BufferPtr);
+    };
 
-  bool HasError = false;
-  auto ErrorHandler = [&](llvm::StringRef Err,
-                          heavy::FullSourceLocation EmbeddedLoc) {
-    HasError = true;
-    clang::SourceLocation ErrLoc = getSourceLocation(EmbeddedLoc);
-    Diag(ErrLoc, diag::err_heavy_scheme) << Err;
-  };
+    clang::Preprocessor& PP = P.getPreprocessor();
+    PP.InitEmbeddedLexer(LexerInitFn);
 
-  LexerWriter TheLexerWriter(*this, *HeavyScheme->LexerSpellings);
-  heavy::Context& Context = HeavyScheme->getContext();
-  HEAVY_CLANG_VAR(write_lexer).set(Context, 
-      Context.CreateLambda([&](heavy::Context& C,
-                               heavy::ValueRefs Args) mutable {
-    heavy::SourceLocation Loc;
-    heavy::Value Output;
-    if (Args.size() == 2) {
-      // Accept any value that may have a source location.
-      Loc = Args[0].getSourceLocation();
-      Output = Args[1];
-    } else if (Args.size() == 1) {
-      Output = Args[0];
-    } else {
-      return C.RaiseError("invalid arity");
-    }
-    if (!isa<heavy::String, heavy::Symbol>(Output))
-      return C.RaiseError(C.CreateString(
-            "invalid type: ",
-            heavy::getKindName(Output.getKind()),
-            ", expecting string or identifier"
-            ), Output);
+    bool HasError = false;
+    auto ErrorHandler = [&](llvm::StringRef Err,
+                            heavy::FullSourceLocation EmbeddedLoc) {
+      HasError = true;
+      auto& Diags = PP.getDiagnostics();
+      DiagReport<clang::DiagnosticsEngine::Level::Error>{}(
+            *HeavyScheme, EmbeddedLoc, Diags, Err);
+    };
 
-    // Try to get a valid source location.
-    if (!Loc.isValid()) Loc = Output.getSourceLocation();
-    if (!Loc.isValid()) Loc = C.getLoc();
+    LexerWriter TheLexerWriter(P, *HeavyScheme->LexerSpellings);
+    heavy::Context& Context = HeavyScheme->getContext();
+    HEAVY_CLANG_VAR(write_lexer).set(Context, 
+        Context.CreateLambda([&](heavy::Context& C,
+                                 heavy::ValueRefs Args) mutable {
+      heavy::SourceLocation Loc;
+      heavy::Value Output;
+      if (Args.size() == 2) {
+        // Accept any value that may have a source location.
+        Loc = Args[0].getSourceLocation();
+        Output = Args[1];
+      } else if (Args.size() == 1) {
+        Output = Args[0];
+      } else {
+        return C.RaiseError("invalid arity");
+      }
+      if (!heavy::isa<heavy::String, heavy::Symbol>(Output))
+        return C.RaiseError(C.CreateString(
+              "invalid type: ",
+              heavy::getKindName(Output.getKind()),
+              ", expecting string or identifier"
+              ), Output);
 
-    llvm::StringRef Result = Output.getStringRef();
-    TheLexerWriter.Tokenize(getSourceLocation(
-          this->HeavyScheme->getFullSourceLocation(Loc)),
-          Result);
-    C.Cont();
-  }));
+      // Try to get a valid source location.
+      if (!Loc.isValid()) Loc = Output.getSourceLocation();
+      if (!Loc.isValid()) Loc = C.getLoc();
 
-  // Also provide a type erased LexerWriterFnRef which is
-  // more suited to calling in c++.
-  auto LexerWriterFn = [&](heavy::SourceLocation Loc, llvm::StringRef Str) {
-    TheLexerWriter.Tokenize(getSourceLocation(
-          this->HeavyScheme->getFullSourceLocation(Loc)), Str);
-  };
-  auto LWF = heavy::LexerWriterFnRef(LexerWriterFn);
-  HEAVY_CLANG_VAR(lexer_writer).set(Context, Context.CreateAny(LWF));
+      llvm::StringRef Result = Output.getStringRef();
+      TheLexerWriter.Tokenize(getSourceLocation(
+            HeavyScheme->getFullSourceLocation(Loc)),
+            Result);
+      C.Cont();
+    }));
 
-  // Do the thing.
-  heavy::TokenKind Terminator = heavy::tok::r_brace;
-  HeavyScheme->ProcessTopLevelCommands(SchemeLexer, heavy::builtins::eval,
-                                       ErrorHandler, Terminator);
+    // Also provide a type erased LexerWriterFnRef which is
+    // more suited to calling in c++.
+    auto LexerWriterFn = [&](heavy::SourceLocation Loc, llvm::StringRef Str) {
+      TheLexerWriter.Tokenize(getSourceLocation(
+            HeavyScheme->getFullSourceLocation(Loc)), Str);
+    };
+    auto LWF = heavy::LexerWriterFnRef(LexerWriterFn);
+    HEAVY_CLANG_VAR(lexer_writer).set(Context, Context.CreateAny(LWF));
 
-  // Return control to C++ Lexer
-  PP.FinishEmbeddedLexer(SchemeLexer.GetByteOffset());
-  if (!HasError)
-    TheLexerWriter.FlushTokens();
-  HEAVY_CLANG_VAR(lexer_writer).set(Context, heavy::Undefined());
-  HEAVY_CLANG_VAR(write_lexer).set(Context,
-        Context.CreateBuiltin([](heavy::Context& C, heavy::ValueRefs Args) {
-    C.RaiseError("lexer writer is not initialized");
-  }));
+    // Do the thing.
+    heavy::TokenKind Terminator = heavy::tok::r_brace;
+    HeavyScheme->ProcessTopLevelCommands(SchemeLexer, heavy::builtins::eval,
+                                         ErrorHandler, Terminator);
 
-  // The Lexers position has been changed
-  // so we need to re-prime the look-ahead
-  this->ConsumeAnyToken();
+    // Return control to C++ Lexer
+    PP.FinishEmbeddedLexer(SchemeLexer.GetByteOffset());
+    if (!HasError)
+      TheLexerWriter.FlushTokens();
+    HEAVY_CLANG_VAR(lexer_writer).set(Context, heavy::Undefined());
+    HEAVY_CLANG_VAR(write_lexer).set(Context,
+          Context.CreateBuiltin([](heavy::Context& C, heavy::ValueRefs Args) {
+      C.RaiseError("lexer writer is not initialized");
+    }));
 
-  return HasError;
-}
+    // The Lexers position has been changed
+    // so we need to re-prime the look-ahead
+    P.ConsumeAnyToken();
+  }
+};
+
+} // namespace
+
+static clang::PragmaHandlerRegistry::Add<HeavySchemePragmaHandler>
+PragmaHandler("heavy-scheme", "embed compile-time scheme");

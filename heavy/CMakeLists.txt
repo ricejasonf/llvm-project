@@ -55,5 +55,6 @@ add_subdirectory(test)
 add_subdirectory(unittests)
 add_subdirectory(include/nbdl_gen)
 add_subdirectory(plugins/HelloWorld)
+add_subdirectory(plugins/HeavyClang)
 
 add_subdirectory(cmake/modules)

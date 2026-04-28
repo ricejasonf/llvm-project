@@ -1019,6 +1019,11 @@ PRAGMA_ANNOTATION(pragma_fp)
 // Annotation for the attribute pragma directives - #pragma clang attribute ...
 PRAGMA_ANNOTATION(pragma_attribute)
 
+// Annotation for pragma handlers that access the parser
+// which receives the token within the context of parsing
+// external declarations.
+PRAGMA_ANNOTATION(pragma_parse_ext_decl)
+
 // Annotation for the riscv pragma directives - #pragma clang riscv intrinsic ...
 PRAGMA_ANNOTATION(pragma_riscv)
 
@@ -1036,18 +1041,6 @@ ANNOTATION(repl_input_end)
 
 // Annotation for #embed
 ANNOTATION(embed)
-
-// Keywwords for Heavy
-KEYWORD(heavy_scheme, KEYHEAVY)
-
-// HeavyScheme specific punctuators
-PUNCTUATOR(heavy_vector_lparen, "#(")
-PUNCTUATOR(heavy_quote, "'")
-PUNCTUATOR(heavy_quasiquote, "`")
-PUNCTUATOR(heavy_unquote, ",")
-PUNCTUATOR(heavy_unquote_splicing, ",@")
-PUNCTUATOR(heavy_true, "#t")
-PUNCTUATOR(heavy_false, "#f")
 
 #undef PRAGMA_ANNOTATION
 #undef ANNOTATION

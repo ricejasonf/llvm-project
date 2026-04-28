@@ -468,12 +468,4 @@ def warn_try_not_valid_on_target : Warning<
   "target '%0' does not support exception handling;"
   " 'catch' block is ignored">,
   InGroup<OpenMPTargetException>;
-
-// HeavyScheme
-def err_heavy_scheme : Error<
-    "(heavy_scheme) %0">;
-def warn_heavy_scheme : Warning<
-    "(heavy_scheme) %0">;
-def note_heavy_scheme : Note<
-    "(heavy_scheme) %0">;
 }

@@ -12,7 +12,6 @@ add_clang_library(clangParse
   ParseCXXInlineMethods.cpp
   ParseDecl.cpp
   ParseDeclCXX.cpp
-  ParseDeclHeavy.cpp
   ParseExpr.cpp
   ParseExprCXX.cpp
   ParseHLSL.cpp
@@ -33,7 +32,6 @@ add_clang_library(clangParse
   clangBasic
   clangLex
   clangSema
-  heavy
 
   DEPENDS
   omp_gen

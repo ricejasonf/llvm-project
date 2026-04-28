@@ -28,10 +28,6 @@
 #include <optional>
 #include <stack>
 
-namespace heavy {
-  class HeavyScheme;
-}
-
 namespace clang {
 class PragmaHandler;
 class Scope;
@@ -7051,7 +7047,6 @@ private:
   std::unique_ptr<PragmaHandler> MaxTokensHerePragmaHandler;
   std::unique_ptr<PragmaHandler> MaxTokensTotalPragmaHandler;
   std::unique_ptr<PragmaHandler> RISCVPragmaHandler;
-  std::unique_ptr<heavy::HeavyScheme> HeavyScheme;
 
   /// Initialize all pragma handlers.
   void initializePragmaHandlers();
@@ -7171,6 +7166,10 @@ private:
       SourceLocation &AnyLoc, SourceLocation &LastMatchRuleEndLoc);
 
   void HandlePragmaAttribute();
+
+  // Handle the annotation token produced by
+  // registered ParserPragmaHandlers.
+  DeclGroupPtrTy HandlePragmaPlugin();
 
   ///@}
 
@@ -8955,8 +8954,6 @@ private:
                             bool OuterMightBeMessageSend = false);
 
   ///@}
-
-  bool ParseHeavyScheme();
 };
 
 } // end namespace clang

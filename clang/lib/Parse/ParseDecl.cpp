@@ -1918,9 +1918,6 @@ Parser::DeclGroupPtrTy Parser::ParseDeclaration(DeclaratorContext Context,
     ProhibitAttributes(DeclSpecAttrs);
     SingleDecl = ParseStaticAssertDeclaration(DeclEnd);
     break;
-  case tok::kw_heavy_scheme:
-    ParseHeavyScheme();
-    return nullptr;
   default:
     return ParseSimpleDeclaration(Context, DeclEnd, DeclAttrs, DeclSpecAttrs,
                                   true, nullptr, DeclSpecStart);
@@ -5873,9 +5870,6 @@ bool Parser::isDeclarationSpecifier(
     // static_assert-declaration
   case tok::kw_static_assert:
   case tok::kw__Static_assert:
-
-    // heavy_scheme declaration
-  case tok::kw_heavy_scheme:
 
     // C23/GNU typeof support.
   case tok::kw_typeof:

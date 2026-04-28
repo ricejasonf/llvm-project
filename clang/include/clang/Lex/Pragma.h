@@ -24,6 +24,8 @@ namespace clang {
 class PragmaNamespace;
 class Preprocessor;
 class Token;
+class Parser;
+class DeclGroupRef;
 
   /**
    * Describes how the pragma was introduced, e.g., with \#pragma,
@@ -121,6 +123,16 @@ public:
                     Token &Tok) override;
 
   PragmaNamespace *getIfNamespace() override { return this; }
+};
+
+class ParserPragmaHandler : public PragmaHandler {
+public:
+  explicit ParserPragmaHandler(StringRef Name) : PragmaHandler(Name) {}
+
+  virtual void HandleParseExternalDeclaration(
+                    Parser &P, Token &Tok, DeclGroupRef& DG) = 0;
+  void HandlePragma(Preprocessor &PP, PragmaIntroducer Introducer,
+                    Token &FirstToken) override;
 };
 
 /// Destringize a \c _Pragma("") string according to C11 6.10.9.1:

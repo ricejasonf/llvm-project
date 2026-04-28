@@ -121,6 +121,26 @@ void PragmaNamespace::HandlePragma(Preprocessor &PP,
 }
 
 //===----------------------------------------------------------------------===//
+// ParserPragmaHandler Implementation.
+//===----------------------------------------------------------------------===//
+
+void ParserPragmaHandler::HandlePragma(
+                                   Preprocessor &PP,
+                                   PragmaIntroducer Introducer, Token &Tok) {
+  // Submit the token with a handle to `this`.
+  SourceLocation Loc = Tok.getLocation();
+  MutableArrayRef<Token> Toks(
+      PP.getPreprocessorAllocator().Allocate<Token>(1), 1);
+  Toks[0].startToken();
+  Toks[0].setKind(tok::annot_pragma_parse_ext_decl);
+  Toks[0].setLocation(Loc);
+  Toks[0].setAnnotationValue(static_cast<void *>(this));
+
+  PP.EnterTokenStream(Toks, /*DisableMacroExpansion=*/true,
+                      /*IsReinject=*/false);
+}
+
+//===----------------------------------------------------------------------===//
 // Preprocessor Pragma Directive Handling.
 //===----------------------------------------------------------------------===//
 

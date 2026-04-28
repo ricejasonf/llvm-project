@@ -1,13 +1,14 @@
-// RUN: clang++ -I %S/Inputs -fsyntax-only -Xclang -fheavy -Xclang -verify %s
+// RUN: clang++ -I %S/Inputs -fsyntax-only -fplugin=HeavyClang.so -Xclang -verify %s
 
 #include <type_traits>
 
 // Note that a note requires an error or a warning in order to be displayed.
-// expected-warning@12{{this is a foo}}
-// expected-error@12{{this is still a foo}}
-// expected-note@14{{this is a bar in a list}}
+// expected-warning@13{{this is a foo}}
+// expected-error@13{{this is still a foo}}
+// expected-note@15{{this is a bar in a list}}
 namespace foo {
-heavy_scheme {
+#pragma heavy_scheme
+{
 (import (heavy builtins) (heavy clang))
 (define foo 'foo)
 (define bar "bar")

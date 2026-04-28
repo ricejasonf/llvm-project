@@ -24,7 +24,6 @@
 #include "clang/Sema/Scope.h"
 #include "clang/Sema/SemaCodeCompletion.h"
 #include "llvm/ADT/STLForwardCompat.h"
-#include "heavy/HeavyScheme.h" // for ~HeavyScheme
 #include "llvm/Support/Path.h"
 #include "llvm/Support/TimeProfiler.h"
 using namespace clang;
@@ -843,6 +842,9 @@ Parser::ParseExternalDeclaration(ParsedAttributes &Attrs,
   case tok::annot_pragma_attribute:
     HandlePragmaAttribute();
     return nullptr;
+  case tok::annot_pragma_parse_ext_decl:
+    HandlePragmaPlugin();
+    return nullptr;
   case tok::semi:
     // Either a C++11 empty-declaration or attribute-declaration.
     SingleDecl =
@@ -941,7 +943,6 @@ Parser::ParseExternalDeclaration(ParsedAttributes &Attrs,
   case tok::kw_template:
   case tok::kw_static_assert:
   case tok::kw__Static_assert:
-  case tok::kw_heavy_scheme:
     // A function definition cannot start with any of these keywords.
     {
       SourceLocation DeclEnd;

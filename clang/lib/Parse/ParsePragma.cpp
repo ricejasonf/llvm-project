@@ -2047,6 +2047,16 @@ void Parser::HandlePragmaAttribute() {
   }
 }
 
+Parser::DeclGroupPtrTy Parser::HandlePragmaPlugin() {
+  assert(Tok.is(tok::annot_pragma_parse_ext_decl) &&
+         "Expected #pragma plugin annotation token");
+  auto *Handler = static_cast<ParserPragmaHandler *>(Tok.getAnnotationValue());
+  ConsumeAnnotationToken();
+  DeclGroupRef DG;
+  Handler->HandleParseExternalDeclaration(*this, Tok, DG);
+  return Parser::DeclGroupPtrTy::make(DG);
+}
+
 // #pragma GCC visibility comes in two variants:
 //   'push' '(' [visibility] ')'
 //   'pop'

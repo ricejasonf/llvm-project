@@ -1,7 +1,8 @@
-// RUN: clang++ -I %S/Inputs -fsyntax-only -Xclang -fheavy -Xclang -verify %s
+// RUN: clang++ -I %S/Inputs -fsyntax-only -fplugin=HeavyClang.so -Xclang -verify %s
 // expected-no-diagnostics
 
-heavy_scheme {
+#pragma heavy_scheme
+{
 (import (heavy builtins))
 
 (define-library (test lib)
