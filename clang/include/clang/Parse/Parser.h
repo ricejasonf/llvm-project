@@ -4629,6 +4629,7 @@ private:
       bool Disambiguation = false, bool IsAddressOfOperand = false,
       bool IsInDeclarationContext = false);
 
+public:
   bool ParseOptionalCXXScopeSpecifier(CXXScopeSpec &SS, ParsedType ObjectType,
                                       bool ObjectHasErrors,
                                       bool EnteringContext,
@@ -4644,6 +4645,7 @@ private:
         /*IsAddressOfOperand=*/IsAddressOfOperand);
   }
 
+private:
   //===--------------------------------------------------------------------===//
   // C++11 5.1.2: Lambda expressions
 
@@ -7266,6 +7268,10 @@ private:
   /// #pragma export ...
   void HandlePragmaExport();
 
+  // Handle the annotation token produced by
+  // registered ParserPragmaHandlers to receive
+  // as an external declaration.
+  DeclGroupPtrTy HandlePragmaParseExtDecl();
   ///@}
 
   //
@@ -8533,6 +8539,7 @@ private:
     }
   };
 
+public:
   /// A TentativeParsingAction that automatically reverts in its destructor.
   /// Useful for disambiguation parses that will always be reverted.
   class RevertingTentativeParsingAction
@@ -8543,6 +8550,7 @@ private:
     ~RevertingTentativeParsingAction() { Revert(); }
   };
 
+private:
   /// isCXXDeclarationStatement - C++-specialized function that disambiguates
   /// between a declaration or an expression statement, when parsing function
   /// bodies. Returns true for declaration, false for expression.

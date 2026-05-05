@@ -3178,6 +3178,20 @@ private:
   static bool CLK_DependencyDirectivesLexer(Preprocessor &P, Token &Result) {
     return P.CurLexer->LexDependencyDirectiveToken(Result);
   }
+
+public:
+  using EmbeddedLexerInitFn = void (clang::SourceLocation /*FileLoc*/,
+                                    llvm::StringRef       /*Filename*/,
+                                    const char*           /*BufferStart*/,
+                                    const char*           /*BufferEnd*/,
+                                    const char*           /*BufferPtr*/);
+
+  // InitEmbeddedLexer - Calls InitFn to allow an external lexer to take
+  //                     over consuming bytes from the lexers buffer.
+  void InitEmbeddedLexer(llvm::function_ref<EmbeddedLexerInitFn> InitFn);
+  // FinishEmbeddedLexer - When external lexer is finished it resigns control
+  //                       telling the lexer where to resume via Offset.
+  void FinishEmbeddedLexer(unsigned Offset);
 };
 
 /// Abstract base class that describes a handler that will receive

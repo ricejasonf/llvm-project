@@ -1791,3 +1791,27 @@ void NoTrivialPPDirectiveTracer::MacroExpands(const Token &MacroNameTok,
   if (!MD.getMacroInfo()->isBuiltinMacro())
     setSeenNoTrivialPPDirective();
 }
+
+void Preprocessor::InitEmbeddedLexer(
+          llvm::function_ref<EmbeddedLexerInitFn> InitFn) {
+  assert(IsFileLexer() && "cannot embed lexer in macro expansion");
+  InitFn(CurLexer->getFileLoc(),
+         getSourceManager().getFilename(CurLexer->getFileLoc()),
+         CurLexer->BufferStart,
+         CurLexer->BufferEnd,
+         CurLexer->BufferPtr);
+}
+
+void Preprocessor::FinishEmbeddedLexer(unsigned Offset) {
+  // Clear the cached tokens we never wanted.
+  assert(BacktrackPositions.empty() && "should not be in a tentative parse");
+  ExitCachingLexMode();
+  CachedTokens.clear();
+  CachedLexPos = 0;
+
+  // Have the CurLexer resume on the char
+  // immediately after the last char lexed
+  // by the the embedded lexer (specified by Offset)
+  if (CurLexer)
+    CurLexer->SetByteOffset(Offset, /*IsStartOfLine=*/false);
+}

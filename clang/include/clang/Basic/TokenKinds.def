@@ -889,6 +889,11 @@ PRAGMA_ANNOTATION(pragma_fp)
 // Annotation for the attribute pragma directives - #pragma clang attribute ...
 PRAGMA_ANNOTATION(pragma_attribute)
 
+// Annotation for pragma handlers that access the parser
+// which receives the token within the context of parsing
+// external declarations.
+PRAGMA_ANNOTATION(pragma_parse_ext_decl)
+
 // Annotation for C/C++ #pragma export(ident)
 PRAGMA_ANNOTATION(pragma_export)
 
